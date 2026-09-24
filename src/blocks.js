@@ -717,6 +717,19 @@ export function spriteOf(block) {
   return -1;
 }
 
+// Chests placed by the world generator, full of loot the first time they're opened (see
+// loot.js). They look like chests facing south.
+export const LOOT_CHEST = {};
+export const LOOT_KIND = {}; // id -> table
+['dungeon', 'village', 'smith', 'desert', 'house'].forEach((kind, i) => {
+  const id = 1990 + i;
+  const tex = ['chest_side', 'chest_side', 'chest_top', 'chest_top', 'chest_front', 'chest_side'];
+  shaped(id, `loot_chest_${kind}`, [[1, 0, 1, 15, 14, 15]], { label: 'Chest', tex, hardness: 2.5, tool: 'axe', sound: 'wood',
+    base: 206, item: false, drop: 'chest' });
+  LOOT_CHEST[kind] = id;
+  LOOT_KIND[id] = kind;
+});
+
 // A ladder's panel against the wall on `side` (shared with vines).
 function LADDER_PANEL_FOR(side) {
   return { 5: [0, 0, 0, 16, 16, 1], 4: [0, 0, 15, 16, 16, 16], 0: [15, 0, 0, 16, 16, 16], 1: [0, 0, 0, 1, 16, 16] }[side];

@@ -388,7 +388,8 @@ export class HostSession extends Session {
     this.link.flush();
     this.send(g.addr, {
       t: 'welcome', g: this.gid, be: this.link.epoch, bs: this.link.stream('*').seq, pvp: this.pvp ? 1 : 0,
-      w: { name: meta.name, seed: meta.seed, type: meta.type, mode: meta.mode, spawn: meta.spawn, time: Math.floor(game.time), rain: game.weather.raining ? 1 : 0 },
+      w: { name: meta.name, seed: meta.seed, type: meta.type, gen: meta.gen ?? 1, mode: meta.mode, spawn: meta.spawn, time: Math.floor(game.time),
+        rain: game.weather.raining ? 1 : 0 },
       you: meta.players?.[g.uid] ?? null,
       keys: [...w.store.keys],
       ents: game.entities.list.filter((e) => !e.dead).map((e) => { if (!e.nid) e.nid = this.nextNid++; return entityState(e); }),

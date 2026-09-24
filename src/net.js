@@ -8,7 +8,7 @@
 // splits big ones, numbers everything, and asks again for whatever a transport dropped.
 // The game protocol on top lives in multiplayer.js.
 
-export const PROTOCOL = 2;
+export const PROTOCOL = 3;
 const TOPIC = 'bh';
 const PEERJS_URL = 'https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js';
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';

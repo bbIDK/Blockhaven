@@ -10,7 +10,7 @@ import { randomTick, logRemoved, leafTick } from './growth.js';
 import { nextLevel } from './light.js';
 import { meshSection, P, P2, PADDED, ALL_OPEN } from './mesher.js';
 import { JobPool } from './workers.js';
-import { WorldGen } from './worldgen.js';
+import { makeGenerator } from './worldgen.js';
 
 export const S_REQUESTED = 1, S_READY = 2;
 const QSIZE = 1 << 16, QMASK = QSIZE - 1;
@@ -89,12 +89,14 @@ const FARMLAND = new Set([B.farmland, B.farmland_moist]);
 const posKey = (x, y, z) => (x + 1048576) * 536870912 + (z + 1048576) * 256 + y;
 
 export class World {
-  constructor({ seed, type = 'default', renderer, store = null }) {
+  // `version`: which terrain generator made the world (1 for worlds from before the release update).
+  constructor({ seed, type = 'default', renderer, store = null, version = 2 }) {
     this.seed = seed >>> 0;
     this.type = type;
+    this.genVersion = version;
     this.renderer = renderer;
     this.store = store;
-    this.gen = new WorldGen(this.seed, this.type);
+    this.gen = makeGenerator(this.seed, this.type, version);
     this.chunks = new Map();
     this.pool = new JobPool((r) => this.onJobResult(r), () => this.onPoolFailure());
     this.center = null;
@@ -329,7 +331,7 @@ export class World {
     const chunk = new Chunk(cx, cz);
     this.chunks.set(chunk.key, chunk);
     this.link(chunk);
-    const job = { type: 'gen', seed: this.seed, worldType: this.type, cx, cz, saved: null };
+    const job = { type: 'gen', seed: this.seed, worldType: this.type, version: this.genVersion, cx, cz, saved: null };
     if (this.store?.has(chunk.key)) {
       this.store.loadChunk(chunk.key).then((saved) => {
         if (this.chunks.get(chunk.key) !== chunk) return;
@@ -412,7 +414,7 @@ export class World {
     sec.dirty = false;
     sec.pending++;
     this.pool.submit({ type: 'mesh', cx: chunk.cx, cz: chunk.cz, sy, version: sec.version, blocks, light,
-      climate: chunk.climate }, [blocks.buffer, light.buffer]);
+      climate: chunk.climate, biomes: chunk.biomes }, [blocks.buffer, light.buffer]);
   }
 
   onMesh(r) {
@@ -434,7 +436,7 @@ export class World {
     sec.meshVersion = sec.version;
     if (sec.count === 0) { sec.vis = ALL_OPEN; if (sec.solid || sec.trans) this.renderer.freeSection(sec); return; }
     this.buildPadded(chunk, sy, this.padB, this.padL);
-    const m = meshSection(this.padB, this.padL, chunk.climate, chunk.cx, chunk.cz);
+    const m = meshSection(this.padB, this.padL, chunk.climate, chunk.cx, chunk.cz, chunk.biomes);
     sec.vis = m.vis;
     this.renderer.uploadSection(sec, chunk, sy, m.solid, m.trans, m.groups);
   }

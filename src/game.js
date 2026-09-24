@@ -24,8 +24,9 @@ import {
   B, BLOCKS, BASE, SOLID, REPLACEABLE, WATERLIKE, FACING_VARIANTS, WALL_TORCH, FACE_DIRS,
   RENDER, R, SLAB, STAIRS, DOOR, doorId, CLIMB, LADDER, oppositeFace, CHEST, CHEST_PAIR, CHEST_RIGHT, chestId, chestHalf, BED, bedId,
   FURNACE_IDS, furnaceVariant, isLitFurnace, FURNACE_KIND, FURNACE_FRONT, LOG_AXES, GATE, gateId, VINE, DOUBLE, LEAVES_WOOD,
-  NATURAL_LEAVES, WOOD,
+  NATURAL_LEAVES, WOOD, LOOT_KIND,
 } from './blocks.js';
+import { rollLoot } from './loot.js';
 import { useItemOnBlock, useBucket, placeLilyPad } from './behaviors.js';
 import { ITEMS, I, itemDef, itemLabel, breakTime, dropsFor, attackDamage, attackSpeed } from './items.js';
 import { BIOME_NAMES } from './biomes.js';
@@ -63,7 +64,7 @@ const TIPS = [
   'Zombies don’t burn in the rain.',
   'Golden tools are the fastest, but they wear out quickly.',
 ];
-const CLOUD_HEIGHT = 108.5;
+const CLOUD_HEIGHT = 216.5; // above all but the highest peaks
 // Which face of a lit furnace has the fire in it.
 const REACH = { creative: 5.5, survival: 4.6 };
 
@@ -327,7 +328,7 @@ export class Game {
     const { mode, type } = this.ui.createState;
     const meta = {
       id: `w${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`,
-      name, seed, seedText, mode, type, created: Date.now(), lastPlayed: Date.now(), time: 1000,
+      name, seed, seedText, mode, type, gen: 2, created: Date.now(), lastPlayed: Date.now(), time: 1000,
       spawn: null, player: null, inventory: null, version: SAVE_VERSION,
     };
     await storage.saveWorld(meta);
@@ -357,7 +358,7 @@ export class Game {
     if (this.world) { this.world.dispose(); this.world = null; }
     const store = remote ? remote.store : await new storage.WorldStore(meta.id, CHUNK_VOLUME).init();
     this.meta = meta;
-    this.world = new World({ seed: meta.seed, type: meta.type, renderer: this.renderer, store });
+    this.world = new World({ seed: meta.seed, type: meta.type, version: meta.gen ?? 1, renderer: this.renderer, store });
     this.world.remote = !!remote;
     this.world.listener = this;
     this.time = meta.time ?? 1000;
@@ -439,7 +440,8 @@ export class Game {
     const world = w.w;
     const meta = {
       id: `mp-${session.gid}`, name: String(world.name ?? 'World').slice(0, 32), seed: world.seed >>> 0,
-      type: world.type === 'flat' ? 'flat' : 'default', mode: you?.mode === 'creative' || (!you?.mode && world.mode === 'creative') ? 'creative' : 'survival',
+      type: world.type === 'flat' ? 'flat' : 'default', gen: world.gen === 2 ? 2 : 1,
+      mode: you?.mode === 'creative' || (!you?.mode && world.mode === 'creative') ? 'creative' : 'survival',
       spawn: world.spawn && Number.isFinite(world.spawn.x) && Number.isFinite(world.spawn.z) ? { x: world.spawn.x, y: world.spawn.y ?? null, z: world.spawn.z } : { x: 0.5, y: null, z: 0.5 },
       time: Number.isFinite(world.time) ? world.time : 1000, weather: { raining: !!world.rain },
       bed: you?.bed ?? null, player: you?.player ?? null, inventory: you?.inventory ?? null, remote: true,
@@ -1028,6 +1030,11 @@ export class Game {
   // World listener: react to blocks that vanish (chests and furnaces spill their items), and pass
   // every change on in multiplayer.
   blockChanged(x, y, z, old, id) {
+    if (LOOT_KIND[old] !== undefined && !this.net?.guest) {
+      const key = this.containerKey(x, y, z), loot = rollLoot(LOOT_KIND[old], x, y, z, this.meta?.seed ?? 0);
+      if (CHEST[id] !== undefined) { if (!this.containers.has(key)) this.containers.set(key, loot); }
+      else for (const st of loot) if (st) this.entities.spawnItem(x + 0.5, y + 0.5, z + 0.5, st.id, st.count, 0);
+    }
     if ((CHEST[old] !== undefined && CHEST[id] === undefined) || (FURNACE_IDS.has(old) && !FURNACE_IDS.has(id)) || (old === B.barrel && id !== B.barrel)) {
       this.dropContainer(x, y, z);
     }
@@ -1552,7 +1559,8 @@ export class Game {
 
   // Blocks you use rather than build against (sneak to build against them).
   interactive(id) {
-    return !!DOOR[id] || CHEST[id] !== undefined || !!BED[id] || id === B.crafting_table || FURNACE_IDS.has(id) || !!GATE[id] || id === B.barrel;
+    return !!DOOR[id] || CHEST[id] !== undefined || !!BED[id] || id === B.crafting_table || FURNACE_IDS.has(id) || !!GATE[id] || id === B.barrel ||
+      LOOT_KIND[id] !== undefined;
   }
 
   breakTarget() {
@@ -1623,6 +1631,11 @@ export class Game {
       } else if (GATE[t.id]) {
         if (w.toggleGate(t.x, t.y, t.z, this.lookFace())) this.audio.door(!!GATE[w.getBlock(t.x, t.y, t.z)]?.open, { x: t.x + 0.5, y: t.y + 0.5, z: t.z + 0.5 });
       } else if (t.id === B.barrel) this.openChestAt(t.x, t.y, t.z);
+      else if (LOOT_KIND[t.id] !== undefined) {
+        // A chest the world left here: it becomes an ordinary chest, filled the first time.
+        w.setBlock(t.x, t.y, t.z, chestId(4));
+        this.openChestAt(t.x, t.y, t.z);
+      }
       else if (CHEST[t.id] !== undefined) this.openChestAt(t.x, t.y, t.z);
       else if (t.id === B.crafting_table) this.openCraftingTable(t.x, t.y, t.z);
       else if (FURNACE_IDS.has(t.id)) this.openFurnaceAt(t.x, t.y, t.z);

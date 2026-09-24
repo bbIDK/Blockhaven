@@ -6,7 +6,7 @@ import {
   R, RENDER, OPAQUE, AO, TEXL, FFLAGS, TINT, TINT_RGB, CULL_SELF, TRANSLUCENT, B, ANIM,
   F_TINT, F_OVERLAY, F_UVROT, F_ANIM, liquidHeight, liquidLevel, sameCullGroup, TORCH_LEAN, shapeBoxes, boxFaceUV,
 } from './blocks.js';
-import { grassColor, foliageColor, waterColor, fromByte } from './biomes.js';
+import { columnColors, fromByte } from './biomes.js';
 import { hash2 } from './math.js';
 
 export const P = 18, P2 = P * P, PADDED = P * P2;
@@ -340,16 +340,14 @@ function campfire(bufs, other, blocks, light, x, y, z, p, id) {
   crossQuad(other, [[X + a, Y, Z + b], [X + b, Y, Z + a], [X + b, Y + H, Z + a], [X + a, Y + H, Z + b]], layer, flags, sky, 255);
 }
 
-// blocks/light: padded 18^3 arrays; climate: 512 bytes for the chunk's columns.
-export function meshSection(blocks, light, climate, cx, cz) {
+// blocks/light: padded 18^3 arrays; climate: 512 bytes for the chunk's columns; biomes: 256.
+export function meshSection(blocks, light, climate, cx, cz, biomes = null) {
   other.count = 0;
   for (const d of dirs) d.count = 0;
   trans.count = 0;
   for (let c = 0; c < 256; c++) {
     const t = fromByte(climate[c * 2]), h = fromByte(climate[c * 2 + 1]);
-    grassColor(t, h, grassT, c * 3);
-    foliageColor(t, h, foliageT, c * 3);
-    waterColor(t, h, waterT, c * 3);
+    columnColors(biomes ? biomes[c] : 4, t, h, grassT, foliageT, waterT, c * 3);
   }
   for (let y = 0; y < 16; y++) {
     for (let z = 0; z < 16; z++) {
