@@ -3,7 +3,7 @@ import {
   perspective, viewRotation, multiply, invert, translate, scale, rotateX, rotateY, rotateZ,
   frustumPlanes, boxInFrustum, mat4, identity,
 } from './math.js';
-import { generateTextures, TEXTURE_NAMES, TEX } from './textures.js';
+import { generateTextures, TEXTURE_NAMES, TEX, ARRAY_LAYERS } from './textures.js';
 import { STRIDE, meshBlockItem, SECTION_OFFSET, FACE_PAIR, ALL_OPEN } from './mesher.js';
 import { boxMesh, spriteMesh, MODEL_OFFSET } from './models.js';
 import { RENDER, R, TEXL, FFLAGS, TINT, TINT_RGB, SHAPE, ICON_SHAPE, DOOR, CLIMB, SHAPE_KIND, BED, boxFaceUV } from './blocks.js';
@@ -61,7 +61,8 @@ const TERRAIN_FS = `#version 300 es
 precision highp float;
 precision highp int;
 precision highp sampler2DArray;
-uniform sampler2DArray u_tex;
+// Textures live in up to four arrays of 256 layers (every WebGL 2 device has at least that many).
+uniform sampler2DArray u_tex0, u_tex1, u_tex2, u_tex3;
 uniform float u_time;
 uniform float u_daylight;
 uniform vec3 u_skyLight;
@@ -83,6 +84,14 @@ in vec3 v_rel;
 flat in uint v_flags;
 out vec4 o_color;
 float curve(float l) { return l / (3.0 - 2.0 * l); }
+vec4 texel(vec2 uv, float layer, vec2 dx, vec2 dy) {
+  float arr = floor(layer / 256.0);
+  vec3 p = vec3(uv, layer - arr * 256.0);
+  if (arr < 0.5) return textureGrad(u_tex0, p, dx, dy);
+  if (arr < 1.5) return textureGrad(u_tex1, p, dx, dy);
+  if (arr < 2.5) return textureGrad(u_tex2, p, dx, dy);
+  return textureGrad(u_tex3, p, dx, dy);
+}
 void main() {
   vec2 uv = v_uv.xy;
   if ((v_flags & 80u) != 0u) {
@@ -103,10 +112,13 @@ void main() {
     uv.y -= u_precip.x;
     uv.x += sin(u_precip.z + uv.y * 2.0) * u_precip.y;
   }
-  vec4 tex = texture(u_tex, vec3(uv, v_uv.z));
+  // (Derivatives are taken here, outside any branch, so mipmapping works inside texel().)
+  vec2 dx = dFdx(uv), dy = dFdy(uv);
+  float layer = floor(v_uv.z + 0.5);
+  vec4 tex = texel(uv, layer, dx, dy);
   vec3 col = tex.rgb;
   if ((v_flags & 2u) != 0u) {
-    vec4 ov = texture(u_tex, vec3(uv, v_uv.z + 1.0));
+    vec4 ov = texel(uv, layer + 1.0, dx, dy);
     col = mix(col, ov.rgb * v_tint, ov.a);
   } else if ((v_flags & 1u) != 0u) {
     col *= v_tint;
@@ -299,17 +311,21 @@ export class Renderer {
 
     this.pixels = generateTextures();
     this.layers = TEXTURE_NAMES.length;
-    const maxLayers = gl.getParameter(gl.MAX_ARRAY_TEXTURE_LAYERS);
-    if (this.layers > maxLayers) throw new Error(`This device's graphics support ${maxLayers} textures, and the game needs ${this.layers}.`);
-    this.texture = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.texture);
-    gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA8, 16, 16, this.layers, 0, gl.RGBA, gl.UNSIGNED_BYTE, this.pixels);
-    gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST_MIPMAP_LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.REPEAT);
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.REPEAT);
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAX_LEVEL, 4);
+    this.textures = [];
+    for (let first = 0; first < this.layers; first += ARRAY_LAYERS) {
+      const n = Math.min(ARRAY_LAYERS, this.layers - first);
+      const tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, tex);
+      gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA8, 16, 16, n, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+        this.pixels.subarray(first * 1024, (first + n) * 1024));
+      gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST_MIPMAP_LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.REPEAT);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.REPEAT);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAX_LEVEL, 4);
+      this.textures.push(tex);
+    }
 
     this.quadIndex = gl.createBuffer();
     this.indexQuads = 0;
@@ -482,7 +498,7 @@ export class Renderer {
     gl.uniform3f(u.u_camPos, f.cam.x, f.cam.y, f.cam.z);
     gl.uniform1f(u.u_time, f.time);
     gl.uniform1f(u.u_wave, f.wave ? 1 : 0);
-    gl.uniform1i(u.u_tex, 0);
+    for (let i = 0; i < 4; i++) gl.uniform1i(u[`u_tex${i}`], i);
     gl.uniform1f(u.u_daylight, f.env.daylight);
     gl.uniform3fv(u.u_skyLight, f.env.skyLight);
     gl.uniform3fv(u.u_fogColor, f.fogColor);
@@ -617,8 +633,11 @@ export class Renderer {
 
     gl.clearColor(f.fogColor[0], f.fogColor[1], f.fogColor[2], 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    for (let i = 0; i < 4; i++) {
+      gl.activeTexture(gl.TEXTURE0 + i);
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.textures[Math.min(i, this.textures.length - 1)]);
+    }
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.texture);
 
     // Sky
     gl.disable(gl.DEPTH_TEST);

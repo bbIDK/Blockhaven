@@ -6,7 +6,7 @@ import {
   R, RENDER, OPAQUE, AO, TEXL, FFLAGS, TINT, TINT_RGB, CULL_SELF, TRANSLUCENT, B, ANIM,
   F_TINT, F_OVERLAY, F_UVROT, F_ANIM, liquidHeight, liquidLevel, sameCullGroup, TORCH_LEAN, shapeBoxes, boxFaceUV,
 } from './blocks.js';
-import { grassColor, foliageColor, fromByte } from './biomes.js';
+import { grassColor, foliageColor, waterColor, fromByte } from './biomes.js';
 import { hash2 } from './math.js';
 
 export const P = 18, P2 = P * P, PADDED = P * P2;
@@ -70,7 +70,7 @@ const AO_OFF = FACE_CORNERS.map((corners, f) => corners.map((c) => {
 const other = new MeshBuffer(2048);
 const dirs = [0, 1, 2, 3, 4, 5].map(() => new MeshBuffer(2048));
 const trans = new MeshBuffer(2048);
-const grassT = new Uint8Array(768), foliageT = new Uint8Array(768);
+const grassT = new Uint8Array(768), foliageT = new Uint8Array(768), waterT = new Uint8Array(768);
 const aoV = new Int32Array(4), skyV = new Int32Array(4), blkV = new Int32Array(4);
 const FLAG_MASK = 0xff & ~F_UVROT;
 
@@ -85,6 +85,7 @@ function tintFor(id, col, out) {
   if (t === 1) { out[0] = grassT[col * 3]; out[1] = grassT[col * 3 + 1]; out[2] = grassT[col * 3 + 2]; }
   else if (t === 2) { out[0] = foliageT[col * 3]; out[1] = foliageT[col * 3 + 1]; out[2] = foliageT[col * 3 + 2]; }
   else if (t === 3) { out[0] = TINT_RGB[id * 3]; out[1] = TINT_RGB[id * 3 + 1]; out[2] = TINT_RGB[id * 3 + 2]; }
+  else if (t === 4) { out[0] = waterT[col * 3]; out[1] = waterT[col * 3 + 1]; out[2] = waterT[col * 3 + 2]; }
   else { out[0] = out[1] = out[2] = 255; }
 }
 const tint = [255, 255, 255];
@@ -155,6 +156,7 @@ function liquid(buf, blocks, light, x, y, z, p, id) {
     liquidH[2] = cornerHeight(blocks, p, id, 0, 1); liquidH[3] = cornerHeight(blocks, p, id, 1, 1);
   }
   const layer = TEXL[id * 6], flags = FFLAGS[id * 6] & FLAG_MASK;
+  if (TINT[id]) tintFor(id, (z << 4) | x, tint); else tint[0] = tint[1] = tint[2] = 255;
   const own = light[p];
   // Which way the surface runs: downhill across the corner heights.
   const gx = liquidH[1] + liquidH[3] - liquidH[0] - liquidH[2], gz = liquidH[2] + liquidH[3] - liquidH[0] - liquidH[1];
@@ -175,13 +177,13 @@ function liquid(buf, blocks, light, x, y, z, p, id) {
       const top = c[1] ? liquidH[c[0] + c[2] * 2] : 0;
       v[0] = (x + c[0]) * U; v[1] = y * U + top; v[2] = (z + c[2]) * U; v[3] = UV[k][0];
       v[4] = f === 2 || f === 3 ? UV[k][1] : c[1] ? Math.round(16 - (top / U) * 16) : 16;
-      buf.vertex(v[0], v[1], v[2], v[3], v[4], layer, f, flags, sky, blk, 255, 255, 255, 255);
+      buf.vertex(v[0], v[1], v[2], v[3], v[4], layer, f, flags, sky, blk, 255, tint[0], tint[1], tint[2]);
     }
     if (f === 2) {
       // Seen from below (underwater) the surface needs the opposite winding.
       for (let k = 3; k >= 0; k--) {
         const v = liquidVerts[k];
-        buf.vertex(v[0], v[1], v[2], v[3], v[4], layer, 2, flags, sky, blk, 255, 255, 255, 255);
+        buf.vertex(v[0], v[1], v[2], v[3], v[4], layer, 2, flags, sky, blk, 255, tint[0], tint[1], tint[2]);
       }
     }
   }
@@ -315,6 +317,7 @@ export function meshSection(blocks, light, climate, cx, cz) {
     const t = fromByte(climate[c * 2]), h = fromByte(climate[c * 2 + 1]);
     grassColor(t, h, grassT, c * 3);
     foliageColor(t, h, foliageT, c * 3);
+    waterColor(t, h, waterT, c * 3);
   }
   for (let y = 0; y < 16; y++) {
     for (let z = 0; z < 16; z++) {

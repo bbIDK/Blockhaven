@@ -3,6 +3,7 @@
 // Ids are 16-bit. Blocks and items share one id space: blocks use 0-255 and 1024-4095, items that
 // aren't blocks use 256-1023.
 import { TEX } from './textures.js';
+import { DYES, tintFor } from './colors.js';
 
 export const R = { NONE: 0, CUBE: 1, CROSS: 2, TORCH: 3, LIQUID: 4, CACTUS: 5, MODEL: 6, FIRE: 7 };
 
@@ -25,7 +26,7 @@ export const EMIT = new Uint8Array(N);
 export const TRANSLUCENT = new Uint8Array(N);
 export const CULL_SELF = new Uint8Array(N);
 export const AO = new Uint8Array(N);
-export const TINT = new Uint8Array(N); // 0 none, 1 grass, 2 foliage, 3 fixed colour
+export const TINT = new Uint8Array(N); // 0 none, 1 grass, 2 foliage, 3 fixed colour, 4 water
 export const TINT_RGB = new Uint8Array(N * 3);
 export const TEXL = new Uint16Array(N * 6);
 export const FFLAGS = new Uint8Array(N * 6);
@@ -88,6 +89,7 @@ function block(id, name, o = {}) {
   ANIM[id] = o.anim ? 1 : 0;
   if (o.tint === 'grass') TINT[id] = 1;
   else if (o.tint === 'foliage') TINT[id] = 2;
+  else if (o.tint === 'water') TINT[id] = 4;
   else if (Array.isArray(o.tint)) { TINT[id] = 3; TINT_RGB.set(o.tint, id * 3); }
 
   if (o.tex) {
@@ -154,7 +156,7 @@ block(7, 'oak_leaves', { tex: 'oak_leaves', cutout: true, tint: 'foliage', filte
   hardness: 0.2, sound: 'grass', drop: null });
 block(8, 'sand', { tex: 'sand', hardness: 0.5, tool: 'shovel', sound: 'sand', falls: true });
 block(9, 'gravel', { tex: 'gravel', hardness: 0.6, tool: 'shovel', sound: 'gravel', falls: true });
-block(10, 'water', { render: R.LIQUID, tex: 'water', translucent: true, solid: false, filter: 1, cullSelf: true,
+block(10, 'water', { render: R.LIQUID, tex: 'water', tint: 'water', translucent: true, solid: false, filter: 1, cullSelf: true,
   selectable: false, replaceable: true, liquid: 1, hardness: -1, sound: 'water', drop: null });
 block(11, 'glass', { tex: 'glass', cutout: true, cullSelf: true, hardness: 0.3, sound: 'glass', drop: null });
 block(12, 'bedrock', { tex: 'bedrock', hardness: -1 });
@@ -199,8 +201,10 @@ facing([42, 110, 111, 112], 'furnace', { front: 'furnace_front', side: 'furnace_
   hardness: 3.5, tool: 'pickaxe', tier: 1 });
 block(43, 'tnt', { label: 'TNT', tex: { top: 'tnt_top', bottom: 'tnt_bottom', side: 'tnt_side' }, hardness: 0, sound: 'grass' });
 block(44, 'clay', { tex: 'clay', hardness: 0.6, tool: 'shovel', sound: 'gravel', drop: 'clay_ball' });
-['white', 'red', 'orange', 'yellow', 'lime', 'blue', 'purple', 'black'].forEach((c, i) =>
-  block(45 + i, `${c}_wool`, { tex: `${c}_wool`, hardness: 0.8, sound: 'cloth' }));
+// The first eight wool colours kept their original ids; the rest are further up.
+const WOOL_IDS = { white: 45, red: 46, orange: 47, yellow: 48, lime: 49, blue: 50, purple: 51, black: 52 };
+DYES.forEach((d, i) => block(WOOL_IDS[d.name] ?? 1700 + i, `${d.name}_wool`, { tex: 'wool', tint: tintFor(d.wool, 0.9),
+  hardness: 0.8, sound: 'cloth' }));
 facing([53, 113, 114, 115], 'pumpkin', { front: 'pumpkin_face', side: 'pumpkin_side', top: 'pumpkin_top',
   hardness: 1, tool: 'axe', sound: 'wood' });
 facing([54, 116, 117, 118], 'jack_o_lantern', { label: "Jack o'Lantern", front: 'jack_face', side: 'pumpkin_side',
@@ -225,7 +229,7 @@ export const TORCH_LEAN = { 33: -1, 106: 0, 107: 1, 108: 4, 109: 5 };
 // Flowing water: ids 120..126 are levels 1..7 (1 = next to a source), 127 is falling water.
 export const WATER_FLOW_BASE = 120;
 for (let level = 1; level <= 8; level++) {
-  block(119 + level, level === 8 ? 'water_falling' : `water_flow_${level}`, { render: R.LIQUID, tex: 'water',
+  block(119 + level, level === 8 ? 'water_falling' : `water_flow_${level}`, { render: R.LIQUID, tex: 'water', tint: 'water',
     translucent: true, solid: false, filter: 1, cullSelf: true, selectable: false, replaceable: true, liquid: 1,
     hardness: -1, sound: 'water', drop: null, item: false, base: 10 });
 }

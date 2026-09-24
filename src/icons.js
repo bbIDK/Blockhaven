@@ -7,6 +7,7 @@ import { TEX } from './textures.js';
 const S = 64;
 const DEFAULT_GRASS = [124, 189, 84];
 const DEFAULT_FOLIAGE = [96, 168, 64];
+const DEFAULT_WATER = [88, 164, 255];
 
 let pixels = null;
 const cache = new Map();
@@ -40,6 +41,7 @@ function tintOf(block) {
   if (t === 1) return DEFAULT_GRASS;
   if (t === 2) return DEFAULT_FOLIAGE;
   if (t === 3) return [...TINT_RGB.subarray(block * 3, block * 3 + 3)];
+  if (t === 4) return DEFAULT_WATER;
   return null;
 }
 

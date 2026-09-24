@@ -28,5 +28,10 @@ function bilinear(corners, temp, hum, out, o) {
   }
 }
 
+// Water: deep blue in the cold, turquoise in the warm seas. The texture is pale, so these are
+// divided by its brightness (0.72) to come out as the water colour itself.
+const WATER = [[0x39, 0x38, 0xc9], [0x3d, 0x57, 0xd6], [0x43, 0xd5, 0xee], [0x3f, 0x9e, 0xe8]].map((c) => c.map((v) => Math.min(255, Math.round(v / 0.72))));
+
 export const grassColor = (temp, hum, out, o = 0) => bilinear(GRASS, temp, hum, out, o);
+export const waterColor = (temp, hum, out, o = 0) => bilinear(WATER, temp * 0.8, hum, out, o);
 export const foliageColor = (temp, hum, out, o = 0) => bilinear(FOLIAGE, temp, hum, out, o);
