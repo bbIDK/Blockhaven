@@ -1,7 +1,8 @@
 // Inventory icons, drawn once from the texture pixels: isometric cubes for blocks, flat sprites
 // for plants and items. Returned as data URLs for <img> tags.
 import { ITEMS } from './items.js';
-import { RENDER, R, TEXL, FFLAGS, TINT, TINT_RGB, F_TINT, F_OVERLAY } from './blocks.js';
+import { RENDER, R, TEXL, FFLAGS, TINT, TINT_RGB, F_TINT, F_OVERLAY, SHAPE, ICON_SHAPE, DOOR, CLIMB, SHAPE_KIND } from './blocks.js';
+import { TEX } from './textures.js';
 
 const S = 64;
 const DEFAULT_GRASS = [124, 189, 84];
@@ -62,6 +63,34 @@ function drawCube(ctx, block) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 }
 
+// Isometric boxes (1/16 units), drawn far-to-near. Same projection as drawCube.
+function drawBoxes(ctx, block, boxes) {
+  const k = S / 48;
+  const sorted = [...boxes].sort((a, b) => a[1] - b[1] || (a[0] + a[2]) - (b[0] + b[2]));
+  const faces = [0, 2, 4].map((f) => faceImage(block, f, f === 2 ? 1 : f === 4 ? 0.78 : 0.6));
+  for (const b of sorted) {
+    const [x0, y0, z0, x1, y1, z1] = b.map((v) => v / 16);
+    // top (+Y): u = x, v = z
+    ctx.setTransform(21 / 16 * k, 11 / 16 * k, -21 / 16 * k, 11 / 16 * k, 24 * k, (2 + 22 * (1 - y1)) * k);
+    ctx.drawImage(faces[1], x0 * 16, z0 * 16, (x1 - x0) * 16, (z1 - z0) * 16, x0 * 16, z0 * 16, (x1 - x0) * 16 + 0.2, (z1 - z0) * 16 + 0.2);
+    // south (+Z): u = x, v = 1 - y
+    ctx.setTransform(21 / 16 * k, 11 / 16 * k, 0, 22 / 16 * k, (24 - 21 * z1) * k, (2 + 11 * z1) * k);
+    ctx.drawImage(faces[2], x0 * 16, (1 - y1) * 16, (x1 - x0) * 16, (y1 - y0) * 16, x0 * 16, (1 - y1) * 16, (x1 - x0) * 16 + 0.2, (y1 - y0) * 16 + 0.2);
+    // east (+X): u = 1 - z, v = 1 - y
+    ctx.setTransform(21 / 16 * k, -11 / 16 * k, 0, 22 / 16 * k, (3 + 21 * x1) * k, (13 + 11 * x1) * k);
+    ctx.drawImage(faces[0], (1 - z1) * 16, (1 - y1) * 16, (z1 - z0) * 16, (y1 - y0) * 16, (1 - z1) * 16, (1 - y1) * 16, (z1 - z0) * 16 + 0.2, (y1 - y0) * 16 + 0.2);
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+}
+
+// Flat inventory sprite used for doors, ladders and panes.
+function spriteLayer(block) {
+  if (DOOR[block]) return TEX.oak_door_item;
+  if (CLIMB[block]) return TEX.ladder;
+  if (SHAPE_KIND[block] === 3) return TEX.glass;
+  return -1;
+}
+
 export function iconFor(id) {
   if (cache.has(id)) return cache.get(id);
   const def = ITEMS.get(id);
@@ -73,6 +102,10 @@ export function iconFor(id) {
   const block = def.block;
   if (block !== null && (RENDER[block] === R.CUBE || RENDER[block] === R.CACTUS || RENDER[block] === R.LIQUID)) {
     drawCube(ctx, block);
+  } else if (block !== null && RENDER[block] === R.MODEL && spriteLayer(block) < 0) {
+    drawBoxes(ctx, block, ICON_SHAPE[block] ?? SHAPE[block]);
+  } else if (block !== null && RENDER[block] === R.MODEL) {
+    ctx.drawImage(layerImage(spriteLayer(block), null, null, 1), 4, 4, S - 8, S - 8);
   } else {
     const layer = block !== null ? TEXL[block * 6] : def.tex;
     const tint = block !== null && FFLAGS[block * 6] & F_TINT ? tintOf(block) : null;

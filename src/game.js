@@ -16,13 +16,12 @@ import * as storage from './storage.js';
 import { makeEnvironment, updateEnvironment, clockText } from './sky.js';
 import {
   B, BLOCKS, BASE, CREATIVE_BLOCKS, SOLID, REPLACEABLE, WATERLIKE, FACING_VARIANTS, WALL_TORCH, FACE_DIRS,
-  RENDER, R,
+  RENDER, R, SLAB, STAIRS, DOOR, doorId, CLIMB, LADDER, oppositeFace,
 } from './blocks.js';
 import { ITEMS, I, itemDef, itemLabel, breakTime, dropsFor, blockOfItem, RECIPES } from './items.js';
 import { BIOME_NAMES } from './biomes.js';
 import { CHUNK_VOLUME, HEIGHT, TICKS_PER_DAY } from './config.js';
 import { seedFromText, clamp, hashString } from './math.js';
-import { blockBounds } from './world.js';
 
 const SETTINGS_KEY = 'blockhaven.settings';
 const COARSE = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
@@ -772,9 +771,20 @@ export class Game {
     }
   }
 
+  // Horizontal direction the player faces, as a face index (+X 0, -X 1, +Z 4, -Z 5).
+  lookFace() {
+    const d = this.player.lookDir();
+    return Math.abs(d[0]) > Math.abs(d[2]) ? (d[0] > 0 ? 0 : 1) : (d[2] > 0 ? 4 : 5);
+  }
+
   useItem(repeat = false) {
-    const held = this.inv.held, t = this.target, p = this.player;
+    const held = this.inv.held, t = this.target, p = this.player, w = this.world;
     const def = held ? itemDef(held.id) : null;
+    // Doors open and close (sneak to place blocks against them instead).
+    if (t && !t.entity && DOOR[t.id] && !p.sneaking) {
+      if (!repeat && w.toggleDoor(t.x, t.y, t.z)) { this.audio.place('wood'); this.swingArm(); }
+      return;
+    }
     if (def?.food && !this.creative && !repeat) {
       if (this.health < 20) {
         this.health = Math.min(20, this.health + def.food);
@@ -790,22 +800,37 @@ export class Game {
       return;
     }
     if (t.id === B.tnt && held?.id === I.flint_and_steel && !repeat) {
-      this.world.setBlock(t.x, t.y, t.z, 0);
+      w.setBlock(t.x, t.y, t.z, 0);
       this.entities.primeTNT(t.x, t.y, t.z, 80);
       if (!this.creative) { this.inv.damageHeld(1); this.invChanged(); }
       this.swingArm();
       return;
     }
     if (!held || def.block === null || def.block === undefined || t.face < 0) return;
-    const blockId = def.block;
+    const blockId = def.block, face = t.face;
+    // Where on the clicked block the crosshair landed (for top/bottom halves).
+    const hitFrac = p.eyeY + p.lookDir()[1] * t.t - t.y;
+    const upperHalf = face === 3 || (face !== 2 && hitFrac > 0.5);
+    const slab = SLAB[blockId];
+    if (slab) {
+      // Clicking the open side of a matching slab turns it into a full block.
+      const ts = SLAB[t.id];
+      if (ts && ts.bottom === slab.bottom && ((face === 2 && !ts.top) || (face === 3 && ts.top))) {
+        this.finishPlace(t.x, t.y, t.z, slab.material);
+        return;
+      }
+    }
     let x = t.x, y = t.y, z = t.z;
-    const face = t.face;
     if (!REPLACEABLE[t.id] || t.id === blockId) {
       const d = FACE_DIRS[face];
       x += d[0]; y += d[1]; z += d[2];
     }
     if (y < 0 || y >= HEIGHT) return;
-    const existing = this.world.getBlock(x, y, z);
+    const existing = w.getBlock(x, y, z);
+    if (slab && SLAB[existing]?.bottom === slab.bottom) {
+      if (SLAB[existing].top !== upperHalf || face === 2 || face === 3) this.finishPlace(x, y, z, slab.material);
+      return;
+    }
     if (existing && !REPLACEABLE[existing]) return;
     if (existing === blockId) return;
     let id = blockId;
@@ -813,20 +838,43 @@ export class Game {
       if (face === 3) return;
       if (face !== 2) id = WALL_TORCH[face];
     } else if (FACING_VARIANTS[blockId]) {
-      const dir = p.lookDir();
-      const f = Math.abs(dir[0]) > Math.abs(dir[2]) ? (dir[0] > 0 ? 1 : 0) : (dir[2] > 0 ? 5 : 4);
-      id = FACING_VARIANTS[blockId][f];
+      id = FACING_VARIANTS[blockId][oppositeFace(this.lookFace())];
     } else if (LOG_AXES[blockId]) {
       if (face === 0 || face === 1) id = LOG_AXES[blockId][0];
       else if (face === 4 || face === 5) id = LOG_AXES[blockId][1];
+    } else if (slab) {
+      id = upperHalf ? slab.topId : slab.bottom;
+    } else if (STAIRS[blockId]) {
+      id = STAIRS[blockId].ids[this.lookFace()][upperHalf ? 1 : 0];
+    } else if (CLIMB[blockId]) {
+      if (face === 2 || face === 3) return;
+      id = LADDER[oppositeFace(face)];
+    } else if (DOOR[blockId]) {
+      const above = w.getBlock(x, y + 1, z);
+      if (y + 1 >= HEIGHT || (above && !REPLACEABLE[above]) || !SOLID[w.getBlock(x, y - 1, z)]) return;
+      if (p.intersectsBlock(x, y, z) || p.intersectsBlock(x, y + 1, z) || this.entities.blocksPlacement(x, y, z) ||
+          this.entities.blocksPlacement(x, y + 1, z)) return;
+      const facing = this.lookFace();
+      w.setBlock(x, y, z, doorId(facing, false, false), { updates: false });
+      w.setBlock(x, y + 1, z, doorId(facing, false, true), { updates: false });
+      w.neighborsChanged(x, y, z);
+      w.neighborsChanged(x, y + 1, z);
+      this.afterPlace(id);
+      return;
     }
-    if (BLOCKS[id].support && !this.world.supported(x, y, z, id)) return;
+    if (BLOCKS[id].support && !w.supported(x, y, z, id)) return;
     if (SOLID[id] && (p.intersectsBlock(x, y, z) || this.entities.blocksPlacement(x, y, z))) return;
-    if (this.world.setBlock(x, y, z, id)) {
-      this.audio.place(BLOCKS[id].sound);
-      this.swingArm();
-      if (!this.creative) { this.inv.consumeHeld(); this.invChanged(); }
-    }
+    if (w.setBlock(x, y, z, id)) this.afterPlace(id);
+  }
+
+  finishPlace(x, y, z, id) {
+    if (this.world.setBlock(x, y, z, id)) this.afterPlace(id);
+  }
+
+  afterPlace(id) {
+    this.audio.place(BLOCKS[id].sound);
+    this.swingArm();
+    if (!this.creative) { this.inv.consumeHeld(); this.invChanged(); }
   }
 
   pickBlock() {
@@ -1077,7 +1125,7 @@ export class Game {
       cam, fov: s.fov * this.fovMul, env: this.env, time: performance.now() / 1000, renderDist: rd, world: this.world,
       fogColor, fogStart, fogEnd, underwater, clouds: s.clouds, cloudHeight: CLOUD_HEIGHT, brightness: s.brightness / 100,
       wave: true,
-      selection: target && this.state !== 'dead' ? { x: target.x, y: target.y, z: target.z, box: blockBounds(target.id) ?? [0, 0, 0, 1, 1, 1] } : null,
+      selection: target && this.state !== 'dead' ? { x: target.x, y: target.y, z: target.z, box: this.world.selectionBox(target.x, target.y, target.z, target.id) } : null,
       crack: this.mining && this.mining.progress > 0 ? { x: this.mining.x, y: this.mining.y, z: this.mining.z, stage: Math.floor(this.mining.progress * 10) } : null,
       particles: this.particles,
       entities: this.entities.renderList(cam),

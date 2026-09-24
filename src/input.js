@@ -12,7 +12,8 @@ export class Input {
     this.released = 0;
     this.wheel = 0;
     this.locked = false;
-    this.lockFailed = false;
+    this.lockFailed = false; // true once pointer lock looks unsupported: drag to look instead
+    this.lockFailures = 0;
     this.capture = false; // true while the game (not a menu) has focus
     this.onUnlock = null;
     this.onKey = null;
@@ -73,24 +74,31 @@ export class Input {
     document.addEventListener('pointerlockchange', () => {
       const was = this.locked;
       this.locked = document.pointerLockElement === target;
-      if (this.locked) { this.lockFailed = false; this.skipMoves = 1; }
+      if (this.locked) { this.lockFailed = false; this.lockFailures = 0; this.skipMoves = 1; }
       if (was && !this.locked) { this.buttons = 0; this.onUnlock?.(); }
     });
-    document.addEventListener('pointerlockerror', () => { this.lockFailed = true; });
+    document.addEventListener('pointerlockerror', () => this.lockRefused());
+  }
+
+  // A refusal can be temporary (Chrome blocks re-locking for a moment after Esc), so only give up
+  // on pointer lock after it has failed several times in a row.
+  lockRefused() {
+    this.lockFailures++;
+    if (this.lockFailures >= 3) this.lockFailed = true;
   }
 
   lock() {
-    if (this.locked || !this.target.requestPointerLock) { if (!this.target.requestPointerLock) this.lockFailed = true; return; }
+    if (this.locked) return;
+    if (!this.target.requestPointerLock) { this.lockFailed = true; return; }
     try {
+      // Refusals are counted by the pointerlockerror event; the promise only handles the
+      // browsers that don't support unadjusted movement.
       const p = this.target.requestPointerLock({ unadjustedMovement: true });
-      if (p && p.catch) {
-        p.catch(() => {
-          const q = this.target.requestPointerLock();
-          if (q && q.catch) q.catch(() => { this.lockFailed = true; });
-        });
-      }
+      p?.catch?.((err) => {
+        if (err?.name === 'NotSupportedError') this.target.requestPointerLock()?.catch?.(() => {});
+      });
     } catch {
-      this.lockFailed = true;
+      this.lockRefused();
     }
   }
 

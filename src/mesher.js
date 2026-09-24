@@ -3,7 +3,7 @@
 // sky, block, ao, 0 (normalised) | tint rgb, 255 (normalised).
 import {
   R, RENDER, OPAQUE, AO, TEXL, FFLAGS, TINT, TINT_RGB, CULL_SELF, TRANSLUCENT, B,
-  F_TINT, F_OVERLAY, F_UVROT, liquidHeight, sameCullGroup, TORCH_LEAN,
+  F_TINT, F_OVERLAY, F_UVROT, liquidHeight, sameCullGroup, TORCH_LEAN, shapeBoxes, boxFaceUV,
 } from './blocks.js';
 import { grassColor, foliageColor, fromByte } from './biomes.js';
 import { hash2 } from './math.js';
@@ -248,6 +248,32 @@ function cactus(buf, blocks, light, x, y, z, p, id) {
   }
 }
 
+// Shaped blocks (slabs, stairs, doors, fences...): one textured box per part. Faces flush with the
+// cell edge are skipped against opaque neighbours and take the neighbour's light.
+const boundary = (b, f) => (f === 0 ? b[3] === 16 : f === 1 ? b[0] === 0 : f === 2 ? b[4] === 16 : f === 3 ? b[1] === 0 : f === 4 ? b[5] === 16 : b[2] === 0);
+function model(buf, blocks, light, x, y, z, p, id) {
+  const boxes = shapeBoxes(id, (f) => blocks[p + NOFF[f]]);
+  if (!boxes) return;
+  const own = light[p];
+  const flags = FFLAGS[id * 6] & FLAG_MASK & ~F_TINT;
+  for (const b of boxes) {
+    for (let f = 0; f < 6; f++) {
+      const edge = boundary(b, f);
+      const nid = blocks[p + NOFF[f]];
+      if (edge && (OPAQUE[nid] || (nid === id && CULL_SELF[id]))) continue;
+      const l = edge ? light[p + NOFF[f]] : own;
+      const sky = Math.max(l >> 4, own >> 4) * 17, blk = Math.max(l & 15, own & 15) * 17;
+      const uv = boxFaceUV(b, f);
+      const layer = TEXL[id * 6 + f];
+      buf.reserve(4);
+      FACE_CORNERS[f].forEach((c, k) => {
+        buf.vertex(x * U + (c[0] ? b[3] : b[0]) * 16, y * U + (c[1] ? b[4] : b[1]) * 16, z * U + (c[2] ? b[5] : b[2]) * 16,
+          UV[k][0] ? uv[2] : uv[0], UV[k][1] ? uv[3] : uv[1], layer, f, flags, sky, blk, 255, 255, 255, 255);
+      });
+    }
+  }
+}
+
 // blocks/light: padded 18^3 arrays; climate: 512 bytes for the chunk's columns.
 export function meshSection(blocks, light, climate, cx, cz) {
   solid.count = 0;
@@ -271,6 +297,7 @@ export function meshSection(blocks, light, climate, cx, cz) {
         else if (rt === R.CROSS) cross(solid, light, x, y, z, p, id, cx * 16 + x, cz * 16 + z);
         else if (rt === R.TORCH) torch(solid, light, x, y, z, p, id);
         else if (rt === R.CACTUS) cactus(solid, blocks, light, x, y, z, p, id);
+        else if (rt === R.MODEL) model(solid, blocks, light, x, y, z, p, id);
       }
     }
   }

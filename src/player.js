@@ -7,6 +7,7 @@ export const HALF_W = 0.3;
 export const HEIGHT = 1.8;
 const GRAVITY = 32;
 const JUMP_V = 9.0;
+const STEP = 0.6; // walk up slabs and stairs without jumping
 
 export class Player extends Body {
   constructor() {
@@ -26,11 +27,13 @@ export class Player extends Body {
     this.bob = 0;
     this.bobPhase = 0;
     this.eyeOffset = 1.62;
+    this.stepSmooth = 0;
+    this.onLadder = false;
     this.frozen = false;
     this.landed = null;
   }
 
-  get eyeY() { return this.y + this.eyeOffset; }
+  get eyeY() { return this.y + this.eyeOffset + this.stepSmooth; }
 
   hasSupport(world, dx, dz) {
     const b = this.box(dx, 0, dz);
@@ -64,6 +67,7 @@ export class Player extends Body {
     for (let i = 0; i < steps; i++) this.step(h, input, world);
     const target = this.sneaking && !this.flying ? 1.32 : 1.62;
     this.eyeOffset += (target - this.eyeOffset) * Math.min(1, dt * 14);
+    this.stepSmooth *= Math.exp(-dt * 14);
   }
 
   step(dt, input, world) {
@@ -107,6 +111,14 @@ export class Player extends Body {
       this.vy *= Math.pow(0.98, dt * 20);
       this.vy = Math.max(this.vy, -78);
     }
+    // Ladders: push against them (or hold jump) to climb, sneak to hold on, otherwise slide slowly.
+    const b0 = this.box();
+    this.onLadder = !this.flying && world.touchesClimbable(b0[0] - 0.01, b0[1], b0[2] - 0.01, b0[3] + 0.01, b0[4], b0[5] + 0.01);
+    if (this.onLadder) {
+      if (this.hitWall || input.jump) this.vy = 2.6;
+      else if (input.sneak) this.vy = Math.max(this.vy, 0);
+      else this.vy = Math.max(this.vy, -2.9);
+    }
 
     let dx = this.vx * dt, dy = this.vy * dt, dz = this.vz * dt;
     // Sneaking keeps you from walking off ledges.
@@ -123,8 +135,26 @@ export class Player extends Body {
     const hitY = this.moveAxis(world, 1, dy);
     this.onGround = hitY && dy < 0;
     if (hitY) this.vy = 0;
-    const hitX = this.moveAxis(world, 0, dx);
-    const hitZ = this.moveAxis(world, 2, dz);
+    const px = this.x, py = this.y, pz = this.z;
+    let hitX = this.moveAxis(world, 0, dx);
+    let hitZ = this.moveAxis(world, 2, dz);
+    // Blocked while walking? Retry from a little higher so slabs and stairs can be walked up.
+    if ((hitX || hitZ) && (this.onGround || wasGround) && !this.flying && !fluid) {
+      const ax = this.x, ay = this.y, az = this.z;
+      this.x = px; this.y = py; this.z = pz;
+      this.moveAxis(world, 1, STEP);
+      const lift = this.y - py;
+      const sx = this.moveAxis(world, 0, dx), sz = this.moveAxis(world, 2, dz);
+      this.moveAxis(world, 1, -lift - 1e-3);
+      const plain = (ax - px) ** 2 + (az - pz) ** 2, stepped = (this.x - px) ** 2 + (this.z - pz) ** 2;
+      if (stepped > plain + 1e-8 && this.y > py + 1e-4) {
+        hitX = sx; hitZ = sz;
+        this.onGround = true;
+        this.stepSmooth -= this.y - py;
+      } else {
+        this.x = ax; this.y = ay; this.z = az;
+      }
+    }
     if (hitX) this.vx = 0;
     if (hitZ) this.vz = 0;
     this.hitWall = hitX || hitZ;

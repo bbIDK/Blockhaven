@@ -789,6 +789,57 @@ def('flint_and_steel', (t) => {
   rows.forEach(([a, b], i) => { for (let x = a; x <= b; x++) t.set(x, 8 + i, x === a ? 0x5a5a5a : 0x2e2e2e); });
 });
 
+// ---------------------------------------------------------------- doors, ladders, panes
+function doorHalf(t, top) {
+  const w = WOODS.oak;
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    let c = pick(w.planks, t.r());
+    if (x === 0 || x === 15 || (top ? y === 0 : y === 15)) c = w.seam;
+    else if (x === 1 || x === 14) c = shade(pick(w.planks, t.r()), 0.9);
+    else if (t.r() < 0.1) c = w.grain;
+    t.set(x, y, c);
+  }
+  if (top) {
+    // two small windows
+    for (let y = 3; y < 8; y++) for (let x = 3; x < 13; x++) {
+      if (x === 7 || x === 8) continue;
+      t.set(x, y, 0, 0);
+    }
+    for (let x = 2; x < 14; x++) { t.set(x, 2, w.seam); t.set(x, 8, w.seam); }
+    for (let y = 2; y < 9; y++) { t.set(2, y, w.seam); t.set(13, y, w.seam); t.set(7, y, w.seam); t.set(8, y, w.seam); }
+    for (let x = 3; x < 13; x++) t.set(x, 12, w.seam);
+  } else {
+    for (let x = 3; x < 13; x++) { t.set(x, 3, w.seam); t.set(x, 10, w.seam); }
+    for (let y = 3; y < 11; y++) { t.set(3, y, w.seam); t.set(12, y, w.seam); }
+    t.set(12, 1, 0x3a3a3a); t.set(13, 1, 0x6a6a6a); t.set(12, 0, 0x6a6a6a);
+  }
+}
+def('oak_door_top', (t) => doorHalf(t, true));
+def('oak_door_bottom', (t) => doorHalf(t, false));
+def('ladder', (t) => {
+  t.clear();
+  const w = WOODS.oak;
+  for (let y = 0; y < 16; y++) {
+    for (const x of [2, 3, 12, 13]) t.set(x, y, x === 2 || x === 12 ? w.seam : w.planks[t.ri(w.planks.length)]);
+  }
+  for (const y of [2, 6, 10, 14]) for (let x = 4; x < 12; x++) t.set(x, y, y % 4 === 2 && x % 3 === 0 ? w.grain : w.planks[t.ri(w.planks.length)]);
+  for (const y of [3, 7, 11, 15]) for (let x = 4; x < 12; x++) t.set(x, y, w.seam);
+});
+def('oak_door_item', (t) => {
+  t.clear();
+  const w = WOODS.oak;
+  for (let y = 1; y < 16; y++) for (let x = 4; x < 12; x++) {
+    let c = pick(w.planks, t.r());
+    if (x === 4 || x === 11 || y === 1 || y === 15) c = w.seam;
+    if (y >= 3 && y <= 6 && x >= 6 && x <= 9 && x !== 7 && x !== 8) c = 0xbcd6de;
+    if (y === 9 && x === 10) c = 0x3a3a3a;
+    t.set(x, y, c);
+  }
+});
+def('glass_pane_top', (t) => {
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, x === 7 || x === 8 ? 0xd8eef3 : 0xa9cad2);
+});
+
 // ---------------------------------------------------------------- player hand
 def('player_skin', (t) => {
   for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, pick([0xc68e6a, 0xcf9874, 0xd6a07c], t.r()));

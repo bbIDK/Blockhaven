@@ -3,7 +3,7 @@
 import { CHUNK, HEIGHT, SECTIONS, chunkKey } from './config.js';
 import {
   B, BLOCKS, OPAQUE, SOLID, FILTER, EMIT, RENDER, R, SELECTABLE, REPLACEABLE, TORCH_LEAN, FACE_DIRS,
-  WATERLIKE, isWater, waterLevel, WATER_FLOW_BASE,
+  WATERLIKE, isWater, waterLevel, WATER_FLOW_BASE, SHAPE, shapeBoxes, DOOR, doorId, LADDER_SIDE,
 } from './blocks.js';
 import { nextLevel } from './light.js';
 import { meshSection, P, P2, PADDED } from './mesher.js';
@@ -63,10 +63,17 @@ const TORCH_BOUNDS = {
 };
 export function blockBounds(id) {
   const rt = RENDER[id];
+  if (rt === R.MODEL && SHAPE[id]) return unionBounds(SHAPE[id]);
   if (rt === R.CROSS) return [0.15, 0, 0.15, 0.85, 0.8, 0.85];
   if (rt === R.TORCH) return TORCH_BOUNDS[TORCH_LEAN[id]];
   if (rt === R.CACTUS) return [1 / 16, 0, 1 / 16, 15 / 16, 1, 15 / 16];
   return null;
+}
+
+function unionBounds(boxes) {
+  const u = [16, 16, 16, 0, 0, 0];
+  for (const b of boxes) for (let i = 0; i < 3; i++) { u[i] = Math.min(u[i], b[i]); u[i + 3] = Math.max(u[i + 3], b[i + 3]); }
+  return u.map((v) => v / 16);
 }
 
 const SOIL = new Set([B.grass_block, B.dirt, B.snowy_grass]);
@@ -142,6 +149,28 @@ export class World {
     if (!c) return [128, 128];
     const i = (((z & 15) << 4) | (x & 15)) * 2;
     return [c.climate[i], c.climate[i + 1]];
+  }
+
+  // Boxes (1/16 units) of a shaped block at (x, y, z), resolving fence/pane connections.
+  boxesAt(x, y, z, id, collision = false) {
+    return shapeBoxes(id, (f) => { const d = FACE_DIRS[f]; return this.getBlock(x + d[0], y + d[1], z + d[2]); }, collision);
+  }
+
+  // Outline of the block the player is looking at.
+  selectionBox(x, y, z, id) {
+    if (RENDER[id] === R.MODEL) return unionBounds(this.boxesAt(x, y, z, id));
+    return blockBounds(id) ?? [0, 0, 0, 1, 1, 1];
+  }
+
+  // Opens or closes both halves of a door. Returns true if (x, y, z) was a door.
+  toggleDoor(x, y, z) {
+    const d = DOOR[this.getBlock(x, y, z)];
+    if (!d) return false;
+    const ly = d.upper ? y - 1 : y;
+    if (!DOOR[this.getBlock(x, ly, z)] || !DOOR[this.getBlock(x, ly + 1, z)]) return false;
+    this.setBlock(x, ly, z, doorId(d.facing, !d.open, false), { updates: false });
+    this.setBlock(x, ly + 1, z, doorId(d.facing, !d.open, true), { updates: false });
+    return true;
   }
 
   // Highest non-air block in a column (or -1).
@@ -563,6 +592,12 @@ export class World {
       case 'solid': return !!SOLID[below];
       case 'cane': return below === B.sugar_cane || below === B.sand || SOIL.has(below);
       case 'cactus': return below === B.sand || below === B.cactus;
+      case 'door_lower': return !!SOLID[below] && !!DOOR[this.getBlock(x, y + 1, z)]?.upper;
+      case 'door_upper': return !!DOOR[below] && !DOOR[below].upper;
+      case 'ladder': {
+        const d = FACE_DIRS[LADDER_SIDE[id]];
+        return !!OPAQUE[this.getBlock(x + d[0], y, z + d[2])];
+      }
       case 'torch': {
         const lean = TORCH_LEAN[id];
         if (lean < 0) return !!SOLID[below] && RENDER[below] === R.CUBE;
@@ -680,10 +715,19 @@ export class World {
     for (let steps = 0; steps < 256 && t <= maxDist; steps++) {
       const id = this.getBlock(x, y, z);
       if (id && SELECTABLE[id]) {
-        const bb = blockBounds(id);
-        if (!bb) return { x, y, z, id, face, t };
-        const hit = rayBox(ox - x, oy - y, oz - z, dx, dy, dz, bb);
-        if (hit && hit.t <= maxDist) return { x, y, z, id, face: hit.face, t: hit.t };
+        if (RENDER[id] === R.MODEL) {
+          let best = null;
+          for (const b of this.boxesAt(x, y, z, id)) {
+            const hit = rayBox(ox - x, oy - y, oz - z, dx, dy, dz, b.map((v) => v / 16));
+            if (hit && hit.t <= maxDist && (!best || hit.t < best.t)) best = hit;
+          }
+          if (best) return { x, y, z, id, face: best.face, t: best.t };
+        } else {
+          const bb = blockBounds(id);
+          if (!bb) return { x, y, z, id, face, t };
+          const hit = rayBox(ox - x, oy - y, oz - z, dx, dy, dz, bb);
+          if (hit && hit.t <= maxDist) return { x, y, z, id, face: hit.face, t: hit.t };
+        }
       }
       if (tx < ty && tx < tz) { x += sx; t = tx; tx += tdx; face = sx > 0 ? 1 : 0; }
       else if (ty < tz) { y += sy; t = ty; ty += tdy; face = sy > 0 ? 3 : 2; }
@@ -693,20 +737,38 @@ export class World {
   }
 
   // Solid-block boxes overlapping an AABB (for physics).
+  // Cells below are checked too because fences are 1.5 blocks tall.
   collides(x0, y0, z0, x1, y1, z1) {
-    for (let y = Math.floor(y0); y <= Math.floor(y1 - 1e-9); y++) {
+    for (let y = Math.floor(y0 - 0.5); y <= Math.floor(y1 - 1e-9); y++) {
       for (let z = Math.floor(z0); z <= Math.floor(z1 - 1e-9); z++) {
         for (let x = Math.floor(x0); x <= Math.floor(x1 - 1e-9); x++) {
           const id = this.getBlock(x, y, z);
           if (!SOLID[id]) continue;
-          if (RENDER[id] === R.CACTUS) {
-            if (x0 < x + 15 / 16 && x1 > x + 1 / 16 && z0 < z + 15 / 16 && z1 > z + 1 / 16) return true;
+          const rt = RENDER[id];
+          if (rt === R.CACTUS) {
+            if (y1 > y && y0 < y + 1 && x0 < x + 15 / 16 && x1 > x + 1 / 16 && z0 < z + 15 / 16 && z1 > z + 1 / 16) return true;
             continue;
           }
-          return true;
+          if (rt === R.MODEL) {
+            for (const b of this.boxesAt(x, y, z, id, true)) {
+              if (x0 < x + b[3] / 16 && x1 > x + b[0] / 16 && y0 < y + b[4] / 16 && y1 > y + b[1] / 16 &&
+                  z0 < z + b[5] / 16 && z1 > z + b[2] / 16) return true;
+            }
+            continue;
+          }
+          if (y1 > y && y0 < y + 1) return true;
         }
       }
     }
+    return false;
+  }
+
+  // Is the box touching a ladder (for climbing)?
+  touchesClimbable(x0, y0, z0, x1, y1, z1) {
+    for (let y = Math.floor(y0); y <= Math.floor(y1 - 1e-9); y++)
+      for (let z = Math.floor(z0); z <= Math.floor(z1 - 1e-9); z++)
+        for (let x = Math.floor(x0); x <= Math.floor(x1 - 1e-9); x++)
+          if (LADDER_SIDE[this.getBlock(x, y, z)] !== undefined) return true;
     return false;
   }
 }

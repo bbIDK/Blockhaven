@@ -2,7 +2,7 @@
 // Hot properties live in flat typed arrays for the mesher, lighting and physics.
 import { TEX } from './textures.js';
 
-export const R = { NONE: 0, CUBE: 1, CROSS: 2, TORCH: 3, LIQUID: 4, CACTUS: 5 };
+export const R = { NONE: 0, CUBE: 1, CROSS: 2, TORCH: 3, LIQUID: 4, CACTUS: 5, MODEL: 6 };
 
 // Per-face flags (also copied into vertex flags for the shader).
 export const F_TINT = 1, F_OVERLAY = 2, F_UVROT = 4, F_WAVE = 8, F_WATER = 16, F_EMISSIVE = 32, F_LAVA = 64;
@@ -242,6 +242,154 @@ export function sameCullGroup(a, b) {
   return WATERLIKE[a] === 1 && WATERLIKE[b] === 1;
 }
 
+// ---------------------------------------------------------------- shaped blocks
+// Boxes are in 1/16 of a block: [x0, y0, z0, x1, y1, z1]. SHAPE holds fixed shapes; fences and
+// panes change shape with their neighbours (see shapeBoxes).
+export const SHAPE = new Array(N).fill(null);
+export const SHAPE_KIND = new Uint8Array(N); // 1 fixed, 2 fence, 3 pane
+export const ICON_SHAPE = new Array(N).fill(null);
+export const CLIMB = new Uint8Array(N);
+export const SLAB = {};   // id -> { material, top, full }
+export const STAIRS = {}; // base id -> { material, ids[facingFace][upside] }
+export const DOOR = {};   // id -> { facing, open, upper }
+export const LADDER = {}; // wall side face -> id
+export const DOOR_BASE = 184;
+const OPPOSITE = [1, 0, 3, 2, 5, 4];
+export const oppositeFace = (f) => OPPOSITE[f];
+
+function shaped(id, name, boxes, o) {
+  block(id, name, { render: R.MODEL, opaque: false, solid: o.solid ?? true, ...o });
+  SHAPE[id] = boxes;
+  SHAPE_KIND[id] = 1;
+}
+
+// [material block, short name, label]
+const SLAB_MATERIALS = [['stone', 'stone', 'Stone'], ['cobblestone', 'cobblestone', 'Cobblestone'], ['oak_planks', 'oak', 'Oak'],
+  ['birch_planks', 'birch', 'Birch'], ['spruce_planks', 'spruce', 'Spruce'], ['bricks', 'brick', 'Brick'],
+  ['stone_bricks', 'stone_brick', 'Stone Brick'], ['sandstone', 'sandstone', 'Sandstone']];
+SLAB_MATERIALS.forEach(([mat, short, name], i) => {
+  const src = BLOCKS[B[mat]];
+  const common = { tex: src.faces, hardness: src.hardness, tool: src.tool, tier: src.tier, sound: src.sound };
+  const label = `${name} Slab`;
+  const bottom = 128 + i * 2, top = bottom + 1;
+  shaped(bottom, `${short}_slab`, [[0, 0, 0, 16, 8, 16]], { ...common, label });
+  shaped(top, `${short}_slab_top`, [[0, 8, 0, 16, 16, 16]], { ...common, label, base: bottom, item: false, drop: `${short}_slab` });
+  SLAB[bottom] = { material: B[mat], top: false, bottom, topId: top };
+  SLAB[top] = { material: B[mat], top: true, bottom, topId: top };
+});
+
+// Stairs: the tall half faces away from the player who placed them.
+const STAIR_MATERIALS = [['oak_planks', 'oak', 'Oak'], ['cobblestone', 'cobblestone', 'Cobblestone'],
+  ['stone_bricks', 'stone_brick', 'Stone Brick'], ['bricks', 'brick', 'Brick'], ['sandstone', 'sandstone', 'Sandstone']];
+const STAIR_FACES = [5, 4, 0, 1];
+function stairBoxes(face, upside) {
+  const base = upside ? [0, 8, 0, 16, 16, 16] : [0, 0, 0, 16, 8, 16];
+  const y0 = upside ? 0 : 8, y1 = upside ? 8 : 16;
+  const back = { 5: [0, y0, 0, 16, y1, 8], 4: [0, y0, 8, 16, y1, 16], 0: [8, y0, 0, 16, y1, 16], 1: [0, y0, 0, 8, y1, 16] }[face];
+  return [base, back];
+}
+STAIR_MATERIALS.forEach(([mat, short, name], i) => {
+  const src = BLOCKS[B[mat]];
+  const label = `${name} Stairs`;
+  const ids = {};
+  STAIR_FACES.forEach((face, fi) => {
+    ids[face] = [];
+    [false, true].forEach((upside, ui) => {
+      const id = 144 + i * 8 + fi * 2 + ui;
+      const first = fi === 0 && ui === 0;
+      shaped(id, first ? `${short}_stairs` : `${short}_stairs_${face}${upside ? 'u' : ''}`,
+        stairBoxes(face, upside), { tex: src.faces, hardness: src.hardness, tool: src.tool, tier: src.tier, sound: src.sound,
+          label, base: 144 + i * 8, item: first, drop: first ? undefined : `${short}_stairs` });
+      ids[face][ui] = id;
+    });
+  });
+  STAIRS[144 + i * 8] = { material: B[mat], ids };
+});
+
+// Doors: 16 variants (4 facings x open x lower/upper). The item is the closed lower half facing north.
+const DOOR_PANEL = { 5: [0, 0, 0, 16, 16, 3], 4: [0, 0, 13, 16, 16, 16], 0: [13, 0, 0, 16, 16, 16], 1: [0, 0, 0, 3, 16, 16] };
+const LEFT_OF = { 5: 1, 4: 0, 0: 5, 1: 4 };
+STAIR_FACES.forEach((facing, fi) => {
+  [false, true].forEach((open) => {
+    [false, true].forEach((upper) => {
+      const id = DOOR_BASE + fi * 4 + (open ? 2 : 0) + (upper ? 1 : 0);
+      const side = open ? LEFT_OF[facing] : OPPOSITE[facing];
+      const first = id === DOOR_BASE;
+      shaped(id, first ? 'oak_door' : `oak_door_${fi}${open ? 'o' : ''}${upper ? 'u' : ''}`, [DOOR_PANEL[side]], {
+        label: 'Oak Door', tex: upper ? 'oak_door_top' : 'oak_door_bottom', cutout: true, hardness: 3, tool: 'axe',
+        sound: 'wood', base: DOOR_BASE, item: first, drop: upper ? null : 'oak_door', support: upper ? 'door_upper' : 'door_lower',
+      });
+      DOOR[id] = { facing, open, upper };
+    });
+  });
+});
+export function doorId(facing, open, upper) {
+  return DOOR_BASE + STAIR_FACES.indexOf(facing) * 4 + (open ? 2 : 0) + (upper ? 1 : 0);
+}
+
+// Ladders hang on the wall on their `side`.
+const LADDER_PANEL = { 5: [0, 0, 0, 16, 16, 1], 4: [0, 0, 15, 16, 16, 16], 0: [15, 0, 0, 16, 16, 16], 1: [0, 0, 0, 1, 16, 16] };
+STAIR_FACES.forEach((side, i) => {
+  const id = 200 + i;
+  shaped(id, i === 0 ? 'ladder' : `ladder_${side}`, [LADDER_PANEL[side]], { tex: 'ladder', cutout: true, solid: false,
+    hardness: 0.4, tool: 'axe', sound: 'wood', base: 200, item: i === 0, drop: 'ladder', support: 'ladder' });
+  LADDER[side] = id;
+  CLIMB[id] = 1;
+});
+export const LADDER_SIDE = { 200: 5, 201: 4, 202: 0, 203: 1 };
+
+block(204, 'oak_fence', { render: R.MODEL, opaque: false, tex: 'oak_planks', hardness: 2, tool: 'axe', sound: 'wood', label: 'Oak Fence' });
+SHAPE_KIND[204] = 2;
+ICON_SHAPE[204] = [[1, 0, 6, 5, 16, 10], [11, 0, 6, 15, 16, 10], [5, 6, 7, 11, 9, 9], [5, 12, 7, 11, 15, 9]];
+block(205, 'glass_pane', { render: R.MODEL, opaque: false, tex: { side: 'glass', top: 'glass_pane_top' }, cutout: true,
+  hardness: 0.3, sound: 'glass', drop: null, label: 'Glass Pane' });
+SHAPE_KIND[205] = 3;
+
+const FENCE_ARMS = { 0: [[10, 6, 7, 16, 9, 9], [10, 12, 7, 16, 15, 9]], 1: [[0, 6, 7, 6, 9, 9], [0, 12, 7, 6, 15, 9]],
+  4: [[7, 6, 10, 9, 9, 16], [7, 12, 10, 9, 15, 16]], 5: [[7, 6, 0, 9, 9, 6], [7, 12, 0, 9, 15, 6]] };
+const FENCE_POST = [6, 0, 6, 10, 16, 10];
+const FENCE_COLLIDE = { 0: [10, 0, 6, 16, 24, 10], 1: [0, 0, 6, 6, 24, 10], 4: [6, 0, 10, 10, 24, 16], 5: [6, 0, 0, 10, 24, 6] };
+const PANE_ARMS = { 0: [9, 0, 7, 16, 16, 9], 1: [0, 0, 7, 7, 16, 9], 4: [7, 0, 9, 9, 16, 16], 5: [7, 0, 0, 9, 16, 7] };
+const PANE_POST = [7, 0, 7, 9, 16, 9];
+
+function connects(kind, nid) {
+  if (OPAQUE[nid]) return true;
+  return kind === 2 ? SHAPE_KIND[nid] === 2 : SHAPE_KIND[nid] === 3 || nid === B.glass;
+}
+
+// Texture rectangle [u0, v0, u1, v1] (1/16 units) for face f of a box, so shaped blocks line up
+// with the full block textures next to them.
+export function boxFaceUV(b, f) {
+  switch (f) {
+    case 0: return [16 - b[5], 16 - b[4], 16 - b[2], 16 - b[1]];
+    case 1: return [b[2], 16 - b[4], b[5], 16 - b[1]];
+    case 2: return [b[0], b[2], b[3], b[5]];
+    case 3: return [16 - b[3], b[2], 16 - b[0], b[5]];
+    case 4: return [b[0], 16 - b[4], b[3], 16 - b[1]];
+    default: return [16 - b[3], 16 - b[4], 16 - b[0], 16 - b[1]];
+  }
+}
+
+// Boxes for a shaped block. `neighbour(face)` returns the block id beside it (for fences and panes).
+// With collision = true, fences are 1.5 blocks tall like the originals.
+export function shapeBoxes(id, neighbour, collision = false) {
+  const kind = SHAPE_KIND[id];
+  if (kind === 1) return SHAPE[id];
+  if (kind !== 2 && kind !== 3) return null;
+  const out = [];
+  if (kind === 2) out.push(collision ? [6, 0, 6, 10, 24, 10] : FENCE_POST);
+  else out.push(PANE_POST);
+  let any = false;
+  for (const f of [0, 1, 4, 5]) {
+    if (!connects(kind, neighbour(f))) continue;
+    any = true;
+    if (kind === 2) { if (collision) out.push(FENCE_COLLIDE[f]); else out.push(...FENCE_ARMS[f]); }
+    else out.push(PANE_ARMS[f]);
+  }
+  if (kind === 3 && !any) out.push(PANE_ARMS[0], PANE_ARMS[1], PANE_ARMS[4], PANE_ARMS[5]);
+  return out;
+}
+
 // Blocks worth listing in the creative inventory, in display order.
 export const CREATIVE_BLOCKS = [
   'grass_block', 'dirt', 'stone', 'cobblestone', 'mossy_cobblestone', 'stone_bricks', 'bricks', 'sand', 'sandstone',
@@ -251,4 +399,7 @@ export const CREATIVE_BLOCKS = [
   'purple_wool', 'black_wool', 'snowy_grass', 'snow_block', 'ice', 'cactus', 'coal_ore', 'iron_ore', 'gold_ore',
   'diamond_ore', 'coal_block', 'iron_block', 'gold_block', 'diamond_block', 'obsidian', 'bedrock', 'water', 'lava',
   'tall_grass', 'dandelion', 'poppy', 'cornflower', 'dead_bush', 'sugar_cane', 'red_mushroom', 'brown_mushroom',
+  'oak_door', 'ladder', 'oak_fence', 'glass_pane', 'oak_stairs', 'cobblestone_stairs', 'stone_brick_stairs', 'brick_stairs',
+  'sandstone_stairs', 'stone_slab', 'cobblestone_slab', 'oak_slab', 'birch_slab', 'spruce_slab', 'brick_slab',
+  'stone_brick_slab', 'sandstone_slab',
 ].map((n) => B[n]);
