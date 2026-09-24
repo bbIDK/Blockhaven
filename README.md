@@ -23,7 +23,7 @@ Worlds save automatically in your browser (IndexedDB), on that device only.
 | `W` `A` `S` `D` | Walk |
 | Mouse | Look around (click the game to capture the mouse) |
 | Left click | Break block (hold to mine in Survival), attack |
-| Right click | Place block, eat food, light TNT with flint and steel |
+| Right click | Place block, eat food, open doors and chests, sleep in a bed, light TNT with flint and steel |
 | Middle click | Pick the block you're looking at |
 | `Space` | Jump. Double-tap to toggle flying in Creative |
 | `Shift` | Sneak (you won't fall off edges) / fly down |
@@ -48,6 +48,8 @@ On phones and tablets, on-screen controls appear automatically. The left stick m
 - **Underground:** winding cave tunnels and caverns, lava lakes deep down, coal, iron, gold and diamond ore veins.
 - **Minecraft-style lighting:** sunlight and block light flood-fill through the world, smooth lighting with ambient occlusion, torches, glowstone and jack o'lanterns. There's also a day/night cycle with a sun, moon, stars and drifting clouds.
 - **60+ blocks:** logs that face the way you place them, wall torches, glass, wool colors, bricks, bookshelves, furnaces, TNT, flowers, sugar cane and cacti.
+- **Shaped blocks:** slabs (stack two into a full block), stairs you can walk up, doors that open, climbable ladders, fences that connect and can't be jumped, and glass panes.
+- **Chests and beds:** chests store 27 stacks and spill their contents when broken. Sleep in a bed at night to skip to morning and make it your respawn point.
 - **Physics:** flowing water that spreads and falls, sand and gravel that fall, water that hardens lava into obsidian, and TNT explosions that chain.
 - **Survival:** health, fall damage, drowning, lava, cacti, and mining speeds that depend on the tool and block. There are wooden to diamond pickaxes, axes, shovels and swords, and shapeless crafting that uses a nearby crafting table or furnace.
 - **Creatures:** pigs and sheep wander the grasslands. In Survival, zombies come out at night and in dark caves, and burn in sunlight.

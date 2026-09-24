@@ -19,7 +19,9 @@ export class Body {
     return world.collides(b[0], b[1], b[2], b[3], b[4], b[5]);
   }
 
-  // Returns true when movement along this axis was blocked.
+  // Returns true when movement along this axis was blocked. Blocked moves stop flush against
+  // whatever was hit: whole blocks via a quick snap to the grid, partial shapes (slabs, stairs,
+  // doors, fences) by bisecting for the largest free distance.
   moveAxis(world, axis, d) {
     if (d === 0) return false;
     const dx = axis === 0 ? d : 0, dy = axis === 1 ? d : 0, dz = axis === 2 ? d : 0;
@@ -28,17 +30,22 @@ export class Body {
       this.x += dx; this.y += dy; this.z += dz;
       return false;
     }
-    const ox = this.x, oy = this.y, oz = this.z, hw = this.hw;
-    if (axis === 1) {
-      this.y = d > 0 ? Math.floor(this.y + this.h + d) - this.h - 1e-6 : Math.floor(this.y + d) + 1 + 1e-6;
-    } else if (axis === 0) {
-      const p = this.x + d;
-      this.x = d > 0 ? Math.floor(p + hw) - hw - 1e-6 : Math.floor(p - hw) + 1 + hw + 1e-6;
-    } else {
-      const p = this.z + d;
-      this.z = d > 0 ? Math.floor(p + hw) - hw - 1e-6 : Math.floor(p - hw) + 1 + hw + 1e-6;
+    const key = axis === 0 ? 'x' : axis === 1 ? 'y' : 'z';
+    const start = this[key];
+    const lo = axis === 1 ? 0 : this.hw, hi = axis === 1 ? this.h : this.hw;
+    const snapped = d > 0 ? Math.floor(start + d + hi) - hi - 1e-6 : Math.floor(start + d - lo) + 1 + lo + 1e-6;
+    const moved = snapped - start;
+    if (moved * d >= 0 && Math.abs(moved) <= Math.abs(d) &&
+        !this.collides(world, axis === 0 ? moved : 0, axis === 1 ? moved : 0, axis === 2 ? moved : 0)) {
+      this[key] = snapped;
+      return true;
     }
-    if (this.collides(world, 0, 0, 0)) { this.x = ox; this.y = oy; this.z = oz; }
+    let free = 0, blocked = 1;
+    for (let i = 0; i < 14; i++) {
+      const mid = (free + blocked) / 2, m = d * mid;
+      if (this.collides(world, axis === 0 ? m : 0, axis === 1 ? m : 0, axis === 2 ? m : 0)) blocked = mid; else free = mid;
+    }
+    this[key] = start + d * free;
     return true;
   }
 

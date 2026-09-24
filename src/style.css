@@ -232,6 +232,8 @@ code { font-family: var(--font-ui); color: var(--amber); }
 #crosshair::after { top: 10px; left: 0; width: 22px; height: 2px; }
 #overlay-water { position: absolute; inset: 0; background: rgba(20, 60, 160, 0.28); opacity: 0; transition: opacity 150ms; }
 #overlay-hurt { position: absolute; inset: 0; box-shadow: inset 0 0 120px 30px rgba(200, 20, 10, 0.55); opacity: 0; }
+#overlay-sleep { position: absolute; inset: 0; background: #05070a; opacity: 0; transition: opacity 900ms ease; }
+#overlay-sleep.on { opacity: 1; }
 #hud-bottom {
   position: absolute;
   left: 50%;
@@ -327,6 +329,7 @@ code { font-family: var(--font-ui); color: var(--amber); }
 .inv.creative { width: auto; max-width: 100%; }
 .inv-main { flex: 0 1 auto; display: flex; flex-direction: column; gap: 12px; min-width: 0; max-width: 100%; }
 .inv-main .panel-head input { width: min(220px, 100%); }
+.head-tools { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; min-width: 0; }
 .grid { display: grid; grid-template-columns: repeat(9, var(--slot)); gap: 2px; justify-content: start; max-width: 100%; }
 .grid .slot { cursor: pointer; }
 .grid .slot:hover { background: rgba(120, 130, 136, 0.55); }
@@ -365,6 +368,17 @@ code { font-family: var(--font-ui); color: var(--amber); }
   border: 2px solid #2e1a4a;
   font-size: 15px;
   white-space: nowrap;
+}
+
+.panel.chest { width: auto; max-width: 100%; }
+.chest-body, .chest-inv { display: flex; flex-direction: column; gap: 12px; }
+.chest-label { margin-top: 4px; color: var(--lichen); }
+#chest-hotbar { padding-top: 10px; border-top: 2px solid rgba(255, 255, 255, 0.08); }
+/* Short landscape screens (phones on their side): chest and inventory side by side. */
+@media (max-height: 540px) and (min-width: 600px) {
+  .chest-body { flex-direction: row; align-items: flex-start; gap: 20px; }
+  .chest-label { margin-top: 0; }
+  .panel.chest .grid { --slot: clamp(26px, calc((100vw - 150px) / 18.4), 50px); }
 }
 
 /* ------------------------------------------------------------------ death & modal */
@@ -423,6 +437,8 @@ code { font-family: var(--font-ui); color: var(--amber); }
 }
 @media (max-width: 560px) {
   .panel { padding: 18px 16px 20px; }
+  /* Nine slots across have to fit inside the panel padding. */
+  .panel .grid, #cursor-item { --slot: clamp(26px, calc((100vw - 92px) / 9.3), 50px); }
   .panel h2 { font-size: 22px; }
   .title { background: linear-gradient(180deg, rgba(6, 10, 12, 0.72) 0%, rgba(6, 10, 12, 0.3) 70%, rgba(6, 10, 12, 0.5) 100%); }
 }

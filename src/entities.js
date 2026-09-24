@@ -341,6 +341,10 @@ export class Entities {
   // Explosion: carve a rough sphere, hurt anything nearby, set off other TNT.
   explode(x, y, z, power) {
     const game = this.game, w = this.world;
+    // Items already lying in the blast are destroyed; the blast's own drops are spawned after.
+    for (const e of this.list) {
+      if (e.kind === 'item' && Math.hypot(e.x - x, e.y - y, e.z - z) < power) e.dead = true;
+    }
     const changes = [];
     const r = Math.ceil(power);
     for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
@@ -374,12 +378,6 @@ export class Entities {
       if (e.kind !== 'mob' || e.dead) continue;
       const d = Math.hypot(e.x - x, e.y - y, e.z - z);
       if (d < power * 2) this.hurtMob(e, Math.ceil((1 - d / (power * 2)) * 20), { x, z });
-    }
-    for (const e of this.list) {
-      if (e.kind === 'item') {
-        const d = Math.hypot(e.x - x, e.y - y, e.z - z);
-        if (d < power) e.dead = true;
-      }
     }
   }
 

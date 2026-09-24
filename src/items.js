@@ -129,6 +129,8 @@ export const RECIPES = [
   r('brick_stairs', 4, [['bricks', 6]], 'table'),
   r('sandstone_stairs', 4, [['sandstone', 6]], 'table'),
   r('oak_door', 3, [['#planks', 6]], 'table'),
+  r('chest', 1, [['#planks', 8]], 'table'),
+  r('bed', 1, [['white_wool', 3], ['#planks', 3]], 'table'),
   r('ladder', 3, [['stick', 7]], 'table'),
   r('oak_fence', 3, [['#planks', 4], ['stick', 2]], 'table'),
   r('glass_pane', 16, [['glass', 6]], 'table'),

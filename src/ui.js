@@ -88,6 +88,23 @@ export class UI {
     for (let i = 9; i < 36; i++) this.storageEls.push(this.bindSlot($('inv-storage'), i));
     for (let i = 0; i < 9; i++) this.invHotbarEls.push(this.bindSlot($('inv-hotbar'), i));
     this.paletteEls = [];
+    this.chestEls = [];
+    this.chestStorageEls = [];
+    this.chestHotbarEls = [];
+    const chestSlot = (parent, kind, index) => {
+      const el = slotEl();
+      el.dataset.slot = kind === 'player' ? index : '';
+      el.dataset.chest = kind === 'chest' ? index : '';
+      el.addEventListener('pointerdown', (e) => { e.preventDefault(); this.emit('chest-slot', kind, index, e.button, e.shiftKey); });
+      parent.appendChild(el);
+      return el;
+    };
+    for (let i = 0; i < 27; i++) this.chestEls.push(chestSlot($('chest-slots'), 'chest', i));
+    for (let i = 9; i < 36; i++) this.chestStorageEls.push(chestSlot($('chest-storage'), 'player', i));
+    for (let i = 0; i < 9; i++) this.chestHotbarEls.push(chestSlot($('chest-hotbar'), 'player', i));
+    const chest = $('screen-chest');
+    chest.addEventListener('pointermove', (e) => this.moveCursor(e.clientX, e.clientY, e.target));
+    chest.addEventListener('contextmenu', (e) => e.preventDefault());
     $('inv-search').addEventListener('input', () => this.emit('search', $('inv-search').value));
     $('inv-palette').addEventListener('pointerdown', (e) => {
       const el = e.target.closest('.slot');
@@ -255,6 +272,25 @@ export class UI {
     } else cur.hidden = true;
   }
 
+  renderChest(inv, slots) {
+    for (let i = 0; i < 27; i++) fillSlot(this.chestEls[i], slots[i]);
+    for (let i = 0; i < 27; i++) fillSlot(this.chestStorageEls[i], inv.slots[i + 9]);
+    for (let i = 0; i < 9; i++) fillSlot(this.chestHotbarEls[i], inv.slots[i]);
+    const cur = $('cursor-item');
+    if (inv.cursor) {
+      if (!cur.firstChild) cur.appendChild(slotEl());
+      fillSlot(cur.firstChild, inv.cursor);
+      cur.hidden = false;
+    } else cur.hidden = true;
+  }
+
+  setSleeping(on) { $('overlay-sleep').classList.toggle('on', on); }
+
+  hideCursor() {
+    $('cursor-item').hidden = true;
+    $('tooltip').hidden = true;
+  }
+
   renderRecipes(inv, stations) {
     const has = (s) => stations.has(s);
     $('inv-stations').textContent = `Nearby: ${[has('table') && 'crafting table', has('furnace') && 'furnace'].filter(Boolean).join(', ') || 'nothing'} — stand within 4 blocks of a crafting table or furnace to use them.`;
@@ -282,7 +318,8 @@ export class UI {
     const slot = target?.closest?.('.slot');
     let id = null;
     if (slot?.dataset.item) id = Number(slot.dataset.item);
-    else if (slot?.dataset.slot !== undefined) id = this.slotItem?.(Number(slot.dataset.slot)) ?? null;
+    else if (slot?.dataset.chest) id = this.chestItem?.(Number(slot.dataset.chest)) ?? null;
+    else if (slot?.dataset.slot !== undefined && slot.dataset.slot !== '') id = this.slotItem?.(Number(slot.dataset.slot)) ?? null;
     if (id && $('cursor-item').hidden) {
       tip.textContent = itemLabel(id);
       tip.style.left = `${x + 16}px`;

@@ -81,8 +81,25 @@ export class Inventory {
     return GROUPS[ing.group].reduce((sum, id) => sum + this.count(id), 0);
   }
 
+  // Room for `count` more of `id` in the slots (not counting the cursor).
+  spaceFor(id, count) {
+    const max = maxStack(id);
+    let room = 0;
+    for (const s of this.slots) {
+      if (!s) room += max;
+      else if (s.id === id && s.count < max && !s.dmg) room += max - s.count;
+      if (room >= count) return true;
+    }
+    return false;
+  }
+
+  // Crafts once. Output that doesn't fit goes onto an empty (or matching) cursor; otherwise
+  // the recipe is refused so nothing is lost.
   craft(recipe, stations) {
     if (!this.canCraft(recipe, stations)) return false;
+    const c = this.cursor;
+    const cursorRoom = !c ? maxStack(recipe.out) : c.id === recipe.out && !c.dmg ? maxStack(c.id) - c.count : 0;
+    if (!this.spaceFor(recipe.out, recipe.count) && cursorRoom < recipe.count) return false;
     for (const ing of recipe.input) {
       if (!ing.group) { this.remove(ing.id, ing.n); continue; }
       let need = ing.n;
@@ -95,28 +112,34 @@ export class Inventory {
       }
     }
     const left = this.add(recipe.out, recipe.count);
-    if (left) this.cursor = { id: recipe.out, count: left, dmg: 0 };
+    if (left) {
+      if (this.cursor) this.cursor.count += left;
+      else this.cursor = { id: recipe.out, count: left, dmg: 0 };
+    }
     return true;
   }
 
   // Slot click with a cursor stack, Minecraft style. button: 0 left, 2 right.
-  click(i, button) {
-    const s = this.slots[i], c = this.cursor;
+  click(i, button) { this.clickSlots(this.slots, i, button); }
+
+  // Same, for any array of slots (the player's own or a chest's).
+  clickSlots(slots, i, button) {
+    const s = slots[i], c = this.cursor;
     if (button === 2) {
       if (!c && s) {
         const half = Math.ceil(s.count / 2);
         this.cursor = { ...s, count: half };
         s.count -= half;
-        if (!s.count) this.slots[i] = null;
+        if (!s.count) slots[i] = null;
       } else if (c && (!s || (s.id === c.id && s.count < maxStack(s.id)))) {
-        if (s) s.count++; else this.slots[i] = { ...c, count: 1 };
+        if (s) s.count++; else slots[i] = { ...c, count: 1 };
         c.count--;
         if (!c.count) this.cursor = null;
       }
       return;
     }
-    if (!c) { this.cursor = s; this.slots[i] = null; return; }
-    if (!s) { this.slots[i] = c; this.cursor = null; return; }
+    if (!c) { this.cursor = s; slots[i] = null; return; }
+    if (!s) { slots[i] = c; this.cursor = null; return; }
     if (s.id === c.id && maxStack(s.id) > 1) {
       const n = Math.min(c.count, maxStack(s.id) - s.count);
       s.count += n;
@@ -124,7 +147,7 @@ export class Inventory {
       if (!c.count) this.cursor = null;
       return;
     }
-    this.slots[i] = c;
+    slots[i] = c;
     this.cursor = s;
   }
 
@@ -146,6 +169,20 @@ export class Inventory {
     if (count) this.slots[i] = { ...s, count };
   }
 
+  // Moves a whole stack into `slots` (merging first). Returns what didn't fit.
+  static insert(slots, stack) {
+    let count = stack.count;
+    const max = maxStack(stack.id);
+    for (let j = 0; j < slots.length && count; j++) {
+      const t = slots[j];
+      if (t && t.id === stack.id && t.count < max && !t.dmg && !stack.dmg) { const n = Math.min(count, max - t.count); t.count += n; count -= n; }
+    }
+    for (let j = 0; j < slots.length && count; j++) {
+      if (!slots[j]) { slots[j] = { ...stack, count: Math.min(count, max) }; count -= Math.min(count, max); }
+    }
+    return count;
+  }
+
   // Put whatever is on the cursor back into the inventory.
   returnCursor() {
     if (!this.cursor) return 0;
@@ -154,12 +191,16 @@ export class Inventory {
     return left;
   }
 
-  serialize() { return { slots: this.slots.map((s) => (s ? { ...s } : null)), selected: this.selected }; }
+  serialize() {
+    return { slots: this.slots.map((s) => (s ? { ...s } : null)), cursor: this.cursor ? { ...this.cursor } : null, selected: this.selected };
+  }
 
   load(data) {
     this.slots = new Array(36).fill(null);
     if (!data) return;
     data.slots?.forEach((s, i) => { if (s && itemDef(s.id) && i < 36) this.slots[i] = { id: s.id, count: s.count, dmg: s.dmg ?? 0 }; });
+    // Something held on the cursor when the game was saved goes back into the inventory.
+    if (data.cursor && itemDef(data.cursor.id)) this.add(data.cursor.id, data.cursor.count, data.cursor.dmg ?? 0);
     this.selected = Math.max(0, Math.min(8, data.selected ?? 0));
   }
 }

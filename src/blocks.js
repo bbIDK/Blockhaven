@@ -338,12 +338,36 @@ STAIR_FACES.forEach((side, i) => {
 });
 export const LADDER_SIDE = { 200: 5, 201: 4, 202: 0, 203: 1 };
 
-block(204, 'oak_fence', { render: R.MODEL, opaque: false, tex: 'oak_planks', hardness: 2, tool: 'axe', sound: 'wood', label: 'Oak Fence' });
+block(204, 'oak_fence', { render: R.MODEL, opaque: false, solid: true, tex: 'oak_planks', hardness: 2, tool: 'axe', sound: 'wood', label: 'Oak Fence' });
 SHAPE_KIND[204] = 2;
 ICON_SHAPE[204] = [[1, 0, 6, 5, 16, 10], [11, 0, 6, 15, 16, 10], [5, 6, 7, 11, 9, 9], [5, 12, 7, 11, 15, 9]];
-block(205, 'glass_pane', { render: R.MODEL, opaque: false, tex: { side: 'glass', top: 'glass_pane_top' }, cutout: true,
+block(205, 'glass_pane', { render: R.MODEL, opaque: false, solid: true, tex: { side: 'glass', top: 'glass_pane_top' }, cutout: true,
   hardness: 0.3, sound: 'glass', drop: null, label: 'Glass Pane' });
 SHAPE_KIND[205] = 3;
+
+// Chests (27 slots of storage) face the player who placed them.
+export const CHEST = {};
+[[206, 4], [207, 5], [208, 0], [209, 1]].forEach(([id, front], i) => {
+  const tex = ['chest_side', 'chest_side', 'chest_top', 'chest_top', 'chest_side', 'chest_side'];
+  tex[front] = 'chest_front';
+  shaped(id, i === 0 ? 'chest' : `chest_${front}`, [[1, 0, 1, 15, 14, 15]], { tex, hardness: 2.5, tool: 'axe', sound: 'wood',
+    base: 206, item: i === 0, drop: 'chest' });
+  CHEST[id] = front;
+});
+
+// Beds: a foot and a head block; `dir` points from the foot towards the head.
+export const BED = {};
+[5, 4, 0, 1].forEach((dir, i) => {
+  [false, true].forEach((head) => {
+    const id = 210 + i * 2 + (head ? 1 : 0);
+    const top = head ? { 5: 'bed_head', 4: 'bed_head_s', 0: 'bed_head_e', 1: 'bed_head_w' }[dir] : 'bed_foot';
+    const tex = ['bed_side', 'bed_side', top, 'oak_planks', 'bed_side', 'bed_side'];
+    shaped(id, id === 210 ? 'bed' : `bed_${dir}${head ? 'h' : ''}`, [[0, 0, 0, 16, 9, 16]], { label: 'Bed', tex, cutout: true,
+      hardness: 0.2, sound: 'cloth', base: 210, item: id === 210, drop: head ? null : 'bed', support: 'bed' });
+    BED[id] = { dir, head };
+  });
+});
+export const bedId = (dir, head) => 210 + [5, 4, 0, 1].indexOf(dir) * 2 + (head ? 1 : 0);
 
 const FENCE_ARMS = { 0: [[10, 6, 7, 16, 9, 9], [10, 12, 7, 16, 15, 9]], 1: [[0, 6, 7, 6, 9, 9], [0, 12, 7, 6, 15, 9]],
   4: [[7, 6, 10, 9, 9, 16], [7, 12, 10, 9, 15, 16]], 5: [[7, 6, 0, 9, 9, 6], [7, 12, 0, 9, 15, 6]] };
@@ -399,7 +423,7 @@ export const CREATIVE_BLOCKS = [
   'purple_wool', 'black_wool', 'snowy_grass', 'snow_block', 'ice', 'cactus', 'coal_ore', 'iron_ore', 'gold_ore',
   'diamond_ore', 'coal_block', 'iron_block', 'gold_block', 'diamond_block', 'obsidian', 'bedrock', 'water', 'lava',
   'tall_grass', 'dandelion', 'poppy', 'cornflower', 'dead_bush', 'sugar_cane', 'red_mushroom', 'brown_mushroom',
-  'oak_door', 'ladder', 'oak_fence', 'glass_pane', 'oak_stairs', 'cobblestone_stairs', 'stone_brick_stairs', 'brick_stairs',
+  'chest', 'bed', 'oak_door', 'ladder', 'oak_fence', 'glass_pane', 'oak_stairs', 'cobblestone_stairs', 'stone_brick_stairs', 'brick_stairs',
   'sandstone_stairs', 'stone_slab', 'cobblestone_slab', 'oak_slab', 'birch_slab', 'spruce_slab', 'brick_slab',
   'stone_brick_slab', 'sandstone_slab',
 ].map((n) => B[n]);

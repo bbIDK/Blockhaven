@@ -3,7 +3,7 @@
 import { CHUNK, HEIGHT, SECTIONS, chunkKey } from './config.js';
 import {
   B, BLOCKS, OPAQUE, SOLID, FILTER, EMIT, RENDER, R, SELECTABLE, REPLACEABLE, TORCH_LEAN, FACE_DIRS,
-  WATERLIKE, isWater, waterLevel, WATER_FLOW_BASE, SHAPE, shapeBoxes, DOOR, doorId, LADDER_SIDE,
+  WATERLIKE, isWater, waterLevel, WATER_FLOW_BASE, SHAPE, shapeBoxes, DOOR, doorId, LADDER_SIDE, BED,
 } from './blocks.js';
 import { nextLevel } from './light.js';
 import { meshSection, P, P2, PADDED } from './mesher.js';
@@ -592,6 +592,11 @@ export class World {
       case 'solid': return !!SOLID[below];
       case 'cane': return below === B.sugar_cane || below === B.sand || SOIL.has(below);
       case 'cactus': return below === B.sand || below === B.cactus;
+      case 'bed': {
+        const b = BED[id], d = FACE_DIRS[b.dir], s = b.head ? -1 : 1;
+        const o = BED[this.getBlock(x + d[0] * s, y, z + d[2] * s)];
+        return !!o && o.head !== b.head && o.dir === b.dir;
+      }
       case 'door_lower': return !!SOLID[below] && !!DOOR[this.getBlock(x, y + 1, z)]?.upper;
       case 'door_upper': return !!DOOR[below] && !DOOR[below].upper;
       case 'ladder': {
@@ -693,7 +698,7 @@ export class World {
         this.setBlock(nx, y, nz, WATER_FLOW_BASE - 1 + spread, { remesh: false });
       } else {
         const nl = waterLevel(n);
-        if (nl > spread) this.setBlock(nx, y, nz, WATER_FLOW_BASE - 1 + spread, { remesh: false });
+        if (nl > spread && nl !== 8) this.setBlock(nx, y, nz, WATER_FLOW_BASE - 1 + spread, { remesh: false });
       }
     }
   }

@@ -840,6 +840,66 @@ def('glass_pane_top', (t) => {
   for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, x === 7 || x === 8 ? 0xd8eef3 : 0xa9cad2);
 });
 
+// ---------------------------------------------------------------- chests and beds
+const CHEST = { planks: [0x8f6a38, 0x9a7440, 0xa37c46], dark: 0x4f3818, band: 0x5c4220 };
+function chestBody(t) {
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    let c = pick(CHEST.planks, t.r());
+    if (t.r() < 0.12) c = shade(c, 0.88);
+    if (x <= 1 || x >= 14 || y <= 2 || y === 15) c = CHEST.dark;
+    if (y === 7 || y === 8) c = CHEST.band;
+    t.set(x, y, c);
+  }
+}
+def('chest_side', chestBody);
+def('chest_front', (t) => {
+  chestBody(t);
+  for (let y = 6; y < 10; y++) for (let x = 7; x < 9; x++) t.set(x, y, y === 6 ? 0xd8d8d8 : 0xa9a9a9);
+  t.set(7, 9, 0x6a6a6a); t.set(8, 9, 0x6a6a6a);
+});
+def('chest_top', (t) => {
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    let c = pick(CHEST.planks, t.r());
+    if (x <= 1 || x >= 14 || y <= 1 || y >= 14) c = CHEST.dark;
+    t.set(x, y, c);
+  }
+});
+const BED_RED = [0x9c1f1a, 0xab2620, 0xb52d26];
+// The pillow sits at the head end of the bed, so there is one top texture per direction
+// (n = -Z, s = +Z, e = +X, w = -X edge of the top face).
+for (const [name, side] of [['bed_head', 'n'], ['bed_head_s', 's'], ['bed_head_e', 'e'], ['bed_head_w', 'w']]) {
+  def(name, (t) => {
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+      const along = side === 'n' ? y : side === 's' ? 15 - y : side === 'e' ? 15 - x : x;
+      const across = side === 'n' || side === 's' ? x : y;
+      let c = pick(BED_RED, t.r());
+      if (along < 7 && across > 1 && across < 14) c = pick([0xe8e8e2, 0xf2f2ec, 0xdcdcd6], t.r());
+      if (along === 7) c = 0x7a1612;
+      t.set(x, y, c);
+    }
+  });
+}
+def('bed_foot', (t) => {
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, pick(BED_RED, t.r()));
+});
+def('bed_side', (t) => {
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    let c = y < 7 ? 0 : y < 11 ? pick(BED_RED, t.r()) : y < 13 ? pick([0xe8e8e2, 0xdcdcd6], t.r()) : pick(WOODS.oak.planks, t.r());
+    if (y >= 13 && x > 2 && x < 13) c = 0;
+    t.set(x, y, c, c === 0 ? 0 : 255);
+  }
+});
+def('bed_item', (t) => {
+  t.clear();
+  for (let y = 5; y < 12; y++) for (let x = 1; x < 15; x++) {
+    let c = pick(BED_RED, t.r());
+    if (x < 5 && y < 9) c = 0xeeeeea;
+    if (y >= 10) c = pick(WOODS.oak.planks, t.r());
+    t.set(x, y, c);
+  }
+  for (const x of [1, 2, 13, 14]) { t.set(x, 12, WOODS.oak.seam); t.set(x, 13, WOODS.oak.seam); }
+});
+
 // ---------------------------------------------------------------- player hand
 def('player_skin', (t) => {
   for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, pick([0xc68e6a, 0xcf9874, 0xd6a07c], t.r()));

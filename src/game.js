@@ -16,7 +16,7 @@ import * as storage from './storage.js';
 import { makeEnvironment, updateEnvironment, clockText } from './sky.js';
 import {
   B, BLOCKS, BASE, CREATIVE_BLOCKS, SOLID, REPLACEABLE, WATERLIKE, FACING_VARIANTS, WALL_TORCH, FACE_DIRS,
-  RENDER, R, SLAB, STAIRS, DOOR, doorId, CLIMB, LADDER, oppositeFace,
+  RENDER, R, SLAB, STAIRS, DOOR, doorId, CLIMB, LADDER, oppositeFace, CHEST, BED, bedId,
 } from './blocks.js';
 import { ITEMS, I, itemDef, itemLabel, breakTime, dropsFor, blockOfItem, RECIPES } from './items.js';
 import { BIOME_NAMES } from './biomes.js';
@@ -25,9 +25,10 @@ import { seedFromText, clamp, hashString } from './math.js';
 
 const SETTINGS_KEY = 'blockhaven.settings';
 const COARSE = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+const REDUCED_MOTION = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const DEFAULT_SETTINGS = {
   renderDistance: COARSE ? 5 : 8, fov: 75, sensitivity: 100, brightness: 50, volume: 70, music: 45,
-  viewBobbing: true, clouds: true, invertMouse: false, showFps: false,
+  viewBobbing: !REDUCED_MOTION, clouds: true, invertMouse: false, showFps: false,
 };
 const LOG_AXES = { [B.oak_log]: [100, 101], [B.birch_log]: [102, 103], [B.spruce_log]: [104, 105] };
 const FACE_NAMES = ['east (+X)', 'west (-X)', 'up', 'down', 'south (+Z)', 'north (-Z)'];
@@ -40,6 +41,8 @@ const TIPS = [
   'Water and lava make obsidian when they meet.',
   'Middle-click a block to pick it into your hand.',
   'Sand and gravel fall when nothing holds them up.',
+  'Sleep in a bed to skip the night and set your respawn point.',
+  'Chests hold 27 stacks. Shift-click moves a whole stack across.',
 ];
 const CLOUD_HEIGHT = 108.5;
 const REACH = { creative: 5.5, survival: 4.6 };
@@ -95,6 +98,8 @@ export class Game {
     this.chatHistory = [];
     this.chatIndex = 0;
     this.invVersion = 0;
+    this.containers = new Map();
+    this.openChest = null;
     this.drawnInvVersion = -1;
     this.saveTimer = 0;
     this.tipIndex = Math.floor(Math.random() * TIPS.length);
@@ -176,11 +181,15 @@ export class Game {
     ui.on('hotbar-tap', (i) => { if (this.state === 'play') this.select(i); });
     ui.on('slot', (i, button, shift) => this.inventoryClick(i, button, shift));
     ui.on('palette', (id, button, shift) => this.paletteClick(id, button, shift));
+    ui.on('close-inv', () => { if (this.state === 'inventory') this.closeInventory(); });
+    ui.on('close-chest', () => { if (this.state === 'chest') this.closeChest(); });
     ui.on('inventory-outside', () => {
       if (this.inv.cursor && this.creative) { this.inv.cursor = null; this.invChanged(); }
     });
     ui.on('search', (q) => { this.search = q.trim().toLowerCase(); this.renderInventory(); });
     ui.on('craft', (i, shift) => this.craft(i, shift));
+    ui.on('chest-slot', (kind, i, button, shift) => this.chestClick(kind, i, button, shift));
+    ui.chestItem = (i) => this.openChest?.slots[i]?.id ?? null;
     ui.on('chat-send', (text) => this.sendChat(text));
     ui.on('chat-close', () => this.closeChat());
     ui.on('chat-history', (d) => {
@@ -256,6 +265,8 @@ export class Game {
     this.world = new World({ seed: meta.seed, type: meta.type, renderer: this.renderer, store });
     this.world.listener = this;
     this.time = meta.time ?? 1000;
+    this.needsRespawnY = false;
+    this.respawnAtBed = false;
     this.inv = new Inventory();
     if (meta.inventory) this.inv.load(meta.inventory);
     else if (meta.mode === 'creative') {
@@ -269,10 +280,17 @@ export class Game {
       meta.spawn = { x: s.x, y: null, z: s.z };
     }
     const p = this.player = new Player();
-    if (meta.player) {
+    if (meta.player && (meta.player.health ?? 20) > 0) {
       Object.assign(p, { x: meta.player.x, y: meta.player.y, z: meta.player.z, yaw: meta.player.yaw, pitch: meta.player.pitch, flying: !!meta.player.flying });
       this.health = meta.player.health ?? 20;
       this.air = meta.player.air ?? 300;
+      this.needsPlacement = false;
+    } else if (meta.player && (meta.spawn?.y || meta.bed)) {
+      // Saved while dead: come back at the bed or spawn point with full health.
+      Object.assign(p, { yaw: meta.player.yaw, pitch: 0 });
+      this.goToSpawn();
+      this.health = 20;
+      this.air = 300;
       this.needsPlacement = false;
     } else {
       p.x = meta.spawn.x; p.z = meta.spawn.z; p.y = 100;
@@ -283,6 +301,7 @@ export class Game {
     }
     if (!this.creative) p.flying = false;
     this.entities.reset(meta.entities);
+    this.containers = new Map((meta.containers ?? []).map((c) => [c.k, c.slots.map((x) => (x && itemDef(x.id) ? x : null))]));
     this.fire = 0;
     this.loadStart = performance.now();
     this.mining = null;
@@ -354,11 +373,62 @@ export class Game {
     return [sx, sy, sz];
   }
 
+  // Sends the player to their bed (or the world spawn); the exact spot is found once that chunk loads.
+  goToSpawn() {
+    const p = this.player, bed = this.meta.bed, s = this.meta.spawn;
+    this.respawnAtBed = !!bed;
+    p.x = bed ? bed.x + 0.5 : s.x;
+    p.z = bed ? bed.z + 0.5 : s.z;
+    p.y = bed ? bed.y + 1 : (s.y ?? 100);
+    p.vx = p.vy = p.vz = 0;
+    p.fallDistance = 0;
+    this.needsRespawnY = true;
+  }
+
+  // Stand next to the bed. If it was broken or boxed in, fall back to the world spawn.
+  placeAtBed() {
+    const p = this.player, b = this.meta.bed;
+    this.respawnAtBed = false;
+    const spot = b && this.bedSpot(b.x, b.y, b.z);
+    if (spot) {
+      [p.x, p.y, p.z] = spot;
+      p.vx = p.vy = p.vz = 0;
+      p.fallDistance = 0;
+      this.needsRespawnY = false;
+      return;
+    }
+    this.meta.bed = null;
+    this.ui.message('Your bed was missing or blocked', '#e88a78');
+    p.x = this.meta.spawn.x;
+    p.z = this.meta.spawn.z;
+  }
+
+  // A free spot to stand beside a bed (given by its foot block), or null.
+  bedSpot(x, y, z) {
+    const w = this.world, b = BED[w.getBlock(x, y, z)];
+    if (!b || b.head) return null;
+    const d = FACE_DIRS[b.dir];
+    const free = (cx, cy, cz) => { const id = w.getBlock(cx, cy, cz); return !SOLID[id] && RENDER[id] !== R.LIQUID; };
+    for (const dy of [0, 1, -1]) {
+      for (const [ox, oz] of [[0, 0], [d[0], d[2]]]) {
+        for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+          const cx = x + ox + dx, cy = y + dy, cz = z + oz + dz, below = w.getBlock(cx, cy - 1, cz);
+          if (free(cx, cy, cz) && free(cx, cy + 1, cz) && SOLID[below] && !BED[below] && below !== B.cactus) return [cx + 0.5, cy, cz + 0.5];
+        }
+      }
+    }
+    return null;
+  }
+
+  // Frees the mouse without the unlock being mistaken for the player pressing Esc.
+  releasePointer() {
+    this.input.capture = false;
+    if (this.input.locked) { this.expectUnlock = true; this.input.unlock(); }
+  }
+
   async quitToTitle() {
     await this.save();
-    this.input.capture = false;
-    this.expectUnlock = true;
-    this.input.unlock();
+    this.releasePointer();
     this.touch.setActive(false);
     if (this.world) { await this.world.store?.drain(); this.world.dispose(); this.world = null; }
     this.meta = null;
@@ -380,6 +450,7 @@ export class Game {
       player: { x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, flying: p.flying, health: this.health, air: this.air },
       inventory: this.inv.serialize(),
       entities: this.entities.serialize(),
+      containers: [...this.containers].map(([k, slots]) => ({ k, slots: slots.map((x) => (x ? { ...x } : null)) })),
     });
     await storage.saveWorld(this.meta);
   }
@@ -388,8 +459,7 @@ export class Game {
   pause() {
     if (this.state !== 'play') return;
     this.state = 'pause';
-    this.input.capture = false;
-    if (this.input.locked) { this.expectUnlock = true; this.input.unlock(); }
+    this.releasePointer();
     this.mining = null;
     const day = Math.floor(this.time / TICKS_PER_DAY) + 1;
     $('pause-info').textContent = `${this.meta.name} · ${this.creative ? 'Creative' : 'Survival'} · Day ${day}, ${clockText(this.time)}`;
@@ -408,9 +478,7 @@ export class Game {
 
   openInventory() {
     this.state = 'inventory';
-    this.input.capture = false;
-    this.expectUnlock = true;
-    this.input.unlock();
+    this.releasePointer();
     this.mining = null;
     this.search = '';
     $('inv-search').value = '';
@@ -422,22 +490,108 @@ export class Game {
     if (this.inv.cursor) {
       if (this.creative) this.inv.cursor = null;
       else {
+        const held = this.inv.cursor;
         const left = this.inv.returnCursor();
-        if (left) this.entities.dropItem(this.player, { id: this.inv.cursor?.id, count: left });
+        if (left) this.entities.dropItem(this.player, { id: held.id, count: left, dmg: held.dmg });
       }
     }
     this.invChanged();
+    this.ui.hideCursor();
     this.ui.show(null);
     this.state = 'play';
     this.input.capture = true;
     if (!this.touch.enabled) this.input.lock();
   }
 
+  // ---------------------------------------------------------------- chests and beds
+  containerKey(x, y, z) { return `${x},${y},${z}`; }
+
+  openChestAt(x, y, z) {
+    const key = this.containerKey(x, y, z);
+    if (!this.containers.has(key)) this.containers.set(key, new Array(27).fill(null));
+    this.openChest = { key, slots: this.containers.get(key) };
+    this.state = 'chest';
+    this.releasePointer();
+    this.mining = null;
+    this.audio.place('wood');
+    this.ui.show('screen-chest');
+    this.ui.renderChest(this.inv, this.openChest.slots);
+  }
+
+  closeChest() {
+    if (this.inv.cursor) {
+      const held = this.inv.cursor;
+      const left = this.inv.returnCursor();
+      if (left) this.entities.dropItem(this.player, { id: held.id, count: left, dmg: held.dmg });
+    }
+    this.openChest = null;
+    this.invChanged();
+    this.ui.hideCursor();
+    this.ui.show(null);
+    this.state = 'play';
+    this.input.capture = true;
+    if (!this.touch.enabled) this.input.lock();
+  }
+
+  chestClick(kind, i, button, shift) {
+    if (this.state !== 'chest' || !this.openChest) return;
+    const chest = this.openChest.slots;
+    if (shift) {
+      // Move the whole stack to the other side.
+      const from = kind === 'chest' ? chest : this.inv.slots;
+      const stack = from[i];
+      if (stack) {
+        from[i] = null;
+        const left = kind === 'chest' ? this.inv.add(stack.id, stack.count, stack.dmg) : Inventory.insert(chest, stack);
+        if (left) from[i] = { ...stack, count: left };
+      }
+    } else {
+      this.inv.clickSlots(kind === 'chest' ? chest : this.inv.slots, i, button === 2 ? 2 : 0);
+    }
+    this.audio.click();
+    this.invChanged();
+    this.ui.renderChest(this.inv, chest);
+  }
+
+  // Spill a broken chest's contents.
+  dropContainer(x, y, z) {
+    const key = this.containerKey(x, y, z);
+    const slots = this.containers.get(key);
+    if (!slots) return;
+    this.containers.delete(key);
+    if (this.openChest?.key === key) this.closeChest();
+    for (const s of slots) if (s) this.entities.spawnItem(x + 0.5, y + 0.5, z + 0.5, s.id, s.count, s.dmg ?? 0);
+  }
+
+  sleepIn(x, y, z) {
+    const p = this.player;
+    if (this.env.daylight > 0.6) { this.ui.message('You can only sleep at night'); return; }
+    const near = this.entities.list.some((e) => e.kind === 'mob' && e.def.hostile && !e.dead && Math.hypot(e.x - p.x, e.y - p.y, e.z - p.z) < 10);
+    if (near) { this.ui.message('You may not rest now, there are monsters nearby', '#e88a78'); return; }
+    this.meta.bed = { x, y, z };
+    // The mouse stays captured while the screen fades out and back in, so play just carries on.
+    this.state = 'sleeping';
+    this.mining = null;
+    this.ui.setSleeping(true);
+    const world = this.world;
+    setTimeout(() => {
+      this.ui.setSleeping(false);
+      if (this.world !== world) return;
+      this.time = (Math.floor(this.time / TICKS_PER_DAY) + 1) * TICKS_PER_DAY + 300;
+      this.ui.message('Good morning! Your bed is now your spawn point.', '#f3b73f');
+      if (this.state === 'sleeping') this.state = 'play';
+      this.save();
+    }, 1400);
+  }
+
+  // World listener: react to blocks that vanish (chests spill their items).
+  blockChanged(x, y, z, old, id) {
+    if (CHEST[old] !== undefined && CHEST[id] === undefined) this.dropContainer(x, y, z);
+  }
+
   openChat(prefix = '') {
     this.state = 'chat';
-    this.input.capture = false;
-    this.expectUnlock = true;
-    this.input.unlock();
+    this.releasePointer();
     this.chatIndex = this.chatHistory.length;
     this.ui.openChat(prefix);
   }
@@ -453,21 +607,14 @@ export class Game {
   die(cause) {
     this.state = 'dead';
     this.health = 0;
-    this.input.capture = false;
-    this.expectUnlock = true;
-    this.input.unlock();
+    this.releasePointer();
     this.mining = null;
     $('death-cause').textContent = `${cause}. Your items are safe in your inventory.`;
     this.ui.show('screen-death');
   }
 
   respawn() {
-    const p = this.player, s = this.meta.spawn;
-    p.x = s.x; p.z = s.z;
-    p.y = (s.y ?? 100);
-    p.vx = p.vy = p.vz = 0;
-    p.fallDistance = 0;
-    this.needsRespawnY = true;
+    this.goToSpawn();
     this.health = 20;
     this.air = 300;
     this.fire = 0;
@@ -490,6 +637,8 @@ export class Game {
         else if (e.code === 'F3') { this.showDebug = !this.showDebug; }
         else if (e.code === 'F1') { this.hideHud = !this.hideHud; }
         else if (e.code === 'Escape' && !this.input.locked) this.pause();
+      } else if (s === 'chest') {
+        if (e.code === 'KeyE' || e.code === 'Escape') this.closeChest();
       } else if (s === 'inventory') {
         if (e.code === 'KeyE' || e.code === 'Escape') this.closeInventory();
         else if (/^Digit[1-9]$/.test(e.code)) this.hotbarSwapHovered(Number(e.code.slice(5)) - 1);
@@ -556,7 +705,7 @@ export class Game {
 
   updatePanorama(dt) {
     const c = this.panoCam;
-    c.yaw += dt * 0.035;
+    c.yaw += dt * (REDUCED_MOTION ? 0.006 : 0.035);
     this.panorama.update(c.x, c.z, COARSE ? 4 : 6);
     this.time = 2600 + performance.now() / 1000 * 2;
     updateEnvironment(this.env, this.time);
@@ -575,8 +724,8 @@ export class Game {
     const paused = this.state === 'pause';
     w.update(p.x, p.z, this.settings.renderDistance);
     if (this.needsRespawnY && w.isLoaded(p.x, p.z)) {
-      this.placeAt(Math.floor(p.x), Math.floor(p.z));
-      this.needsRespawnY = false;
+      if (this.respawnAtBed) this.placeAtBed();
+      else { this.placeAt(Math.floor(p.x), Math.floor(p.z)); this.needsRespawnY = false; }
     }
     if (active) this.handleLook();
     const move = active ? this.movementInput() : { forward: 0, right: 0, jump: false, sneak: false, sprint: false };
@@ -780,9 +929,15 @@ export class Game {
   useItem(repeat = false) {
     const held = this.inv.held, t = this.target, p = this.player, w = this.world;
     const def = held ? itemDef(held.id) : null;
-    // Doors open and close (sneak to place blocks against them instead).
-    if (t && !t.entity && DOOR[t.id] && !p.sneaking) {
-      if (!repeat && w.toggleDoor(t.x, t.y, t.z)) { this.audio.place('wood'); this.swingArm(); }
+    // Doors, chests and beds are used rather than built on (sneak to place blocks against them).
+    if (t && !t.entity && !p.sneaking && (DOOR[t.id] || CHEST[t.id] !== undefined || BED[t.id])) {
+      if (repeat) return;
+      if (DOOR[t.id] && w.toggleDoor(t.x, t.y, t.z)) { this.audio.place('wood'); this.swingArm(); }
+      else if (CHEST[t.id] !== undefined) this.openChestAt(t.x, t.y, t.z);
+      else if (BED[t.id]) {
+        const b = BED[t.id], d = FACE_DIRS[b.dir];
+        if (b.head) this.sleepIn(t.x - d[0], t.y, t.z - d[2]); else this.sleepIn(t.x, t.y, t.z);
+      }
       return;
     }
     if (def?.food && !this.creative && !repeat) {
@@ -849,6 +1004,22 @@ export class Game {
     } else if (CLIMB[blockId]) {
       if (face === 2 || face === 3) return;
       id = LADDER[oppositeFace(face)];
+    } else if (CHEST[blockId] !== undefined) {
+      const front = oppositeFace(this.lookFace());
+      id = Number(Object.keys(CHEST).find((k) => CHEST[k] === front));
+    } else if (BED[blockId]) {
+      const dir = this.lookFace(), d = FACE_DIRS[dir];
+      const hx = x + d[0], hz = z + d[2];
+      const headCell = w.getBlock(hx, y, hz);
+      if ((headCell && !REPLACEABLE[headCell]) || !SOLID[w.getBlock(x, y - 1, z)] || !SOLID[w.getBlock(hx, y - 1, hz)]) return;
+      if (p.intersectsBlock(x, y, z) || p.intersectsBlock(hx, y, hz) || this.entities.blocksPlacement(x, y, z) ||
+          this.entities.blocksPlacement(hx, y, hz)) return;
+      w.setBlock(x, y, z, bedId(dir, false), { updates: false });
+      w.setBlock(hx, y, hz, bedId(dir, true), { updates: false });
+      w.neighborsChanged(x, y, z);
+      w.neighborsChanged(hx, y, hz);
+      this.afterPlace(blockId);
+      return;
     } else if (DOOR[blockId]) {
       const above = w.getBlock(x, y + 1, z);
       if (y + 1 >= HEIGHT || (above && !REPLACEABLE[above]) || !SOLID[w.getBlock(x, y - 1, z)]) return;
@@ -868,6 +1039,7 @@ export class Game {
   }
 
   finishPlace(x, y, z, id) {
+    if (SOLID[id] && (this.player.intersectsBlock(x, y, z) || this.entities.blocksPlacement(x, y, z))) return;
     if (this.world.setBlock(x, y, z, id)) this.afterPlace(id);
   }
 
@@ -1004,10 +1176,8 @@ export class Game {
     if (!r) return;
     const stations = this.nearbyStations();
     let n = 0;
-    while (this.inv.canCraft(r, stations) && (n === 0 || shift) && n < 64) {
-      this.inv.craft(r, stations);
-      n++;
-    }
+    while ((n === 0 || shift) && n < 64 && this.inv.craft(r, stations)) n++;
+    if (!n && this.inv.canCraft(r, stations)) this.ui.message('Your inventory is full', '#e88a78');
     if (n) { this.audio.pop(); this.invChanged(); }
     this.renderInventory();
   }
@@ -1072,7 +1242,7 @@ export class Game {
         break;
       }
       case 'seed': say(`Seed: ${this.meta.seedText || this.meta.seed}`); break;
-      case 'spawn': p.x = this.meta.spawn.x; p.z = this.meta.spawn.z; this.needsRespawnY = true; say('Teleported to spawn'); break;
+      case 'spawn': p.x = this.meta.spawn.x; p.z = this.meta.spawn.z; this.respawnAtBed = false; this.needsRespawnY = true; say('Teleported to spawn'); break;
       case 'setspawn': this.meta.spawn = { x: p.x, y: p.y, z: p.z }; say('Spawn point set here'); break;
       case 'fly': if (this.creative) { p.flying = !p.flying; say(p.flying ? 'Flying' : 'Not flying'); } else say('Flying needs Creative mode', '#e88a78'); break;
       case 'kill': if (this.creative) { p.y = this.meta.spawn.y ?? 100; } else this.damage(999, 'You gave up', true); break;
@@ -1165,7 +1335,7 @@ export class Game {
     const bx = Math.floor(p.x), by = Math.floor(p.y), bz = Math.floor(p.z);
     const light = w.getLight(bx, Math.floor(p.eyeY), bz);
     const deg = ((p.yaw * 180) / Math.PI) % 360;
-    const f = ((Math.round(((-deg + 360) % 360) / 90) % 4) + 4) % 4;
+    const f = Math.round(deg / 90) % 4;
     const facing = ['north (-Z)', 'west (-X)', 'south (+Z)', 'east (+X)'][f];
     const biome = w.biomeAt(bx, bz);
     const t = this.target;

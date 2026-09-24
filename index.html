@@ -17,6 +17,7 @@
   <div id="hud" hidden>
     <div id="overlay-water"></div>
     <div id="overlay-hurt"></div>
+    <div id="overlay-sleep"></div>
     <div id="crosshair"></div>
     <div id="debug" hidden></div>
     <div id="chat">
@@ -165,7 +166,7 @@
         <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>Walk</dd>
         <dt><kbd>Mouse</kbd></dt><dd>Look around</dd>
         <dt><kbd>Left click</kbd></dt><dd>Break block (hold in Survival)</dd>
-        <dt><kbd>Right click</kbd></dt><dd>Place block, eat food, light TNT</dd>
+        <dt><kbd>Right click</kbd></dt><dd>Place block, eat food, open doors and chests, sleep in a bed</dd>
         <dt><kbd>Space</kbd></dt><dd>Jump — double-tap to fly in Creative</dd>
         <dt><kbd>Shift</kbd></dt><dd>Sneak (won't fall off edges) / fly down</dd>
         <dt><kbd>Ctrl</kbd></dt><dd>Sprint (or double-tap W)</dd>
@@ -177,7 +178,7 @@
         <dt><kbd>F3</kbd></dt><dd>Coordinates and debug info</dd>
         <dt><kbd>Esc</kbd></dt><dd>Pause</dd>
       </dl>
-      <p class="hint-text">Survival tip: punch a tree for logs, turn them into planks and a crafting table, then make a wooden pickaxe to mine stone. Place torches before night falls.</p>
+      <p class="hint-text">Survival tip: punch a tree for logs, turn them into planks and a crafting table, then make a wooden pickaxe to mine stone. Place torches before night falls, or craft a bed from wool and planks to sleep through it. Sneak while right-clicking to place blocks against doors, chests and beds.</p>
       <p class="hint-text">On a touch screen: the left stick moves, drag anywhere else to look, tap to place, hold to break.</p>
       <div class="panel-actions">
         <button class="btn primary" data-action="back">Got it</button>
@@ -190,7 +191,10 @@
       <div class="inv-main">
         <header class="panel-head">
           <h2 id="inv-title">Inventory</h2>
-          <input id="inv-search" type="search" placeholder="Search" autocomplete="off" spellcheck="false">
+          <div class="head-tools">
+            <input id="inv-search" type="search" placeholder="Search" autocomplete="off" spellcheck="false">
+            <button class="btn small" data-action="close-inv">Done</button>
+          </div>
         </header>
         <div id="inv-palette" class="grid palette"></div>
         <div id="inv-storage" class="grid"></div>
@@ -202,8 +206,23 @@
         <ul id="recipe-list" class="recipes"></ul>
       </aside>
     </div>
-    <div id="cursor-item" hidden></div>
-    <div id="tooltip" hidden></div>
+  </section>
+
+  <section class="screen dim" id="screen-chest" hidden>
+    <div class="panel chest">
+      <header class="panel-head">
+        <h2>Chest</h2>
+        <button class="btn small" data-action="close-chest">Done</button>
+      </header>
+      <div class="chest-body">
+        <div id="chest-slots" class="grid"></div>
+        <div class="chest-inv">
+          <h3 class="chest-label">Inventory</h3>
+          <div id="chest-storage" class="grid"></div>
+          <div id="chest-hotbar" class="grid"></div>
+        </div>
+      </div>
+    </div>
   </section>
 
   <section class="screen death" id="screen-death" hidden>
@@ -226,6 +245,9 @@
       </div>
     </div>
   </div>
+
+  <div id="cursor-item" hidden></div>
+  <div id="tooltip" hidden></div>
 
   <section class="screen" id="screen-error" hidden>
     <div class="panel narrow">

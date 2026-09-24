@@ -135,19 +135,30 @@ export class WorldStore {
   }
 
   async flush() {
-    while (this.pending.size) {
-      const batch = [...this.pending];
-      if (!this.db) {
-        for (const [key, data] of batch) memory.chunks.set(`${this.id}/${key}`, data);
-      } else {
-        const tx = this.db.transaction('chunks', 'readwrite');
-        const store = tx.objectStore('chunks');
-        for (const [key, data] of batch) store.put(data, `${this.id}/${key}`);
-        await new Promise((resolve) => { tx.oncomplete = tx.onerror = tx.onabort = resolve; });
+    try {
+      while (this.pending.size) {
+        const batch = [...this.pending];
+        let ok = true;
+        if (!this.db) {
+          for (const [key, data] of batch) memory.chunks.set(`${this.id}/${key}`, data);
+        } else {
+          const tx = this.db.transaction('chunks', 'readwrite');
+          const store = tx.objectStore('chunks');
+          for (const [key, data] of batch) store.put(data, `${this.id}/${key}`);
+          ok = await new Promise((resolve) => {
+            tx.oncomplete = () => resolve(true);
+            tx.onerror = tx.onabort = () => resolve(false);
+          });
+        }
+        // Keep unsaved chunks queued so a later save can retry them.
+        if (!ok) { console.warn('Saving chunks failed; will retry'); break; }
+        for (const [key, data] of batch) if (this.pending.get(key) === data) this.pending.delete(key);
       }
-      for (const [key, data] of batch) if (this.pending.get(key) === data) this.pending.delete(key);
+    } catch (err) {
+      console.warn('Saving chunks failed', err);
+    } finally {
+      this.writing = null;
     }
-    this.writing = null;
   }
 
   async drain() {

@@ -6,7 +6,7 @@ import {
 import { generateTextures, TEXTURE_NAMES, TEX } from './textures.js';
 import { STRIDE, meshBlockItem, SECTION_OFFSET } from './mesher.js';
 import { boxMesh, spriteMesh, MODEL_OFFSET } from './models.js';
-import { RENDER, R, TEXL, BLOCKS, FFLAGS, TINT, TINT_RGB, SHAPE, ICON_SHAPE, DOOR, CLIMB, SHAPE_KIND, boxFaceUV } from './blocks.js';
+import { RENDER, R, TEXL, BLOCKS, FFLAGS, TINT, TINT_RGB, SHAPE, ICON_SHAPE, DOOR, CLIMB, SHAPE_KIND, BED, boxFaceUV } from './blocks.js';
 import { ITEMS } from './items.js';
 import { SECTIONS } from './config.js';
 
@@ -396,7 +396,8 @@ export class Renderer {
     let mesh = null;
     const def = ITEMS.get(id);
     const flat = def?.block !== null && def?.block !== undefined && RENDER[def.block] === R.MODEL
-      ? (DOOR[def.block] ? TEX.oak_door_item : CLIMB[def.block] ? TEX.ladder : SHAPE_KIND[def.block] === 3 ? TEX.glass : -1) : -1;
+      ? (DOOR[def.block] ? TEX.oak_door_item : BED[def.block] ? TEX.bed_item : CLIMB[def.block] ? TEX.ladder
+        : SHAPE_KIND[def.block] === 3 ? TEX.glass : -1) : -1;
     if (def && def.block !== null && RENDER[def.block] === R.MODEL && flat < 0) {
       const id = def.block;
       const parts = (ICON_SHAPE[id] ?? SHAPE[id]).map((b) => ({

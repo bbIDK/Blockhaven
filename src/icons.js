@@ -1,7 +1,7 @@
 // Inventory icons, drawn once from the texture pixels: isometric cubes for blocks, flat sprites
 // for plants and items. Returned as data URLs for <img> tags.
 import { ITEMS } from './items.js';
-import { RENDER, R, TEXL, FFLAGS, TINT, TINT_RGB, F_TINT, F_OVERLAY, SHAPE, ICON_SHAPE, DOOR, CLIMB, SHAPE_KIND } from './blocks.js';
+import { RENDER, R, TEXL, FFLAGS, TINT, TINT_RGB, F_TINT, F_OVERLAY, SHAPE, ICON_SHAPE, DOOR, CLIMB, SHAPE_KIND, BED } from './blocks.js';
 import { TEX } from './textures.js';
 
 const S = 64;
@@ -86,6 +86,7 @@ function drawBoxes(ctx, block, boxes) {
 // Flat inventory sprite used for doors, ladders and panes.
 function spriteLayer(block) {
   if (DOOR[block]) return TEX.oak_door_item;
+  if (BED[block]) return TEX.bed_item;
   if (CLIMB[block]) return TEX.ladder;
   if (SHAPE_KIND[block] === 3) return TEX.glass;
   return -1;
