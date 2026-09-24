@@ -30,7 +30,11 @@ export class Menu {
     this.slots = [];
     this.storage = [];
     this.hotbar = [];
+    this.waiting = null; // multiplayer: containers whose contents haven't arrived yet
   }
+
+  // Nothing can be moved until a multiplayer host has said what's inside.
+  get syncing() { return !!this.waiting?.size; }
 
   add(arr, i, group, o) {
     const s = new Slot(this, arr, i, group, o);
@@ -409,10 +413,13 @@ export class FurnaceMenu extends Menu {
   }
 }
 
+// A chest, or a double chest: `parts` is one or two 27-slot arrays (the left half first).
 export class ChestMenu extends Menu {
-  constructor(game, slots) {
-    super(game, 'chest');
-    this.chestSlots = slots.map((_, i) => this.add(slots, i, 'chest'));
+  constructor(game, parts) {
+    super(game, parts.length > 1 ? 'large_chest' : 'chest');
+    this.parts = parts;
+    this.chestSlots = [];
+    for (const arr of parts) arr.forEach((_, i) => this.chestSlots.push(this.add(arr, i, 'chest')));
     this.addPlayer();
   }
 

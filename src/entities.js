@@ -1,11 +1,12 @@
-// Everything that moves besides the player: dropped items, lit TNT, animals and zombies.
+// Everything that moves besides the player: dropped items, lit TNT, falling sand and gravel,
+// animals and zombies.
 // In multiplayer the host simulates them all; a guest's entities are copies of the host's (see
 // the end of this file), and what a guest does to them is sent to the host.
 import { Body } from './body.js';
 import { boxMesh, MODEL_OFFSET } from './models.js';
 import { TEX } from './textures.js';
 import { mat4, identity, translate, rotateX, rotateY, rotateZ, scale, hash2 } from './math.js';
-import { B, BLOCKS, SOLID, WATERLIKE, FILTER } from './blocks.js';
+import { B, BLOCKS, SOLID, WATERLIKE, FILTER, REPLACEABLE } from './blocks.js';
 import { I, itemDef } from './items.js';
 import { rayBox } from './world.js';
 import { BIOME } from './biomes.js';
@@ -148,12 +149,20 @@ export class Entities {
     this.game.audio.fuse({ x: e.x, y: e.y + 0.5, z: e.z });
   }
 
+  // Sand or gravel falling from (x, y, z): lands and turns back into a block.
+  spawnFalling(x, y, z, block) {
+    const e = new Entity('falling', 0.49, 0.98, x + 0.5, y, z + 0.5);
+    e.block = block;
+    this.list.push(e);
+    return e;
+  }
+
   spawnMob(type, x, y, z) {
     const t = MOB_TYPES[type];
     const e = new Entity('mob', t.hw, t.h, x, y, z);
     Object.assign(e, {
       type, label: t.label, def: t, health: t.health, yaw: Math.random() * 6.28, walk: 0, walkPhase: 0,
-      wander: 0, moving: false, panic: 0, hurt: 0, lastDamage: 0, dying: 0, attackCd: 0, swing: 0, burnCd: 0, flap: 0,
+      wander: 0, moving: false, panic: 0, hurt: 0, lastDamage: 0, dying: 0, attackCd: 0, swing: 0, burnCd: 0, flap: 0, onFire: 0,
     });
     this.list.push(e);
     return e;
@@ -252,6 +261,14 @@ export class Entities {
     e.hurt = Math.max(0, e.hurt - 1);
     e.attackCd = Math.max(0, e.attackCd - 1);
     const { nd: dist, prey, pd } = this.nearest(e);
+    // Standing in fire or lava burns.
+    const feet = w.getBlock(Math.floor(e.x), Math.floor(e.y + 0.2), Math.floor(e.z));
+    if (feet === B.fire || WATERLIKE[feet] === 2) { e.onFire = 160; if (WATERLIKE[feet] === 2 && ++e.burnCd >= 10) { e.burnCd = 0; this.hurtMob(e, 4, null); } }
+    if (e.onFire > 0) {
+      e.onFire = WATERLIKE[w.getBlock(Math.floor(e.x), Math.floor(e.y + 0.3), Math.floor(e.z))] === 1 ? 0 : e.onFire - 1;
+      if (e.onFire % 20 === 0 && e.onFire > 0) this.hurtMob(e, 1, null);
+      if (Math.random() < 0.3) game.particles.smoke(e.x, e.y + Math.random() * e.h, e.z, 1, e.hw);
+    }
     if (e.def.hostile) {
       // Burn in daylight.
       const l = w.getLight(Math.floor(e.x), Math.floor(e.y + 1.6), Math.floor(e.z));
@@ -316,6 +333,10 @@ export class Entities {
         const f = e.onGround ? Math.exp(-6 * dt) : 1;
         e.vx *= f; e.vz *= f;
         e.move(w, e.vx * dt, e.vy * dt, e.vz * dt);
+      } else if (e.kind === 'falling') {
+        e.vy = Math.max(-40, e.vy - 32 * dt);
+        e.move(w, 0, e.vy * dt, 0);
+        if (e.onGround || e.age > 30 || e.y < 0) this.land(e);
       } else if (e.kind === 'mob') {
         this.mobPhysics(e, dt, fluid);
       }
@@ -363,6 +384,19 @@ export class Entities {
     e.swing = Math.max(0, e.swing - dt * 3);
   }
 
+  // A falling block lands: it becomes a block again where there's room, or breaks into an item.
+  land(e) {
+    e.dead = true;
+    const w = this.world, game = this.game;
+    const x = Math.floor(e.x), y = Math.floor(e.y + 0.3), z = Math.floor(e.z);
+    const cur = w.getBlock(x, y, z);
+    const def = BLOCKS[e.block];
+    if ((cur === 0 || (REPLACEABLE[cur] && WATERLIKE[cur] !== 2) || cur === B.fire) && y >= 0) {
+      w.setBlock(x, y, z, e.block);
+      game.audio.place(def?.sound ?? 'sand', { x: e.x, y: e.y, z: e.z });
+    } else if (!game.creative) this.spawnItem(e.x, e.y + 0.3, e.z, e.block, 1);
+  }
+
   hurtMob(e, amount, from, bonus = 0) {
     if (e.dying || e.dead) return;
     // Like the original, a mob that was just hurt only takes the part of a new hit that's stronger
@@ -376,6 +410,7 @@ export class Entities {
     e.health -= amount;
     e.hurt = 10;
     this.game.audio.mob(e.type, e.health <= 0 ? 'death' : 'hurt', { x: e.x, y: e.y + e.h * 0.8, z: e.z });
+    this.game.bleed(e.x, e.y + e.h * 0.6, e.z, Math.min(14, 4 + Math.round(amount * 1.5)));
     if (from) {
       // Knocked back with a little hop.
       const dx = e.x - from.x, dz = e.z - from.z, d = Math.hypot(dx, dz) || 1;
@@ -470,6 +505,9 @@ export class Entities {
         e = new Entity('tnt', 0.49, 0.98, s.x, s.y, s.z);
         e.fuse = 80;
         this.game.audio.fuse({ x: s.x, y: s.y + 0.5, z: s.z });
+      } else if (s.k === 'f' && BLOCKS[s.b]) {
+        e = new Entity('falling', 0.49, 0.98, s.x, s.y, s.z);
+        e.block = s.b;
       } else if (s.k === 'm' && MOB_TYPES[s.ty]) {
         e = this.spawnMob(s.ty, s.x, s.y, s.z);
         this.list.pop();
@@ -508,7 +546,7 @@ export class Entities {
   remoteFlags(e, f) {
     const at = { x: e.x, y: e.y + e.h * 0.8, z: e.z };
     if ((f & 2) && !e.dying) { e.dying = 0.001; e.hurt = 10; this.game.audio.mob(e.type, 'death', at); }
-    else if ((f & 1) && !(e.flags & 1) && !e.dying) { e.hurt = 10; this.game.audio.mob(e.type, 'hurt', at); }
+    else if ((f & 1) && !(e.flags & 1) && !e.dying) { e.hurt = 10; this.game.audio.mob(e.type, 'hurt', at); this.game.bleed(e.x, e.y + e.h * 0.6, e.z, 8); }
     if (f & 4) e.swing = 1;
     e.burning = !!(f & 8);
     e.flags = f;
@@ -628,6 +666,13 @@ export class Entities {
         translate(m, m, -0.5 - MODEL_OFFSET, -MODEL_OFFSET, -0.5 - MODEL_OFFSET);
         const flash = Math.floor(e.fuse / 5) % 2 === 0;
         out.push({ parts: [{ mesh, model: m }], light: [15, 15], tint: flash ? [2.2, 2.2, 2.2] : null });
+      } else if (e.kind === 'falling') {
+        const mesh = r.itemMesh(e.block);
+        if (!mesh) continue;
+        const m = identity(this.mat());
+        translate(m, m, rx, ry, rz);
+        translate(m, m, -0.5 - MODEL_OFFSET, -MODEL_OFFSET, -0.5 - MODEL_OFFSET);
+        out.push({ parts: [{ mesh, model: m }], light, tint: null });
       } else if (e.kind === 'mob') {
         const parts = [];
         const swingA = Math.sin(e.walkPhase) * 0.9 * e.walk;

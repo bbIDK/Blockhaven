@@ -210,6 +210,7 @@ export const OPTIONS = [
   { key: 'brightness', label: 'Brightness', min: 0, max: 100, step: 5, fmt: (v) => (v <= 0 ? 'Moody' : v >= 100 ? 'Bright' : `${v}%`) },
   { key: 'clouds', label: 'Clouds', toggle: true },
   { key: 'viewBobbing', label: 'View Bobbing', toggle: true },
+  { key: 'blood', label: 'Blood Effects', toggle: true },
   { section: 'Interface' },
   { key: 'guiScale', label: 'GUI Scale', scale: true },
   { key: 'showFps', label: 'Show FPS', toggle: true },

@@ -1,9 +1,10 @@
 // Builds vertex data for one 16x16x16 section from a padded 18^3 copy of blocks and light.
-// Vertex layout (20 bytes): pos u16x3 (1/256 block) | uv u8x2 (1/16) | layer, face, flags, 0 |
-// sky, block, ao, 0 (normalised) | tint rgb, 255 (normalised).
+// Vertex layout (20 bytes): pos u16x3 (1/256 block) | uv u8x2 (1/16) | layer lo, face, flags, layer hi |
+// sky, block, ao, flow (normalised) | tint rgb, 255 (normalised). `flow` is only used by liquids:
+// 0 still, 1..254 the direction the surface flows, 255 falling down the sides.
 import {
-  R, RENDER, OPAQUE, AO, TEXL, FFLAGS, TINT, TINT_RGB, CULL_SELF, TRANSLUCENT, B,
-  F_TINT, F_OVERLAY, F_UVROT, liquidHeight, sameCullGroup, TORCH_LEAN, shapeBoxes, boxFaceUV,
+  R, RENDER, OPAQUE, AO, TEXL, FFLAGS, TINT, TINT_RGB, CULL_SELF, TRANSLUCENT, B, ANIM,
+  F_TINT, F_OVERLAY, F_UVROT, F_ANIM, liquidHeight, liquidLevel, sameCullGroup, TORCH_LEAN, shapeBoxes, boxFaceUV,
 } from './blocks.js';
 import { grassColor, foliageColor, fromByte } from './biomes.js';
 import { hash2 } from './math.js';
@@ -15,6 +16,8 @@ const U = 256; // position units per block
 // plants) never goes negative in the unsigned position attribute. The renderer undoes it.
 export const SECTION_OFFSET = 4;
 const OFS = SECTION_OFFSET * U;
+
+let flow = 0; // written into each vertex (see the layout above)
 
 class MeshBuffer {
   constructor(cap) { this.count = 0; this.u8 = null; this.alloc(cap); }
@@ -31,8 +34,8 @@ class MeshBuffer {
     const i = this.count++, o = i * STRIDE, h = i * 10, u8 = this.u8;
     this.u16[h] = x + OFS; this.u16[h + 1] = y + OFS; this.u16[h + 2] = z + OFS;
     u8[o + 6] = u; u8[o + 7] = v;
-    u8[o + 8] = layer; u8[o + 9] = face; u8[o + 10] = flags; u8[o + 11] = 0;
-    u8[o + 12] = sky; u8[o + 13] = blk; u8[o + 14] = ao; u8[o + 15] = 0;
+    u8[o + 8] = layer & 255; u8[o + 9] = face; u8[o + 10] = flags; u8[o + 11] = layer >> 8;
+    u8[o + 12] = sky; u8[o + 13] = blk; u8[o + 14] = ao; u8[o + 15] = flow;
     u8[o + 16] = r; u8[o + 17] = g; u8[o + 18] = b; u8[o + 19] = 255;
   }
   take() { return this.u8.slice(0, this.count * STRIDE); }
@@ -153,10 +156,16 @@ function liquid(buf, blocks, light, x, y, z, p, id) {
   }
   const layer = TEXL[id * 6], flags = FFLAGS[id * 6] & FLAG_MASK;
   const own = light[p];
+  // Which way the surface runs: downhill across the corner heights.
+  const gx = liquidH[1] + liquidH[3] - liquidH[0] - liquidH[2], gz = liquidH[2] + liquidH[3] - liquidH[0] - liquidH[1];
+  const level = liquidLevel(id);
+  const topFlow = Math.abs(gx) + Math.abs(gz) < 8 ? 0 : 1 + Math.round(((Math.atan2(-gz, -gx) / (Math.PI * 2) + 1) % 1) * 253);
+  const sideFlow = aboveSame || level === 8 || level > 0 ? 255 : 0;
   for (let f = 0; f < 6; f++) {
     const nid = blocks[p + NOFF[f]];
     if (sameCullGroup(id, nid)) continue;
     if (f === 2 ? aboveSame : OPAQUE[nid]) continue;
+    flow = f === 2 || f === 3 ? topFlow : sideFlow;
     const nl = light[p + NOFF[f]];
     const sky = Math.max(own >> 4, nl >> 4) * 17, blk = Math.max(own & 15, nl & 15) * 17;
     const corners = FACE_CORNERS[f];
@@ -176,6 +185,23 @@ function liquid(buf, blocks, light, x, y, z, p, id) {
       }
     }
   }
+  flow = 0;
+}
+
+// Fire: two crossed sheets of flame plus four around the edges, double-sided, animated.
+function fire(buf, light, x, y, z, p, id) {
+  const l = light[p];
+  const sky = (l >> 4) * 17, blk = 255;
+  const layer = TEXL[id * 6], flags = (FFLAGS[id * 6] & FLAG_MASK) | (ANIM[id] ? F_ANIM : 0);
+  tint[0] = tint[1] = tint[2] = 255;
+  const X = x * U, Y = y * U, Z = z * U, H = Math.round(1.3 * U), h = U;
+  const a = Math.round(0.06 * U), b = U - a;
+  crossQuad(buf, [[X, Y, Z], [X + U, Y, Z + U], [X + U, Y + H, Z + U], [X, Y + H, Z]], layer, flags, sky, blk);
+  crossQuad(buf, [[X, Y, Z + U], [X + U, Y, Z], [X + U, Y + H, Z], [X, Y + H, Z + U]], layer, flags, sky, blk);
+  crossQuad(buf, [[X, Y, Z + a], [X + U, Y, Z + a], [X + U, Y + h, Z + a], [X, Y + h, Z + a]], layer, flags, sky, blk);
+  crossQuad(buf, [[X, Y, Z + b], [X + U, Y, Z + b], [X + U, Y + h, Z + b], [X, Y + h, Z + b]], layer, flags, sky, blk);
+  crossQuad(buf, [[X + a, Y, Z], [X + a, Y, Z + U], [X + a, Y + h, Z + U], [X + a, Y + h, Z]], layer, flags, sky, blk);
+  crossQuad(buf, [[X + b, Y, Z], [X + b, Y, Z + U], [X + b, Y + h, Z + U], [X + b, Y + h, Z]], layer, flags, sky, blk);
 }
 
 function crossQuad(buf, pts, layer, flags, sky, blk) {
@@ -302,6 +328,7 @@ export function meshSection(blocks, light, climate, cx, cz) {
           for (let f = 0; f < 6; f++) if (faceVisible(id, blocks[p + NOFF[f]])) cubeFace(tr ? trans : dirs[f], blocks, light, x, y, z, p, id, f);
         } else if (rt === R.LIQUID) liquid(TRANSLUCENT[id] ? trans : other, blocks, light, x, y, z, p, id);
         else if (rt === R.CROSS) cross(other, light, x, y, z, p, id, cx * 16 + x, cz * 16 + z);
+        else if (rt === R.FIRE) fire(other, light, x, y, z, p, id);
         else if (rt === R.TORCH) torch(other, light, x, y, z, p, id);
         else if (rt === R.CACTUS) cactus(dirs, blocks, light, x, y, z, p, id);
         else if (rt === R.MODEL) model(dirs, blocks, light, x, y, z, p, id);
@@ -363,7 +390,7 @@ function visibility(blocks) {
 
 // Mesh for a single block (the held item and dropped items), lit uniformly.
 export function meshBlockItem(id) {
-  const blocks = new Uint8Array(PADDED);
+  const blocks = new Uint16Array(PADDED);
   const light = new Uint8Array(PADDED).fill(0xf0);
   const climate = new Uint8Array(512).fill(150);
   blocks[P2 + P + 1] = id;

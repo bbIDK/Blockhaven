@@ -67,7 +67,8 @@ export async function deleteWorld(id) {
   await new Promise((resolve) => { tx.oncomplete = tx.onerror = tx.onabort = resolve; });
 }
 
-// Run-length encoding: pairs of (count, value), count <= 255.
+// Run-length encoding of bytes: pairs of (count, value), count <= 255. (The chunk format of
+// worlds made before version 2, which had 8-bit block ids and were 128 blocks high.)
 export function encodeRLE(data) {
   const out = new Uint8Array(data.length * 2);
   let o = 0;
@@ -91,6 +92,48 @@ export function decodeRLE(data, size) {
   }
   return out;
 }
+
+// Run-length encoding of 16-bit block ids: triples of (count, low byte, high byte).
+export function encodeRLE16(data) {
+  const out = new Uint8Array(data.length * 3);
+  let o = 0;
+  for (let i = 0; i < data.length;) {
+    const v = data[i];
+    let n = 1;
+    while (n < 255 && i + n < data.length && data[i + n] === v) n++;
+    out[o++] = n;
+    out[o++] = v & 255;
+    out[o++] = v >> 8;
+    i += n;
+  }
+  return out.slice(0, o);
+}
+
+export function decodeRLE16(data, size) {
+  const out = new Uint16Array(size);
+  let o = 0;
+  for (let i = 0; i + 2 < data.length && o < size; i += 3) {
+    out.fill(data[i + 1] | (data[i + 2] << 8), o, Math.min(size, o + data[i]));
+    o += data[i];
+  }
+  return out;
+}
+
+// A stored chunk: { v: 2, d: RLE16 bytes } now; a bare Uint8Array (8-bit RLE of a 128-high
+// chunk) from older versions, which is widened here. Block indexes are (y << 8) | (z << 4) | x,
+// so the old chunk is simply the lower half of the new one.
+export function decodeChunk(data, size) {
+  if (data instanceof Uint8Array) {
+    const old = decodeRLE(data, 32768);
+    const out = new Uint16Array(size);
+    out.set(old.subarray(0, Math.min(old.length, size)));
+    return out;
+  }
+  if (data && data.v === 2 && data.d instanceof Uint8Array) return decodeRLE16(data.d, size);
+  return null;
+}
+
+export const encodeChunk = (blocks) => ({ v: 2, d: encodeRLE16(blocks) });
 
 // Per-world chunk store used by World.
 export class WorldStore {
@@ -120,17 +163,17 @@ export class WorldStore {
   has(key) { return this.keys.has(key) || this.pending.has(key); }
 
   async loadChunk(key) {
-    if (this.pending.has(key)) return decodeRLE(this.pending.get(key), this.size);
+    if (this.pending.has(key)) return decodeChunk(this.pending.get(key), this.size);
     const k = `${this.id}/${key}`;
     const data = this.db
       ? await req(this.db.transaction('chunks').objectStore('chunks').get(k)).catch(() => null)
       : memory.chunks.get(k);
-    return data ? decodeRLE(data, this.size) : null;
+    return data ? decodeChunk(data, this.size) : null;
   }
 
   saveChunk(key, blocks) {
     this.keys.add(key);
-    this.pending.set(key, encodeRLE(blocks));
+    this.pending.set(key, encodeChunk(blocks));
     if (!this.writing) this.writing = Promise.resolve().then(() => this.flush());
   }
 

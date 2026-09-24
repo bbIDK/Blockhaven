@@ -1,16 +1,20 @@
 // Block registry. IDs are part of the save format, so never renumber an existing block.
 // Hot properties live in flat typed arrays for the mesher, lighting and physics.
+// Ids are 16-bit. Blocks and items share one id space: blocks use 0-255 and 1024-4095, items that
+// aren't blocks use 256-1023.
 import { TEX } from './textures.js';
 
-export const R = { NONE: 0, CUBE: 1, CROSS: 2, TORCH: 3, LIQUID: 4, CACTUS: 5, MODEL: 6 };
+export const R = { NONE: 0, CUBE: 1, CROSS: 2, TORCH: 3, LIQUID: 4, CACTUS: 5, MODEL: 6, FIRE: 7 };
 
-// Per-face flags (also copied into vertex flags for the shader).
+// Per-face flags (also copied into vertex flags for the shader). F_UVROT only matters while
+// meshing, so in vertices the same bit means F_ANIM: an 8-frame flipbook (consecutive layers).
 export const F_TINT = 1, F_OVERLAY = 2, F_UVROT = 4, F_WAVE = 8, F_WATER = 16, F_EMISSIVE = 32, F_LAVA = 64;
+export const F_ANIM = 4;
 
 // Face order used everywhere: +X east, -X west, +Y top, -Y bottom, +Z south, -Z north.
 export const FACE_DIRS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 
-const N = 256;
+const N = 4096;
 export const BLOCKS = new Array(N).fill(null);
 export const B = {};
 export const RENDER = new Uint8Array(N);
@@ -23,12 +27,16 @@ export const CULL_SELF = new Uint8Array(N);
 export const AO = new Uint8Array(N);
 export const TINT = new Uint8Array(N); // 0 none, 1 grass, 2 foliage, 3 fixed colour
 export const TINT_RGB = new Uint8Array(N * 3);
-export const TEXL = new Uint8Array(N * 6);
+export const TEXL = new Uint16Array(N * 6);
 export const FFLAGS = new Uint8Array(N * 6);
 export const REPLACEABLE = new Uint8Array(N);
 export const SELECTABLE = new Uint8Array(N);
 export const WATERLIKE = new Uint8Array(N); // 1 water, 2 lava
-export const BASE = new Uint8Array(N);
+export const BASE = new Uint16Array(N);
+export const ANIM = new Uint8Array(N);  // animated texture (flipbook) blocks
+// Fire: how readily a block catches from fire next to it (spread) and how fast it burns away.
+export const SPREAD = new Uint8Array(N);
+export const BURN = new Uint8Array(N);
 
 const title = (s) => s.split('_').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
 
@@ -77,6 +85,7 @@ function block(id, name, o = {}) {
   SELECTABLE[id] = (o.selectable ?? true) ? 1 : 0;
   WATERLIKE[id] = o.liquid ?? 0;
   BASE[id] = d.base;
+  ANIM[id] = o.anim ? 1 : 0;
   if (o.tint === 'grass') TINT[id] = 1;
   else if (o.tint === 'foliage') TINT[id] = 2;
   else if (Array.isArray(o.tint)) { TINT[id] = 3; TINT_RGB.set(o.tint, id * 3); }
@@ -220,13 +229,23 @@ for (let level = 1; level <= 8; level++) {
     translucent: true, solid: false, filter: 1, cullSelf: true, selectable: false, replaceable: true, liquid: 1,
     hardness: -1, sound: 'water', drop: null, item: false, base: 10 });
 }
+// Flowing lava works the same way (ids 222..228 levels 1..7, 229 falling), but spreads slower
+// and only half as far: its level goes up by two with each block.
+export const LAVA_FLOW_BASE = 222;
+for (let level = 1; level <= 8; level++) {
+  block(221 + level, level === 8 ? 'lava_falling' : `lava_flow_${level}`, { render: R.LIQUID, tex: 'lava', solid: false, emit: 15,
+    cullSelf: true, selectable: false, replaceable: true, liquid: 2, emissive: true, hardness: -1, sound: 'water', drop: null,
+    item: false, base: 35 });
+}
 export const isWater = (id) => WATERLIKE[id] === 1;
 export const isLava = (id) => WATERLIKE[id] === 2;
 // 0 = source, 1..7 = flowing level, 8 = falling.
 export const waterLevel = (id) => (id === 10 ? 0 : id >= 120 && id <= 127 ? id - 119 : -1);
+export const lavaLevel = (id) => (id === 35 ? 0 : id >= 222 && id <= 229 ? id - 221 : -1);
+export const liquidLevel = (id) => (WATERLIKE[id] === 2 ? lavaLevel(id) : waterLevel(id));
 // Surface height of a liquid block, as a fraction of a block.
 export function liquidHeight(id) {
-  const l = waterLevel(id);
+  const l = liquidLevel(id);
   if (l <= 0 || l === 8) return 0.875;
   return Math.max(0.12, (8 - l) / 9);
 }
@@ -234,13 +253,17 @@ export function liquidHeight(id) {
 // Liquids use the same cull test as other liquids of the same kind.
 for (let id = 0; id < N; id++) {
   if (!BLOCKS[id]) continue;
-  if (WATERLIKE[id] === 1) CULL_SELF[id] = 1;
+  if (WATERLIKE[id]) CULL_SELF[id] = 1;
 }
 
 export function sameCullGroup(a, b) {
   if (a === b) return true;
-  return WATERLIKE[a] === 1 && WATERLIKE[b] === 1;
+  return WATERLIKE[a] !== 0 && WATERLIKE[a] === WATERLIKE[b];
 }
+
+// Fire: an animated flame that burns on and beside flammable blocks (see world.js).
+block(62, 'fire', { render: R.FIRE, tex: 'fire_0', cutout: true, solid: false, emit: 15, hardness: 0, sound: 'grass',
+  replaceable: true, item: false, drop: null, emissive: true, anim: true });
 
 // ---------------------------------------------------------------- shaped blocks
 // Boxes are in 1/16 of a block: [x0, y0, z0, x1, y1, z1]. SHAPE holds fixed shapes; fences and
@@ -354,6 +377,32 @@ export const CHEST = {};
     base: 206, item: i === 0, drop: 'chest' });
   CHEST[id] = front;
 });
+// Two chests side by side facing the same way are one double chest of 54 slots. Each half is
+// its own block; `partner` is the face towards the other half. The texture is split across the
+// two, so each half uses the side of it that belongs there.
+export const CHEST_PAIR = {};
+const RIGHT_OF = { 4: 0, 5: 1, 0: 5, 1: 4 }; // looking at the front, the viewer's right
+[4, 5, 0, 1].forEach((front, i) => {
+  const right = RIGHT_OF[front], left = OPPOSITE[right];
+  [right, left].forEach((partner, j) => {
+    const id = 230 + i * 2 + j;
+    const alongX = partner === 0 || partner === 1;
+    const tex = ['chest_side', 'chest_side', alongX ? 'chest_top_dx' : 'chest_top_dz', alongX ? 'chest_top_dx' : 'chest_top_dz', 'chest_side', 'chest_side'];
+    // (the half whose partner is on the viewer's right is the left half of the front)
+    tex[front] = partner === right ? 'chest_front_l' : 'chest_front_r';
+    tex[OPPOSITE[front]] = 'chest_back_double';
+    const box = [1, 0, 1, 15, 14, 15];
+    if (partner === 0) box[3] = 16; else if (partner === 1) box[0] = 0; else if (partner === 4) box[5] = 16; else box[2] = 0;
+    shaped(id, `chest_double_${front}_${partner}`, [box], { label: 'Chest', tex, hardness: 2.5, tool: 'axe', sound: 'wood',
+      base: 206, item: false, drop: 'chest' });
+    CHEST[id] = front;
+    CHEST_PAIR[id] = partner;
+  });
+});
+export const CHEST_RIGHT = RIGHT_OF;
+// The single chest facing `front`, and the half facing `front` whose other half is at `partner`.
+export const chestId = (front) => Number(Object.keys(CHEST).find((k) => CHEST[k] === front && CHEST_PAIR[k] === undefined));
+export const chestHalf = (front, partner) => 230 + [4, 5, 0, 1].indexOf(front) * 2 + (partner === RIGHT_OF[front] ? 0 : 1);
 
 // A furnace that is burning glows and lights up its surroundings (see furnace.js).
 facing([218, 219, 220, 221], 'lit_furnace', { label: 'Furnace', front: 'furnace_front_on', side: 'furnace_side',
@@ -425,6 +474,25 @@ export function shapeBoxes(id, neighbour, collision = false) {
   if (kind === 3 && !any) out.push(PANE_ARMS[0], PANE_ARMS[1], PANE_ARMS[4], PANE_ARMS[5]);
   return out;
 }
+
+// Minecraft's fire numbers: [catch chance, burn chance] (out of 100-ish, see world.js).
+function flammable(names, spread, burn) {
+  for (const n of names) {
+    for (let id = 0; id < N; id++) {
+      const d = BLOCKS[id];
+      if (d && (d.name === n || BLOCKS[BASE[id]]?.name === n)) { SPREAD[id] = spread; BURN[id] = burn; }
+    }
+  }
+}
+flammable(['oak_planks', 'birch_planks', 'spruce_planks', 'oak_slab', 'birch_slab', 'spruce_slab', 'oak_stairs', 'oak_fence',
+  'oak_door', 'crafting_table', 'ladder'], 5, 20);
+flammable(['oak_log', 'birch_log', 'spruce_log'], 5, 5);
+flammable(['oak_leaves', 'birch_leaves', 'spruce_leaves'], 30, 60);
+flammable(['white_wool', 'red_wool', 'orange_wool', 'yellow_wool', 'lime_wool', 'blue_wool', 'purple_wool', 'black_wool', 'bed'], 30, 60);
+flammable(['tall_grass', 'dandelion', 'poppy', 'cornflower', 'dead_bush'], 60, 100);
+flammable(['bookshelf'], 30, 20);
+flammable(['tnt'], 15, 100);
+flammable(['chest'], 5, 20);
 
 // Blocks worth listing in the creative inventory, in display order.
 export const CREATIVE_BLOCKS = [

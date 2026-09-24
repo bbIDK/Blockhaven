@@ -86,7 +86,7 @@ function sprites() {
 
 // ---------------------------------------------------------------- layouts (GUI pixels)
 const SIZES = {
-  inventory: [176, 166], crafting: [176, 166], furnace: [176, 166], chest: [176, 168], creative: [195, 136],
+  inventory: [176, 166], crafting: [176, 166], furnace: [176, 166], chest: [176, 168], large_chest: [176, 222], creative: [195, 136],
 };
 const TABS = [
   { id: 'building', label: 'Building Blocks', icon: 'bricks' },
@@ -361,11 +361,12 @@ export class ContainerGUI {
       slot(m.outputSlot, 111, 30, true);
       label('Inventory', win, 8, 72);
       player(83, 141);
-    } else if (this.kind === 'chest') {
-      label('Chest', win, 8, 6);
+    } else if (this.kind === 'chest' || this.kind === 'large_chest') {
+      const rows = m.chestSlots.length / 9, y0 = (rows - 3) * 18;
+      label(rows > 3 ? 'Large Chest' : 'Chest', win, 8, 6);
       m.chestSlots.forEach((s, k) => slot(s, 7 + (k % 9) * 18, 17 + Math.floor(k / 9) * 18));
-      label('Inventory', win, 8, 74);
-      player(84, 142);
+      label('Inventory', win, 8, 74 + y0);
+      player(84 + y0, 142 + y0);
     } else if (this.kind === 'creative') {
       const tab = TABS.find((t) => t.id === this.tab);
       label(tab.label, win, 8, 6);

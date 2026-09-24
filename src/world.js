@@ -3,7 +3,8 @@
 import { CHUNK, HEIGHT, SECTIONS, chunkKey } from './config.js';
 import {
   B, BLOCKS, OPAQUE, SOLID, FILTER, EMIT, RENDER, R, SELECTABLE, REPLACEABLE, TORCH_LEAN, FACE_DIRS,
-  WATERLIKE, isWater, waterLevel, WATER_FLOW_BASE, SHAPE, shapeBoxes, DOOR, doorId, LADDER_SIDE, BED,
+  WATERLIKE, isWater, waterLevel, lavaLevel, WATER_FLOW_BASE, LAVA_FLOW_BASE, SHAPE, shapeBoxes, DOOR, doorId, LADDER_SIDE, BED,
+  SPREAD, BURN,
 } from './blocks.js';
 import { nextLevel } from './light.js';
 import { meshSection, P, P2, PADDED, ALL_OPEN } from './mesher.js';
@@ -72,6 +73,7 @@ export function blockBounds(id) {
   if (rt === R.CROSS) return [0.15, 0, 0.15, 0.85, 0.8, 0.85];
   if (rt === R.TORCH) return TORCH_BOUNDS[TORCH_LEAN[id]];
   if (rt === R.CACTUS) return [1 / 16, 0, 1 / 16, 15 / 16, 1, 15 / 16];
+  if (rt === R.FIRE) return [0, 0, 0, 1, 0.9, 1];
   return null;
 }
 
@@ -82,7 +84,7 @@ function unionBounds(boxes) {
 }
 
 const SOIL = new Set([B.grass_block, B.dirt, B.snowy_grass]);
-const posKey = (x, y, z) => (x + 1048576) * 268435456 + (z + 1048576) * 128 + y;
+const posKey = (x, y, z) => (x + 1048576) * 536870912 + (z + 1048576) * 256 + y;
 
 export class World {
   constructor({ seed, type = 'default', renderer, store = null }) {
@@ -105,12 +107,13 @@ export class World {
     this.keepChanged = false;
     this.tickNow = 0;
     this.ticks = new Map();
+    this.fireAge = new Map(); // how long each fire has burned (by position)
     this._cache = null;
     this.qx = new Int32Array(QSIZE); this.qy = new Int32Array(QSIZE); this.qz = new Int32Array(QSIZE);
     this.qh = 0; this.qt = 0;
     this.rx = new Int32Array(QSIZE); this.ry = new Int32Array(QSIZE); this.rz = new Int32Array(QSIZE);
     this.rl = new Uint8Array(QSIZE);
-    this.padB = new Uint8Array(PADDED);
+    this.padB = new Uint16Array(PADDED);
     this.padL = new Uint8Array(PADDED);
   }
 
@@ -392,7 +395,7 @@ export class World {
 
   submitMesh(chunk, sy) {
     const sec = chunk.sections[sy];
-    const blocks = new Uint8Array(PADDED), light = new Uint8Array(PADDED);
+    const blocks = new Uint16Array(PADDED), light = new Uint8Array(PADDED);
     this.buildPadded(chunk, sy, blocks, light);
     sec.dirty = false;
     sec.pending++;
@@ -664,7 +667,10 @@ export class World {
   checkBlock(x, y, z) {
     const id = this.getBlock(x, y, z);
     if (!id) return;
+    // Water spreads a block every 5 ticks, lava every 30 (Minecraft's speeds).
     if (WATERLIKE[id] === 1) { this.scheduleTick(x, y, z, 5); return; }
+    if (WATERLIKE[id] === 2) { this.scheduleTick(x, y, z, 30); return; }
+    if (id === B.fire) { this.scheduleTick(x, y, z, 30 + ((x * 7 + z * 13 + y) & 7)); return; }
     const def = BLOCKS[id];
     if (def.falls) { this.scheduleTick(x, y, z, 2); return; }
     if (def.support && !this.supported(x, y, z, id)) {
@@ -721,21 +727,198 @@ export class World {
     for (const t of due) {
       const id = this.getBlock(t.x, t.y, t.z);
       if (WATERLIKE[id] === 1) this.flowWater(t.x, t.y, t.z, id);
+      else if (WATERLIKE[id] === 2) this.flowLava(t.x, t.y, t.z, id);
+      else if (id === B.fire) this.fireTick(t.x, t.y, t.z);
       else if (BLOCKS[id]?.falls) this.fall(t.x, t.y, t.z, id);
     }
   }
 
+  // Sand and gravel with nothing under them come loose and fall as a moving block (an entity
+  // that lands and becomes a block again). Without a listener to make one, they just drop.
   fall(x, y, z, id) {
     const below = this.getBlock(x, y - 1, z);
-    if (y > 0 && (below === 0 || (REPLACEABLE[below] && WATERLIKE[below] !== 2) || RENDER[below] === R.CROSS)) {
+    if (y > 0 && (below === 0 || (REPLACEABLE[below] && WATERLIKE[below] !== 2) || RENDER[below] === R.CROSS || below === B.fire)) {
+      if (this.listener?.spawnFalling) {
+        this.setBlock(x, y, z, 0, { remesh: true });
+        this.listener.spawnFalling(x, y, z, id);
+        return;
+      }
       this.setBlock(x, y, z, 0, { remesh: false });
       this.setBlock(x, y - 1, z, id, { remesh: false });
       this.scheduleTick(x, y - 1, z, 2);
     }
   }
 
+  // ------------------------------------------------------------------ fire
+  // Like Minecraft's: fire needs something solid under it or something flammable beside it,
+  // burns flammable neighbours away (sometimes into more fire), jumps to nearby spots next to
+  // flammable blocks, and goes out after a while on anything that doesn't burn. Rain puts it
+  // out under the open sky.
+  flammableAround(x, y, z) {
+    for (const d of FACE_DIRS) if (SPREAD[this.getBlock(x + d[0], y + d[1], z + d[2])]) return true;
+    return false;
+  }
+
+  canBurnAt(x, y, z) {
+    const id = this.getBlock(x, y, z);
+    return (id === 0 || id === B.tall_grass) && (SOLID[this.getBlock(x, y - 1, z)] || this.flammableAround(x, y, z));
+  }
+
+  // Lights a fire at (x, y, z) if it can burn there. Returns true if it did.
+  ignite(x, y, z) {
+    if (y < 1 || y >= HEIGHT - 1 || !this.canBurnAt(x, y, z)) return false;
+    if (!this.setBlock(x, y, z, B.fire)) return false;
+    this.fireAge.set(posKey(x, y, z), 0);
+    return true;
+  }
+
+  fireTick(x, y, z) {
+    const key = posKey(x, y, z);
+    const out = () => { this.fireAge.delete(key); this.setBlock(x, y, z, 0); };
+    const below = this.getBlock(x, y - 1, z);
+    if (this.listener?.rainingOn?.(x, y, z) && Math.random() < 0.6) { out(); this.listener?.fizz?.(x, y, z); return; }
+    const nearFuel = this.flammableAround(x, y, z);
+    if (!SOLID[below] && !nearFuel) { out(); return; }
+    let age = this.fireAge.get(key) ?? 0;
+    age = Math.min(15, age + (Math.random() < 0.5 ? 1 : 0) + (Math.random() < 0.3 ? 1 : 0));
+    this.fireAge.set(key, age);
+    // On something that doesn't burn, a fire dies down after a while.
+    if (!nearFuel && age > 3 && Math.random() < 0.3) { out(); return; }
+    if (!SPREAD[below] && age >= 15 && Math.random() < 0.25) { out(); return; }
+    // Burn the blocks around it.
+    for (let f = 0; f < 6; f++) {
+      const d = FACE_DIRS[f];
+      this.burn(x + d[0], y + d[1], z + d[2], f === 2 || f === 3 ? 250 : 300, age);
+    }
+    // Jump to nearby spots beside something flammable (mostly upwards, like real flames).
+    for (let dy = -1; dy <= 4; dy++) {
+      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy && !dz) continue;
+        const nx = x + dx, ny = y + dy, nz = z + dz;
+        if (this.getBlock(nx, ny, nz) !== 0) continue;
+        let odds = 0;
+        for (const e of FACE_DIRS) odds = Math.max(odds, SPREAD[this.getBlock(nx + e[0], ny + e[1], nz + e[2])]);
+        if (!odds) continue;
+        const chance = (odds + 40) / (30 + age) / (dy > 1 ? 100 + (dy - 1) * 100 : 100);
+        if (Math.random() < chance) this.ignite(nx, ny, nz);
+      }
+    }
+    this.scheduleTick(x, y, z, 30 + Math.floor(Math.random() * 10));
+  }
+
+  burn(x, y, z, odds, age) {
+    const id = this.getBlock(x, y, z);
+    if (!BURN[id] || Math.random() * odds >= BURN[id]) return;
+    if (id === B.tnt) { this.setBlock(x, y, z, 0); this.listener?.igniteTNT?.(x, y, z); return; }
+    // Burned away: sometimes it keeps burning where it was.
+    if (Math.random() * (age + 10) < 5) { this.setBlock(x, y, z, B.fire); this.fireAge.set(posKey(x, y, z), age); }
+    else this.setBlock(x, y, z, 0);
+  }
+
+  // Random ticks, as Minecraft has them: a few blocks per section, picked at random each tick,
+  // around every player (`centres`: [cx, cz] chunk columns). Lava sets fire to things near it.
+  randomTicks(centres, radius = 6) {
+    if (this.remote) return;
+    const seen = new Set();
+    for (const [pcx, pcz] of centres) {
+      for (let cz = pcz - radius; cz <= pcz + radius; cz++) for (let cx = pcx - radius; cx <= pcx + radius; cx++) {
+        const c = this.readyChunk(cx, cz);
+        if (!c || seen.has(c.key)) continue;
+        seen.add(c.key);
+        for (let sy = 0; sy < SECTIONS; sy++) {
+          if (!c.sections[sy].count) continue;
+          for (let k = 0; k < 3; k++) {
+            const r = (Math.random() * 4096) | 0;
+            const lx = r & 15, lz = (r >> 4) & 15, ly = (sy << 4) | (r >> 8);
+            const id = c.blocks[(ly << 8) | (lz << 4) | lx];
+            if (WATERLIKE[id] === 2) this.lavaSpark(cx * 16 + lx, ly, cz * 16 + lz);
+          }
+        }
+      }
+    }
+  }
+
+  lavaSpark(x, y, z) {
+    const n = Math.floor(Math.random() * 3);
+    let px = x, py = y, pz = z;
+    for (let i = 0; i < n; i++) {
+      px += Math.floor(Math.random() * 3) - 1; py++; pz += Math.floor(Math.random() * 3) - 1;
+      const id = this.getBlock(px, py, pz);
+      if (id === 0) { if (this.flammableAround(px, py, pz)) { this.ignite(px, py, pz); return; } }
+      else if (SOLID[id]) return;
+    }
+    if (n === 0) {
+      for (let i = 0; i < 3; i++) {
+        const tx = x + Math.floor(Math.random() * 3) - 1, tz = z + Math.floor(Math.random() * 3) - 1;
+        if (this.getBlock(tx, y + 1, tz) === 0 && SPREAD[this.getBlock(tx, y, tz)]) this.ignite(tx, y + 1, tz);
+      }
+    }
+  }
+
+  // ------------------------------------------------------------------ lava
+  // Flows like water but slowly (every 30 ticks) and three blocks at most across flat ground.
+  // Where it meets water it hardens: a still pool into obsidian, a flow into cobblestone, and
+  // lava pouring onto water turns the water to stone.
+  flowLava(x, y, z, id) {
+    let level = lavaLevel(id);
+    for (let d = 0; d < 6; d++) {
+      if (d === 3) continue;
+      const dir = FACE_DIRS[d];
+      if (WATERLIKE[this.getBlock(x + dir[0], y + dir[1], z + dir[2])] === 1) {
+        this.setBlock(x, y, z, level === 0 ? B.obsidian : B.cobblestone);
+        this.listener?.fizz?.(x, y, z);
+        return;
+      }
+    }
+    if (level > 0) {
+      const above = this.getBlock(x, y + 1, z);
+      let want;
+      if (WATERLIKE[above] === 2) want = 8;
+      else {
+        let best = 99;
+        for (let d = 0; d < 6; d++) {
+          if (d === 2 || d === 3) continue;
+          const dir = FACE_DIRS[d];
+          const nl = lavaLevel(this.getBlock(x + dir[0], y, z + dir[2]));
+          if (nl < 0) continue;
+          best = Math.min(best, nl === 8 ? 0 : nl);
+        }
+        want = best + 2 <= 7 ? best + 2 : -1;
+      }
+      if (want !== level) {
+        this.setBlock(x, y, z, want < 0 ? 0 : want === 0 ? B.lava : LAVA_FLOW_BASE - 1 + want, { remesh: false });
+        if (want < 0) return;
+        level = want;
+      }
+    }
+    const below = this.getBlock(x, y - 1, z);
+    if (y > 0 && WATERLIKE[below] === 1) { this.setBlock(x, y - 1, z, B.stone, { remesh: false }); this.listener?.fizz?.(x, y - 1, z); return; }
+    if (y > 0 && this.canFlowInto(below)) {
+      this.breakFor(x, y - 1, z, below);
+      this.setBlock(x, y - 1, z, LAVA_FLOW_BASE + 7, { remesh: false });
+      return;
+    }
+    if (y > 0 && lavaLevel(below) >= 0 && level !== 0) return;
+    const spread = level === 8 ? 2 : level + 2;
+    if (spread > 7) return;
+    for (let d = 0; d < 6; d++) {
+      if (d === 2 || d === 3) continue;
+      const dir = FACE_DIRS[d];
+      const nx = x + dir[0], nz = z + dir[2];
+      const n = this.getBlock(nx, y, nz);
+      if (WATERLIKE[n] === 1) continue;
+      if (this.canFlowInto(n)) {
+        this.breakFor(nx, y, nz, n);
+        this.setBlock(nx, y, nz, LAVA_FLOW_BASE - 1 + spread, { remesh: false });
+      } else {
+        const nl = lavaLevel(n);
+        if (nl > spread && nl !== 8) this.setBlock(nx, y, nz, LAVA_FLOW_BASE - 1 + spread, { remesh: false });
+      }
+    }
+  }
+
   canFlowInto(id) {
-    return id === 0 || (REPLACEABLE[id] && WATERLIKE[id] !== 1) || (RENDER[id] === R.CROSS) || RENDER[id] === R.TORCH;
+    return id === 0 || (REPLACEABLE[id] && !WATERLIKE[id]) || RENDER[id] === R.CROSS || RENDER[id] === R.TORCH;
   }
 
   flowWater(x, y, z, id) {
@@ -797,7 +980,7 @@ export class World {
   }
 
   breakFor(x, y, z, id) {
-    if (id && RENDER[id] !== R.LIQUID) this.listener?.blockDropped?.(x, y, z, id);
+    if (id && RENDER[id] !== R.LIQUID && id !== B.fire) this.listener?.blockDropped?.(x, y, z, id);
   }
 
   // ------------------------------------------------------------------ queries

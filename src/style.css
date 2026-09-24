@@ -682,3 +682,22 @@ kbd {
 }
 .nametag.sneak { color: rgba(255, 255, 255, 0.45); background: rgba(0, 0, 0, 0.2); }
 #leave-bed { position: absolute; left: 50%; bottom: calc(var(--u) * 60); transform: translateX(-50%); pointer-events: auto; z-index: 3; }
+
+/* Flames at the bottom of the screen while you're on fire (the fire animation, eight frames). */
+#overlay-fire { position: absolute; inset: 0; pointer-events: none; }
+#overlay-fire i {
+  position: absolute;
+  bottom: -4vh;
+  width: 34vh;
+  height: 46vh;
+  background-image: var(--fire);
+  background-size: 100% 800%;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  opacity: 0.92;
+  animation: fire-flip 0.66s steps(8) infinite;
+}
+#overlay-fire i:first-child { left: max(4vw, calc(50% - 60vh)); }
+#overlay-fire i:last-child { right: max(4vw, calc(50% - 60vh)); transform: scaleX(-1); animation-delay: -0.33s; }
+@keyframes fire-flip { from { background-position: 0 0; } to { background-position: 0 -368vh; } }
+@media (prefers-reduced-motion: reduce) { #overlay-fire i { animation: none; } }

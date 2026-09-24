@@ -47,7 +47,9 @@ void main() {
     rel.z += cos(ph * 0.8 + 1.3) * amp;
   }
   gl_Position = u_proj * u_view * rel;
-  v_uv = vec3(a_uv / 16.0, float(a_info.x));
+  v_uv = vec3(a_uv / 16.0, float(a_info.x + a_info.w * 256u));
+  // Animated textures (fire) step through eight consecutive layers.
+  if ((flags & 4u) != 0u) v_uv.z += floor(mod(u_time * 12.0, 8.0));
   v_light = a_light;
   v_tint = a_tint.rgb;
   v_shade = SHADE[min(a_info.y, 6u)];
@@ -83,10 +85,19 @@ out vec4 o_color;
 float curve(float l) { return l / (3.0 - 2.0 * l); }
 void main() {
   vec2 uv = v_uv.xy;
-  if ((v_flags & 16u) != 0u) {
-    uv += vec2(sin(u_time * 0.8 + uv.y * 6.2832) * 0.035, -u_time * 0.06);
-  } else if ((v_flags & 64u) != 0u) {
-    uv += vec2(sin(u_time * 0.35 + uv.y * 3.1416) * 0.06, u_time * 0.025);
+  if ((v_flags & 80u) != 0u) {
+    // Water (16) and lava (64): flowing surfaces run downhill, falling sides run down, and a
+    // slow ripple moves over everything. Lava is thick and slow.
+    bool lava = (v_flags & 64u) != 0u;
+    float code = floor(v_light.w * 255.0 + 0.5);
+    float speed = lava ? 0.16 : 0.62;
+    if (code > 254.5) uv.y -= u_time * speed * 1.5;
+    else if (code > 0.5) {
+      float a = (code - 1.0) / 253.0 * 6.2831853;
+      uv -= vec2(cos(a), sin(a)) * u_time * speed;
+    }
+    uv += lava ? vec2(sin(u_time * 0.35 + uv.y * 3.1416) * 0.06, u_time * 0.02)
+               : vec2(sin(u_time * 0.8 + uv.y * 6.2832) * 0.03, cos(u_time * 0.6 + uv.x * 6.2832) * 0.02);
   } else if ((v_flags & 128u) != 0u) {
     uv *= u_precipScale;
     uv.y -= u_precip.x;
@@ -288,6 +299,8 @@ export class Renderer {
 
     this.pixels = generateTextures();
     this.layers = TEXTURE_NAMES.length;
+    const maxLayers = gl.getParameter(gl.MAX_ARRAY_TEXTURE_LAYERS);
+    if (this.layers > maxLayers) throw new Error(`This device's graphics support ${maxLayers} textures, and the game needs ${this.layers}.`);
     this.texture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.texture);
     gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA8, 16, 16, this.layers, 0, gl.RGBA, gl.UNSIGNED_BYTE, this.pixels);

@@ -19,7 +19,7 @@ class Writer {
     this.u16[h + 1] = Math.round((y + MODEL_OFFSET) * U);
     this.u16[h + 2] = Math.round((z + MODEL_OFFSET) * U);
     const b = this.u8;
-    b[o + 6] = u; b[o + 7] = v; b[o + 8] = layer; b[o + 9] = face; b[o + 10] = flags; b[o + 11] = 0;
+    b[o + 6] = u; b[o + 7] = v; b[o + 8] = layer & 255; b[o + 9] = face; b[o + 10] = flags; b[o + 11] = layer >> 8;
     b[o + 12] = 255; b[o + 13] = 0; b[o + 14] = 255; b[o + 15] = 0;
     b[o + 16] = tint ? tint[0] : 255; b[o + 17] = tint ? tint[1] : 255; b[o + 18] = tint ? tint[2] : 255; b[o + 19] = 255;
   }

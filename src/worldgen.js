@@ -136,7 +136,7 @@ export class WorldGen {
   }
 
   generate(cx, cz) {
-    const blocks = new Uint8Array(CHUNK_VOLUME);
+    const blocks = new Uint16Array(CHUNK_VOLUME);
     const climate = new Uint8Array(512);
     const biomes = new Uint8Array(256);
     if (this.type === 'flat') {

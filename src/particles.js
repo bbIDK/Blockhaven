@@ -122,7 +122,7 @@ export class Particles {
         u16[h + 2] = Math.round((pz + (rz * a + uz * b) * s) * 256);
         u8[o + 6] = p.u + (a > 0 ? full : 0);
         u8[o + 7] = p.v + (b > 0 ? 0 : full);
-        u8[o + 8] = p.layer; u8[o + 9] = 6; u8[o + 10] = p.flags; u8[o + 11] = 0;
+        u8[o + 8] = p.layer & 255; u8[o + 9] = 6; u8[o + 10] = p.flags; u8[o + 11] = p.layer >> 8;
         u8[o + 12] = (l >> 4) * 17; u8[o + 13] = (l & 15) * 17; u8[o + 14] = 255; u8[o + 15] = 0;
         u8[o + 16] = p.tint[0]; u8[o + 17] = p.tint[1]; u8[o + 18] = p.tint[2]; u8[o + 19] = 255;
         n++;

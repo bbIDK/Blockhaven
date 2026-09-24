@@ -1089,6 +1089,34 @@ def('chest_top', (t) => {
     t.set(x, y, c);
   }
 });
+// Double chests: each half has its rim on the outside only, and the latch sits on the seam.
+function chestHalf(t, rimLeft, rimRight) {
+  chestBody(t);
+  for (let y = 3; y < 15; y++) {
+    if (!rimLeft) for (let x = 0; x < 2; x++) if (y !== 7 && y !== 8) t.set(x, y, pick(CHEST.planks, t.r()));
+    if (!rimRight) for (let x = 14; x < 16; x++) if (y !== 7 && y !== 8) t.set(x, y, pick(CHEST.planks, t.r()));
+  }
+}
+def('chest_front_l', (t) => {
+  chestHalf(t, true, false);
+  for (let y = 6; y < 10; y++) t.set(15, y, y === 6 ? 0xd8d8d8 : 0xa9a9a9);
+  t.set(15, 9, 0x6a6a6a);
+});
+def('chest_front_r', (t) => {
+  chestHalf(t, false, true);
+  for (let y = 6; y < 10; y++) t.set(0, y, y === 6 ? 0xd8d8d8 : 0xa9a9a9);
+  t.set(0, 9, 0x6a6a6a);
+});
+def('chest_back_double', (t) => chestHalf(t, false, false));
+for (const [name, rimU] of [['chest_top_dx', false], ['chest_top_dz', true]]) {
+  def(name, (t) => {
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+      let c = pick(CHEST.planks, t.r());
+      if (rimU ? x <= 1 || x >= 14 : y <= 1 || y >= 14) c = CHEST.dark;
+      t.set(x, y, c);
+    }
+  });
+}
 const BED_RED = [0x9c1f1a, 0xab2620, 0xb52d26];
 // The pillow sits at the head end of the bed, so there is one top texture per direction
 // (n = -Z, s = +Z, e = +X, w = -X edge of the top face).
@@ -1270,6 +1298,36 @@ def('snow_fall', (t) => {
   for (let i = 0; i < 5; i++) t.set(t.ri(16), t.ri(16), 0xffffff, 225);
 });
 def('splash', (t) => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, pick([0x9fbef0, 0xc8dcff, 0x7fa4e0], t.r())); });
+
+// Blood from hits on animals and monsters.
+def('blood', (t) => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, pick([0x5c0808, 0x760c0c, 0x921212, 0xaa1a1a], t.r())); });
+
+// Fire: eight frames of flames licking upwards (the renderer steps through them).
+{
+  const PAL = [0x6e1004, 0x9c2008, 0xc8400b, 0xe86612, 0xf6931f, 0xfcc03c, 0xffe58a];
+  // One tall field of flame tongues that the frames scroll through.
+  const rnd = mulberry32(0xf12e);
+  const cols = Array.from({ length: 16 }, () => ({ base: 7 + rnd() * 7, phase: rnd() * 6.28, speed: 0.6 + rnd() * 0.8 }));
+  for (let f = 0; f < 8; f++) {
+    def(`fire_${f}`, (t) => {
+      t.clear();
+      for (let x = 0; x < 16; x++) {
+        const c = cols[x];
+        const nb = (cols[(x + 15) % 16].base + cols[(x + 1) % 16].base) / 2;
+        const h = (c.base * 0.6 + nb * 0.4) + Math.sin(c.phase + f * c.speed * 0.785) * 2.6 + Math.sin(x * 1.7 + f * 0.9) * 1.2;
+        for (let y = 15; y >= 0; y--) {
+          const up = 15 - y; // pixels from the bottom
+          if (up > h) continue;
+          const k = 1 - up / Math.max(1, h);
+          const flicker = Math.sin(x * 2.3 + y * 1.1 + f * 1.6) * 0.08;
+          let v = Math.min(0.999, Math.max(0, k * 0.9 + flicker + (up < 2 ? 0.1 : 0)));
+          if (up > h - 1.2) v = Math.min(v, 0.2);
+          t.set(x, y, pick(PAL, v));
+        }
+      }
+    });
+  }
+}
 
 // Critical-hit sparks.
 def('crit', (t) => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, pick([0xfff3b0, 0xffffff, 0xffd766], t.r())); });

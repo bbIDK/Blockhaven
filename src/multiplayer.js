@@ -9,7 +9,7 @@
 // which is also how open games are listed in the claude.ai room.
 import { Link, RoomTransport, PeerTransport, PROTOCOL, cleanCode } from './net.js';
 import { RemotePlayer } from './avatars.js';
-import { encodeRLE, decodeRLE } from './storage.js';
+import { encodeRLE16, decodeRLE16 } from './storage.js';
 import { BLOCKS, REPLACEABLE, CHEST, FURNACE_IDS } from './blocks.js';
 import { itemDef, maxStack } from './items.js';
 import { chunkKey, HEIGHT, CHUNK_VOLUME } from './config.js';
@@ -92,15 +92,21 @@ function fromBase64(text) {
   return u8;
 }
 
+// Block ids are 16-bit; deflate sees their bytes (little-endian, as every browser stores them).
 async function packChunk(blocks, deflate) {
-  if (deflate && DEFLATE) return { z: 1, d: toBase64(await through(blocks, new CompressionStream('deflate-raw'))) };
-  return { z: 0, d: toBase64(encodeRLE(blocks)) };
+  const bytes = new Uint8Array(blocks.buffer, blocks.byteOffset, blocks.byteLength);
+  if (deflate && DEFLATE) return { z: 1, d: toBase64(await through(bytes, new CompressionStream('deflate-raw'))) };
+  return { z: 0, d: toBase64(encodeRLE16(blocks)) };
 }
 
 async function unpackChunk(msg) {
   const bytes = fromBase64(msg.d);
-  const blocks = msg.z === 1 ? await through(bytes, new DecompressionStream('deflate-raw')) : decodeRLE(bytes, CHUNK_VOLUME);
-  if (blocks.length !== CHUNK_VOLUME) throw new Error('chunk has the wrong size');
+  let blocks;
+  if (msg.z === 1) {
+    const raw = await through(bytes, new DecompressionStream('deflate-raw'));
+    if (raw.length !== CHUNK_VOLUME * 2) throw new Error('chunk has the wrong size');
+    blocks = new Uint16Array(raw.buffer, raw.byteOffset, CHUNK_VOLUME).slice();
+  } else blocks = decodeRLE16(bytes, CHUNK_VOLUME);
   for (let i = 0; i < blocks.length; i++) if (!BLOCKS[blocks[i]]) blocks[i] = 0;
   return blocks;
 }
@@ -520,7 +526,7 @@ export class HostSession extends Session {
       arr[i] = clean[i] = cleanStack(v);
     }
     for (const addr of this.viewers.get(m.k) ?? []) if (addr !== from) this.send(addr, { t: 'slots', k: m.k, s: clean });
-    if (from && this.game.openBlock?.key === m.k) this.game.menuChanged();
+    if (from && (this.game.openBlock?.keys ?? []).includes(m.k)) this.game.menuChanged();
   }
 
   containerEdited(key, changes) { this.slots({ k: key, s: changes }); }
@@ -624,6 +630,7 @@ function entityState(e) {
   const s = { i: e.nid, x: r2(e.x), y: r2(e.y), z: r2(e.z) };
   if (e.kind === 'item') return Object.assign(s, { k: 'i', id: e.id, n: e.count, d: e.dmg ?? 0, pd: r2(Math.max(0, e.pickupDelay)) });
   if (e.kind === 'tnt') return Object.assign(s, { k: 't', f: e.fuse });
+  if (e.kind === 'falling') return Object.assign(s, { k: 'f', b: e.block });
   return Object.assign(s, { k: 'm', ty: e.type, a: r2(e.yaw), f: mobFlags(e) });
 }
 
@@ -860,7 +867,7 @@ export class GuestSession extends Session {
     const arr = this.game.containers.get(msg.k);
     if (!arr || !Array.isArray(msg.s)) return;
     for (let i = 0; i < arr.length; i++) arr[i] = cleanStack(msg.s[i]);
-    this.refresh(msg.k);
+    this.refresh(msg.k, true);
   }
 
   furnaceData(msg) {
@@ -870,7 +877,7 @@ export class GuestSession extends Session {
     f.burn = num(msg.burn) ? msg.burn : 0;
     f.burnMax = num(msg.burnMax) ? msg.burnMax : 0;
     f.cook = num(msg.cook) ? msg.cook : 0;
-    this.refresh(msg.k);
+    this.refresh(msg.k, true);
   }
 
   slotData(msg) {
@@ -883,10 +890,11 @@ export class GuestSession extends Session {
     this.refresh(msg.k);
   }
 
-  refresh(key) {
+  // `full`: the whole contents arrived (the menu can be used once every part has).
+  refresh(key, full = false) {
     const game = this.game;
-    if (game.openBlock?.key !== key || !game.menu) return;
-    game.menu.syncing = false;
+    if (!game.menu || !(game.openBlock?.keys ?? [game.openBlock?.key]).includes(key)) return;
+    if (full) game.menu.waiting?.delete(key);
     game.menuChanged();
   }
 

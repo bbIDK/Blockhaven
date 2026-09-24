@@ -108,7 +108,7 @@ export class Weather {
       u16[hh + 1] = Math.round((vy - this.base[1]) * 256);
       u16[hh + 2] = Math.round((vz - this.base[2]) * 256);
       u8[o + 6] = u + uo; u8[o + 7] = v + vo;
-      u8[o + 8] = layer; u8[o + 9] = 6; u8[o + 10] = F_PRECIP; u8[o + 11] = 0;
+      u8[o + 8] = layer & 255; u8[o + 9] = 6; u8[o + 10] = F_PRECIP; u8[o + 11] = layer >> 8;
       u8[o + 12] = (l >> 4) * 17; u8[o + 13] = (l & 15) * 17; u8[o + 14] = 255; u8[o + 15] = 0;
       u8[o + 16] = 255; u8[o + 17] = 255; u8[o + 18] = 255; u8[o + 19] = 255;
     }
