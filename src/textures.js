@@ -1133,6 +1133,69 @@ def('player_sleeve', (t) => {
   for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, pick([0x2f7d8c, 0x348a9a, 0x3a96a6], t.r()));
 });
 
+// ---------------------------------------------------------------- other players
+// A 64x32 skin in the classic layout (head at the top left, legs, body and arms below), cut into
+// the 16x16 tiles the model uses. The shirt and trousers are grey so that each player's own
+// colours can be tinted in (see avatars.js).
+let avatarSkin = null;
+function avatarSkinPixels() {
+  if (avatarSkin) return avatarSkin;
+  const px = new Int32Array(64 * 32).fill(-1);
+  const rnd = mulberry32(911);
+  const from = (pal) => pal[Math.floor(rnd() * pal.length)];
+  const SKIN = [0xc68e6a, 0xcf9874, 0xd6a07c], HAIR = [0x3b2414, 0x46291a, 0x33200f];
+  const SHIRT = [0xd2d2d2, 0xdcdcdc, 0xe6e6e6], PANTS = [0xc4c4c4, 0xcecece, 0xbababa], SHOES = [0x4a4a4a, 0x3e3e3e];
+  const regions = (u, v, w, h, d) => ({
+    top: [u + d, v, w, d], bottom: [u + d + w, v, w, d],
+    right: [u, v + d, d, h], front: [u + d, v + d, w, h], left: [u + d + w, v + d, d, h], back: [u + 2 * d + w, v + d, w, h],
+  });
+  const paint = ([x0, y0, w, h], pick) => {
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) px[(y0 + y) * 64 + x0 + x] = pick(x, y);
+  };
+  const head = regions(0, 0, 8, 8, 8);
+  paint(head.top, () => from(HAIR));
+  paint(head.bottom, () => from(SKIN));
+  paint(head.back, (x, y) => (y < 6 || (y === 6 && rnd() < 0.5) ? from(HAIR) : from(SKIN)));
+  for (const side of [head.right, head.left]) paint(side, (x, y) => (y < 2 || (y < 4 && (x < 5 || rnd() < 0.3)) ? from(HAIR) : from(SKIN)));
+  paint(head.front, (x, y) => {
+    if (y < 2 || (y === 2 && (x === 0 || x === 7 || x === 3))) return from(HAIR);
+    if (y === 4 && (x === 1 || x === 6)) return 0xf4f4f4;
+    if (y === 4 && (x === 2 || x === 5)) return 0x3a2a60;
+    if (y === 3 && x > 0 && x < 7 && x !== 3 && x !== 4) return 0x7a5238;
+    if (y === 5 && (x === 3 || x === 4)) return 0xb07a58;
+    if (y === 6 && x > 1 && x < 6) return x === 2 || x === 5 ? 0x9a6448 : 0x6e3c2c;
+    return from(SKIN);
+  });
+  for (const [name, r] of Object.entries(regions(16, 16, 8, 12, 4))) {
+    paint(r, (x, y) => (y === 11 && name !== 'top' && name !== 'bottom' ? 0x3a3a3a : from(SHIRT)));
+  }
+  for (const [name, r] of Object.entries(regions(40, 16, 4, 12, 4))) {
+    paint(r, (x, y) => (name === 'top' || (name !== 'bottom' && y < 4) ? (y === 3 && name !== 'top' ? 0xb0b0b0 : from(SHIRT)) : from(SKIN)));
+  }
+  for (const [name, r] of Object.entries(regions(0, 16, 4, 12, 4))) {
+    paint(r, (x, y) => (name === 'bottom' || (name !== 'top' && y >= 10) ? from(SHOES) : from(PANTS)));
+  }
+  avatarSkin = px;
+  return px;
+}
+for (const tile of [0, 1, 4, 5, 6, 7]) {
+  def(`avatar_${tile}`, (t) => {
+    const px = avatarSkinPixels(), ox = (tile % 4) * 16, oy = (tile >> 2) * 16;
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+      const c = px[(oy + y) * 64 + ox + x];
+      if (c < 0) t.set(x, y, 0, 0); else t.set(x, y, c);
+    }
+  });
+}
+// Armour worn by other players: plain brushed metal, tinted by material.
+def('avatar_armor', (t) => {
+  const n = t.noise(2);
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    const v = 0xc8 + Math.round((n[y * 16 + x] - 0.5) * 40 + (t.r() - 0.5) * 16);
+    t.set(x, y, (v << 16) | (v << 8) | v);
+  }
+});
+
 // ---------------------------------------------------------------- mobs
 function furry(t, pal, cell = 2) {
   const n = t.noise(cell);

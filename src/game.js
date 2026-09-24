@@ -16,6 +16,8 @@ import { Particles } from './particles.js';
 import { Weather } from './weather.js';
 import { Entities } from './entities.js';
 import { TouchControls } from './touch.js';
+import { HostSession, GuestSession, openRoom, openGames, cleanName, COLORS } from './multiplayer.js';
+import { Avatars } from './avatars.js';
 import * as storage from './storage.js';
 import { makeEnvironment, updateEnvironment, clockText } from './sky.js';
 import {
@@ -34,6 +36,7 @@ const REDUCED_MOTION = typeof matchMedia === 'function' && matchMedia('(prefers-
 const DEFAULT_SETTINGS = {
   renderDistance: COARSE ? 5 : 8, resolution: 0, fov: 75, sensitivity: 100, brightness: 50, volume: 60, music: 40,
   viewBobbing: !REDUCED_MOTION, clouds: true, invertMouse: false, showFps: false, recipeBook: true, guiScale: 0, mix: 3,
+  name: '',
 };
 const LOG_AXES = { [B.oak_log]: [100, 101], [B.birch_log]: [102, 103], [B.spruce_log]: [104, 105] };
 const FACE_NAMES = ['east (+X)', 'west (-X)', 'up', 'down', 'south (+Z)', 'north (-Z)'];
@@ -140,6 +143,13 @@ export class Game {
     this.drawnInvVersion = -1;
     this.saveTimer = 0;
     this.tipIndex = Math.floor(Math.random() * TIPS.length);
+    // Multiplayer: the session this game is hosting or has joined (null in single player), how
+    // other players look, and counters others watch to see us swing and get hurt.
+    this.net = null;
+    this.avatars = new Avatars(this.renderer);
+    this.swingCount = 0;
+    this.hurtCount = 0;
+    if (!this.settings.name) this.settings.name = `Player${100 + Math.floor(Math.random() * 900)}`;
 
     this.autoScale = 1;
     this.slowTime = 0;
@@ -154,7 +164,17 @@ export class Game {
         if (this.state === 'play') this.pause();
         this.save();
       }
+      this.lastBackground = performance.now();
     });
+    // Browsers stop drawing frames in a hidden tab. In multiplayer the world must go on for the
+    // others, so a timer keeps it running (without drawing) until the tab is back.
+    this.lastBackground = performance.now();
+    setInterval(() => {
+      if (!document.hidden || !this.net || !this.world || this.state === 'loading') return;
+      const now = performance.now(), dt = Math.min(1, (now - this.lastBackground) / 1000);
+      this.lastBackground = now;
+      try { this.updateGame(dt, false); } catch (err) { console.error(err); }
+    }, 100);
     window.addEventListener('pagehide', () => this.save());
     this.onResize();
     window.addEventListener('resize', () => this.onResize());
@@ -222,7 +242,8 @@ export class Game {
     ui.on('controls', (from) => this.pushScreen('screen-controls', from));
     ui.on('done', () => this.popScreen());
     ui.on('back', (from) => {
-      if (from === 'screen-worlds') { this.ui.show('screen-title'); this.screenStack = []; }
+      if (from === 'screen-worlds' || from === 'screen-multiplayer') { this.closeLobby(); this.ui.show('screen-title'); this.screenStack = []; }
+      else if (from === 'screen-share') this.ui.show('screen-pause');
       else if (from === 'screen-create') storage.listWorlds().then((w) => (w.length ? this.openWorlds() : this.ui.show('screen-title')));
       else this.popScreen();
     });
@@ -243,6 +264,16 @@ export class Game {
         this.openWorlds();
       }
     });
+    ui.on('multiplayer', () => this.openMultiplayer());
+    ui.on('mp-join', () => { if (ui.selectedGame) this.join({ kind: 'room', addr: ui.selectedGame }); });
+    ui.on('mp-code', (code) => this.join({ kind: 'code', code }));
+    ui.on('mp-name', (name) => { this.settings.name = cleanName(name); this.saveSettings(); });
+    ui.on('share', () => this.openShare());
+    ui.on('share-room', () => this.openToFriends('room'));
+    ui.on('share-code', () => this.openToFriends('code'));
+    ui.on('copy-code', () => { if (this.net?.code) navigator.clipboard?.writeText(this.net.code).then(() => ui.shareStatus('Copied!'), () => {}); });
+    ui.on('notice-ok', () => { this.screenStack = []; this.ui.show('screen-title'); });
+    ui.on('leave-bed', () => this.wake(false));
     ui.on('resume', () => this.resume());
     ui.on('quit', () => this.quitToTitle());
     ui.on('respawn', () => this.respawn());
@@ -310,19 +341,22 @@ export class Game {
     this.panoCam = { x: spawn.x, y: Math.max(h, 62) + 14, z: spawn.z, yaw: 0.6, pitch: -0.12 };
   }
 
-  async enterWorld(meta) {
+  // `remote`: a multiplayer guest's world ({ store }), whose chunks the host hands out.
+  async enterWorld(meta, remote = null) {
     this.state = 'loading';
     this.ui.show('screen-loading');
     this.ui.setHUD(false);
-    $('loading-text').textContent = 'Generating terrain';
+    this.closeLobby();
+    $('loading-text').textContent = remote ? 'Joining the game' : 'Generating terrain';
     $('loading-bar').style.width = '0%';
     $('loading-tip').textContent = TIPS[this.tipIndex++ % TIPS.length];
     $('screen-loading').style.backgroundImage = `linear-gradient(rgba(8,12,14,.78), rgba(8,12,14,.78)), url(${this.dirtTile()})`;
     if (this.panorama) { this.panorama.dispose(); this.panorama = null; }
     if (this.world) { this.world.dispose(); this.world = null; }
-    const store = await new storage.WorldStore(meta.id, CHUNK_VOLUME).init();
+    const store = remote ? remote.store : await new storage.WorldStore(meta.id, CHUNK_VOLUME).init();
     this.meta = meta;
     this.world = new World({ seed: meta.seed, type: meta.type, renderer: this.renderer, store });
+    this.world.remote = !!remote;
     this.world.listener = this;
     this.time = meta.time ?? 1000;
     this.needsRespawnY = false;
@@ -365,14 +399,154 @@ export class Game {
       this.needsPlacement = true;
     }
     if (!this.creative) p.flying = false;
-    this.entities.reset(meta.entities);
+    // (A guest's entities come from the host and are already in place.)
+    if (!remote) this.entities.reset(meta.entities);
     this.weather.load(meta.weather);
+    if (remote) this.weather.timer = Infinity;
     this.containers = new Map((meta.containers ?? []).map((c) => [c.k, c.slots.map((x) => (x && itemDef(x.id) ? x : null))]));
     this.furnaces = new Map((meta.furnaces ?? []).map((f) => [f.k, new Furnace(f)]));
     this.attackTicks = 100;
     this.fire = 0;
     this.loadStart = performance.now();
     this.mining = null;
+  }
+
+  // ---------------------------------------------------------------- multiplayer
+  // Joins a game: { kind: 'room', addr } (listed on this claude.ai page) or { kind: 'code', code }.
+  async join(target) {
+    if (this.joining || this.state === 'loading') return;
+    this.joining = true;
+    this.audio.unlock();
+    this.ui.mpStatus(target.kind === 'code' ? 'Connecting…' : 'Joining…');
+    try {
+      const session = await GuestSession.join(this, target);
+      this.net = session;
+      await this.enterRemoteWorld(session, session.welcomed);
+    } catch (err) {
+      console.warn(err);
+      this.ui.mpStatus(err.message || 'Couldn’t join that game.', true);
+    } finally {
+      this.joining = false;
+    }
+  }
+
+  // Builds a guest's world from the host's welcome. `again`: the host sent it once more after we
+  // lost track, so reload the world where we stand.
+  async enterRemoteWorld(session, w, again = false) {
+    const you = again ? this.playerData() : w.you;
+    const world = w.w;
+    const meta = {
+      id: `mp-${session.gid}`, name: String(world.name ?? 'World').slice(0, 32), seed: world.seed >>> 0,
+      type: world.type === 'flat' ? 'flat' : 'default', mode: you?.mode === 'creative' || (!you?.mode && world.mode === 'creative') ? 'creative' : 'survival',
+      spawn: world.spawn && Number.isFinite(world.spawn.x) && Number.isFinite(world.spawn.z) ? { x: world.spawn.x, y: world.spawn.y ?? null, z: world.spawn.z } : { x: 0.5, y: null, z: 0.5 },
+      time: Number.isFinite(world.time) ? world.time : 1000, weather: { raining: !!world.rain },
+      bed: you?.bed ?? null, player: you?.player ?? null, inventory: you?.inventory ?? null, remote: true,
+    };
+    const container = this.containers, furnaces = this.furnaces;
+    await this.enterWorld(meta, { store: session.store });
+    if (again) { this.containers = container; this.furnaces = furnaces; }
+    else { this.containers = new Map(); this.furnaces = new Map(); }
+  }
+
+  // The player's own progress, which a guest's host keeps for them.
+  playerData() {
+    const p = this.player;
+    return {
+      player: { x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, flying: p.flying, health: this.health, air: this.air,
+        food: this.food, saturation: this.saturation, exhaustion: this.exhaustion },
+      inventory: this.inv.serialize(), mode: this.meta?.mode ?? 'survival', bed: this.meta?.bed ?? null,
+    };
+  }
+
+  async openMultiplayer() {
+    this.audio.unlock();
+    this.ui.show('screen-multiplayer');
+    this.ui.mpStatus(null);
+    $('mp-name').value = this.settings.name;
+    this.ui.renderGames(null);
+    const room = await openRoom();
+    if (this.ui.current !== 'screen-multiplayer') return;
+    this.lobby = room;
+    if (!room) { this.ui.renderGames(null); return; }
+    const refresh = () => { if (this.ui.current === 'screen-multiplayer') this.ui.renderGames(openGames(room)); };
+    room.onPresence = refresh;
+    room.setPresence({});
+    refresh();
+    this.lobbyTimer = setInterval(refresh, 1000);
+  }
+
+  closeLobby() {
+    clearInterval(this.lobbyTimer);
+    if (this.lobby && !this.net) this.lobby.onPresence = null;
+    this.lobby = null;
+  }
+
+  // Pause menu > Open to Friends.
+  async openShare() {
+    this.ui.show('screen-share');
+    $('share-name').value = this.settings.name;
+    const room = await openRoom();
+    this.ui.renderShare(this.net, !!room);
+  }
+
+  async openToFriends(kind) {
+    if (this.net || this.hosting || !this.world || this.meta?.remote) return;
+    this.settings.name = cleanName($('share-name').value || this.settings.name);
+    this.saveSettings();
+    this.hosting = true;
+    this.ui.shareStatus(kind === 'room' ? 'Opening your world…' : 'Getting a join code…');
+    try {
+      this.net = await HostSession.start(this, kind);
+      this.ui.renderShare(this.net, !!(await openRoom()));
+      this.ui.message(kind === 'room' ? 'Your world is open to friends on this page' : `Your world is open to friends. Join code: ${this.net.code}`, COLORS.y);
+    } catch (err) {
+      console.warn(err);
+      this.ui.shareStatus(err.message || 'Couldn’t open your world.', true);
+    } finally {
+      this.hosting = false;
+    }
+  }
+
+  // The game we were in ended (host gone, connection lost).
+  async disconnected(reason) {
+    const net = this.net;
+    if (!net) return;
+    this.net = null;
+    net.close();
+    await this.quitToTitle();
+    $('notice-title').textContent = 'Disconnected';
+    $('notice-text').textContent = reason;
+    this.ui.show('screen-notice');
+  }
+
+  // Everyone in the world (for mobs and explosions): this player and, in multiplayer, the rest.
+  players() {
+    const p = this.player;
+    const me = { x: p.x, y: p.y, z: p.z, addr: null, creative: this.creative, dead: this.state === 'dead' };
+    return this.net ? [me, ...this.net.others()] : [me];
+  }
+
+  hurtPlayer(t, amount, cause, knock, armored) {
+    if (!t.addr) this.damage(amount, cause, false, knock, armored);
+    else this.net?.hurt?.(t.addr, amount, cause, knock, armored);
+  }
+
+  // Sounds and bits for a block someone else broke, placed or opened nearby.
+  remoteBlockFx(x, y, z, old, id) {
+    const p = this.player, at = { x: x + 0.5, y: y + 0.5, z: z + 0.5 };
+    if (Math.hypot(at.x - p.x, at.y - p.y, at.z - p.z) > 24) return;
+    if (DOOR[old] && DOOR[id]) { if (!DOOR[id].upper) this.audio.door(!!DOOR[id].open, at); return; }
+    if ((FURNACE_IDS.has(old) && FURNACE_IDS.has(id)) || WATERLIKE[old] || WATERLIKE[id]) return;
+    if (old && !id) { this.particles.burst(x, y, z, old); this.audio.breakBlock(BLOCKS[old].sound, at); }
+    else if (id) this.audio.place(BLOCKS[id].sound, at);
+  }
+
+  explosionFx(x, y, z, power) {
+    for (let i = 0; i < 40; i++) {
+      this.particles.spawn(x + (Math.random() - 0.5) * power, y + (Math.random() - 0.5) * power, z + (Math.random() - 0.5) * power,
+        (Math.random() - 0.5) * 6, Math.random() * 5, (Math.random() - 0.5) * 6, i % 3 ? B.snow_block : B.cobblestone, 0, 0.8 + Math.random(), 0.18);
+    }
+    this.audio.explode({ x, y, z });
   }
 
   dirtTile() {
@@ -405,7 +579,8 @@ export class Game {
       this.touch.setActive(true);
       this.input.capture = true;
       this.invChanged();
-      this.ui.message(`Welcome to ${this.meta.name}! Press E for your inventory, /help for commands.`, '#f3b73f');
+      if (this.net?.guest) this.ui.message(`You joined ${this.net.hostName}'s world “${this.meta.name}”. Press T to chat.`, '#f3b73f');
+      else this.ui.message(`Welcome to ${this.meta.name}! Press E for your inventory, /help for commands.`, '#f3b73f');
       if (!this.touch.enabled) this.input.lock();
       this.save();
     }
@@ -496,6 +671,8 @@ export class Game {
 
   async quitToTitle() {
     await this.save();
+    if (this.net) { const net = this.net; this.net = null; await net.leave(); }
+    this.avatars.clearTags();
     this.releasePointer();
     this.touch.setActive(false);
     if (this.world) { await this.world.store?.drain(); this.world.dispose(); this.world = null; }
@@ -510,6 +687,8 @@ export class Game {
 
   async save() {
     if (!this.world || !this.meta || this.state === 'loading') return;
+    // A guest's progress is kept by the host.
+    if (this.meta.remote) { this.net?.saveMe?.(this.playerData()); return; }
     const p = this.player;
     this.world.saveAll();
     Object.assign(this.meta, {
@@ -533,7 +712,12 @@ export class Game {
     this.releasePointer();
     this.mining = null;
     const day = Math.floor(this.time / TICKS_PER_DAY) + 1;
-    $('pause-info').textContent = `${this.meta.name} · ${this.creative ? 'Creative' : 'Survival'} · Day ${day}, ${clockText(this.time)}`;
+    const net = this.net;
+    const online = !net ? '' : net.host
+      ? ` · ${net.count} player${net.count === 1 ? '' : 's'}${net.code ? ` · Code ${net.code}` : ''}`
+      : ` · ${net.count} players online`;
+    $('pause-info').textContent = `${this.meta.name} · ${this.creative ? 'Creative' : 'Survival'} · Day ${day}, ${clockText(this.time)}${online}`;
+    this.ui.setPauseMenu(net ? (net.host ? 'host' : 'guest') : 'single');
     this.screenStack = [];
     this.ui.show('screen-pause');
     this.save();
@@ -578,6 +762,7 @@ export class Game {
       }
     }
     if (m.kind === 'chest' && this.openBlock) this.audio.chest(false, this.openBlock.at);
+    if ((m.kind === 'chest' || m.kind === 'furnace') && this.openBlock) this.net?.closeContainer(this.openBlock.key);
     this.menu = null;
     this.openBlock = null;
     this.gui.hide();
@@ -589,10 +774,28 @@ export class Game {
     }
   }
 
+  // In multiplayer, changes to a shared chest or furnace are sent on as { slot: stack }.
+  shared(fn) {
+    const m = this.menu, key = this.openBlock?.key;
+    const arr = this.net && key ? (m.kind === 'chest' ? this.containers.get(key) : m.kind === 'furnace' ? m.furnace.slots : null) : null;
+    const before = arr?.map((x) => (x ? JSON.stringify(x) : ''));
+    fn();
+    if (!arr) return;
+    const changes = {};
+    let any = false;
+    arr.forEach((x, i) => { const now = x ? JSON.stringify(x) : ''; if (now !== before[i]) { changes[i] = x ? { ...x } : null; any = true; } });
+    if (any) this.net.containerEdited(key, changes);
+  }
+
   // Menu input from the screen (see gui.js).
   menuAction(type, target, button = 0, shift = false) {
     const m = this.menu;
-    if (!m) return;
+    if (!m || m.syncing) return;
+    this.shared(() => this.applyMenuAction(m, type, target, button, shift));
+    this.menuChanged();
+  }
+
+  applyMenuAction(m, type, target, button, shift) {
     switch (type) {
       case 'click': m.click(target, button); break;
       case 'quick': m.quickMove(target); break;
@@ -619,7 +822,6 @@ export class Game {
       }
       default: break;
     }
-    this.menuChanged();
   }
 
   menuChanged() {
@@ -653,7 +855,8 @@ export class Game {
   // Number keys over a slot swap it with that hotbar slot; over the palette they fetch a stack.
   hotbarKey(n) {
     const slot = this.gui.hoverSlot, item = this.gui.hoverItem;
-    if (slot) this.menu.swapWithHotbar(slot, n);
+    if (this.menu?.syncing) return;
+    if (slot) this.shared(() => this.menu.swapWithHotbar(slot, n));
     else if (this.creative && item !== null) this.inv.slots[n] = { id: item, count: itemDef(item).stack, dmg: 0 };
     else return;
     this.menuChanged();
@@ -662,9 +865,11 @@ export class Game {
   // Q over a slot throws one item (Ctrl+Q: the stack).
   dropHovered(all) {
     const slot = this.gui.hoverSlot;
-    if (!slot) return;
-    const stack = this.menu.takeToDrop(slot, all);
-    if (stack && !this.creative) this.entities.dropItem(this.player, stack);
+    if (!slot || this.menu?.syncing) return;
+    this.shared(() => {
+      const stack = this.menu.takeToDrop(slot, all);
+      if (stack && !this.creative) this.entities.dropItem(this.player, stack);
+    });
     this.menuChanged();
   }
 
@@ -676,7 +881,10 @@ export class Game {
     if (!this.containers.has(key)) this.containers.set(key, new Array(27).fill(null));
     const at = { x: x + 0.5, y: y + 0.5, z: z + 0.5 };
     this.audio.chest(true, at);
-    this.openMenu(new ChestMenu(this, this.containers.get(key)), { key, at });
+    const menu = new ChestMenu(this, this.containers.get(key));
+    // A guest waits for the host to say what's inside before anything can be moved.
+    if (this.net?.guest) { menu.syncing = true; this.net.openContainer(key, 'chest'); }
+    this.openMenu(menu, { key, at });
   }
 
   openCraftingTable(x, y, z) {
@@ -690,7 +898,10 @@ export class Game {
   }
 
   openFurnaceAt(x, y, z) {
-    this.openMenu(new FurnaceMenu(this, this.furnaceAt(x, y, z)), { key: this.containerKey(x, y, z), at: { x: x + 0.5, y: y + 0.5, z: z + 0.5 } });
+    const key = this.containerKey(x, y, z);
+    const menu = new FurnaceMenu(this, this.furnaceAt(x, y, z));
+    if (this.net?.guest) { menu.syncing = true; this.net.openContainer(key, 'furnace'); }
+    this.openMenu(menu, { key, at: { x: x + 0.5, y: y + 0.5, z: z + 0.5 } });
   }
 
   // Furnaces keep smelting while their chunk is loaded, and light up while they burn.
@@ -714,14 +925,15 @@ export class Game {
     }
   }
 
-  // Spill a broken chest's or furnace's contents.
+  // Spill a broken chest's or furnace's contents (in multiplayer, the host does).
   dropContainer(x, y, z) {
     const key = this.containerKey(x, y, z);
     if (this.openBlock?.key === key) this.closeMenu();
     const slots = this.containers.get(key) ?? this.furnaces.get(key)?.slots;
     this.containers.delete(key);
     this.furnaces.delete(key);
-    if (!slots) return;
+    this.net?.containerRemoved(key);
+    if (!slots || this.net?.guest) return;
     for (const s of slots) if (s) this.entities.spawnItem(x + 0.5, y + 0.5, z + 0.5, s.id, s.count, s.dmg ?? 0);
   }
 
@@ -735,23 +947,42 @@ export class Game {
     this.state = 'sleeping';
     this.mining = null;
     this.ui.setSleeping(true);
+    this.ui.message('Respawn point set', '#f3b73f');
+    // With friends, the night only passes once everyone is in bed.
+    if (this.net) {
+      const n = this.net.count;
+      if (n > 1) this.ui.message(`Sleeping… the night passes when all ${n} players are in bed.`, COLORS.s);
+      return;
+    }
     const world = this.world;
     setTimeout(() => {
-      this.ui.setSleeping(false);
-      if (this.world !== world) return;
-      this.time = (Math.floor(this.time / TICKS_PER_DAY) + 1) * TICKS_PER_DAY + 300;
-      this.weather.set(false);
-      this.weather.rain = 0;
-      this.ui.message('Good morning! Your bed is now your spawn point.', '#f3b73f');
-      if (this.state === 'sleeping') this.state = 'play';
-      this.save();
+      if (this.world !== world || this.state !== 'sleeping') return;
+      this.skipNight();
     }, 1400);
   }
 
-  // World listener: react to blocks that vanish (chests and furnaces spill their items).
+  // Morning: time jumps to the next day, the rain stops, and everyone in bed wakes up.
+  skipNight() {
+    this.time = (Math.floor(this.time / TICKS_PER_DAY) + 1) * TICKS_PER_DAY + 300;
+    this.weather.set(false);
+    this.weather.rain = 0;
+    this.wake(true);
+    this.save();
+  }
+
+  wake(morning) {
+    if (this.state !== 'sleeping') return;
+    this.ui.setSleeping(false);
+    this.state = 'play';
+    if (morning) this.ui.message('Good morning!', '#f3b73f');
+  }
+
+  // World listener: react to blocks that vanish (chests and furnaces spill their items), and pass
+  // every change on in multiplayer.
   blockChanged(x, y, z, old, id) {
     if ((CHEST[old] !== undefined && CHEST[id] === undefined) || (FURNACE_IDS.has(old) && !FURNACE_IDS.has(id))) this.dropContainer(x, y, z);
     else if (old === B.crafting_table && id !== old && this.openBlock?.key === this.containerKey(x, y, z)) this.closeMenu();
+    this.net?.blockChanged(x, y, z, old, id);
   }
 
   openChat(prefix = '') {
@@ -800,6 +1031,7 @@ export class Game {
   bindInput() {
     this.input.onUnlock = () => {
       if (this.expectUnlock) { this.expectUnlock = false; return; }
+      if (this.state === 'sleeping' && this.net) { this.wake(false); this.pause(); return; }
       if (this.state === 'play') this.pause();
     };
     this.input.onKey = (e) => {
@@ -816,6 +1048,8 @@ export class Game {
         if (e.code === 'KeyE' || e.code === 'Escape') this.closeMenu();
         else if (/^Digit[1-9]$/.test(e.code)) this.hotbarKey(Number(e.code.slice(5)) - 1);
         else if (e.code === 'KeyQ') this.dropHovered(e.ctrlKey || e.metaKey);
+      } else if (s === 'sleeping' && this.net && ['Escape', 'Space', 'ShiftLeft', 'KeyE'].includes(e.code)) {
+        this.wake(false);
       } else if (s === 'pause' && e.code === 'Escape' && this.ui.current === 'screen-pause') {
         this.resume();
       } else if (e.code === 'Escape' && (this.ui.current === 'screen-settings' || this.ui.current === 'screen-controls')) {
@@ -893,10 +1127,12 @@ export class Game {
     this.audio.update('title');
   }
 
-  updateGame(dt) {
+  // `draw`: false when stepping the world in a hidden tab (multiplayer).
+  updateGame(dt, draw = true) {
     const p = this.player, w = this.world;
-    const active = this.state === 'play';
-    const paused = this.state === 'pause';
+    const active = this.state === 'play' && draw;
+    // In multiplayer the game menu doesn't stop the world.
+    const paused = this.state === 'pause' && !this.net;
     w.update(p.x, p.z, this.settings.renderDistance);
     if (this.needsRespawnY && w.isLoaded(p.x, p.z)) {
       if (this.respawnAtBed) this.placeAtBed();
@@ -914,12 +1150,16 @@ export class Game {
     if (!paused) {
       this.tickAcc += dt * 20;
       let n = 0;
-      while (this.tickAcc >= 1 && n++ < 5) { this.tickAcc -= 1; this.gameTick(); }
-      if (this.tickAcc > 5) this.tickAcc = 0;
+      const most = draw ? 5 : 20;
+      while (this.tickAcc >= 1 && n++ < most) { this.tickAcc -= 1; this.gameTick(); }
+      if (this.tickAcc > most) this.tickAcc = 0;
       this.particles.update(dt, w);
       this.entities.update(dt);
       this.weather.update(dt);
     }
+    this.net?.update(dt);
+    if (!this.world) return; // (the game ended while updating)
+    if (!draw) return;
     this.target = this.state === 'play' || this.state === 'container' ? this.pickTarget() : null;
     if (active) this.handleActions(dt);
     else { this.mining = null; this.eating = null; }
@@ -987,7 +1227,7 @@ export class Game {
     this.attackTicks++;
     this.world.tick();
     this.entities.tick();
-    this.tickFurnaces();
+    if (!this.net?.guest) this.tickFurnaces();
     const p = this.player;
     if (!this.creative && this.state !== 'dead') {
       this.invuln = Math.max(0, this.invuln - 1);
@@ -1094,6 +1334,7 @@ export class Game {
       this.invChanged();
     }
     this.health = Math.max(0, this.health - amount);
+    this.hurtCount++;
     this.exhaust(0.1);
     this.invuln = 10;
     this.sinceDamage = 0;
@@ -1110,7 +1351,10 @@ export class Game {
     const p = this.player, d = p.lookDir();
     const reach = REACH[this.mode];
     const hit = this.world.raycast(p.x, p.eyeY, p.z, d[0], d[1], d[2], reach);
-    const mob = this.entities.raycast(p.x, p.eyeY, p.z, d[0], d[1], d[2], Math.min(reach, hit ? hit.t : reach));
+    const near = Math.min(reach, hit ? hit.t : reach);
+    const mob = this.entities.raycast(p.x, p.eyeY, p.z, d[0], d[1], d[2], near);
+    const other = this.net?.raycast(p.x, p.eyeY, p.z, d[0], d[1], d[2], mob ? mob.t : near);
+    if (other) return { player: other.player, entity: null, t: other.t };
     if (mob) return { entity: mob.entity, t: mob.t };
     return hit;
   }
@@ -1130,20 +1374,22 @@ export class Game {
     t.breakStart = false;
     t.tap = false;
 
-    if (attackClick && target?.entity) this.attackEntity(target.entity);
+    if (attackClick && target?.player) this.attackPlayer(target.player);
+    else if (target?.player) { /* no mining through another player */ }
+    else if (attackClick && target?.entity) this.attackEntity(target.entity);
     else if (this.creative) {
       this.breakCooldown -= dt;
-      if (attackClick && target && !target.entity) { this.breakTarget(); this.breakCooldown = 0.3; }
-      else if (attack && target && !target.entity && this.breakCooldown <= 0) { this.breakTarget(); this.breakCooldown = 0.22; }
+      if (attackClick && target && !target.entity && !target.player) { this.breakTarget(); this.breakCooldown = 0.3; }
+      else if (attack && target && !target.entity && !target.player && this.breakCooldown <= 0) { this.breakTarget(); this.breakCooldown = 0.22; }
       else if (attackClick) this.swingAtAir();
     } else {
-      this.updateMining(dt, attack && target && !target.entity ? target : null);
+      this.updateMining(dt, attack && target && !target.entity && !target.player ? target : null);
       if (attackClick && !target) this.swingAtAir();
     }
 
     // Holding right click with food eats it (when hungry), unless you're using a door, chest or bed.
     const held = this.inv.held, hdef = held && itemDef(held.id);
-    const usable = target && !target.entity && !this.player.sneaking && this.interactive(target.id);
+    const usable = target && !target.entity && !target.player && !this.player.sneaking && this.interactive(target.id);
     // (On touch screens a tap starts eating and it carries on by itself.)
     const eatInput = use || useClick || (this.eating?.touch && !useClick);
     if (hdef?.food && !this.creative && this.food < 20 && eatInput && !usable) {
@@ -1157,7 +1403,7 @@ export class Game {
     if ((k.clicked & 4)) this.pickBlock();
   }
 
-  swingArm() { this.swing = 0; this.swinging = true; }
+  swingArm() { this.swing = 0; this.swinging = true; this.swingCount++; }
 
   // Minecraft 1.9 combat: a weapon winds up again after every swing (faster for swords, slower
   // for axes), and a hit only does full damage, knockback and critical hits once it has.
@@ -1189,6 +1435,24 @@ export class Game {
     this.invChanged();
   }
 
+  // Hitting another player, with the same wind-up rules as hitting a mob.
+  attackPlayer(rp) {
+    const p = this.player, held = this.inv.heldId, def = itemDef(held);
+    const f = this.attackStrength(this.tickAcc), strong = f > 0.9;
+    const crit = strong && !p.onGround && p.vy < -0.5 && !p.inWater && !p.onLadder && !p.flying;
+    let amount = attackDamage(held) * (0.2 + f * f * 0.8);
+    if (crit) amount *= 1.5;
+    this.swingArm();
+    this.resetAttack();
+    if (!this.net.pvp || rp.creative) return;
+    this.audio.attack(crit ? 'crit' : strong ? 'strong' : 'weak', { x: rp.x, y: rp.y + 1.2, z: rp.z }, def?.weapon || def?.tool?.type === 'axe');
+    if (crit) this.particles.bits(rp.x, rp.y + 1.3, rp.z, TEX.crit, 10, 2.4, 0.5);
+    this.net.attackPlayer(rp, amount, strong && p.sprinting ? 1 : 0);
+    this.exhaust(0.1);
+    if (!this.creative && def?.durability && this.inv.damageHeld(def.tool ? 2 : 1)) this.audio.toolBreak();
+    this.invChanged();
+  }
+
   // Blocks you use rather than build against (sneak to build against them).
   interactive(id) {
     return !!DOOR[id] || CHEST[id] !== undefined || !!BED[id] || id === B.crafting_table || FURNACE_IDS.has(id);
@@ -1196,7 +1460,7 @@ export class Game {
 
   breakTarget() {
     const t = this.target;
-    if (!t || t.entity) return;
+    if (!t || t.entity || t.player) return;
     const def = BLOCKS[t.id];
     if (def.hardness < 0 && !this.creative) return;
     if (t.id === B.bedrock && !this.creative) return;
@@ -1253,7 +1517,7 @@ export class Game {
     const def = held ? itemDef(held.id) : null;
     // Doors, chests, beds, crafting tables and furnaces are used rather than built on (sneak to
     // place blocks against them).
-    if (t && !t.entity && !p.sneaking && this.interactive(t.id)) {
+    if (t && !t.entity && !t.player && !p.sneaking && this.interactive(t.id)) {
       if (repeat) return;
       this.swingArm();
       if (DOOR[t.id]) {
@@ -1279,7 +1543,7 @@ export class Game {
       this.invChanged();
       return;
     }
-    if (!t || t.entity) {
+    if (!t || t.entity || t.player) {
       if (t?.entity && !repeat) this.entities.interact(t.entity, held);
       return;
     }
@@ -1364,12 +1628,12 @@ export class Game {
       return;
     }
     if (BLOCKS[id].support && !w.supported(x, y, z, id)) return;
-    if (SOLID[id] && (p.intersectsBlock(x, y, z) || this.entities.blocksPlacement(x, y, z))) return;
+    if (SOLID[id] && (p.intersectsBlock(x, y, z) || this.entities.blocksPlacement(x, y, z) || this.net?.blocksPlacement(x, y, z))) return;
     if (w.setBlock(x, y, z, id)) this.afterPlace(id, x, y, z);
   }
 
   finishPlace(x, y, z, id) {
-    if (SOLID[id] && (this.player.intersectsBlock(x, y, z) || this.entities.blocksPlacement(x, y, z))) return;
+    if (SOLID[id] && (this.player.intersectsBlock(x, y, z) || this.entities.blocksPlacement(x, y, z) || this.net?.blocksPlacement(x, y, z))) return;
     if (this.world.setBlock(x, y, z, id)) this.afterPlace(id, x, y, z);
   }
 
@@ -1381,7 +1645,7 @@ export class Game {
 
   pickBlock() {
     const t = this.target;
-    if (!t || t.entity) return;
+    if (!t || t.entity || t.player) return;
     const id = BASE[t.id];
     if (!ITEMS.has(id)) return;
     const hot = this.inv.slots.findIndex((s, i) => i < 9 && s?.id === id);
@@ -1431,10 +1695,14 @@ export class Game {
     for (const d of dropsFor(id, 0)) this.entities.spawnItem(x + 0.5, y + 0.3, z + 0.5, d.id, d.count);
   }
 
-  chunkLoaded(chunk) { this.entities.chunkLoaded(chunk); }
+  chunkLoaded(chunk) {
+    this.entities.chunkLoaded(chunk);
+    this.net?.chunkLoaded(chunk);
+  }
 
   // World listener: water met lava.
   fizz(x, y, z) {
+    if (this.net?.host) this.net.effect('fizz', x + 0.5, y + 0.5, z + 0.5);
     const at = { x: x + 0.5, y: y + 0.5, z: z + 0.5 };
     this.audio.fizz(at);
     this.particles.smoke?.(at.x, at.y + 0.4, at.z, 6);
@@ -1450,19 +1718,32 @@ export class Game {
     if (!text) return;
     this.chatHistory.push(text);
     if (text.startsWith('/')) this.command(text.slice(1));
+    else if (this.net) this.net.chat(text.slice(0, 120));
     else this.ui.message(`<You> ${text}`);
   }
 
-  command(line) {
+  // `say`: where the answer goes (a guest's command runs on the host and is answered there).
+  command(line, say = (t, c) => this.ui.message(t, c)) {
     const [cmd, ...args] = line.split(/\s+/);
-    const say = (t, c) => this.ui.message(t, c);
     const p = this.player;
+    const lower = cmd.toLowerCase();
+    // In multiplayer the time and weather belong to the host.
+    if (this.net?.guest && (lower === 'time' || lower === 'weather')) { this.net.command(line); return; }
     const num = (s, base) => (s?.startsWith('~') ? base + (Number(s.slice(1)) || 0) : Number(s));
-    switch (cmd.toLowerCase()) {
+    switch (lower) {
       case 'help':
         say('/time set day|noon|night|midnight|<ticks>, /time add <n>');
         say('/gamemode creative|survival, /tp <x> <y> <z>, /give <item> [count], /weather clear|rain');
         say('/spawn, /setspawn, /seed, /fly, /kill, /clear');
+        if (this.net) say(`/list${this.net.host ? ', /pvp on|off' : ''}`);
+        break;
+      case 'list': case 'players':
+        if (!this.net) { say('You are playing alone'); break; }
+        say(`Players online (${this.net.count}): ${this.net.names().join(', ')}`);
+        break;
+      case 'pvp':
+        if (!this.net?.host) { say('Only the host can change that', '#e88a78'); break; }
+        this.net.setPvp(args[0] ? args[0].toLowerCase() !== 'off' : !this.net.pvp);
         break;
       case 'time': {
         const presets = { day: 1000, noon: 6000, sunset: 12000, night: 13500, midnight: 18000, sunrise: 23000 };
@@ -1591,6 +1872,7 @@ export class Game {
       rotateX(pre, pre, Math.abs(Math.cos(walk * Math.PI - 0.2) * bob) * 5 * DEG);
     }
     const cam = { x: p.x, y: p.eyeY, z: p.z, yaw: p.yaw, pitch: p.pitch, pre };
+    this.lastCam = cam;
     const fovTarget = (p.sprinting ? 1.12 : 1) * (p.flying && p.sprinting ? 1.08 : 1) * (p.headInWater ? 0.9 : 1);
     this.fovMul += (fovTarget - this.fovMul) * Math.min(1, dt * 8);
     const rd = s.renderDistance;
@@ -1605,7 +1887,7 @@ export class Game {
       fogColor = [0.8, 0.3, 0.05]; fogStart = 0; fogEnd = 2.5;
     }
     if (!loading) this.updateWeatherEffects(cam, dt);
-    const target = !loading && this.target && !this.target.entity ? this.target : null;
+    const target = !loading && this.target && !this.target.entity && !this.target.player ? this.target : null;
     const heldLight = this.world.getLight(Math.floor(p.x), Math.floor(p.eyeY), Math.floor(p.z));
     this.particles.build(cam, this.world);
     this.renderer.render({
@@ -1616,7 +1898,7 @@ export class Game {
       crack: this.mining && this.mining.progress > 0 ? { x: this.mining.x, y: this.mining.y, z: this.mining.z, stage: Math.floor(this.mining.progress * 10) } : null,
       particles: this.particles,
       weather: this.weather,
-      entities: this.entities.renderList(cam),
+      entities: this.drawList(cam),
       hand: loading || this.hideHud || this.state === 'dead' ? null : {
         item: this.handItem, swing: this.swinging ? this.swing : 0, equip: 1 - this.handHeight,
         bob, walk, roll, lag: [(this.lagPitch - p.pitch) * 0.1, (this.lagYaw - p.yaw) * 0.1],
@@ -1624,6 +1906,12 @@ export class Game {
         light: [Math.max(heldLight >> 4, 0), heldLight & 15],
       },
     });
+  }
+
+  drawList(cam) {
+    const list = this.entities.renderList(cam);
+    if (this.net) this.avatars.render(this.net.players.values(), cam, this.world, this.settings.renderDistance * 16, list);
+    return list;
   }
 
   updateHUD() {
@@ -1647,6 +1935,8 @@ export class Game {
       'resume-hint': this.state === 'play' && !this.input.locked && !this.touch.enabled,
       crosshair: this.state === 'play' || this.state === 'chat',
     });
+    if (this.net && this.lastCam) this.avatars.renderTags(this.net.players.values(), this.lastCam, this.renderer.viewProj, this.canvas, $('nametags'));
+    $('leave-bed').hidden = !(this.net && this.state === 'sleeping');
     if (this.showDebug) ui.setDebug(this.debugLines());
     else if (this.settings.showFps) ui.setDebug([`${Math.round(this.fps)} fps`]);
     else ui.setDebug(null);
@@ -1672,7 +1962,8 @@ export class Game {
       `Chunks: ${w.chunks.size} · Sections drawn: ${r.sections} · Triangles: ${(r.triangles / 1000).toFixed(0)}k · ${this.canvas.width}x${this.canvas.height}`,
       `Food: ${this.food} (saturation ${this.saturation.toFixed(1)}) · Weather: ${this.weather.raining ? 'rain' : 'clear'} ${Math.round(this.weather.rain * 100)}%`,
       `Entities: ${this.entities.list.length} · Particles: ${this.particles.list.length}`,
-      t && !t.entity ? `Looking at: ${BLOCKS[t.id].label} (${t.x}, ${t.y}, ${t.z}) face ${FACE_NAMES[t.face] ?? '-'}` : t?.entity ? `Looking at: ${t.entity.label}` : 'Looking at: nothing',
+      t?.player ? `Looking at: ${t.player.name}` : t && !t.entity ? `Looking at: ${BLOCKS[t.id].label} (${t.x}, ${t.y}, ${t.z}) face ${FACE_NAMES[t.face] ?? '-'}` : t?.entity ? `Looking at: ${t.entity.label}` : 'Looking at: nothing',
+      ...(this.net ? [`Multiplayer: ${this.net.host ? 'hosting' : 'guest'} via ${this.net.via === 'room' ? 'this page' : `code ${this.net.code}`} · ${this.net.count} players`] : []),
     ];
   }
 }

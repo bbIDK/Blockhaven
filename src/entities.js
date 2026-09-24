@@ -1,4 +1,6 @@
 // Everything that moves besides the player: dropped items, lit TNT, animals and zombies.
+// In multiplayer the host simulates them all; a guest's entities are copies of the host's (see
+// the end of this file), and what a guest does to them is sent to the host.
 import { Body } from './body.js';
 import { boxMesh, MODEL_OFFSET } from './models.js';
 import { TEX } from './textures.js';
@@ -86,6 +88,8 @@ export class Entities {
   constructor(game) {
     this.game = game;
     this.list = [];
+    this.byNid = new Map(); // guests: the host's entity id -> our copy
+    this.players = [];
     this.models = {};
     this.mats = [];
     this.matIndex = 0;
@@ -93,9 +97,11 @@ export class Entities {
   }
 
   get world() { return this.game.world; }
+  get guest() { return !!this.game.net?.guest; }
 
   reset(saved) {
     this.list = [];
+    this.byNid.clear();
     if (!saved) return;
     for (const s of saved) {
       if (s.k === 'item' && itemDef(s.id)) this.spawnItem(s.x, s.y, s.z, s.id, s.count, s.dmg, 0);
@@ -110,12 +116,17 @@ export class Entities {
   }
 
   // ---------------------------------------------------------------- spawning
-  spawnItem(x, y, z, id, count, dmg = 0, delay = 0.6) {
+  // `vel`: [vx, vy, vz], or null for a little random hop.
+  spawnItem(x, y, z, id, count, dmg = 0, delay = 0.6, vel = null) {
+    if (this.guest) { this.game.net.dropItem(x, y, z, id, count, dmg, delay, vel); return null; }
     const e = new Entity('item', 0.125, 0.25, x, y, z);
     Object.assign(e, { id, count, dmg, pickupDelay: delay, spin: Math.random() * 6.28 });
-    e.vx = (Math.random() - 0.5) * 2;
-    e.vy = 3 + Math.random() * 1.5;
-    e.vz = (Math.random() - 0.5) * 2;
+    if (vel) [e.vx, e.vy, e.vz] = vel;
+    else {
+      e.vx = (Math.random() - 0.5) * 2;
+      e.vy = 3 + Math.random() * 1.5;
+      e.vz = (Math.random() - 0.5) * 2;
+    }
     this.list.push(e);
     return e;
   }
@@ -123,11 +134,11 @@ export class Entities {
   dropItem(player, stack) {
     if (!stack?.id || !stack.count) return;
     const d = player.lookDir();
-    const e = this.spawnItem(player.x, player.eyeY - 0.3, player.z, stack.id, stack.count, stack.dmg ?? 0, 1.5);
-    e.vx = d[0] * 6; e.vy = d[1] * 6 + 2; e.vz = d[2] * 6;
+    this.spawnItem(player.x, player.eyeY - 0.3, player.z, stack.id, stack.count, stack.dmg ?? 0, 1.5, [d[0] * 6, d[1] * 6 + 2, d[2] * 6]);
   }
 
   primeTNT(x, y, z, fuse) {
+    if (this.guest) { this.game.net.primeTNT(x, y, z, fuse); return; }
     const e = new Entity('tnt', 0.49, 0.98, x + 0.5, y, z + 0.5);
     e.fuse = fuse;
     e.vy = 3;
@@ -150,7 +161,7 @@ export class Entities {
 
   chunkLoaded(chunk) {
     const game = this.game;
-    if (!game.meta) return;
+    if (!game.meta || this.guest) return;
     const passive = this.list.filter((e) => e.kind === 'mob' && !e.def.hostile).length;
     if (passive >= 24 || hash2(chunk.cx, chunk.cz, game.meta.seed ^ 0xa11) > 0.1) return;
     const roll = hash2(chunk.cz, chunk.cx, game.meta.seed);
@@ -168,12 +179,14 @@ export class Entities {
     }
   }
 
-  // Zombies appear in the dark near the player (Survival only).
+  // Zombies appear in the dark near a player (in Survival).
   trySpawnHostile() {
-    const game = this.game, p = game.player, w = this.world;
-    if (game.creative || game.state === 'dead') return;
+    const game = this.game, w = this.world;
+    const targets = this.players.filter((t) => !t.creative && !t.dead);
+    if (!targets.length) return;
+    const p = targets[Math.floor(Math.random() * targets.length)];
     const zombies = this.list.filter((e) => e.type === 'zombie' && !e.dead).length;
-    if (zombies >= 6) return;
+    if (zombies >= 4 + targets.length * 2) return;
     const day = game.env.daylight;
     for (let attempt = 0; attempt < 6; attempt++) {
       const a = Math.random() * Math.PI * 2, d = 18 + Math.random() * 22;
@@ -196,6 +209,9 @@ export class Entities {
   // ---------------------------------------------------------------- simulation
   tick() {
     const game = this.game;
+    if (this.guest) { this.remoteTick(); return; }
+    // Everyone mobs can see: this player and, in multiplayer, the others.
+    this.players = game.players();
     if (++this.spawnTimer >= 40) { this.spawnTimer = 0; this.trySpawnHostile(); }
     for (const e of this.list) {
       if (e.dead) continue;
@@ -219,27 +235,39 @@ export class Entities {
     void game;
   }
 
+  // The nearest player (any), and the nearest one a zombie could go after.
+  nearest(e) {
+    let near = null, prey = null, nd = Infinity, pd = Infinity;
+    for (const t of this.players) {
+      const d = Math.hypot(t.x - e.x, t.z - e.z);
+      if (d < nd) { nd = d; near = t; }
+      if (!t.creative && !t.dead && Math.abs(t.y - e.y) < 10 && d < pd) { pd = d; prey = t; }
+    }
+    return { near, nd, prey, pd };
+  }
+
   mobTick(e) {
-    const game = this.game, p = game.player, w = this.world;
+    const game = this.game, w = this.world;
     if (e.dying) return;
     e.hurt = Math.max(0, e.hurt - 1);
     e.attackCd = Math.max(0, e.attackCd - 1);
-    const dx = p.x - e.x, dz = p.z - e.z, dist = Math.hypot(dx, dz);
+    const { nd: dist, prey, pd } = this.nearest(e);
     if (e.def.hostile) {
       // Burn in daylight.
       const l = w.getLight(Math.floor(e.x), Math.floor(e.y + 1.6), Math.floor(e.z));
       const burning = game.env.daylight > 0.75 && (l >> 4) >= 12 && game.weather.rain < 0.3;
+      e.burning = burning;
       if (burning && Math.random() < 0.25) game.particles.smoke(e.x, e.y + 1 + Math.random() * 0.9, e.z, 1, 0.3);
       if (burning && ++e.burnCd >= 20) { e.burnCd = 0; this.hurtMob(e, 2, null); }
-      const chase = !game.creative && game.state !== 'dead' && dist < 24 && Math.abs(p.y - e.y) < 10;
-      if (chase) {
+      if (prey && pd < 24) {
+        const dx = prey.x - e.x, dz = prey.z - e.z;
         e.yaw = Math.atan2(-dx, -dz);
-        e.moving = dist > 0.9;
-        if (dist < 1.35 && Math.abs(p.y - e.y) < 1.6 && e.attackCd === 0) {
+        e.moving = pd > 0.9;
+        if (pd < 1.35 && Math.abs(prey.y - e.y) < 1.6 && e.attackCd === 0) {
           e.attackCd = 20;
           e.swing = 1;
-          const k = 5 / Math.max(0.1, dist);
-          game.damage(3, 'You were slain by a zombie', false, [dx * k * 0.3, 4.5, dz * k * 0.3], true);
+          const k = 5 / Math.max(0.1, pd);
+          game.hurtPlayer(prey, 3, 'You were slain by a zombie', [dx * k * 0.3, 4.5, dz * k * 0.3], true);
         }
       } else this.wanderTick(e);
       if (Math.random() < 0.005) game.audio.mob('zombie', 'say', { x: e.x, y: e.y + 1.6, z: e.z });
@@ -265,6 +293,7 @@ export class Entities {
   update(dt) {
     const game = this.game, w = this.world, p = game.player;
     if (!w) return;
+    if (this.guest) { this.remoteUpdate(dt); return; }
     for (const e of this.list) {
       if (e.dead || !w.isLoaded(e.x, e.z)) continue;
       e.age += dt;
@@ -361,6 +390,7 @@ export class Entities {
   finishDeath(e) {
     e.dead = true;
     const game = this.game;
+    game.net?.entityGone(e, 'd');
     // The body disappears in a puff of smoke.
     game.particles.smoke(e.x, e.y + e.h * 0.4, e.z, 10 + Math.round(e.h * 6), e.hw + 0.25);
     if (game.creative) return;
@@ -372,7 +402,9 @@ export class Entities {
 
   // The player hits a mob. `bonus` adds knockback (a sprinting, full-strength hit).
   attack(e, amount, bonus = 0) {
-    this.hurtMob(e, this.game.creative ? 100 : amount, this.game.player, bonus);
+    const n = this.game.creative ? 100 : amount;
+    if (e.remote) this.game.net.hitMob(e, n, bonus);
+    else this.hurtMob(e, n, this.game.player, bonus);
   }
 
   interact() { /* nothing to interact with yet */ }
@@ -400,11 +432,8 @@ export class Entities {
       }
     }
     w.setBlocksBulk(changes);
-    for (let i = 0; i < 40; i++) {
-      game.particles.spawn(x + (Math.random() - 0.5) * power, y + (Math.random() - 0.5) * power, z + (Math.random() - 0.5) * power,
-        (Math.random() - 0.5) * 6, Math.random() * 5, (Math.random() - 0.5) * 6, i % 3 ? B.snow_block : B.cobblestone, 0, 0.8 + Math.random(), 0.18);
-    }
-    game.audio.explode({ x, y, z });
+    game.explosionFx(x, y, z, power);
+    game.net?.effect('boom', x, y, z);
     const p = game.player;
     const pd = Math.hypot(p.x - x, p.y + 0.9 - y, p.z - z);
     if (pd < power * 2) {
@@ -413,11 +442,129 @@ export class Entities {
       game.damage(Math.ceil(f * f * 22), 'You were blown up', true, [(p.x - x) * k, f * 9, (p.z - z) * k], true);
       if (game.creative) { p.vx += (p.x - x) * k; p.vy += f * 9; p.vz += (p.z - z) * k; }
     }
+    for (const t of game.net?.others() ?? []) {
+      const d = Math.hypot(t.x - x, t.y + 0.9 - y, t.z - z);
+      if (d >= power * 2 || t.creative) continue;
+      const f = 1 - d / (power * 2), k = (f * 14) / Math.max(0.3, d);
+      game.hurtPlayer(t, Math.ceil(f * f * 22), 'You were blown up', [(t.x - x) * k, f * 9, (t.z - z) * k], true);
+    }
     for (const e of this.list) {
       if (e.kind !== 'mob' || e.dead) continue;
       const d = Math.hypot(e.x - x, e.y - y, e.z - z);
       if (d < power * 2) this.hurtMob(e, Math.ceil((1 - d / (power * 2)) * 20), { x, z });
     }
+  }
+
+  // ---------------------------------------------------------------- copies of the host's entities
+  // The host sends each entity in full once ({ i: id, k: 'i'|'t'|'m', x, y, z, ... }), then
+  // [id, x, y, z, yaw, flags, count] when something about it changes, and [id, how] when it's gone.
+  addRemote(s) {
+    if (!s || !Number.isInteger(s.i) || ![s.x, s.y, s.z].every(Number.isFinite)) return;
+    let e = this.byNid.get(s.i);
+    if (!e) {
+      if (s.k === 'i') {
+        if (!itemDef(s.id)) return;
+        e = new Entity('item', 0.125, 0.25, s.x, s.y, s.z);
+        Object.assign(e, { id: s.id, count: 1, dmg: 0, pickupDelay: 0, spin: Math.random() * 6.28 });
+      } else if (s.k === 't') {
+        e = new Entity('tnt', 0.49, 0.98, s.x, s.y, s.z);
+        e.fuse = 80;
+        this.game.audio.fuse({ x: s.x, y: s.y + 0.5, z: s.z });
+      } else if (s.k === 'm' && MOB_TYPES[s.ty]) {
+        e = this.spawnMob(s.ty, s.x, s.y, s.z);
+        this.list.pop();
+        e.yaw = Number.isFinite(s.a) ? s.a : 0;
+      } else return;
+      e.nid = s.i;
+      e.remote = true;
+      this.list.push(e);
+      this.byNid.set(s.i, e);
+    }
+    e.tx = s.x; e.ty = s.y; e.tz = s.z;
+    if (s.k === 'i') {
+      e.count = Number.isInteger(s.n) && s.n > 0 ? s.n : 1;
+      e.dmg = Number.isInteger(s.d) ? s.d : 0;
+      e.pickupDelay = Number.isFinite(s.pd) ? s.pd : 0;
+    } else if (s.k === 't') {
+      if (Number.isInteger(s.f)) e.fuse = s.f;
+    } else {
+      e.tyaw = Number.isFinite(s.a) ? s.a : e.yaw;
+      this.remoteFlags(e, Number.isInteger(s.f) ? s.f : 0);
+    }
+  }
+
+  moveRemote(u) {
+    if (!Array.isArray(u) || !u.slice(0, 4).every(Number.isFinite)) return;
+    const e = this.byNid.get(u[0]);
+    if (!e) return;
+    e.tx = u[1]; e.ty = u[2]; e.tz = u[3];
+    if (e.kind === 'mob') {
+      if (Number.isFinite(u[4])) e.tyaw = u[4];
+      this.remoteFlags(e, Number.isInteger(u[5]) ? u[5] : 0);
+    } else if (e.kind === 'item' && Number.isInteger(u[6]) && u[6] > 0) e.count = u[6];
+  }
+
+  // Mob flags: 1 hurt, 2 dying, 4 swinging its arms, 8 burning.
+  remoteFlags(e, f) {
+    const at = { x: e.x, y: e.y + e.h * 0.8, z: e.z };
+    if ((f & 2) && !e.dying) { e.dying = 0.001; e.hurt = 10; this.game.audio.mob(e.type, 'death', at); }
+    else if ((f & 1) && !(e.flags & 1) && !e.dying) { e.hurt = 10; this.game.audio.mob(e.type, 'hurt', at); }
+    if (f & 4) e.swing = 1;
+    e.burning = !!(f & 8);
+    e.flags = f;
+  }
+
+  removeRemote(r) {
+    if (!Array.isArray(r)) return;
+    const e = this.byNid.get(r[0]);
+    if (!e) return;
+    this.byNid.delete(r[0]);
+    e.dead = true;
+    if (r[1] === 'd' && e.kind === 'mob') this.game.particles.smoke(e.x, e.y + e.h * 0.4, e.z, 10 + Math.round(e.h * 6), e.hw + 0.25);
+  }
+
+  // Per game tick on a guest: fuses burn down, animals and zombies make their noises.
+  remoteTick() {
+    const game = this.game;
+    for (const e of this.list) {
+      if (e.dead) continue;
+      if (e.kind === 'tnt') e.fuse = Math.max(0, e.fuse - 1);
+      else if (e.kind === 'mob' && !e.dying) {
+        e.hurt = Math.max(0, e.hurt - 1);
+        if (e.burning && Math.random() < 0.25) game.particles.smoke(e.x, e.y + 1 + Math.random() * 0.9, e.z, 1, 0.3);
+        if (Math.random() < (e.def.hostile ? 0.005 : 0.004)) game.audio.mob(e.type, 'say', { x: e.x, y: e.y + e.h * 0.8, z: e.z });
+      }
+    }
+  }
+
+  // Per frame on a guest: glide towards the host's positions, animate, and pick items up.
+  remoteUpdate(dt) {
+    const game = this.game, p = game.player;
+    const k = 1 - Math.exp(-dt * 14);
+    for (const e of this.list) {
+      if (e.dead) continue;
+      e.age += dt;
+      const ox = e.x, oy = e.y, oz = e.z;
+      // Far jumps (teleports, merged stacks) snap.
+      if (Math.abs(e.tx - e.x) + Math.abs(e.ty - e.y) + Math.abs(e.tz - e.z) > 8) { e.x = e.tx; e.y = e.ty; e.z = e.tz; }
+      else { e.x += (e.tx - e.x) * k; e.y += (e.ty - e.y) * k; e.z += (e.tz - e.z) * k; }
+      if (e.kind === 'item') {
+        e.spin += dt * 1.8;
+        e.pickupDelay -= dt;
+        if (e.pickupDelay <= 0 && game.state !== 'dead' && Math.hypot(p.x - e.x, p.y + 0.9 - e.y, p.z - e.z) < 1.6) game.net.wantItem(e);
+      } else if (e.kind === 'mob') {
+        let dy = e.tyaw - e.yaw;
+        dy -= Math.round(dy / (Math.PI * 2)) * Math.PI * 2;
+        e.yaw += dy * k;
+        const speed = Math.min(12, Math.hypot(e.x - ox, e.z - oz) / Math.max(dt, 1e-3));
+        e.walk += (Math.min(1, speed / 1.5) - e.walk) * Math.min(1, dt * 8);
+        e.walkPhase += speed * dt * 5;
+        e.swing = Math.max(0, e.swing - dt * 3);
+        e.flap = e.def.flutter && Math.abs(e.y - oy) > dt * 0.5 ? e.flap + dt * 30 : 0;
+        if (e.dying) e.dying += dt;
+      }
+    }
+    this.list = this.list.filter((e) => !e.dead);
   }
 
   // ---------------------------------------------------------------- queries

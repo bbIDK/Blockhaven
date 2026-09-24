@@ -97,6 +97,12 @@ export class World {
     this.radius = 6;
     this.scan = true; // something may need loading or meshing
     this.listener = null;
+    // Multiplayer: a guest's copy of the world leaves block updates (water, sand, plants popping
+    // off) to the host, and a host keeps the ground around its guests loaded (but not drawn).
+    this.remote = false;
+    this.keep = [];
+    this.keepKey = '';
+    this.keepChanged = false;
     this.tickNow = 0;
     this.ticks = new Map();
     this._cache = null;
@@ -208,9 +214,10 @@ export class World {
   // budgetMs: time allowed for applying finished chunks and meshes this frame.
   update(px, pz, radius, budgetMs = 4) {
     const pcx = Math.floor(px) >> 4, pcz = Math.floor(pz) >> 4;
-    if (!this.center || this.center[0] !== pcx || this.center[1] !== pcz || radius !== this.radius) {
+    if (!this.center || this.center[0] !== pcx || this.center[1] !== pcz || radius !== this.radius || this.keepChanged) {
       this.center = [pcx, pcz];
       this.radius = radius;
+      this.keepChanged = false;
       this.unloadFar();
       this.scan = true;
     }
@@ -226,7 +233,6 @@ export class World {
     let busy = slots <= 0;
     for (const [dx, dz, d2] of spiral(radius + 1)) {
       if (slots <= 0) { busy = true; break; }
-      if (slots <= 0) break;
       const cx = pcx + dx, cz = pcz + dz;
       const chunk = this.chunks.get(chunkKey(cx, cz));
       if (!chunk) { this.requestChunk(cx, cz); slots--; continue; }
@@ -246,8 +252,27 @@ export class World {
       }
       if (chunk.sections.some((sec) => sec.dirty)) busy = true;
     }
+    // Around other players (multiplayer host): load only.
+    for (const [kx, kz, r] of this.keep) {
+      for (const [dx, dz] of spiral(r)) {
+        if (this.chunks.has(chunkKey(kx + dx, kz + dz))) continue;
+        if (slots <= 0) { busy = true; break; }
+        this.requestChunk(kx + dx, kz + dz);
+        slots--;
+      }
+    }
     // Nothing left to do: skip the scan until a chunk arrives or a block changes.
     if (!busy) this.scan = false;
+  }
+
+  // Multiplayer host: chunk columns [cx, cz, radius] to keep loaded around other players.
+  setKeep(list) {
+    const key = list.map((k) => k.join(',')).join(';');
+    if (key === this.keepKey) return;
+    this.keepKey = key;
+    this.keep = list;
+    this.keepChanged = true;
+    this.scan = true;
   }
 
   // Fraction of chunks within `radius` of the centre that are meshed (loading screen).
@@ -307,6 +332,7 @@ export class World {
     for (const [key, c] of this.chunks) {
       const dx = c.cx - pcx, dz = c.cz - pcz;
       if (dx * dx + dz * dz <= lim) continue;
+      if (this.keep.some(([kx, kz, r]) => (c.cx - kx) ** 2 + (c.cz - kz) ** 2 <= (r + 2) ** 2)) continue;
       if (c.state === S_READY && c.modified) this.store?.saveChunk(key, c.blocks);
       this.freeChunkMeshes(c);
       this.unlink(c);
@@ -624,6 +650,7 @@ export class World {
   }
 
   neighborsChanged(x, y, z) {
+    if (this.remote) return;
     // Grass smothered by a solid block turns to dirt.
     if (OPAQUE[this.getBlock(x, y, z)] && y > 0) {
       const below = this.getBlock(x, y - 1, z);
@@ -685,7 +712,7 @@ export class World {
 
   tick() {
     this.tickNow++;
-    if (!this.ticks.size) return;
+    if (this.remote || !this.ticks.size) return;
     const due = [];
     for (const [k, t] of this.ticks) {
       if (t.due <= this.tickNow) { due.push(t); this.ticks.delete(k); }

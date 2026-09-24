@@ -6,7 +6,7 @@ import {
 import { generateTextures, TEXTURE_NAMES, TEX } from './textures.js';
 import { STRIDE, meshBlockItem, SECTION_OFFSET, FACE_PAIR, ALL_OPEN } from './mesher.js';
 import { boxMesh, spriteMesh, MODEL_OFFSET } from './models.js';
-import { RENDER, R, TEXL, BLOCKS, FFLAGS, TINT, TINT_RGB, SHAPE, ICON_SHAPE, DOOR, CLIMB, SHAPE_KIND, BED, boxFaceUV } from './blocks.js';
+import { RENDER, R, TEXL, FFLAGS, TINT, TINT_RGB, SHAPE, ICON_SHAPE, DOOR, CLIMB, SHAPE_KIND, BED, boxFaceUV } from './blocks.js';
 import { ITEMS } from './items.js';
 import { SECTIONS } from './config.js';
 

@@ -18,6 +18,7 @@
     <div id="overlay-water"></div>
     <div id="overlay-hurt"></div>
     <div id="overlay-sleep"></div>
+    <div id="nametags"></div>
     <div id="crosshair"></div>
     <div id="attack-meter" hidden><i></i></div>
     <div id="debug" hidden></div>
@@ -34,6 +35,7 @@
       <div id="hotbar"><div id="hotbar-sel"></div></div>
     </div>
     <div id="resume-hint" hidden>Click to keep playing</div>
+    <button class="btn" id="leave-bed" data-action="leave-bed" hidden>Leave Bed</button>
   </div>
 
   <div id="touch" hidden>
@@ -61,6 +63,7 @@
     </div>
     <nav class="stack">
       <button class="btn wide" data-action="play">Singleplayer</button>
+      <button class="btn wide" data-action="multiplayer">Multiplayer</button>
       <button class="btn wide" data-action="settings">Options...</button>
       <button class="btn wide" data-action="controls">How to Play</button>
     </nav>
@@ -82,6 +85,29 @@
       </div>
       <div class="row">
         <button class="btn" data-action="delete-world" id="w-delete" disabled>Delete</button>
+        <button class="btn" data-action="back">Cancel</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="screen menu-bg" id="screen-multiplayer" hidden>
+    <h2 class="screen-title">Play with Friends</h2>
+    <label class="field">Your Name
+      <input id="mp-name" type="text" maxlength="16" autocomplete="off" spellcheck="false">
+    </label>
+    <div class="list-frame mp-list" id="mp-room" hidden>
+      <ul id="mp-games" class="world-list" role="listbox" aria-label="Open games"></ul>
+      <p id="mp-empty" class="empty">No games are open on this page right now. To host one, open a world, press Esc and choose Open to Friends.</p>
+    </div>
+    <p class="desc mp-note" id="mp-room-note">To play together, one of you opens a world and chooses <b>Open to Friends</b> in the game menu. Everyone else types the join code here.</p>
+    <form class="code-row" id="mp-code-form" novalidate>
+      <input id="mp-code" type="text" maxlength="8" autocomplete="off" spellcheck="false" placeholder="Join code" aria-label="Join code">
+      <button class="btn" type="submit" id="mp-code-join">Join with Code</button>
+    </form>
+    <p class="note" id="mp-status" hidden role="status"></p>
+    <div class="button-rows">
+      <div class="row">
+        <button class="btn" data-action="mp-join" id="mp-join" disabled>Join Selected Game</button>
         <button class="btn" data-action="back">Cancel</button>
       </div>
     </div>
@@ -123,9 +149,30 @@
         <button class="btn half" data-action="settings">Options...</button>
         <button class="btn half" data-action="controls">How to Play</button>
       </div>
-      <button class="btn wide" data-action="quit">Save and Quit to Title</button>
+      <button class="btn wide" data-action="share" id="p-share">Open to Friends</button>
+      <button class="btn wide" data-action="quit" id="p-quit">Save and Quit to Title</button>
     </div>
     <p class="pause-info" id="pause-info"></p>
+  </section>
+
+  <section class="screen menu-bg" id="screen-share" hidden>
+    <h2 class="screen-title">Open to Friends</h2>
+    <div class="share-box">
+      <p class="confirm-text" id="share-text"></p>
+      <div class="share-code" id="share-code" hidden>
+        <span id="share-code-text"></span>
+        <button class="btn small" data-action="copy-code">Copy</button>
+      </div>
+    </div>
+    <label class="field" id="share-name-field">Your Name
+      <input id="share-name" type="text" maxlength="16" autocomplete="off" spellcheck="false">
+    </label>
+    <p class="note" id="share-status" hidden role="status"></p>
+    <div class="button-rows">
+      <button class="btn wide" data-action="share-room" id="share-room" hidden>Open on This Page</button>
+      <button class="btn wide" data-action="share-code" id="share-code-btn">Get a Join Code</button>
+      <button class="btn wide" data-action="back">Back to Game Menu</button>
+    </div>
   </section>
 
   <section class="screen menu-bg" id="screen-settings" hidden>
@@ -151,10 +198,12 @@
         <dt><kbd>Q</kbd></dt><dd>Drop the held item</dd>
         <dt><kbd>Middle Click</kbd></dt><dd>Pick the block you look at</dd>
         <dt><kbd>T</kbd> <kbd>/</kbd></dt><dd>Chat and commands (try /help)</dd>
+        <dt><kbd>Esc</kbd></dt><dd>Game menu (Open to Friends is in there)</dd>
         <dt><kbd>F3</kbd></dt><dd>Debug info</dd>
       </dl>
       <p class="hint-text">Punch a tree for logs and turn them into planks in your inventory's crafting grid. Four planks make a crafting table: right-click it for the full 3×3 grid, where a wooden pickaxe gets you mining. The green book lists every recipe and lays it out for you.</p>
       <p class="hint-text">Furnaces smelt ores and cook meat: the item goes on top, fuel below. Weapons need a moment between swings (the bar under the crosshair), so time your hits. You heal while your food bar is nearly full.</p>
+      <p class="hint-text">To play with friends, open a world, press Esc and choose Open to Friends. On claude.ai, people you've shared this page with see your world under Multiplayer; anywhere else, give them the join code.</p>
       <p class="hint-text">On a touch screen the left stick walks, dragging looks around, a tap places and holding breaks.</p>
     </div>
     <button class="btn wide" data-action="back">Done</button>
@@ -186,6 +235,12 @@
       <button class="btn" data-action="cancel">Cancel</button>
     </div>
   </div>
+
+  <section class="screen menu-bg" id="screen-notice" hidden>
+    <h2 class="screen-title" id="notice-title">Disconnected</h2>
+    <p id="notice-text" class="confirm-text"></p>
+    <button class="btn wide" data-action="notice-ok">Back to Title Screen</button>
+  </section>
 
   <section class="screen menu-bg" id="screen-error" hidden>
     <h2 class="screen-title">Can't start the game</h2>

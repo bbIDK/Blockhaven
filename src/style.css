@@ -640,3 +640,45 @@ kbd {
   *, *::before, *::after { transition: none !important; animation-duration: 0.01ms !important; }
 }
 
+
+/* ------------------------------------------------------------------ multiplayer */
+.mp-list { height: min(calc(var(--u) * 110), 34vh); }
+.mp-note { max-width: calc(var(--u) * 260); }
+.world.off { cursor: default; opacity: 0.55; }
+.code-row { display: flex; gap: calc(var(--u) * 4); width: calc(var(--u) * 300); max-width: 100%; align-items: center; }
+.code-row input { flex: 1 1 auto; min-width: 0; text-transform: uppercase; letter-spacing: calc(var(--u) * 1); }
+.code-row .btn { flex: 0 0 auto; width: calc(var(--u) * 110); }
+.note.error { color: #ff6b5b; text-shadow: var(--u) var(--u) 0 #3f1512; }
+.share-box { display: flex; flex-direction: column; align-items: center; max-width: calc(var(--u) * 280); }
+.share-box .confirm-text { margin-bottom: calc(var(--u) * 8); }
+.share-code { display: flex; align-items: center; gap: calc(var(--u) * 8); margin-bottom: calc(var(--u) * 10); }
+.share-code span {
+  font: 400 calc(var(--u) * 20)/1 var(--font-display);
+  letter-spacing: calc(var(--u) * 3);
+  color: #ffff55;
+  text-shadow: calc(var(--u) * 2) calc(var(--u) * 2) 0 #3f3f15;
+  padding: calc(var(--u) * 4) calc(var(--u) * 8);
+  background: rgba(0, 0, 0, 0.55);
+  border: var(--u) solid #a0a0a0;
+  user-select: all;
+}
+.btn.small { width: calc(var(--u) * 50); }
+
+/* Other players' name tags, placed each frame over their heads. */
+#nametags { position: absolute; inset: 0; overflow: hidden; }
+.nametag {
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding: 0 calc(var(--u) * 2);
+  font-size: calc(var(--u) * 9);
+  line-height: 1.25;
+  white-space: nowrap;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.35);
+  text-shadow: none;
+  transform-origin: 50% 100%;
+  will-change: transform;
+}
+.nametag.sneak { color: rgba(255, 255, 255, 0.45); background: rgba(0, 0, 0, 0.2); }
+#leave-bed { position: absolute; left: 50%; bottom: calc(var(--u) * 60); transform: translateX(-50%); pointer-events: auto; z-index: 3; }

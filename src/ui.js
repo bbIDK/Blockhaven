@@ -245,6 +245,7 @@ export class UI {
     this.lastSel = -1;
     this.u = 3;
     this.selectedWorld = null;
+    this.selectedGame = null;
     this.createState = { mode: 'survival', type: 'default' };
 
     document.addEventListener('click', (e) => {
@@ -301,6 +302,31 @@ export class UI {
     list.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && this.selectedWorld) { this.onButton?.(); this.emit('open-world'); }
     });
+
+    // Multiplayer: the list of games on this page, the join code, and names.
+    const games = $('mp-games');
+    games.addEventListener('click', (e) => {
+      const li = e.target.closest('.world');
+      if (li && !li.classList.contains('off')) this.selectGame(li.dataset.addr);
+    });
+    games.addEventListener('dblclick', (e) => {
+      const li = e.target.closest('.world');
+      if (li && !li.classList.contains('off')) { this.selectGame(li.dataset.addr); this.onButton?.(); this.emit('mp-join'); }
+    });
+    games.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && this.selectedGame) { this.onButton?.(); this.emit('mp-join'); }
+    });
+    $('mp-code-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      this.onButton?.();
+      this.emit('mp-code', $('mp-code').value);
+    });
+    $('mp-code').addEventListener('input', () => {
+      const el = $('mp-code');
+      const v = el.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+      if (v !== el.value) el.value = v;
+    });
+    for (const id of ['mp-name', 'share-name']) $(id).addEventListener('change', () => this.emit('mp-name', $(id).value));
   }
 
   on(name, fn) { this.handlers[name] = fn; }
@@ -525,6 +551,92 @@ export class UI {
     const [name, desc] = (kind === 'mode' ? MODES : TYPES)[value];
     $(`cw-${kind}`).textContent = `${kind === 'mode' ? 'Game Mode' : 'World Type'}: ${name}`;
     $(`cw-${kind}-desc`).textContent = desc;
+  }
+
+  // ---------------------------------------------------------------- multiplayer
+  // Games open on this claude.ai page ({ addr, host, world, mode, players, ok }), or null when
+  // this page isn't on claude.ai (then only join codes work).
+  renderGames(games) {
+    $('mp-room').hidden = games === null;
+    $('mp-room-note').hidden = games !== null;
+    $('mp-join').hidden = games === null;
+    if (games === null) { this.selectGame(null); return; }
+    $('mp-empty').hidden = games.length > 0;
+    if (!games.some((g) => g.addr === this.selectedGame && g.ok)) this.selectedGame = games.find((g) => g.ok)?.addr ?? null;
+    const key = JSON.stringify(games);
+    if (key !== this.gamesKey) {
+      this.gamesKey = key;
+      $('mp-games').replaceChildren(...games.map((g) => {
+        const li = document.createElement('li');
+        li.className = g.ok ? 'world' : 'world off';
+        li.dataset.addr = g.addr;
+        li.tabIndex = 0;
+        li.setAttribute('role', 'option');
+        const icon = document.createElement('img');
+        icon.src = iconFor(g.mode === 'Creative' ? 41 : 2);
+        icon.alt = '';
+        const name = document.createElement('b');
+        name.textContent = g.world;
+        const who = document.createElement('span');
+        who.textContent = `Hosted by ${g.host} · ${g.mode}`;
+        const n = document.createElement('span');
+        n.textContent = g.ok ? `${g.players} player${g.players === 1 ? '' : 's'} online` : 'A different version: reload the page to join';
+        li.append(icon, name, who, n);
+        return li;
+      }));
+    }
+    this.selectGame(this.selectedGame);
+  }
+
+  selectGame(addr) {
+    this.selectedGame = addr;
+    for (const li of $('mp-games').children) {
+      const on = li.dataset.addr === addr;
+      li.classList.toggle('sel', on);
+      li.setAttribute('aria-selected', on);
+    }
+    $('mp-join').disabled = !addr;
+  }
+
+  mpStatus(text, error = false) {
+    const el = $('mp-status');
+    el.hidden = !text;
+    el.textContent = text ?? '';
+    el.classList.toggle('error', !!error);
+  }
+
+  // The Open to Friends screen. `net`: the game being hosted (or null); `room`: on claude.ai.
+  renderShare(net, room) {
+    const text = $('share-text');
+    if (net) {
+      text.textContent = net.via === 'room'
+        ? `Your world is open. People you've shared this page with on claude.ai can join from Multiplayer on the title screen. ${net.count} player${net.count === 1 ? '' : 's'} online.`
+        : `Your world is open. Friends choose Multiplayer on the title screen and type this code. ${net.count} player${net.count === 1 ? '' : 's'} online.`;
+    } else {
+      text.textContent = room
+        ? 'Let friends join this world while you play. People you’ve shared this page with on claude.ai will see it under Multiplayer. A join code works for friends playing anywhere else.'
+        : 'Let friends join this world while you play. You get a six-letter code to give them; they type it under Multiplayer on the title screen.';
+    }
+    $('share-code').hidden = !net?.code;
+    $('share-code-text').textContent = net?.code ?? '';
+    $('share-room').hidden = !!net || !room;
+    $('share-code-btn').hidden = !!net;
+    $('share-name-field').hidden = !!net;
+    this.shareStatus(null);
+  }
+
+  shareStatus(text, error = false) {
+    const el = $('share-status');
+    el.hidden = !text;
+    el.textContent = text ?? '';
+    el.classList.toggle('error', !!error);
+  }
+
+  // single: Open to Friends; host: the same screen shows the code; guest: nothing to open.
+  setPauseMenu(mode) {
+    $('p-share').hidden = mode === 'guest';
+    $('p-share').textContent = mode === 'host' ? 'Friends…' : 'Open to Friends';
+    $('p-quit').textContent = mode === 'guest' ? 'Disconnect' : 'Save and Quit to Title';
   }
 
   confirm(title, text, okLabel) {
