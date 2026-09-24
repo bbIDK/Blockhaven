@@ -239,7 +239,7 @@ export class Entities {
           e.attackCd = 20;
           e.swing = 1;
           const k = 5 / Math.max(0.1, dist);
-          game.damage(3, 'You were slain by a zombie', false, [dx * k * 0.3, 4.5, dz * k * 0.3]);
+          game.damage(3, 'You were slain by a zombie', false, [dx * k * 0.3, 4.5, dz * k * 0.3], true);
         }
       } else this.wanderTick(e);
       if (Math.random() < 0.005) game.audio.mob('zombie', 'say', { x: e.x, y: e.y + 1.6, z: e.z });
@@ -334,7 +334,7 @@ export class Entities {
     e.swing = Math.max(0, e.swing - dt * 3);
   }
 
-  hurtMob(e, amount, from) {
+  hurtMob(e, amount, from, bonus = 0) {
     if (e.dying || e.dead) return;
     // Like the original, a mob that was just hurt only takes the part of a new hit that's stronger
     // than the last one, so spam-clicking doesn't help.
@@ -350,8 +350,9 @@ export class Entities {
     if (from) {
       // Knocked back with a little hop.
       const dx = e.x - from.x, dz = e.z - from.z, d = Math.hypot(dx, dz) || 1;
-      e.vx = e.vx / 2 + (dx / d) * 7; e.vz = e.vz / 2 + (dz / d) * 7;
-      if (e.onGround) e.vy = 7;
+      const k = 7 * (1 + bonus * 0.9);
+      e.vx = e.vx / 2 + (dx / d) * k; e.vz = e.vz / 2 + (dz / d) * k;
+      if (e.onGround) e.vy = 7 + bonus * 1.5;
     }
     if (!e.def.hostile) { e.panic = 80; e.yaw = Math.atan2(e.x - (from?.x ?? e.x), e.z - (from?.z ?? e.z)) + Math.PI; }
     if (e.health <= 0) e.dying = 0.001;
@@ -369,10 +370,9 @@ export class Entities {
     }
   }
 
-  attack(e, heldId, crit = false) {
-    const def = itemDef(heldId);
-    const dmg = this.game.creative ? 100 : (def?.damage ?? 1) * (crit ? 1.5 : 1);
-    this.hurtMob(e, dmg, this.game.player);
+  // The player hits a mob. `bonus` adds knockback (a sprinting, full-strength hit).
+  attack(e, amount, bonus = 0) {
+    this.hurtMob(e, this.game.creative ? 100 : amount, this.game.player, bonus);
   }
 
   interact() { /* nothing to interact with yet */ }
@@ -410,7 +410,7 @@ export class Entities {
     if (pd < power * 2) {
       const f = 1 - pd / (power * 2);
       const k = (f * 14) / Math.max(0.3, pd);
-      game.damage(Math.ceil(f * f * 22), 'You were blown up', true, [(p.x - x) * k, f * 9, (p.z - z) * k]);
+      game.damage(Math.ceil(f * f * 22), 'You were blown up', true, [(p.x - x) * k, f * 9, (p.z - z) * k], true);
       if (game.creative) { p.vx += (p.x - x) * k; p.vy += f * 9; p.vz += (p.z - z) * k; }
     }
     for (const e of this.list) {

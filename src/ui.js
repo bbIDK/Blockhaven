@@ -1,7 +1,7 @@
 // DOM side of the game: screens, HUD, inventory and settings. Game logic lives in game.js;
 // this module renders state and reports user actions through on()/emit().
 import { iconFor } from './icons.js';
-import { itemDef, itemLabel, RECIPES, GROUPS } from './items.js';
+import { itemDef } from './items.js';
 
 export const $ = (id) => document.getElementById(id);
 
@@ -20,6 +20,8 @@ const HALF = ['.kk...kk.', 'khrk.keek', 'krrrkeeek', 'krrrreeek', '.krrreek.', '
 const DRUMSTICK = ['....kkk..', '...kmmmk.', '..kmhmmmk', '..kmmmmmk', '.kkmmmmk.', 'kbk.kkk..', 'kbbk.....', '.kk......', '.........'];
 const HALF_DRUM = ['....kkk..', '...keemk.', '..keemmmk', '..keemmmk', '.kkeemmk.', 'kbk.kkk..', 'kbbk.....', '.kk......', '.........'];
 const BUBBLE = ['..kkkkk..', '.kbbbbbk.', 'kbwbbbbbk', 'kbwbbbbbk', 'kbbbbbbbk', 'kbbbbbbbk', 'kbbbbbbbk', '.kbbbbbk.', '..kkkkk..'];
+const CHESTPLATE = ['.kkk.kkk.', 'kwmmkmmdk', 'kmmmmmmdk', '.kmmmmmk.', '.kmmmmdk.', '.kmmmmdk.', '.kmmmmdk.', '.kddddkk.', '..kkkkk..'];
+const HALF_PLATE = ['.kkk.kkk.', 'kwmmkeeek', 'kmmmmeeek', '.kmmmeek.', '.kmmmeek.', '.kmmmeek.', '.kmmmeek.', '.kddmeek.', '..kkkkk..'];
 const SPRITES = {
   heart: sprite(HEART, { k: '#1a0606', r: '#d9261c', h: '#ff9c8c' }),
   half: sprite(HALF, { k: '#1a0606', r: '#d9261c', h: '#ff9c8c', e: '#3a1512' }),
@@ -28,6 +30,9 @@ const SPRITES = {
   food: sprite(DRUMSTICK, { k: '#2a1406', m: '#b5642a', h: '#e0975a', b: '#f0e8d8' }),
   foodHalf: sprite(HALF_DRUM, { k: '#2a1406', m: '#b5642a', e: '#3a2014', b: '#f0e8d8' }),
   foodEmpty: sprite(DRUMSTICK.map((r) => r.replace(/[mh]/g, 'e')), { k: '#2a1406', e: '#3a2014', b: '#8a7f70' }),
+  armor: sprite(CHESTPLATE, { k: '#1c1c1c', w: '#ffffff', m: '#c8c8c8', d: '#8a8a8a' }),
+  armorHalf: sprite(HALF_PLATE, { k: '#1c1c1c', w: '#ffffff', m: '#c8c8c8', d: '#8a8a8a', e: '#3a3a3a' }),
+  armorEmpty: sprite(CHESTPLATE.map((r) => r.replace(/[wmd]/g, 'e')), { k: '#1c1c1c', e: '#3a3a3a' }),
 };
 
 function slotEl(tag = 'div') {
@@ -88,47 +93,10 @@ export class UI {
     $('hearts').innerHTML = '<i></i>'.repeat(10);
     $('bubbles').innerHTML = '<i></i>'.repeat(10);
     $('hunger').innerHTML = '<i></i>'.repeat(10);
+    $('armor').innerHTML = '<i></i>'.repeat(10);
     this.lastFood = -1;
-
-    // Inventory grids
-    this.storageEls = [];
-    this.invHotbarEls = [];
-    for (let i = 9; i < 36; i++) this.storageEls.push(this.bindSlot($('inv-storage'), i));
-    for (let i = 0; i < 9; i++) this.invHotbarEls.push(this.bindSlot($('inv-hotbar'), i));
-    this.paletteEls = [];
-    this.chestEls = [];
-    this.chestStorageEls = [];
-    this.chestHotbarEls = [];
-    const chestSlot = (parent, kind, index) => {
-      const el = slotEl();
-      el.dataset.slot = kind === 'player' ? index : '';
-      el.dataset.chest = kind === 'chest' ? index : '';
-      el.addEventListener('pointerdown', (e) => { e.preventDefault(); this.emit('chest-slot', kind, index, e.button, e.shiftKey); });
-      parent.appendChild(el);
-      return el;
-    };
-    for (let i = 0; i < 27; i++) this.chestEls.push(chestSlot($('chest-slots'), 'chest', i));
-    for (let i = 9; i < 36; i++) this.chestStorageEls.push(chestSlot($('chest-storage'), 'player', i));
-    for (let i = 0; i < 9; i++) this.chestHotbarEls.push(chestSlot($('chest-hotbar'), 'player', i));
-    const chest = $('screen-chest');
-    chest.addEventListener('pointermove', (e) => this.moveCursor(e.clientX, e.clientY, e.target));
-    chest.addEventListener('contextmenu', (e) => e.preventDefault());
-    $('inv-search').addEventListener('input', () => this.emit('search', $('inv-search').value));
-    $('inv-palette').addEventListener('pointerdown', (e) => {
-      const el = e.target.closest('.slot');
-      e.preventDefault();
-      this.emit('palette', el ? Number(el.dataset.item) : null, e.button, e.shiftKey);
-    });
-    $('recipe-list').addEventListener('click', (e) => {
-      const el = e.target.closest('.recipe');
-      if (el) this.emit('craft', Number(el.dataset.recipe), e.shiftKey);
-    });
-    const inv = $('screen-inventory');
-    inv.addEventListener('pointermove', (e) => this.moveCursor(e.clientX, e.clientY, e.target));
-    inv.addEventListener('contextmenu', (e) => e.preventDefault());
-    inv.addEventListener('pointerdown', (e) => {
-      if (e.target === inv) this.emit('inventory-outside');
-    });
+    this.lastArmor = -1;
+    this.lastMeter = -1;
 
     $('create-form').addEventListener('submit', (e) => { e.preventDefault(); this.emit('create-world'); });
     $('chat-input').addEventListener('keydown', (e) => {
@@ -148,14 +116,6 @@ export class UI {
     this.current = id;
     const first = id && $(id)?.querySelector('.btn.primary, input[type=text]');
     if (first && matchMedia('(pointer: fine)').matches) setTimeout(() => first.focus({ preventScroll: true }), 0);
-  }
-
-  bindSlot(parent, index) {
-    const el = slotEl();
-    el.dataset.slot = index;
-    el.addEventListener('pointerdown', (e) => { e.preventDefault(); this.emit('slot', index, e.button, e.shiftKey); });
-    parent.appendChild(el);
-    return el;
   }
 
   // ---------------------------------------------------------------- HUD
@@ -192,9 +152,18 @@ export class UI {
     this.nameTimer = setTimeout(() => el.classList.remove('show'), 1500);
   }
 
-  renderStats(survival, health, air, underwater, food = 20) {
+  renderStats(survival, health, air, underwater, food = 20, armor = 0) {
     $('stats').style.visibility = survival ? 'visible' : 'hidden';
     if (!survival) return;
+    if (armor !== this.lastArmor) {
+      this.lastArmor = armor;
+      const el = $('armor');
+      el.style.visibility = armor > 0 ? 'visible' : 'hidden';
+      [...el.children].forEach((i, k) => {
+        const v = armor - k * 2;
+        i.style.backgroundImage = `url(${v >= 2 ? SPRITES.armor : v === 1 ? SPRITES.armorHalf : SPRITES.armorEmpty})`;
+      });
+    }
     if (food !== this.lastFood) {
       this.lastFood = food;
       [...$('hunger').children].forEach((el, i) => {
@@ -216,6 +185,16 @@ export class UI {
         el.style.backgroundImage = i < bubbles ? `url(${SPRITES.bubble})` : 'none';
       });
     }
+  }
+
+  // Attack wind-up under the crosshair: 0..1, or -1 to hide it.
+  setAttackMeter(f) {
+    const v = f < 0 ? -1 : Math.round(f * 24);
+    if (v === this.lastMeter) return;
+    this.lastMeter = v;
+    const el = $('attack-meter');
+    el.hidden = v < 0;
+    if (v >= 0) el.firstChild.style.width = `${(v / 24) * 100}%`;
   }
 
   setDebug(lines) {
@@ -250,98 +229,7 @@ export class UI {
     input.hidden = true;
   }
 
-  // ---------------------------------------------------------------- inventory
-  renderInventory(inv, { creative, palette, stations }) {
-    $('inv-title').textContent = creative ? 'Creative inventory' : 'Inventory';
-    document.querySelector('.panel.inv').classList.toggle('creative', creative);
-    $('inv-search').hidden = !creative;
-    $('inv-palette').hidden = !creative;
-    $('inv-storage').hidden = creative;
-    $('inv-craft').hidden = creative;
-    if (creative) {
-      const key = palette.join(',');
-      if (key !== this.paletteKey) {
-        this.paletteKey = key;
-        const frag = document.createDocumentFragment();
-        for (const id of palette) {
-          const el = slotEl();
-          el.dataset.item = id;
-          fillSlot(el, { id, count: 1 }, false);
-          frag.appendChild(el);
-        }
-        $('inv-palette').replaceChildren(frag);
-      }
-    } else {
-      for (let i = 0; i < 27; i++) fillSlot(this.storageEls[i], inv.slots[i + 9]);
-      this.renderRecipes(inv, stations);
-    }
-    for (let i = 0; i < 9; i++) {
-      fillSlot(this.invHotbarEls[i], inv.slots[i], !creative);
-      this.invHotbarEls[i].classList.toggle('sel', i === inv.selected);
-    }
-    const cur = $('cursor-item');
-    if (inv.cursor) {
-      if (!cur.firstChild) cur.appendChild(slotEl());
-      fillSlot(cur.firstChild, inv.cursor, !creative);
-      cur.hidden = false;
-    } else cur.hidden = true;
-  }
-
-  renderChest(inv, slots) {
-    for (let i = 0; i < 27; i++) fillSlot(this.chestEls[i], slots[i]);
-    for (let i = 0; i < 27; i++) fillSlot(this.chestStorageEls[i], inv.slots[i + 9]);
-    for (let i = 0; i < 9; i++) fillSlot(this.chestHotbarEls[i], inv.slots[i]);
-    const cur = $('cursor-item');
-    if (inv.cursor) {
-      if (!cur.firstChild) cur.appendChild(slotEl());
-      fillSlot(cur.firstChild, inv.cursor);
-      cur.hidden = false;
-    } else cur.hidden = true;
-  }
-
   setSleeping(on) { $('overlay-sleep').classList.toggle('on', on); }
-
-  hideCursor() {
-    $('cursor-item').hidden = true;
-    $('tooltip').hidden = true;
-  }
-
-  renderRecipes(inv, stations) {
-    const has = (s) => stations.has(s);
-    $('inv-stations').textContent = `Nearby: ${[has('table') && 'crafting table', has('furnace') && 'furnace'].filter(Boolean).join(', ') || 'nothing'} — stand within 4 blocks of a crafting table or furnace to use them.`;
-    const rows = RECIPES.map((r, i) => ({ r, i, ok: inv.canCraft(r, stations), relevant: r.input.some((ing) => inv.countIngredient(ing) > 0) }));
-    rows.sort((a, b) => (b.ok - a.ok) || (b.relevant - a.relevant) || a.i - b.i);
-    const html = rows.map(({ r, i, ok }) => {
-      const needs = r.input.map((ing) => {
-        const id = ing.group ? GROUPS[ing.group][0] : ing.id;
-        const have = inv.countIngredient(ing);
-        const name = ing.group ? `any ${ing.group}` : itemLabel(id);
-        return `<span class="${have >= ing.n ? '' : 'miss'}"><img src="${iconFor(id)}" alt="">${ing.n}× ${name}</span>`;
-      }).join('');
-      const where = r.station === 'table' ? ' · crafting table' : r.station === 'furnace' ? ' · furnace' : '';
-      return `<li class="recipe ${ok ? 'ok' : 'no'}" data-recipe="${i}"><img src="${iconFor(r.out)}" alt="">` +
-        `<b>${itemLabel(r.out)}${r.count > 1 ? ` ×${r.count}` : ''}<small class="stations">${where}</small></b><div class="needs">${needs}</div></li>`;
-    }).join('');
-    if (html !== this.recipeHTML) { this.recipeHTML = html; $('recipe-list').innerHTML = html; }
-  }
-
-  moveCursor(x, y, target) {
-    const cur = $('cursor-item');
-    cur.style.left = `${x}px`;
-    cur.style.top = `${y}px`;
-    const tip = $('tooltip');
-    const slot = target?.closest?.('.slot');
-    let id = null;
-    if (slot?.dataset.item) id = Number(slot.dataset.item);
-    else if (slot?.dataset.chest) id = this.chestItem?.(Number(slot.dataset.chest)) ?? null;
-    else if (slot?.dataset.slot !== undefined && slot.dataset.slot !== '') id = this.slotItem?.(Number(slot.dataset.slot)) ?? null;
-    if (id && $('cursor-item').hidden) {
-      tip.textContent = itemLabel(id);
-      tip.style.left = `${x + 16}px`;
-      tip.style.top = `${y - 30}px`;
-      tip.hidden = false;
-    } else tip.hidden = true;
-  }
 
   // ---------------------------------------------------------------- menus
   renderWorlds(worlds, persistent) {

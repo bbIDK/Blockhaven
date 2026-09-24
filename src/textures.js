@@ -568,6 +568,20 @@ def('furnace_front', (t) => {
   for (let y = 8; y < 14; y++) for (let x = 4; x < 12; x++) t.set(x, y, y === 13 ? 0x3d3d3d : 0x1b1b1b);
   for (let x = 4; x < 12; x++) t.set(x, 7, 0x5c5c5c);
 });
+def('furnace_front_on', (t) => {
+  smoothStone(t);
+  for (let x = 3; x < 13; x++) { t.set(x, 3, 0x5c5c5c); t.set(x, 4, 0x8e8e8e); }
+  for (let x = 4; x < 12; x++) t.set(x, 7, 0x5c5c5c);
+  // Flames in the fire box: hotter (yellow) at the bottom, licking up in tongues.
+  const tongues = [2, 4, 3, 5, 4, 2, 4, 3];
+  for (let y = 8; y < 14; y++) for (let x = 4; x < 12; x++) {
+    const h = tongues[x - 4], top = 14 - h;
+    let c = y === 13 ? 0x3d3d3d : 0x1b1b1b;
+    if (y >= top && y < 13) c = y >= 12 ? 0xffe27a : y >= top + 2 ? 0xffa21f : 0xe0561a;
+    else if (y === 13) c = 0x6a3a1a;
+    t.set(x, y, c);
+  }
+});
 def('tnt_side', (t) => {
   const FONT = { T: ['###', '.#.', '.#.', '.#.', '.#.'], N: ['#.#', '###', '###', '#.#', '#.#'] };
   for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
@@ -892,6 +906,113 @@ def('flint_and_steel', (t) => {
   const rows = [[10, 11], [9, 12], [9, 12], [8, 12], [9, 11]];
   rows.forEach(([a, b], i) => { for (let x = a; x <= b; x++) t.set(x, 8 + i, x === a ? 0x5a5a5a : 0x2e2e2e); });
 });
+
+def('charcoal', (t) => {
+  t.clear();
+  const pal = [0x1e1610, 0x2c2118, 0x3a2c20, 0x4e3c2c];
+  for (let y = 4; y < 13; y++) for (let x = 3; x < 13; x++) {
+    const d = Math.hypot(x - 7.5, (y - 8.5) * 1.15);
+    if (d < 4.6 + t.r() * 0.6) t.set(x, y, pick(pal, 1 - d / 6 + t.r() * 0.2));
+  }
+  t.set(6, 6, 0x6a5440); t.set(9, 10, 0x6a5440);
+});
+def('clay_ball', (t) => {
+  t.clear();
+  for (let y = 4; y < 13; y++) for (let x = 3; x < 13; x++) {
+    const d = Math.hypot(x - 7.5, y - 8.5);
+    if (d < 4.4) t.set(x, y, d > 3.6 ? 0x6f7888 : d < 1.8 && x < 8 && y < 9 ? 0xc6ccd8 : pick([0x9aa2b4, 0xa4acbe, 0x8e96a8], t.r()));
+  }
+});
+def('brick', (t) => {
+  t.clear();
+  for (let y = 6; y < 11; y++) for (let x = 2; x < 14; x++) {
+    let c = pick([0x9c4a32, 0xa8543a, 0x944430], t.r());
+    if (y === 6) c = 0xc06a4c;
+    if (y === 10 || x === 13) c = 0x5e2a1c;
+    if (x === 2) c = 0x7a3626;
+    t.set(x, y, c);
+  }
+});
+def('paper', (t) => {
+  t.clear();
+  for (let y = 2; y < 15; y++) for (let x = 3; x < 13; x++) {
+    let c = pick([0xf2f2ee, 0xfafaf8, 0xe8e8e2], t.r());
+    if (x === 12 || y === 14) c = 0xc8c8c0;
+    if (x === 3 || y === 2) c = 0xffffff;
+    if (y > 3 && y < 13 && y % 2 === 0 && x > 4 && x < 11) c = 0xc8ccd6;
+    t.set(x, y, c);
+  }
+  t.set(12, 2, 0, 0);
+});
+def('book', (t) => {
+  t.clear();
+  for (let y = 2; y < 15; y++) for (let x = 3; x < 13; x++) {
+    let c = pick([0x7a3a1c, 0x86421f, 0x70341a], t.r());
+    if (x === 3 || x === 4) c = 0x4e2210;
+    if (y === 2 || y === 14) c = 0x5a2812;
+    if (x >= 11 && y > 2 && y < 14) c = x === 12 ? 0xd8d2c0 : 0xf0ead8;
+    t.set(x, y, c);
+  }
+  for (let x = 6; x < 10; x++) { t.set(x, 5, 0xd8a83a); t.set(x, 7, 0xd8a83a); }
+});
+function bowl(t, fill) {
+  t.clear();
+  const w = WOODS.oak;
+  for (let y = 6; y < 14; y++) {
+    const half = [7, 7, 7, 6, 6, 5, 4, 3][y - 6];
+    for (let x = 8 - half; x < 8 + half; x++) {
+      let c = pick(w.planks, t.r());
+      if (y === 13 || x === 8 - half || x === 7 + half) c = w.seam;
+      // The inside of the bowl, seen over the far rim.
+      if (y === 7 && x > 1 && x < 14) c = fill ? pick(fill, t.r()) : shade(pick(w.planks, t.r()), 0.62);
+      if (y === 6) c = x === 8 - half || x === 7 + half ? w.seam : fill ? pick(fill, t.r()) : shade(pick(w.planks, t.r()), 0.5);
+      t.set(x, y, c);
+    }
+  }
+  if (fill) { t.set(4, 6, 0xc83a2a); t.set(9, 7, 0xe8dcc8); t.set(11, 6, 0xc83a2a); t.set(6, 7, 0x8a6a4a); }
+}
+def('bowl', (t) => bowl(t, null));
+def('mushroom_stew', (t) => bowl(t, [0x8a4a22, 0x9a5628, 0x7a401c]));
+
+// Armor icons. Letters pick from the material palette (outline, dark, mid, light, highlight).
+const ARMOR_MATS = {
+  leather: [0x2c1a0c, 0x6a4020, 0x8c5a30, 0xa66e3c, 0xc48a58],
+  iron: [0x3a3a3a, 0x8a8a8a, 0xbcbcbc, 0xdedede, 0xffffff],
+  golden: [0x5a3e06, 0xc48d0f, 0xeab62a, 0xf7d65a, 0xfff5b0],
+  diamond: [0x0c3a3e, 0x1f8f95, 0x33c3cb, 0x71e6ea, 0xd2fdff],
+};
+const ARMOR_SHAPES = {
+  helmet: [
+    '................', '................', '................', '.....kkkkkk.....', '...kkhhllllkk...', '..khllmmmmmmdk..',
+    '..klmmmmmmmmdk..', '..klmmmmmmmmdk..', '..kmmkkkkkkmdk..', '..kmdk....kmdk..', '..kmdk....kddk..', '..kkkk....kkkk..',
+    '................', '................', '................', '................'],
+  chestplate: [
+    '................', '..kkkk....kkkk..', '.khlmdkkkkkmmdk.', '.klmmmhlllmmmdk.', '.klmmmlmmmmmmdk.', '.kkkmmmmmmmmkkk.',
+    '...klmmmmmmmdk..', '...klmmmmmmmdk..', '...klmmmmmmmdk..', '...kmmmmmmmmdk..', '...klmmmmmmmdk..', '...kmmmmmmmddk..',
+    '...kdddddddddk..', '...kkkkkkkkkkk..', '................', '................'],
+  leggings: [
+    '................', '................', '...kkkkkkkkkk...', '...khllllllmdk..', '...klmmmmmmmdk..', '...klmmkkkmmdk..',
+    '...klmdk.kmmdk..', '...klmdk.kmmdk..', '...klmdk.kmmdk..', '...kmmdk.kmmdk..', '...klmdk.kmmdk..', '...kmmdk.kmddk..',
+    '...kmddk.kdddk..', '...kkkkk.kkkkk..', '................', '................'],
+  boots: [
+    '................', '................', '................', '................', '................', '................',
+    '...kkkk..kkkk...', '...khlk..khlk...', '...klmk..klmk...', '...kmmk..kmmk...', '..kkmmk..kmmkk..', '.khlmmk..kmmmdk.',
+    '.klmmdk..kmmddk.', '.kkkkkk..kkkkkk.', '................', '................'],
+};
+const ARMOR_INDEX = { k: 0, d: 1, m: 2, l: 3, h: 4 };
+for (const [mat, pal] of Object.entries(ARMOR_MATS)) {
+  for (const [piece, rows] of Object.entries(ARMOR_SHAPES)) {
+    def(`${mat}_${piece}`, (t) => {
+      t.clear();
+      rows.forEach((row, y) => [...row].forEach((ch, x) => {
+        if (ch === '.') return;
+        let c = pal[ARMOR_INDEX[ch]];
+        if (mat === 'leather' && ch !== 'k' && t.r() < 0.2) c = shade(c, 0.9);
+        t.set(x, y, c);
+      }));
+    });
+  }
+}
 
 // ---------------------------------------------------------------- doors, ladders, panes
 function doorHalf(t, top) {

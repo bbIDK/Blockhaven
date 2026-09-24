@@ -7,6 +7,9 @@ import { Input } from './input.js';
 import { UI, $ } from './ui.js';
 import { Audio } from './audio.js';
 import { Inventory } from './inventory.js';
+import { InventoryMenu, CraftingTableMenu, FurnaceMenu, ChestMenu, CreativeMenu } from './containers.js';
+import { ContainerGUI } from './gui.js';
+import { Furnace } from './furnace.js';
 import { initIcons } from './icons.js';
 import { TEX } from './textures.js';
 import { Particles } from './particles.js';
@@ -16,10 +19,10 @@ import { TouchControls } from './touch.js';
 import * as storage from './storage.js';
 import { makeEnvironment, updateEnvironment, clockText } from './sky.js';
 import {
-  B, BLOCKS, BASE, CREATIVE_BLOCKS, SOLID, REPLACEABLE, WATERLIKE, FACING_VARIANTS, WALL_TORCH, FACE_DIRS,
-  RENDER, R, SLAB, STAIRS, DOOR, doorId, CLIMB, LADDER, oppositeFace, CHEST, BED, bedId,
+  B, BLOCKS, BASE, SOLID, REPLACEABLE, WATERLIKE, FACING_VARIANTS, WALL_TORCH, FACE_DIRS,
+  RENDER, R, SLAB, STAIRS, DOOR, doorId, CLIMB, LADDER, oppositeFace, CHEST, BED, bedId, FURNACE_IDS, furnaceVariant, isLitFurnace,
 } from './blocks.js';
-import { ITEMS, I, itemDef, itemLabel, breakTime, dropsFor, blockOfItem, RECIPES } from './items.js';
+import { ITEMS, I, itemDef, itemLabel, breakTime, dropsFor, attackDamage, attackSpeed } from './items.js';
 import { BIOME_NAMES } from './biomes.js';
 import { CHUNK_VOLUME, HEIGHT, TICKS_PER_DAY } from './config.js';
 import { seedFromText, clamp, hashString, mat4, identity, translate, rotateX, rotateZ } from './math.js';
@@ -29,8 +32,8 @@ const DEG = Math.PI / 180;
 const COARSE = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 const REDUCED_MOTION = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const DEFAULT_SETTINGS = {
-  renderDistance: COARSE ? 5 : 8, resolution: 0, fov: 75, sensitivity: 100, brightness: 50, volume: 70, music: 45,
-  viewBobbing: !REDUCED_MOTION, clouds: true, invertMouse: false, showFps: false,
+  renderDistance: COARSE ? 5 : 8, resolution: 0, fov: 75, sensitivity: 100, brightness: 50, volume: 80, music: 35,
+  viewBobbing: !REDUCED_MOTION, clouds: true, invertMouse: false, showFps: false, recipeBook: true, mix: 2,
 };
 const LOG_AXES = { [B.oak_log]: [100, 101], [B.birch_log]: [102, 103], [B.spruce_log]: [104, 105] };
 const FACE_NAMES = ['east (+X)', 'west (-X)', 'up', 'down', 'south (+Z)', 'north (-Z)'];
@@ -45,12 +48,19 @@ const TIPS = [
   'Sand and gravel fall when nothing holds them up.',
   'Sleep in a bed to skip the night and set your respawn point.',
   'Chests hold 27 stacks. Shift-click moves a whole stack across.',
+  'Right-click a crafting table for the 3x3 grid. The green book lays recipes out for you.',
+  'Drag a stack across slots to share it out evenly; right-drag drops one in each.',
+  'Coal smelts eight items in a furnace. Wood works too, and logs cook into charcoal.',
+  'Axes hit hard but slowly. Wait for the meter under the crosshair to fill for full-strength hits.',
+  'Armor soaks up damage from monsters and explosions. Shift-click it to put it on.',
   'You only heal when your food bar is nearly full. Cooked meat fills it best.',
   'Hit a mob while falling for a critical hit.',
   'Zombies don’t burn in the rain.',
   'Golden tools are the fastest, but they wear out quickly.',
 ];
 const CLOUD_HEIGHT = 108.5;
+// Which face of a lit furnace has the fire in it.
+const FURNACE_FRONT = Object.fromEntries(Object.entries(FACING_VARIANTS[218]).map(([face, id]) => [id, Number(face)]));
 const REACH = { creative: 5.5, survival: 4.6 };
 
 export class Game {
@@ -63,6 +73,12 @@ export class Game {
     this.touch = new TouchControls(this);
     this.audio = new Audio();
     this.settings = storage.loadPrefs(SETTINGS_KEY, DEFAULT_SETTINGS);
+    // Settings saved before the sound rebalance still have the old default volumes.
+    if (!this.settings.mix) {
+      if (this.settings.volume === 70) this.settings.volume = DEFAULT_SETTINGS.volume;
+      if (this.settings.music === 45) this.settings.music = DEFAULT_SETTINGS.music;
+      this.settings.mix = 2;
+    }
     this.env = makeEnvironment();
     this.particles = new Particles();
     this.entities = new Entities(this);
@@ -111,12 +127,14 @@ export class Game {
     this.hideHud = false;
     this.expectUnlock = false;
     this.screenStack = [];
-    this.search = '';
     this.chatHistory = [];
     this.chatIndex = 0;
     this.invVersion = 0;
     this.containers = new Map();
-    this.openChest = null;
+    this.furnaces = new Map();
+    this.menu = null;
+    this.openBlock = null;
+    this.attackTicks = 100;
     this.weather = new Weather();
     this.drawnInvVersion = -1;
     this.saveTimer = 0;
@@ -125,6 +143,7 @@ export class Game {
     this.autoScale = 1;
     this.slowTime = 0;
     this.fastTime = 0;
+    this.gui = new ContainerGUI(this);
     this.applySettings();
     this.bindUI();
     this.bindInput();
@@ -185,11 +204,12 @@ export class Game {
     if (this.renderer) this.onResize();
   }
 
+  saveSettings() { storage.savePrefs(SETTINGS_KEY, this.settings); }
+
   // ---------------------------------------------------------------- UI wiring
   bindUI() {
     const ui = this.ui;
-    ui.bindSettings(this.settings, () => { this.applySettings(); storage.savePrefs(SETTINGS_KEY, this.settings); });
-    ui.slotItem = (i) => this.inv.slots[i]?.id ?? null;
+    ui.bindSettings(this.settings, () => { this.applySettings(); this.saveSettings(); });
     ui.on('play', async () => {
       this.audio.unlock();
       const worlds = await storage.listWorlds();
@@ -223,18 +243,7 @@ export class Game {
     ui.on('quit', () => this.quitToTitle());
     ui.on('respawn', () => this.respawn());
     ui.on('hotbar-tap', (i) => { if (this.state === 'play') this.select(i); });
-    ui.on('slot', (i, button, shift) => this.inventoryClick(i, button, shift));
-    ui.on('palette', (id, button, shift) => this.paletteClick(id, button, shift));
-    ui.on('close-inv', () => { if (this.state === 'inventory') this.closeInventory(); });
-    ui.on('close-chest', () => { if (this.state === 'chest') this.closeChest(); });
-    ui.on('inventory-outside', () => {
-      if (this.inv.cursor && this.creative) { this.inv.cursor = null; this.invChanged(); }
-    });
-    ui.on('search', (q) => { this.search = q.trim().toLowerCase(); this.renderInventory(); });
-    ui.on('craft', (i, shift) => this.craft(i, shift));
-    ui.on('chest-slot', (kind, i, button, shift) => this.chestClick(kind, i, button, shift));
     ui.onButton = () => { this.audio.unlock(); this.audio.click(); };
-    ui.chestItem = (i) => this.openChest?.slots[i]?.id ?? null;
     ui.on('chat-send', (text) => this.sendChat(text));
     ui.on('chat-close', () => this.closeChat());
     ui.on('chat-history', (d) => {
@@ -353,6 +362,8 @@ export class Game {
     this.entities.reset(meta.entities);
     this.weather.load(meta.weather);
     this.containers = new Map((meta.containers ?? []).map((c) => [c.k, c.slots.map((x) => (x && itemDef(x.id) ? x : null))]));
+    this.furnaces = new Map((meta.furnaces ?? []).map((f) => [f.k, new Furnace(f)]));
+    this.attackTicks = 100;
     this.fire = 0;
     this.loadStart = performance.now();
     this.mining = null;
@@ -503,6 +514,7 @@ export class Game {
       inventory: this.inv.serialize(),
       entities: this.entities.serialize(),
       containers: [...this.containers].map(([k, slots]) => ({ k, slots: slots.map((x) => (x ? { ...x } : null)) })),
+      furnaces: [...this.furnaces].filter(([, f]) => !f.empty).map(([k, f]) => ({ k, ...f.serialize() })),
       weather: this.weather.serialize(),
     });
     await storage.saveWorld(this.meta);
@@ -529,90 +541,181 @@ export class Game {
     if (!this.touch.enabled) this.input.lock();
   }
 
+  // ---------------------------------------------------------------- container screens
   openInventory() {
-    this.state = 'inventory';
+    this.openMenu(this.creative && this.gui.tab !== 'inventory' ? new CreativeMenu(this) : new InventoryMenu(this));
+  }
+
+  // Shows a container screen. `block` is the chest, table or furnace it belongs to, if any.
+  openMenu(menu, block = null) {
+    this.menu = menu;
+    this.openBlock = block;
+    this.state = 'container';
     this.releasePointer();
     this.mining = null;
-    this.search = '';
-    $('inv-search').value = '';
-    this.ui.show('screen-inventory');
-    this.renderInventory();
+    this.eating = null;
+    this.gui.show(menu);
   }
 
-  closeInventory() {
-    if (this.inv.cursor) {
-      if (this.creative) this.inv.cursor = null;
-      else {
-        const held = this.inv.cursor;
-        const left = this.inv.returnCursor();
-        if (left) this.entities.dropItem(this.player, { id: held.id, count: left, dmg: held.dmg });
+  closeMenu() {
+    const m = this.menu;
+    if (!m) return;
+    // Whatever was left in a crafting grid or on the cursor goes back into the inventory, and
+    // what doesn't fit is thrown out.
+    const spill = m.close();
+    if (this.inv.cursor) spill.push(this.inv.cursor);
+    this.inv.cursor = null;
+    if (!this.creative) {
+      for (const s of spill) {
+        const left = this.inv.add(s.id, s.count, s.dmg ?? 0);
+        if (left) this.entities.dropItem(this.player, { id: s.id, count: left, dmg: s.dmg ?? 0 });
       }
     }
+    if (m.kind === 'chest' && this.openBlock) this.audio.chest(false, this.openBlock.at);
+    this.menu = null;
+    this.openBlock = null;
+    this.gui.hide();
     this.invChanged();
-    this.ui.hideCursor();
-    this.ui.show(null);
-    this.state = 'play';
-    this.input.capture = true;
-    if (!this.touch.enabled) this.input.lock();
+    if (this.state === 'container') {
+      this.state = 'play';
+      this.input.capture = true;
+      if (!this.touch.enabled) this.input.lock();
+    }
   }
 
-  // ---------------------------------------------------------------- chests and beds
+  // Menu input from the screen (see gui.js).
+  menuAction(type, target, button = 0, shift = false) {
+    const m = this.menu;
+    if (!m) return;
+    switch (type) {
+      case 'click': m.click(target, button); break;
+      case 'quick': m.quickMove(target); break;
+      case 'collect': m.collect(); break;
+      case 'drag': m.drag(target, button); break;
+      case 'clone':
+        if (this.creative && target.stack) this.inv.cursor = { ...target.stack, count: itemDef(target.stack.id).stack };
+        break;
+      case 'recipe': m.placeRecipe?.(target, button === 1); break;
+      case 'trash':
+        if (!this.creative) break;
+        if (this.inv.cursor) this.inv.cursor = null;
+        else if (shift) { this.inv.slots.fill(null); this.inv.armor.fill(null); }
+        break;
+      case 'outside': {
+        // Clicking outside the window throws the held stack (right click: one item).
+        const c = this.inv.cursor;
+        if (!c) break;
+        if (this.creative) { this.inv.cursor = null; break; }
+        const n = button === 2 ? 1 : c.count;
+        this.entities.dropItem(this.player, { id: c.id, count: n, dmg: c.dmg ?? 0 });
+        this.inv.cursor = n < c.count ? { ...c, count: c.count - n } : null;
+        break;
+      }
+      default: break;
+    }
+    this.menuChanged();
+  }
+
+  menuChanged() {
+    this.invChanged();
+    this.gui.render();
+  }
+
+  // Sounds for things that happen in menus.
+  menuEvent(type, stack) {
+    if (type === 'craft') this.audio.craft();
+    else if (type === 'equip') this.audio.equip(itemDef(stack.id).armor.material);
+  }
+
+  paletteClick(id, button, shift) {
+    if (!this.creative || !this.menu?.paletteClick) return;
+    this.menu.paletteClick(id, button, shift);
+    this.menuChanged();
+  }
+
+  // Creative tabs: the item palette, or the survival inventory with armor and crafting.
+  creativeTab(tab) {
+    if (!this.creative || !this.menu) return;
+    const want = tab === 'inventory' ? 'inventory' : 'creative';
+    if (this.menu.kind !== want) {
+      this.menu.close();
+      this.menu = want === 'inventory' ? new InventoryMenu(this) : new CreativeMenu(this);
+    }
+    this.gui.show(this.menu);
+  }
+
+  // Number keys over a slot swap it with that hotbar slot; over the palette they fetch a stack.
+  hotbarKey(n) {
+    const slot = this.gui.hoverSlot, item = this.gui.hoverItem;
+    if (slot) this.menu.swapWithHotbar(slot, n);
+    else if (this.creative && item !== null) this.inv.slots[n] = { id: item, count: itemDef(item).stack, dmg: 0 };
+    else return;
+    this.menuChanged();
+  }
+
+  // Q over a slot throws one item (Ctrl+Q: the stack).
+  dropHovered(all) {
+    const slot = this.gui.hoverSlot;
+    if (!slot) return;
+    const stack = this.menu.takeToDrop(slot, all);
+    if (stack && !this.creative) this.entities.dropItem(this.player, stack);
+    this.menuChanged();
+  }
+
+  // ---------------------------------------------------------------- chests, furnaces, tables and beds
   containerKey(x, y, z) { return `${x},${y},${z}`; }
 
   openChestAt(x, y, z) {
     const key = this.containerKey(x, y, z);
     if (!this.containers.has(key)) this.containers.set(key, new Array(27).fill(null));
-    this.openChest = { key, slots: this.containers.get(key), at: { x: x + 0.5, y: y + 0.5, z: z + 0.5 } };
-    this.state = 'chest';
-    this.releasePointer();
-    this.mining = null;
-    this.audio.chest(true, this.openChest.at);
-    this.ui.show('screen-chest');
-    this.ui.renderChest(this.inv, this.openChest.slots);
+    const at = { x: x + 0.5, y: y + 0.5, z: z + 0.5 };
+    this.audio.chest(true, at);
+    this.openMenu(new ChestMenu(this, this.containers.get(key)), { key, at });
   }
 
-  closeChest() {
-    if (this.inv.cursor) {
-      const held = this.inv.cursor;
-      const left = this.inv.returnCursor();
-      if (left) this.entities.dropItem(this.player, { id: held.id, count: left, dmg: held.dmg });
-    }
-    if (this.openChest) this.audio.chest(false, this.openChest.at);
-    this.openChest = null;
-    this.invChanged();
-    this.ui.hideCursor();
-    this.ui.show(null);
-    this.state = 'play';
-    this.input.capture = true;
-    if (!this.touch.enabled) this.input.lock();
+  openCraftingTable(x, y, z) {
+    this.openMenu(new CraftingTableMenu(this), { key: this.containerKey(x, y, z), at: { x: x + 0.5, y: y + 0.5, z: z + 0.5 } });
   }
 
-  chestClick(kind, i, button, shift) {
-    if (this.state !== 'chest' || !this.openChest) return;
-    const chest = this.openChest.slots;
-    if (shift) {
-      // Move the whole stack to the other side.
-      const from = kind === 'chest' ? chest : this.inv.slots;
-      const stack = from[i];
-      if (stack) {
-        from[i] = null;
-        const left = kind === 'chest' ? this.inv.add(stack.id, stack.count, stack.dmg) : Inventory.insert(chest, stack);
-        if (left) from[i] = { ...stack, count: left };
+  furnaceAt(x, y, z) {
+    const key = this.containerKey(x, y, z);
+    if (!this.furnaces.has(key)) this.furnaces.set(key, new Furnace());
+    return this.furnaces.get(key);
+  }
+
+  openFurnaceAt(x, y, z) {
+    this.openMenu(new FurnaceMenu(this, this.furnaceAt(x, y, z)), { key: this.containerKey(x, y, z), at: { x: x + 0.5, y: y + 0.5, z: z + 0.5 } });
+  }
+
+  // Furnaces keep smelting while their chunk is loaded, and light up while they burn.
+  tickFurnaces() {
+    const w = this.world;
+    for (const [key, f] of this.furnaces) {
+      const [x, y, z] = key.split(',').map(Number);
+      if (!w.isLoaded(x, z)) continue;
+      const id = w.getBlock(x, y, z);
+      if (!FURNACE_IDS.has(id)) { if (f.empty) this.furnaces.delete(key); continue; }
+      if (f.lit || f.slots[0]) {
+        if (f.tick() && this.menu?.furnace === f) this.invChanged();
       }
-    } else {
-      this.inv.clickSlots(kind === 'chest' ? chest : this.inv.slots, i, button === 2 ? 2 : 0);
+      if (isLitFurnace(id) !== f.lit) { w.setBlock(x, y, z, furnaceVariant(id, f.lit)); continue; }
+      if (f.lit && Math.random() < 0.08) {
+        // Crackling, and a wisp of smoke from the fire box.
+        const d = FACE_DIRS[FURNACE_FRONT[id]];
+        this.audio.furnace({ x: x + 0.5, y: y + 0.5, z: z + 0.5 });
+        this.particles.smoke(x + 0.5 + d[0] * 0.56, y + 0.4, z + 0.5 + d[2] * 0.56, 1, 0.12);
+      }
     }
-    this.invChanged();
-    this.ui.renderChest(this.inv, chest);
   }
 
-  // Spill a broken chest's contents.
+  // Spill a broken chest's or furnace's contents.
   dropContainer(x, y, z) {
     const key = this.containerKey(x, y, z);
-    const slots = this.containers.get(key);
-    if (!slots) return;
+    if (this.openBlock?.key === key) this.closeMenu();
+    const slots = this.containers.get(key) ?? this.furnaces.get(key)?.slots;
     this.containers.delete(key);
-    if (this.openChest?.key === key) this.closeChest();
+    this.furnaces.delete(key);
+    if (!slots) return;
     for (const s of slots) if (s) this.entities.spawnItem(x + 0.5, y + 0.5, z + 0.5, s.id, s.count, s.dmg ?? 0);
   }
 
@@ -639,9 +742,10 @@ export class Game {
     }, 1400);
   }
 
-  // World listener: react to blocks that vanish (chests spill their items).
+  // World listener: react to blocks that vanish (chests and furnaces spill their items).
   blockChanged(x, y, z, old, id) {
-    if (CHEST[old] !== undefined && CHEST[id] === undefined) this.dropContainer(x, y, z);
+    if ((CHEST[old] !== undefined && CHEST[id] === undefined) || (FURNACE_IDS.has(old) && !FURNACE_IDS.has(id))) this.dropContainer(x, y, z);
+    else if (old === B.crafting_table && id !== old && this.openBlock?.key === this.containerKey(x, y, z)) this.closeMenu();
   }
 
   openChat(prefix = '') {
@@ -661,6 +765,7 @@ export class Game {
 
   die(cause) {
     this.state = 'dead';
+    this.closeMenu();
     this.health = 0;
     this.releasePointer();
     this.mining = null;
@@ -701,11 +806,10 @@ export class Game {
         else if (e.code === 'F3') { this.showDebug = !this.showDebug; }
         else if (e.code === 'F1') { this.hideHud = !this.hideHud; }
         else if (e.code === 'Escape' && !this.input.locked) this.pause();
-      } else if (s === 'chest') {
-        if (e.code === 'KeyE' || e.code === 'Escape') this.closeChest();
-      } else if (s === 'inventory') {
-        if (e.code === 'KeyE' || e.code === 'Escape') this.closeInventory();
-        else if (/^Digit[1-9]$/.test(e.code)) this.hotbarSwapHovered(Number(e.code.slice(5)) - 1);
+      } else if (s === 'container') {
+        if (e.code === 'KeyE' || e.code === 'Escape') this.closeMenu();
+        else if (/^Digit[1-9]$/.test(e.code)) this.hotbarKey(Number(e.code.slice(5)) - 1);
+        else if (e.code === 'KeyQ') this.dropHovered(e.ctrlKey || e.metaKey);
       } else if (s === 'pause' && e.code === 'Escape' && this.ui.current === 'screen-pause') {
         this.resume();
       } else if (e.code === 'Escape' && (this.ui.current === 'screen-settings' || this.ui.current === 'screen-controls')) {
@@ -810,7 +914,7 @@ export class Game {
       this.entities.update(dt);
       this.weather.update(dt);
     }
-    this.target = this.state === 'play' || this.state === 'inventory' ? this.pickTarget() : null;
+    this.target = this.state === 'play' || this.state === 'container' ? this.pickTarget() : null;
     if (active) this.handleActions(dt);
     else { this.mining = null; this.eating = null; }
     this.updateHand(dt);
@@ -874,8 +978,10 @@ export class Game {
 
   gameTick() {
     this.time++;
+    this.attackTicks++;
     this.world.tick();
     this.entities.tick();
+    this.tickFurnaces();
     const p = this.player;
     if (!this.creative && this.state !== 'dead') {
       this.invuln = Math.max(0, this.invuln - 1);
@@ -884,13 +990,13 @@ export class Game {
         this.air--;
         if (this.air <= -20) { this.air = 0; this.damage(2, 'You drowned', true); }
       } else this.air = Math.min(300, this.air + 6);
-      if (p.inLava) { this.fire = 140; if (this.time % 10 === 0) this.damage(4, 'You tried to swim in lava', true); }
+      if (p.inLava) { this.fire = 140; if (this.time % 10 === 0) this.damage(4, 'You tried to swim in lava', true, null, true); }
       else if (this.fire > 0) {
         this.fire = p.inWater ? 0 : this.fire - 1;
         if (this.fire % 20 === 0 && this.fire > 0) this.damage(1, 'You burned to death', true);
       }
       if (p.y < -40 && this.time % 10 === 0) this.damage(4, 'You fell out of the world', true);
-      if (this.time % 10 === 0 && this.touchingCactus()) this.damage(1, 'You were pricked to death');
+      if (this.time % 10 === 0 && this.touchingCactus()) this.damage(1, 'You were pricked to death', false, null, true);
       this.hungerTick();
       if (this.eating) this.eatTick();
     }
@@ -910,9 +1016,9 @@ export class Game {
     this.foodTimer++;
     if (this.saturation > 0 && this.food >= 20 && this.health < 20) {
       // Well fed: heal quickly, using up saturation.
-      if (this.foodTimer >= 10) { this.foodTimer = 0; this.health++; this.exhaust(6); }
+      if (this.foodTimer >= 10) { this.foodTimer = 0; this.health = Math.min(20, this.health + 1); this.exhaust(6); }
     } else if (this.food >= 18 && this.health < 20) {
-      if (this.foodTimer >= 80) { this.foodTimer = 0; this.health++; this.exhaust(6); }
+      if (this.foodTimer >= 80) { this.foodTimer = 0; this.health = Math.min(20, this.health + 1); this.exhaust(6); }
     } else if (this.food <= 0) {
       // Starving hurts, down to half a heart.
       if (this.foodTimer >= 80) { this.foodTimer = 0; if (this.health > 1) this.damage(1, 'You starved to death', true); }
@@ -935,6 +1041,12 @@ export class Game {
     this.food = Math.min(20, this.food + def.food);
     this.saturation = Math.min(this.food, this.saturation + def.food * (def.sat ?? 0.3) * 2);
     this.inv.consumeHeld();
+    // Stew leaves its bowl behind.
+    if (def.leftover) {
+      const bowl = I[def.leftover];
+      if (!this.inv.held) this.inv.slots[this.inv.selected] = { id: bowl, count: 1, dmg: 0 };
+      else if (this.inv.add(bowl, 1)) this.entities.dropItem(this.player, { id: bowl, count: 1, dmg: 0 });
+    }
     this.invChanged();
     this.audio.burp();
   }
@@ -962,9 +1074,19 @@ export class Game {
     return false;
   }
 
-  damage(amount, cause, ignoreInvuln = false, knock = null) {
+  // `armored`: the hit is one that armor protects against (mobs, explosions, lava, cactus).
+  damage(amount, cause, ignoreInvuln = false, knock = null, armored = false) {
     if (this.creative || this.state === 'dead' || amount <= 0) return false;
     if (this.invuln > 0 && !ignoreInvuln) return false;
+    const points = armored ? this.inv.armorPoints : 0;
+    if (points > 0) {
+      // Minecraft's armor formula: each armor point takes off 4%, a bit less against big hits.
+      const tough = this.inv.toughness;
+      const eff = Math.min(20, Math.max(points / 5, points - (4 * amount) / (tough + 8)));
+      if (this.inv.damageArmor(amount).length) this.audio.toolBreak();
+      amount *= 1 - eff / 25;
+      this.invChanged();
+    }
     this.health = Math.max(0, this.health - amount);
     this.exhaust(0.1);
     this.invuln = 10;
@@ -1002,30 +1124,20 @@ export class Game {
     t.breakStart = false;
     t.tap = false;
 
-    if (attackClick && target?.entity) {
-      this.swingArm();
-      const e = target.entity, p = this.player;
-      // Hitting while falling is a critical hit: half again as much damage, with sparks.
-      const crit = !p.onGround && p.vy < -0.5 && !p.inWater && !p.onLadder && !p.flying;
-      this.audio.punch({ x: e.x, y: e.y + e.def.h * 0.6, z: e.z });
-      if (crit) this.particles.bits(e.x, e.y + e.def.h * 0.7, e.z, TEX.crit, 10, 2.4, 0.5);
-      this.entities.attack(e, this.inv.heldId, crit);
-      this.exhaust(0.1);
-      if (!this.creative && this.inv.damageHeld(1)) this.audio.toolBreak();
-      this.invChanged();
-    } else if (this.creative) {
+    if (attackClick && target?.entity) this.attackEntity(target.entity);
+    else if (this.creative) {
       this.breakCooldown -= dt;
       if (attackClick && target && !target.entity) { this.breakTarget(); this.breakCooldown = 0.3; }
       else if (attack && target && !target.entity && this.breakCooldown <= 0) { this.breakTarget(); this.breakCooldown = 0.22; }
-      else if (attackClick) this.swingArm();
+      else if (attackClick) this.swingAtAir();
     } else {
       this.updateMining(dt, attack && target && !target.entity ? target : null);
-      if (attackClick && !target) this.swingArm();
+      if (attackClick && !target) this.swingAtAir();
     }
 
     // Holding right click with food eats it (when hungry), unless you're using a door, chest or bed.
     const held = this.inv.held, hdef = held && itemDef(held.id);
-    const usable = target && !target.entity && !this.player.sneaking && (DOOR[target.id] || CHEST[target.id] !== undefined || BED[target.id]);
+    const usable = target && !target.entity && !this.player.sneaking && this.interactive(target.id);
     // (On touch screens a tap starts eating and it carries on by itself.)
     const eatInput = use || useClick || (this.eating?.touch && !useClick);
     if (hdef?.food && !this.creative && this.food < 20 && eatInput && !usable) {
@@ -1040,6 +1152,41 @@ export class Game {
   }
 
   swingArm() { this.swing = 0; this.swinging = true; }
+
+  // Minecraft 1.9 combat: a weapon winds up again after every swing (faster for swords, slower
+  // for axes), and a hit only does full damage, knockback and critical hits once it has.
+  attackPeriod() { return 20 / attackSpeed(this.inv.heldId); }
+  attackStrength(partial = 0) { return clamp((this.attackTicks + partial + 0.5) / this.attackPeriod(), 0, 1); }
+  resetAttack() { this.attackTicks = 0; }
+
+  swingAtAir() {
+    this.swingArm();
+    this.resetAttack();
+  }
+
+  attackEntity(e) {
+    const p = this.player, held = this.inv.heldId, def = itemDef(held);
+    const f = this.attackStrength(this.tickAcc);
+    const strong = f > 0.9;
+    // A fully wound-up hit while falling is a critical hit: half again as much damage, with sparks.
+    const crit = strong && !p.onGround && p.vy < -0.5 && !p.inWater && !p.onLadder && !p.flying;
+    let amount = attackDamage(held) * (0.2 + f * f * 0.8);
+    if (crit) amount *= 1.5;
+    this.swingArm();
+    this.resetAttack();
+    this.audio.attack(crit ? 'crit' : strong ? 'strong' : 'weak', { x: e.x, y: e.y + e.def.h * 0.6, z: e.z }, def?.weapon || def?.tool?.type === 'axe');
+    if (crit) this.particles.bits(e.x, e.y + e.def.h * 0.7, e.z, TEX.crit, 10, 2.4, 0.5);
+    this.entities.attack(e, amount, strong && p.sprinting ? 1 : 0);
+    this.exhaust(0.1);
+    // Swords wear by one per hit; tools used as weapons wear twice as fast.
+    if (!this.creative && def?.durability && this.inv.damageHeld(def.tool ? 2 : 1)) this.audio.toolBreak();
+    this.invChanged();
+  }
+
+  // Blocks you use rather than build against (sneak to build against them).
+  interactive(id) {
+    return !!DOOR[id] || CHEST[id] !== undefined || !!BED[id] || id === B.crafting_table || FURNACE_IDS.has(id);
+  }
 
   breakTarget() {
     const t = this.target;
@@ -1060,7 +1207,7 @@ export class Game {
     if (!this.creative && byPlayer) {
       const held = this.inv.heldId;
       for (const drop of dropsFor(id, held)) this.entities.spawnItem(x + 0.5, y + 0.3, z + 0.5, drop.id, drop.count);
-      if (def.hardness > 0 && itemDef(held)?.durability && this.inv.damageHeld(1)) this.audio.toolBreak();
+      if (def.hardness > 0 && itemDef(held)?.durability && this.inv.damageHeld(itemDef(held).weapon ? 2 : 1)) this.audio.toolBreak();
       this.invChanged();
     }
     if (id === B.tnt && byPlayer && this.creative) { /* creative players remove TNT without lighting it */ }
@@ -1098,14 +1245,16 @@ export class Game {
   useItem(repeat = false) {
     const held = this.inv.held, t = this.target, p = this.player, w = this.world;
     const def = held ? itemDef(held.id) : null;
-    // Doors, chests and beds are used rather than built on (sneak to place blocks against them).
-    if (t && !t.entity && !p.sneaking && (DOOR[t.id] || CHEST[t.id] !== undefined || BED[t.id])) {
+    // Doors, chests, beds, crafting tables and furnaces are used rather than built on (sneak to
+    // place blocks against them).
+    if (t && !t.entity && !p.sneaking && this.interactive(t.id)) {
       if (repeat) return;
-      if (DOOR[t.id] && w.toggleDoor(t.x, t.y, t.z)) {
-        this.audio.door(!!DOOR[w.getBlock(t.x, t.y, t.z)]?.open, { x: t.x + 0.5, y: t.y + 0.5, z: t.z + 0.5 });
-        this.swingArm();
-      }
-      else if (CHEST[t.id] !== undefined) this.openChestAt(t.x, t.y, t.z);
+      this.swingArm();
+      if (DOOR[t.id]) {
+        if (w.toggleDoor(t.x, t.y, t.z)) this.audio.door(!!DOOR[w.getBlock(t.x, t.y, t.z)]?.open, { x: t.x + 0.5, y: t.y + 0.5, z: t.z + 0.5 });
+      } else if (CHEST[t.id] !== undefined) this.openChestAt(t.x, t.y, t.z);
+      else if (t.id === B.crafting_table) this.openCraftingTable(t.x, t.y, t.z);
+      else if (FURNACE_IDS.has(t.id)) this.openFurnaceAt(t.x, t.y, t.z);
       else if (BED[t.id]) {
         const b = BED[t.id], d = FACE_DIRS[b.dir];
         if (b.head) this.sleepIn(t.x - d[0], t.y, t.z - d[2]); else this.sleepIn(t.x, t.y, t.z);
@@ -1113,6 +1262,17 @@ export class Game {
       return;
     }
     if (def?.food && !this.creative) return; // eaten by holding right click (see handleActions)
+    // Right-clicking with armor puts it on (swapping with what you were wearing).
+    if (def?.armor) {
+      if (repeat) return;
+      const i = def.armor.slot;
+      this.inv.slots[this.inv.selected] = this.inv.armor[i];
+      this.inv.armor[i] = held;
+      this.audio.equip(def.armor.material);
+      this.swingArm();
+      this.invChanged();
+      return;
+    }
     if (!t || t.entity) {
       if (t?.entity && !repeat) this.entities.interact(t.entity, held);
       return;
@@ -1277,80 +1437,6 @@ export class Game {
   // ---------------------------------------------------------------- inventory
   invChanged() { this.invVersion++; }
 
-  nearbyStations() {
-    const set = new Set();
-    const p = this.player, w = this.world;
-    const x0 = Math.floor(p.x), y0 = Math.floor(p.y), z0 = Math.floor(p.z);
-    for (let y = y0 - 2; y <= y0 + 3; y++) for (let z = z0 - 4; z <= z0 + 4; z++) for (let x = x0 - 4; x <= x0 + 4; x++) {
-      const id = w.getBlock(x, y, z);
-      if (id === B.crafting_table) set.add('table');
-      else if (BASE[id] === B.furnace) set.add('furnace');
-    }
-    return set;
-  }
-
-  paletteItems() {
-    const all = [...CREATIVE_BLOCKS, ...[...ITEMS.keys()].filter((id) => id >= 256)];
-    if (!this.search) return all;
-    return all.filter((id) => itemLabel(id).toLowerCase().includes(this.search));
-  }
-
-  renderInventory() {
-    if (this.state !== 'inventory') return;
-    this.ui.renderInventory(this.inv, { creative: this.creative, palette: this.creative ? this.paletteItems() : [], stations: this.nearbyStations() });
-  }
-
-  inventoryClick(i, button, shift) {
-    if (this.state !== 'inventory') return;
-    if (shift && !this.creative) this.inv.quickMove(i);
-    else if (shift && this.creative && i < 9) this.inv.slots[i] = null;
-    else this.inv.click(i, button === 2 ? 2 : 0);
-    this.invChanged();
-    this.renderInventory();
-  }
-
-  paletteClick(id, button, shift) {
-    if (!this.creative) return;
-    if (id === null || Number.isNaN(id)) { this.inv.cursor = null; this.renderInventory(); return; }
-    const max = itemDef(id)?.stack ?? 64;
-    if (shift) {
-      const empty = this.inv.slots.findIndex((s, i) => i < 9 && !s);
-      this.inv.slots[empty >= 0 ? empty : this.inv.selected] = { id, count: max, dmg: 0 };
-    } else if (this.inv.cursor) {
-      this.inv.cursor = this.inv.cursor.id === id ? { id, count: max, dmg: 0 } : null;
-      if (!this.inv.cursor) this.inv.cursor = { id, count: max, dmg: 0 };
-    } else {
-      this.inv.cursor = { id, count: button === 2 ? 1 : max, dmg: 0 };
-    }
-    this.invChanged();
-    this.renderInventory();
-  }
-
-  hotbarSwapHovered(n) {
-    const el = document.querySelector('#screen-inventory .slot:hover');
-    if (!el) return;
-    if (el.dataset.item) this.inv.slots[n] = { id: Number(el.dataset.item), count: itemDef(Number(el.dataset.item))?.stack ?? 64, dmg: 0 };
-    else if (el.dataset.slot !== undefined) {
-      const i = Number(el.dataset.slot);
-      const tmp = this.inv.slots[n];
-      this.inv.slots[n] = this.inv.slots[i];
-      this.inv.slots[i] = tmp;
-    }
-    this.invChanged();
-    this.renderInventory();
-  }
-
-  craft(i, shift) {
-    const r = RECIPES[i];
-    if (!r) return;
-    const stations = this.nearbyStations();
-    let n = 0;
-    while ((n === 0 || shift) && n < 64 && this.inv.craft(r, stations)) n++;
-    if (!n && this.inv.canCraft(r, stations)) this.ui.message('Your inventory is full', '#e88a78');
-    if (n) { this.audio.pop(); this.invChanged(); }
-    this.renderInventory();
-  }
-
   // ---------------------------------------------------------------- chat & commands
   sendChat(text) {
     text = text.trim();
@@ -1422,7 +1508,7 @@ export class Game {
         break;
       }
       case 'kill': if (this.creative) { p.y = this.meta.spawn.y ?? 100; } else this.damage(999, 'You gave up', true); break;
-      case 'clear': this.inv.slots.fill(null); this.invChanged(); say('Inventory cleared'); break;
+      case 'clear': this.inv.slots.fill(null); this.inv.armor.fill(null); this.invChanged(); say('Inventory cleared'); break;
       default: say(`Unknown command: /${cmd}. Try /help`, '#e88a78');
     }
   }
@@ -1433,12 +1519,13 @@ export class Game {
     if (held !== this.lastHeld) {
       this.lastHeld = held;
       if (held) this.ui.showItemName(itemLabel(held));
+      this.resetAttack(); // a different weapon has to wind up from the start
     }
-    // Switching items: the old one dips out of view, then the new one comes up.
-    if (held !== this.handItem) {
-      this.handHeight = Math.max(0, this.handHeight - dt * 8);
-      if (this.handHeight < 0.1) this.handItem = held;
-    } else this.handHeight = Math.min(1, this.handHeight + dt * 6);
+    // Switching items: the old one dips out of view, then the new one comes up. After a swing the
+    // item also sinks and rises again as the weapon winds back up, like the original.
+    const goal = held === this.handItem ? this.attackStrength(this.tickAcc) ** 3 : 0;
+    this.handHeight += clamp(goal - this.handHeight, -dt * 8, dt * 8);
+    if (held !== this.handItem && this.handHeight < 0.1) this.handItem = held;
     if (this.swinging) {
       this.swing += dt * 3.4;
       if (this.swing >= 1) { this.swing = 0; this.swinging = false; }
@@ -1541,9 +1628,12 @@ export class Game {
     if (this.invVersion !== this.drawnInvVersion) {
       this.drawnInvVersion = this.invVersion;
       ui.renderHotbar(this.inv, this.creative);
-      if (this.state === 'inventory') this.renderInventory();
+      if (this.menu) this.gui.render();
     }
-    ui.renderStats(!this.creative, this.health, this.air, p.headInWater, this.food);
+    if (this.menu) this.gui.frame();
+    ui.renderStats(!this.creative, Math.ceil(this.health), this.air, p.headInWater, this.food, this.inv.armorPoints);
+    const wind = this.attackStrength(this.tickAcc);
+    ui.setAttackMeter(this.state === 'play' && wind < 1 ? wind : -1);
     this.touch.update();
     ui.setFlags({
       water: p.headInWater,

@@ -79,6 +79,25 @@ Every sound here is public domain ([CC0 1.0](https://creativecommons.org/publicd
 | `hit.punch3` | impactPunch_medium_002.ogg from Kenney, https://kenney.nl/assets/impact-sounds | CC0 1.0 |
 | `hit.punch4` | impactPunch_medium_003.ogg from Kenney, https://kenney.nl/assets/impact-sounds | CC0 1.0 |
 | `hit.punch5` | impactPunch_medium_004.ogg from Kenney, https://kenney.nl/assets/impact-sounds | CC0 1.0 |
+| `attack.strong1` | impactPunch_heavy_000.ogg from Kenney, https://kenney.nl/assets/impact-sounds | CC0 1.0 |
+| `attack.strong2` | impactPunch_heavy_001.ogg from Kenney, https://kenney.nl/assets/impact-sounds | CC0 1.0 |
+| `attack.strong3` | impactPunch_heavy_002.ogg from Kenney, https://kenney.nl/assets/impact-sounds | CC0 1.0 |
+| `attack.strong4` | impactPunch_heavy_003.ogg from Kenney, https://kenney.nl/assets/impact-sounds | CC0 1.0 |
+| `attack.strong5` | impactPunch_heavy_004.ogg from Kenney, https://kenney.nl/assets/impact-sounds | CC0 1.0 |
+| `attack.weak1` | "Swing Woosh" by Jofae, https://freesound.org/people/Jofae/sounds/389590/ | CC0 1.0 |
+| `attack.weak2` | "Basic Melee Swing / Miss / Whoosh" by SypherZent, https://freesound.org/people/SypherZent/sounds/420668/ | CC0 1.0 |
+| `attack.weak3` | "snd_swing_whoosh.wav" by gristi, https://freesound.org/people/gristi/sounds/562191/ | CC0 1.0 |
+| `attack.weak4` | "Swinging staff whoosh (strong) 04.wav" by Nightflame, https://freesound.org/people/Nightflame/sounds/422513/ | CC0 1.0 |
+| `attack.crit1` | "Sword Impact" by velcronator, https://freesound.org/people/velcronator/sounds/733887/ | CC0 1.0 |
+| `attack.crit2` | impactPlate_light_000.ogg from Kenney, https://kenney.nl/assets/impact-sounds | CC0 1.0 |
+| `attack.crit3` | impactPlate_light_001.ogg from Kenney, https://kenney.nl/assets/impact-sounds | CC0 1.0 |
+| `attack.crit4` | impactPlate_light_002.ogg from Kenney, https://kenney.nl/assets/impact-sounds | CC0 1.0 |
+| `armor.leather1` | "Texture or Leather Rubbing Sound 2" by qubodup, https://freesound.org/people/qubodup/sounds/743265/ | CC0 1.0 |
+| `armor.leather2` | "Texture or Leather Rubbing Sound" by qubodup, https://freesound.org/people/qubodup/sounds/743266/ | CC0 1.0 |
+| `armor.metal1` | metalLatch.ogg from Kenney, https://kenney.nl/assets/rpg-audio | CC0 1.0 |
+| `armor.metal2` | beltHandle1.ogg from Kenney, https://kenney.nl/assets/rpg-audio | CC0 1.0 |
+| `armor.metal3` | beltHandle2.ogg from Kenney, https://kenney.nl/assets/rpg-audio | CC0 1.0 |
+| `armor.metal4` | metalClick.ogg from Kenney, https://kenney.nl/assets/rpg-audio | CC0 1.0 |
 | `hit.fall1` | impactSoft_heavy_000.ogg from Kenney, https://kenney.nl/assets/impact-sounds | CC0 1.0 |
 | `hit.fall2` | impactSoft_heavy_001.ogg from Kenney, https://kenney.nl/assets/impact-sounds | CC0 1.0 |
 | `hit.fall3` | impactSoft_heavy_002.ogg from Kenney, https://kenney.nl/assets/impact-sounds | CC0 1.0 |
@@ -112,6 +131,7 @@ Every sound here is public domain ([CC0 1.0](https://creativecommons.org/publicd
 | `water.swim2` | "Water Squirt" by qubodup, https://freesound.org/people/qubodup/sounds/737235/ | CC0 1.0 |
 | `lava.pop1` | "mutliple bubbles bursting" by florianreichelt, https://freesound.org/people/florianreichelt/sounds/683100/ | CC0 1.0 |
 | `weather.rain1` | "Short Rain Loop" by dmk67, https://freesound.org/people/dmk67/sounds/392980/ | CC0 1.0 |
+| `furnace.crackle1` | "fire crackling loop.wav" by soundofsong, https://freesound.org/people/soundofsong/sounds/650574/ | CC0 1.0 |
 | `pig.say1` | "Pig Oink" by qubodup, https://freesound.org/people/qubodup/sounds/442906/ | CC0 1.0 |
 | `pig.say2` | "Pig Sound" by qubodup, https://freesound.org/people/qubodup/sounds/442905/ | CC0 1.0 |
 | `pig.say3` | "Pig Grunt" by qubodup, https://freesound.org/people/qubodup/sounds/442907/ | CC0 1.0 |

@@ -64,7 +64,7 @@ export class TouchControls {
       if (!this.game.creative) { this.game.ui.message('Flying needs Creative mode'); return; }
       this.game.player.flying = !this.game.player.flying;
     });
-    this.press('t-inv', () => { if (this.game.state === 'play') this.game.openInventory(); else if (this.game.state === 'inventory') this.game.closeInventory(); });
+    this.press('t-inv', () => { if (this.game.state === 'play') this.game.openInventory(); else if (this.game.state === 'container') this.game.closeMenu(); });
     this.press('t-pause', () => { if (this.game.state === 'play') this.game.pause(); });
     this.press('t-chat', () => { if (this.game.state === 'play') this.game.openChat(); });
   }

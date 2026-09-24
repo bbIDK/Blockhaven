@@ -125,9 +125,9 @@ function facing(ids, name, o) {
     return arr;
   };
   block(s, name, { ...o, tex: tex(4) });
-  block(n, `${name}_n`, { ...o, tex: tex(5), base: s, item: false, drop: o.drop ?? name });
-  block(e, `${name}_e`, { ...o, tex: tex(0), base: s, item: false, drop: o.drop ?? name });
-  block(w, `${name}_w`, { ...o, tex: tex(1), base: s, item: false, drop: o.drop ?? name });
+  block(n, `${name}_n`, { ...o, tex: tex(5), base: o.base ?? s, item: false, drop: o.drop ?? name });
+  block(e, `${name}_e`, { ...o, tex: tex(0), base: o.base ?? s, item: false, drop: o.drop ?? name });
+  block(w, `${name}_w`, { ...o, tex: tex(1), base: o.base ?? s, item: false, drop: o.drop ?? name });
   FACING_VARIANTS[s] = { 4: s, 5: n, 0: e, 1: w };
 }
 
@@ -189,7 +189,7 @@ block(41, 'crafting_table', { tex: ['crafting_table_front', 'crafting_table_side
 facing([42, 110, 111, 112], 'furnace', { front: 'furnace_front', side: 'furnace_side', top: 'furnace_top',
   hardness: 3.5, tool: 'pickaxe', tier: 1 });
 block(43, 'tnt', { label: 'TNT', tex: { top: 'tnt_top', bottom: 'tnt_bottom', side: 'tnt_side' }, hardness: 0, sound: 'grass' });
-block(44, 'clay', { tex: 'clay', hardness: 0.6, tool: 'shovel', sound: 'gravel' });
+block(44, 'clay', { tex: 'clay', hardness: 0.6, tool: 'shovel', sound: 'gravel', drop: 'clay_ball' });
 ['white', 'red', 'orange', 'yellow', 'lime', 'blue', 'purple', 'black'].forEach((c, i) =>
   block(45 + i, `${c}_wool`, { tex: `${c}_wool`, hardness: 0.8, sound: 'cloth' }));
 facing([53, 113, 114, 115], 'pumpkin', { front: 'pumpkin_face', side: 'pumpkin_side', top: 'pumpkin_top',
@@ -354,6 +354,18 @@ export const CHEST = {};
     base: 206, item: i === 0, drop: 'chest' });
   CHEST[id] = front;
 });
+
+// A furnace that is burning glows and lights up its surroundings (see furnace.js).
+facing([218, 219, 220, 221], 'lit_furnace', { label: 'Furnace', front: 'furnace_front_on', side: 'furnace_side',
+  top: 'furnace_top', hardness: 3.5, tool: 'pickaxe', tier: 1, emit: 13, item: false, drop: 'furnace', base: 42 });
+export const FURNACE_IDS = new Set([42, 110, 111, 112, 218, 219, 220, 221]);
+// The same furnace, lit or not, facing the same way.
+export function furnaceVariant(id, lit) {
+  const from = FACING_VARIANTS[lit ? 42 : 218], to = FACING_VARIANTS[lit ? 218 : 42];
+  for (const f in from) if (from[f] === id) return to[f];
+  return id;
+}
+export const isLitFurnace = (id) => id >= 218 && id <= 221;
 
 // Beds: a foot and a head block; `dir` points from the foot towards the head.
 export const BED = {};

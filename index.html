@@ -19,6 +19,7 @@
     <div id="overlay-hurt"></div>
     <div id="overlay-sleep"></div>
     <div id="crosshair"></div>
+    <div id="attack-meter" hidden><i></i></div>
     <div id="debug" hidden></div>
     <div id="chat">
       <ul id="chat-log" aria-live="polite"></ul>
@@ -27,7 +28,7 @@
     <div id="item-name"></div>
     <div id="hud-bottom">
       <div id="stats">
-        <div id="hearts"></div>
+        <div class="stats-left"><div id="armor"></div><div id="hearts"></div></div>
         <div class="stats-right"><div id="bubbles"></div><div id="hunger"></div></div>
       </div>
       <div id="hotbar"></div>
@@ -168,20 +169,22 @@
         <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>Walk</dd>
         <dt><kbd>Mouse</kbd></dt><dd>Look around</dd>
         <dt><kbd>Left click</kbd></dt><dd>Break block (hold in Survival)</dd>
-        <dt><kbd>Right click</kbd></dt><dd>Place block, open doors and chests, sleep in a bed</dd>
+        <dt><kbd>Right click</kbd></dt><dd>Place block; use crafting tables, furnaces, chests, doors and beds</dd>
         <dt><kbd>Hold right click</kbd></dt><dd>Eat the food in your hand (when you're hungry)</dd>
         <dt><kbd>Space</kbd></dt><dd>Jump — double-tap to fly in Creative</dd>
         <dt><kbd>Shift</kbd></dt><dd>Sneak (won't fall off edges) / fly down</dd>
         <dt><kbd>Ctrl</kbd></dt><dd>Sprint (or double-tap W)</dd>
         <dt><kbd>1</kbd>–<kbd>9</kbd>, <kbd>Wheel</kbd></dt><dd>Choose hotbar slot</dd>
-        <dt><kbd>E</kbd></dt><dd>Inventory and crafting</dd>
+        <dt><kbd>E</kbd></dt><dd>Inventory, armor and 2&times;2 crafting</dd>
+        <dt><kbd>Shift</kbd>+<kbd>Click</kbd></dt><dd>Move a stack across, or craft as many as you can</dd>
         <dt><kbd>Middle click</kbd></dt><dd>Pick the block you're looking at</dd>
         <dt><kbd>Q</kbd></dt><dd>Drop the held item</dd>
         <dt><kbd>T</kbd>, <kbd>/</kbd></dt><dd>Chat and commands (try <code>/help</code>)</dd>
         <dt><kbd>F3</kbd></dt><dd>Coordinates and debug info</dd>
         <dt><kbd>Esc</kbd></dt><dd>Pause</dd>
       </dl>
-      <p class="hint-text">Survival tip: punch a tree for logs, turn them into planks and a crafting table, then make a wooden pickaxe to mine stone. Place torches before night falls, or craft a bed from wool and planks to sleep through it. Sneak while right-clicking to place blocks against doors, chests and beds.</p>
+      <p class="hint-text">Survival tip: punch a tree for logs, turn them into planks in your inventory's crafting grid, then make a crafting table. Right-click the table for the full 3&times;3 grid and craft a wooden pickaxe to mine stone. The green book button opens the recipe book, which lays recipes out for you. Sneak while right-clicking to place blocks against things you can use.</p>
+      <p class="hint-text">Furnaces smelt ores, cook meat and bake sand into glass: put the item in the top slot and fuel (coal, charcoal, wood) in the bottom one. Weapons need a moment to wind up between hits; the meter under the crosshair shows when a swing will hit at full strength. Swords are quick, axes hit hard but slowly.</p>
       <p class="hint-text">Keep an eye on the drumsticks next to your hearts: you only heal when you're well fed. Cook meat from pigs, cows and chickens in a furnace for the most food. Hitting a mob while you're falling is a critical hit.</p>
       <p class="hint-text">On a touch screen: the left stick moves, drag anywhere else to look, tap to place, hold to break.</p>
       <div class="panel-actions">
@@ -190,43 +193,13 @@
     </div>
   </section>
 
-  <section class="screen dim" id="screen-inventory" hidden>
-    <div class="panel inv">
-      <div class="inv-main">
-        <header class="panel-head">
-          <h2 id="inv-title">Inventory</h2>
-          <div class="head-tools">
-            <input id="inv-search" type="search" placeholder="Search" autocomplete="off" spellcheck="false">
-            <button class="btn small" data-action="close-inv">Done</button>
-          </div>
-        </header>
-        <div id="inv-palette" class="grid palette"></div>
-        <div id="inv-storage" class="grid"></div>
-        <div id="inv-hotbar" class="grid"></div>
-      </div>
-      <aside class="inv-craft" id="inv-craft">
-        <h3>Crafting</h3>
-        <p class="stations" id="inv-stations"></p>
-        <ul id="recipe-list" class="recipes"></ul>
-      </aside>
+  <section class="screen mc-screen" id="screen-container" hidden>
+    <div class="mc-wrap" id="mc-wrap">
+      <div class="mc-panel mc-book" id="mc-book" hidden></div>
+      <div class="mc-panel mc-win" id="mc-win"></div>
     </div>
-  </section>
-
-  <section class="screen dim" id="screen-chest" hidden>
-    <div class="panel chest">
-      <header class="panel-head">
-        <h2>Chest</h2>
-        <button class="btn small" data-action="close-chest">Done</button>
-      </header>
-      <div class="chest-body">
-        <div id="chest-slots" class="grid"></div>
-        <div class="chest-inv">
-          <h3 class="chest-label">Inventory</h3>
-          <div id="chest-storage" class="grid"></div>
-          <div id="chest-hotbar" class="grid"></div>
-        </div>
-      </div>
-    </div>
+    <div id="mc-cursor" hidden></div>
+    <div id="mc-tip" hidden></div>
   </section>
 
   <section class="screen death" id="screen-death" hidden>
@@ -249,9 +222,6 @@
       </div>
     </div>
   </div>
-
-  <div id="cursor-item" hidden></div>
-  <div id="tooltip" hidden></div>
 
   <section class="screen" id="screen-error" hidden>
     <div class="panel narrow">

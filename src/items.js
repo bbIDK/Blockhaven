@@ -1,4 +1,5 @@
 // Item registry: every placeable block is also an item (same id); tools and materials use ids 256+.
+// Recipes live in crafting.js.
 import { BLOCKS, B, BASE } from './blocks.js';
 import { TEX } from './textures.js';
 
@@ -29,6 +30,10 @@ item(262, 'apple', { food: 4, sat: 0.3 });
 item(263, 'raw_porkchop', { label: 'Raw Porkchop', food: 3, sat: 0.3 });
 item(264, 'cooked_porkchop', { label: 'Cooked Porkchop', food: 8, sat: 0.8 });
 item(265, 'flint_and_steel', { label: 'Flint and Steel', stack: 1, durability: 64 });
+item(266, 'charcoal');
+item(267, 'clay_ball', { label: 'Clay Ball' });
+item(268, 'brick');
+item(269, 'paper');
 item(290, 'raw_beef', { label: 'Raw Beef', food: 3, sat: 0.3 });
 item(291, 'cooked_beef', { label: 'Steak', food: 8, sat: 0.8 });
 item(292, 'raw_chicken', { label: 'Raw Chicken', food: 2, sat: 0.3 });
@@ -36,31 +41,65 @@ item(293, 'cooked_chicken', { label: 'Cooked Chicken', food: 6, sat: 0.6 });
 item(294, 'rotten_flesh', { label: 'Rotten Flesh', food: 4, sat: 0.1 });
 item(295, 'leather');
 item(296, 'feather');
+item(297, 'book');
+item(298, 'bowl');
+item(299, 'mushroom_stew', { label: 'Mushroom Stew', stack: 1, food: 6, sat: 0.6, leftover: 'bowl' });
 
+// Weapons and tools use the combat numbers of Minecraft 1.9 onwards: every hit has a wind-up
+// (attack speed, in full-strength hits per second) and the damage of a full-strength hit.
+// Columns: wooden, stone, iron, diamond, golden.
+const TOOL_STATS = {
+  pickaxe: { damage: [2, 3, 4, 5, 2], speed: [1.2, 1.2, 1.2, 1.2, 1.2] },
+  axe: { damage: [7, 9, 9, 9, 7], speed: [0.8, 0.8, 0.9, 1, 1] },
+  shovel: { damage: [2.5, 3.5, 4.5, 5.5, 2.5], speed: [1, 1, 1, 1, 1] },
+  sword: { damage: [4, 5, 6, 7, 4], speed: [1.6, 1.6, 1.6, 1.6, 1.6] },
+};
+export const HAND_DAMAGE = 1;
+export const HAND_SPEED = 4;
 const MATS = ['wooden', 'stone', 'iron', 'diamond'];
 const SPEED = [2, 4, 6, 8];
 const DURABILITY = [59, 131, 250, 1561];
-const KINDS = [['pickaxe', 2], ['axe', 3], ['shovel', 1.5], ['sword', 4]];
-KINDS.forEach(([kind, baseDamage], k) => {
+const KINDS = ['pickaxe', 'axe', 'shovel', 'sword'];
+KINDS.forEach((kind, k) => {
+  const stats = TOOL_STATS[kind];
   MATS.forEach((mat, tier) => {
     item(270 + k * 4 + tier, `${mat}_${kind}`, {
       stack: 1,
       durability: DURABILITY[tier],
-      damage: baseDamage + tier,
+      damage: stats.damage[tier],
+      attackSpeed: stats.speed[tier],
       tool: kind === 'sword' ? null : { type: kind, tier: tier + 1, speed: SPEED[tier] },
       weapon: kind === 'sword',
     });
   });
-});
-
-// Golden tools: very fast but fragile, and only as strong as wood.
-KINDS.forEach(([kind, baseDamage], k) => {
+  // Golden tools: very fast but fragile, and only as strong as wood.
   item(286 + k, `golden_${kind}`, {
     stack: 1,
     durability: 32,
-    damage: baseDamage,
+    damage: stats.damage[4],
+    attackSpeed: stats.speed[4],
     tool: kind === 'sword' ? null : { type: kind, tier: 1, speed: 12 },
     weapon: kind === 'sword',
+  });
+});
+
+// Armor: [material, armor points per piece, durability per piece, toughness]. Pieces go
+// helmet, chestplate, leggings, boots, which is also the order of the armor slots.
+export const ARMOR_PIECES = ['helmet', 'chestplate', 'leggings', 'boots'];
+const ARMOR = [
+  ['leather', [1, 3, 2, 1], [55, 80, 75, 65], 0, ['Leather Cap', 'Leather Tunic', 'Leather Pants', 'Leather Boots']],
+  ['iron', [2, 6, 5, 2], [165, 240, 225, 195], 0],
+  ['golden', [2, 5, 3, 1], [77, 112, 105, 91], 0],
+  ['diamond', [3, 8, 6, 3], [363, 528, 495, 429], 2],
+];
+ARMOR.forEach(([mat, points, durability, toughness, labels], m) => {
+  ARMOR_PIECES.forEach((piece, p) => {
+    item(300 + m * 4 + p, `${mat}_${piece}`, {
+      ...(labels ? { label: labels[p] } : {}),
+      stack: 1,
+      durability: durability[p],
+      armor: { slot: p, points: points[p], toughness, material: mat },
+    });
   });
 });
 
@@ -69,6 +108,8 @@ export const itemLabel = (id) => ITEMS.get(id)?.label ?? 'Unknown';
 export const maxStack = (id) => ITEMS.get(id)?.stack ?? 64;
 export const blockOfItem = (id) => ITEMS.get(id)?.block ?? null;
 export const itemOfBlock = (blockId) => BASE[blockId];
+export const attackDamage = (id) => ITEMS.get(id)?.damage ?? HAND_DAMAGE;
+export const attackSpeed = (id) => ITEMS.get(id)?.attackSpeed ?? HAND_SPEED;
 
 export function canHarvest(block, tool) {
   if (!block.tier) return true;
@@ -92,82 +133,9 @@ export function dropsFor(blockId, tool, rand = Math.random) {
   if (block.name === 'oak_leaves' || block.name === 'birch_leaves') return rand() < 0.05 ? [{ id: I.apple, count: 1 }] : [];
   if (block.name === 'gravel' && rand() < 0.1) return [{ id: I.flint, count: 1 }];
   if (block.name === 'dead_bush') return [{ id: I.stick, count: Math.floor(rand() * 3) }].filter((d) => d.count);
+  if (block.name === 'clay') return [{ id: I.clay_ball, count: 4 }];
+  if (block.name === 'bookshelf') return [{ id: I.book, count: 3 }];
   if (!block.drop) return [];
   const id = I[block.drop] ?? B[block.drop];
   return id === undefined ? [] : [{ id, count: 1 }];
-}
-
-const PLANKS = ['oak_planks', 'birch_planks', 'spruce_planks'].map((n) => B[n]);
-export const GROUPS = { planks: PLANKS, logs: ['oak_log', 'birch_log', 'spruce_log'].map((n) => B[n]) };
-
-const r = (out, count, input, station = null) => ({ out: I[out], count, input, station });
-const tool = (mat, material) => [
-  r(`${mat}_pickaxe`, 1, [[material, 3], ['stick', 2]], 'table'),
-  r(`${mat}_axe`, 1, [[material, 3], ['stick', 2]], 'table'),
-  r(`${mat}_shovel`, 1, [[material, 1], ['stick', 2]], 'table'),
-  r(`${mat}_sword`, 1, [[material, 2], ['stick', 1]], 'table'),
-];
-
-// Recipes are shapeless: ingredients by count. '#group' matches any member of a group.
-export const RECIPES = [
-  r('oak_planks', 4, [['oak_log', 1]]),
-  r('birch_planks', 4, [['birch_log', 1]]),
-  r('spruce_planks', 4, [['spruce_log', 1]]),
-  r('stick', 4, [['#planks', 2]]),
-  r('crafting_table', 1, [['#planks', 4]]),
-  r('torch', 4, [['coal', 1], ['stick', 1]]),
-  ...tool('wooden', '#planks'),
-  ...tool('stone', 'cobblestone'),
-  ...tool('iron', 'iron_ingot'),
-  ...tool('diamond', 'diamond'),
-  ...tool('golden', 'gold_ingot'),
-  r('furnace', 1, [['cobblestone', 8]], 'table'),
-  r('stone_bricks', 4, [['stone', 4]], 'table'),
-  r('sandstone', 1, [['sand', 4]]),
-  r('bookshelf', 1, [['#planks', 6], ['sugar_cane', 3]], 'table'),
-  r('jack_o_lantern', 1, [['pumpkin', 1], ['torch', 1]]),
-  r('tnt', 1, [['sand', 4], ['coal', 5]], 'table'),
-  r('flint_and_steel', 1, [['iron_ingot', 1], ['flint', 1]]),
-  r('iron_block', 1, [['iron_ingot', 9]], 'table'),
-  r('gold_block', 1, [['gold_ingot', 9]], 'table'),
-  r('diamond_block', 1, [['diamond', 9]], 'table'),
-  r('coal_block', 1, [['coal', 9]], 'table'),
-  r('iron_ingot', 9, [['iron_block', 1]]),
-  r('gold_ingot', 9, [['gold_block', 1]]),
-  r('diamond', 9, [['diamond_block', 1]]),
-  r('coal', 9, [['coal_block', 1]]),
-  ...['oak', 'birch', 'spruce'].map((w) => r(`${w}_slab`, 6, [[`${w}_planks`, 3]], 'table')),
-  r('cobblestone_slab', 6, [['cobblestone', 3]], 'table'),
-  r('stone_slab', 6, [['stone', 3]], 'table'),
-  r('brick_slab', 6, [['bricks', 3]], 'table'),
-  r('stone_brick_slab', 6, [['stone_bricks', 3]], 'table'),
-  r('sandstone_slab', 6, [['sandstone', 3]], 'table'),
-  r('oak_stairs', 4, [['#planks', 6]], 'table'),
-  r('cobblestone_stairs', 4, [['cobblestone', 6]], 'table'),
-  r('stone_brick_stairs', 4, [['stone_bricks', 6]], 'table'),
-  r('brick_stairs', 4, [['bricks', 6]], 'table'),
-  r('sandstone_stairs', 4, [['sandstone', 6]], 'table'),
-  r('oak_door', 3, [['#planks', 6]], 'table'),
-  r('chest', 1, [['#planks', 8]], 'table'),
-  r('bed', 1, [['white_wool', 3], ['#planks', 3]], 'table'),
-  r('ladder', 3, [['stick', 7]], 'table'),
-  r('oak_fence', 3, [['#planks', 4], ['stick', 2]], 'table'),
-  r('glass_pane', 16, [['glass', 6]], 'table'),
-  r('glass', 1, [['sand', 1]], 'furnace'),
-  r('stone', 1, [['cobblestone', 1]], 'furnace'),
-  r('iron_ingot', 1, [['iron_ore', 1]], 'furnace'),
-  r('gold_ingot', 1, [['gold_ore', 1]], 'furnace'),
-  r('cooked_porkchop', 1, [['raw_porkchop', 1]], 'furnace'),
-  r('cooked_beef', 1, [['raw_beef', 1]], 'furnace'),
-  r('cooked_chicken', 1, [['raw_chicken', 1]], 'furnace'),
-  r('bricks', 1, [['clay', 1]], 'furnace'),
-  r('coal', 1, [['#logs', 1]], 'furnace'),
-].map((rec) => ({
-  ...rec,
-  input: rec.input.map(([name, n]) => (name[0] === '#' ? { group: name.slice(1), n } : { id: I[name], n })),
-}));
-for (const rec of RECIPES) {
-  if (rec.out === undefined || rec.input.some((i) => !i.group && i.id === undefined)) {
-    throw new Error('Recipe references an unknown item');
-  }
 }

@@ -64,6 +64,12 @@ CATALOG = {
     'ui.click': ([K('ui', 'click1.ogg')], 0.12, -12),
     # Combat and the player.
     'hit.punch': (kr('impact', 'impactPunch_medium', 5), 0.35, -13),
+    # Weapon hits: a full-strength hit, a weak swipe (before the weapon has wound up) and a crit.
+    'attack.strong': (kr('impact', 'impactPunch_heavy', 5), 0.4, -12),
+    'attack.weak': ([F('Jofae', 389590), F('SypherZent', 420668), F('gristi', 562191), F('Nightflame', 422513)], 0.4, -16),
+    'attack.crit': ([F('velcronator', 733887)] + kr('impact', 'impactPlate_light', 3), 0.45, -14),
+    'armor.leather': ([F('qubodup', 743265), F('qubodup', 743266)], 0.4, -15),
+    'armor.metal': ([K('rpg', 'metalLatch.ogg'), K('rpg', 'beltHandle1.ogg'), K('rpg', 'beltHandle2.ogg'), K('rpg', 'metalClick.ogg')], 0.5, -15),
     'hit.fall': (kr('impact', 'impactSoft_heavy', 5), 0.45, -12),
     'hit.fallsmall': (kr('impact', 'impactSoft_medium', 5), 0.25, -13),
     'player.hurt': ([F('MrFossy', i) for i in (547203, 547202, 547201, 547209)], 0.5, -12),
@@ -80,6 +86,7 @@ CATALOG = {
     'water.swim': ([F('qubodup', 737232), F('qubodup', 737235)], 0.6, -16),
     'lava.pop': ([F('florianreichelt', 683100)], 1.2, -16),
     'weather.rain': ([F('dmk67', 392980)], 9.6, -18, {'loop': True}),
+    'furnace.crackle': ([F('soundofsong', 650574)], 5.0, -17, {'loop': True}),
     # Animals and monsters.
     'pig.say': ([F('qubodup', i) for i in (442906, 442905, 442907)] + [F('JarredGibb', i) for i in (233169, 233170, 233172)], 1.1, -14),
     'pig.hurt': ([F('qubodup', 442904), F('JarredGibb', 233153)], 0.7, -13),

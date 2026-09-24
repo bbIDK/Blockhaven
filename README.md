@@ -23,19 +23,21 @@ Worlds save automatically in your browser (IndexedDB), on that device only.
 | `W` `A` `S` `D` | Walk |
 | Mouse | Look around (click the game to capture the mouse) |
 | Left click | Break block (hold to mine in Survival), attack |
-| Right click | Place block, open doors and chests, sleep in a bed, light TNT with flint and steel |
+| Right click | Place block; use crafting tables, furnaces, chests, doors and beds; put on armor; light TNT with flint and steel |
 | Hold right click | Eat the food you're holding (when hungry) |
 | Middle click | Pick the block you're looking at |
 | `Space` | Jump. Double-tap to toggle flying in Creative |
 | `Shift` | Sneak (you won't fall off edges) / fly down |
 | `Ctrl` or double-tap `W` | Sprint |
 | `1`–`9`, mouse wheel | Choose hotbar slot |
-| `E` | Inventory and crafting |
+| `E` | Inventory (armor, 2×2 crafting, recipe book) |
 | `Q` | Drop the held item (`Ctrl+Q` drops the stack) |
 | `T`, `Enter` or `/` | Chat and commands |
 | `F3` | Coordinates and debug info |
 | `F1` | Hide the HUD |
 | `Esc` | Pause |
+
+In inventories, crafting tables, furnaces and chests the clicks work like Minecraft's: left click takes or places a stack, right click takes half or places one, `Shift`+click moves a stack across (on a crafting result it crafts as many as you can), dragging a stack across slots shares it out evenly (right-drag places one in each), double-click gathers a stack, number keys swap with the hotbar and `Q` throws the item under the mouse. On touch screens, tap is a left click and a long press a right click.
 
 On phones and tablets, on-screen controls appear automatically. The left stick moves you, dragging anywhere else looks around, a tap places a block and holding breaks one.
 
@@ -49,14 +51,17 @@ On phones and tablets, on-screen controls appear automatically. The left stick m
 - **Underground:** winding cave tunnels and caverns, lava lakes deep down, coal, iron, gold and diamond ore veins.
 - **Minecraft-style lighting:** sunlight and block light flood-fill through the world, smooth lighting with ambient occlusion, torches, glowstone and jack o'lanterns. There's also a day/night cycle with a sun, moon, stars and drifting clouds.
 - **60+ blocks:** logs that face the way you place them, wall torches, glass, wool colors, bricks, bookshelves, furnaces, TNT, flowers, sugar cane and cacti.
+- **Crafting like Minecraft:** shaped recipes in a 2×2 grid in your inventory and a 3×3 grid at a crafting table, with a recipe book that lists what you can make and lays recipes out for you (recipes you're missing things for show as a faint "ghost" in the grid).
+- **Furnaces:** put something in the top slot and fuel in the bottom one. They smelt ores, cook meat, bake sand into glass and clay into bricks, turn logs into charcoal, keep going while you're away, and glow while they burn.
+- **Armor:** leather, iron, gold and diamond helmets, chestplates, leggings and boots, with Minecraft's damage reduction and wear. You can see your character wearing it in the inventory.
 - **Shaped blocks:** slabs (stack two into a full block), stairs you can walk up, doors that open, climbable ladders, fences that connect and can't be jumped, and glass panes.
 - **Chests and beds:** chests store 27 stacks and spill their contents when broken. Sleep in a bed at night to skip to morning and make it your respawn point.
 - **Physics:** flowing water that spreads and falls, sand and gravel that fall, water that hardens lava into obsidian, and TNT explosions that chain.
 - **Weather:** rain showers come and go, with streaks of rain, splashes, a grey sky and the sound of rain (quieter indoors). It snows in cold biomes and high up, and deserts stay dry. Sleeping clears the weather.
-- **Survival:** health, hunger (sprinting, jumping, fighting and mining make you hungry, and you only heal when well fed), fall damage, drowning, lava, cacti, and mining speeds that depend on the tool and block. There are wooden to diamond (and golden) pickaxes, axes, shovels and swords, critical hits when you strike while falling, and shapeless crafting that uses a nearby crafting table or furnace.
+- **Survival:** health, hunger (sprinting, jumping, fighting and mining make you hungry, and you only heal when well fed), fall damage, drowning, lava, cacti, and mining speeds that depend on the tool and block. There are wooden to diamond (and golden) pickaxes, axes, shovels and swords. Combat works like Minecraft 1.9 onwards: each weapon winds up again after a swing (swords quickly, axes slowly, shown by a meter under the crosshair), hits before then do much less damage, and fully wound-up hits while falling are critical hits.
 - **Creatures:** pigs, sheep, cows and chickens wander the grasslands and drop food (cook it in a furnace), leather, feathers and wool. In Survival, zombies come out at night and in dark caves, and burn in sunlight unless it's raining. Mobs flash red and get knocked back when hit, and fall over and vanish in a puff of smoke when they die.
 - **Creative:** every block, flying, instant breaking, and a searchable inventory.
-- **Sound and music:** recorded sounds for every block material (breaking, placing, footsteps), doors, chests, eating, animals, zombies, explosions and rain, positioned in 3D and muffled underwater. The soundtrack is calm piano music composed while you play, with a piano synthesised in the browser.
+- **Sound and music:** recorded sounds for every block material (breaking, placing, footsteps), doors, chests, weapon hits, armor, furnaces, eating, animals, zombies, explosions and rain, positioned in 3D and muffled underwater, with a low thump under breaking and placing and a compressor that keeps it punchy. The soundtrack is calm piano music composed while you play, with a piano synthesised in the browser, mixed well under the effects.
 - **Held items:** tools and blocks are held, swung and switched the way the original game does it.
 - **Performance:** terrain generation and meshing run in Web Workers. Chunks stream in around you, with finished chunks applied a few milliseconds' worth per frame. Cave culling skips sections you can't see into, faces pointing away from the camera are skipped, and the Auto resolution setting lowers the render scale when frames run slow.
 
@@ -72,7 +77,9 @@ src/worldgen.js     terrain, biomes, caves, ores, trees
 src/mesher.js       turns chunk sections into vertex data (face culling, AO, smooth light)
 src/light.js        per-chunk light flood fill (runs in workers)
 src/renderer.js     WebGL 2 renderer: terrain, sky, clouds, entities, particles, held item
-src/blocks.js       block registry;  src/items.js items, tools and recipes
+src/blocks.js       block registry;  src/items.js items, tools and armor;  src/crafting.js recipes, smelting, fuel
+src/containers.js   inventory, crafting table, furnace and chest screens (slot rules);  src/furnace.js smelting
+src/gui.js          the Minecraft-style container windows and recipe book;  src/preview.js your character in the inventory
 src/textures.js     procedural pixel-art textures
 src/entities.js     mobs, dropped items, TNT;  src/player.js, src/body.js physics
 src/audio.js        sound effects;  src/music.js generative piano music;  src/weather.js rain and snow
