@@ -25,9 +25,11 @@ const THUMP = {
   stone: [150, 58, 0.34], wood: [128, 52, 0.36], metal: [170, 70, 0.3], grass: [105, 48, 0.2], gravel: [110, 48, 0.24],
   sand: [95, 45, 0.18], snow: [90, 45, 0.14], cloth: [90, 42, 0.14], glass: [0, 0, 0], water: [0, 0, 0],
 };
-// Music sits under the sound effects: at the default settings it plays about 13 dB below
-// footsteps and 20 dB below breaking blocks.
-const MUSIC_LEVEL = 1;
+// Music is background: at the default settings it plays about 9 dB below footsteps and 23 dB
+// below breaking a block. Both volume sliders follow a squared curve, so each step sounds even.
+const MUSIC_LEVEL = 1.4;
+const sfxGain = (v) => v * v;
+const musicGain = (v) => v * v * MUSIC_LEVEL;
 
 function trimStart(ctx, buf) {
   // Some decoders leave the MP3 encoder's silent lead-in in place; cut it so sounds start on time.
@@ -58,8 +60,8 @@ function makeLoop(ctx, buf, fade) {
 export class Audio {
   constructor() {
     this.ctx = null;
-    this.volume = 0.8;
-    this.musicVolume = 0.35;
+    this.volume = 0.6;
+    this.musicVolume = 0.4;
     this.buffers = {};
     this.last = {};
     this.active = 0;
@@ -80,19 +82,17 @@ export class Audio {
     }
     const ctx = this.ctx;
     this.master = ctx.createGain();
-    this.master.gain.value = this.volume;
+    this.master.gain.value = sfxGain(this.volume);
     this.master.connect(ctx.destination);
-    // Effects go through a gentle compressor, so hits and breaks can be loud and punchy without
-    // a pile of overlapping sounds clipping.
+    // Effects go through a gentle compressor, so a pile of overlapping sounds (an explosion, a
+    // herd of animals) doesn't get harsh or clip.
     const comp = ctx.createDynamicsCompressor();
-    comp.threshold.value = -20;
+    comp.threshold.value = -18;
     comp.knee.value = 12;
-    comp.ratio.value = 3.5;
+    comp.ratio.value = 3;
     comp.attack.value = 0.003;
     comp.release.value = 0.2;
-    const makeup = ctx.createGain();
-    makeup.gain.value = 1.45;
-    comp.connect(makeup).connect(this.master);
+    comp.connect(this.master);
     // Everything sounds muffled with your head underwater.
     this.muffle = ctx.createBiquadFilter();
     this.muffle.type = 'lowpass';
@@ -105,7 +105,7 @@ export class Audio {
     const nd = this.noise.getChannelData(0);
     for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
     this.musicGain = ctx.createGain();
-    this.musicGain.gain.value = this.musicVolume * MUSIC_LEVEL;
+    this.musicGain.gain.value = musicGain(this.musicVolume);
     this.musicGain.connect(ctx.destination);
     this.music = new Music(ctx, this.musicGain);
     this.load();
@@ -125,8 +125,8 @@ export class Audio {
       .then((buf) => trimStart(this.ctx, buf));
   }
 
-  setVolume(v) { this.volume = v; if (this.master) this.master.gain.value = v; }
-  setMusicVolume(v) { this.musicVolume = v; if (this.musicGain) this.musicGain.gain.value = v * MUSIC_LEVEL; }
+  setVolume(v) { this.volume = v; if (this.master) this.master.gain.value = sfxGain(v); }
+  setMusicVolume(v) { this.musicVolume = v; if (this.musicGain) this.musicGain.gain.value = musicGain(v); }
 
   setListener(x, y, z, yaw, underwater) {
     const L = this.listener;

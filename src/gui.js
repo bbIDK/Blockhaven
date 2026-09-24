@@ -284,8 +284,10 @@ export class ContainerGUI {
       const u2 = Math.min(vw / Math.max(w, 147), vh / (h + 170));
       if (u2 > u * 1.2) { u = u2; stacked = true; }
     }
+    // As big as the GUI Scale option says, or smaller if that doesn't fit.
     const dpr = window.devicePixelRatio || 1;
-    u = u >= 2 ? Math.min(4, Math.floor(u)) : Math.max(1, Math.floor(u * dpr * 4) / (dpr * 4));
+    u = Math.min(this.game.ui.u, u);
+    u = u >= 1 ? Math.floor(u * dpr + 1e-6) / dpr : Math.max(0.5, Math.floor(u * dpr * 4) / (dpr * 4));
     this.u = u;
     this.screen.style.setProperty('--u', `${u}px`);
     this.wrap.classList.toggle('stacked', stacked);

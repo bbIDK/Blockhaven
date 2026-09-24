@@ -23,7 +23,7 @@
     <div id="debug" hidden></div>
     <div id="chat">
       <ul id="chat-log" aria-live="polite"></ul>
-      <input id="chat-input" type="text" autocomplete="off" spellcheck="false" maxlength="120" placeholder="Type a message or /help" hidden>
+      <input id="chat-input" type="text" autocomplete="off" spellcheck="false" maxlength="120" hidden>
     </div>
     <div id="item-name"></div>
     <div id="hud-bottom">
@@ -31,7 +31,7 @@
         <div class="stats-left"><div id="armor"></div><div id="hearts"></div></div>
         <div class="stats-right"><div id="bubbles"></div><div id="hunger"></div></div>
       </div>
-      <div id="hotbar"></div>
+      <div id="hotbar"><div id="hotbar-sel"></div></div>
     </div>
     <div id="resume-hint" hidden>Click to keep playing</div>
   </div>
@@ -55,64 +55,59 @@
   </section>
 
   <section class="screen title" id="screen-title" hidden>
-    <div class="title-panel">
-      <h1 class="logo" aria-label="Blockhaven"><span>Block</span><span>haven</span></h1>
-      <p class="tagline">Dig, build and explore an endless world of blocks — right here in your browser.</p>
-      <nav class="menu">
-        <button class="btn primary" data-action="play">Play</button>
-        <button class="btn" data-action="settings">Settings</button>
-        <button class="btn" data-action="controls">How to play</button>
-      </nav>
+    <div class="title-top">
+      <canvas id="logo" class="logo" aria-label="Blockhaven" role="img"></canvas>
+      <p id="splash" class="splash"></p>
     </div>
-    <p class="title-foot" id="title-foot">Worlds are saved on this device</p>
+    <nav class="stack">
+      <button class="btn wide" data-action="play">Singleplayer</button>
+      <button class="btn wide" data-action="settings">Options...</button>
+      <button class="btn wide" data-action="controls">How to Play</button>
+    </nav>
+    <p class="corner left" id="title-foot">Blockhaven 1.5</p>
+    <p class="corner right">Not affiliated with Mojang</p>
   </section>
 
-  <section class="screen dim" id="screen-worlds" hidden>
-    <div class="panel wide">
-      <header class="panel-head">
-        <h2>Your worlds</h2>
-        <button class="btn small" data-action="back">Back</button>
-      </header>
-      <ul id="world-list" class="world-list"></ul>
-      <p id="world-empty" class="empty" hidden>No worlds yet. Create one and it will show up here.</p>
-      <p id="storage-note" class="note" hidden>This browser is blocking storage, so worlds only last until you close the tab.</p>
-      <div class="panel-actions">
-        <button class="btn primary" data-action="new-world">Create new world</button>
+  <section class="screen menu-bg" id="screen-worlds" hidden>
+    <h2 class="screen-title">Select World</h2>
+    <div class="list-frame">
+      <ul id="world-list" class="world-list" role="listbox" aria-label="Worlds"></ul>
+      <p id="world-empty" class="empty" hidden>No worlds yet. Create one to start playing.</p>
+    </div>
+    <p id="storage-note" class="note" hidden>This browser is blocking storage, so worlds only last until you close the tab.</p>
+    <div class="button-rows">
+      <div class="row">
+        <button class="btn" data-action="open-world" id="w-play" disabled>Play Selected World</button>
+        <button class="btn" data-action="new-world">Create New World</button>
+      </div>
+      <div class="row">
+        <button class="btn" data-action="delete-world" id="w-delete" disabled>Delete</button>
+        <button class="btn" data-action="back">Cancel</button>
       </div>
     </div>
   </section>
 
-  <section class="screen dim" id="screen-create" hidden>
-    <form class="panel" id="create-form" novalidate>
-      <h2>New world</h2>
-      <label class="field">World name
+  <section class="screen menu-bg" id="screen-create" hidden>
+    <form class="form-screen" id="create-form" novalidate>
+      <h2 class="screen-title">Create New World</h2>
+      <label class="field">World Name
         <input id="cw-name" type="text" maxlength="32" autocomplete="off" spellcheck="false">
       </label>
-      <fieldset class="choice">
-        <legend>Game mode</legend>
-        <label><input type="radio" name="mode" value="survival" id="cw-survival" checked>
-          <span class="choice-body"><b>Survival</b><small>Mine, craft tools and stay alive through the night.</small></span></label>
-        <label><input type="radio" name="mode" value="creative" id="cw-creative">
-          <span class="choice-body"><b>Creative</b><small>Every block, unlimited. Fly and build freely.</small></span></label>
-      </fieldset>
-      <fieldset class="choice">
-        <legend>World type</legend>
-        <label><input type="radio" name="type" value="default" id="cw-default" checked>
-          <span class="choice-body"><b>Default</b><small>Mountains, forests, oceans, caves.</small></span></label>
-        <label><input type="radio" name="type" value="flat" id="cw-flat">
-          <span class="choice-body"><b>Flat</b><small>An endless plain for building.</small></span></label>
-      </fieldset>
-      <label class="field">Seed
-        <input id="cw-seed" type="text" maxlength="40" autocomplete="off" spellcheck="false" placeholder="Leave empty for a random world">
+      <button type="button" class="btn wide" id="cw-mode" data-action="cycle-mode">Game Mode: Survival</button>
+      <p class="desc" id="cw-mode-desc"></p>
+      <button type="button" class="btn wide" id="cw-type" data-action="cycle-type">World Type: Default</button>
+      <p class="desc" id="cw-type-desc"></p>
+      <label class="field">Seed for the World Generator
+        <input id="cw-seed" type="text" maxlength="40" autocomplete="off" spellcheck="false" placeholder="Leave blank for a random seed">
       </label>
-      <div class="panel-actions">
+      <div class="row">
+        <button class="btn" type="submit">Create New World</button>
         <button class="btn" type="button" data-action="back">Cancel</button>
-        <button class="btn primary" type="submit">Create world</button>
       </div>
     </form>
   </section>
 
-  <section class="screen" id="screen-loading" hidden>
+  <section class="screen loading-screen" id="screen-loading" hidden>
     <div class="loading">
       <p id="loading-text">Generating terrain</p>
       <div class="bar"><i id="loading-bar"></i></div>
@@ -121,76 +116,48 @@
   </section>
 
   <section class="screen dim" id="screen-pause" hidden>
-    <div class="panel narrow">
-      <h2>Game paused</h2>
-      <nav class="menu">
-        <button class="btn primary" data-action="resume">Back to game</button>
-        <button class="btn" data-action="settings">Settings</button>
-        <button class="btn" data-action="controls">How to play</button>
-        <button class="btn" data-action="quit">Save and quit to title</button>
-      </nav>
-      <p class="pause-info" id="pause-info"></p>
+    <h2 class="screen-title">Game Menu</h2>
+    <div class="button-rows">
+      <button class="btn wide" data-action="resume">Back to Game</button>
+      <div class="row">
+        <button class="btn half" data-action="settings">Options...</button>
+        <button class="btn half" data-action="controls">How to Play</button>
+      </div>
+      <button class="btn wide" data-action="quit">Save and Quit to Title</button>
     </div>
+    <p class="pause-info" id="pause-info"></p>
   </section>
 
-  <section class="screen dim" id="screen-settings" hidden>
-    <div class="panel">
-      <h2>Settings</h2>
-      <div class="settings">
-        <label class="range" for="s-rd"><span>Render distance</span><output id="o-rd"></output>
-          <input type="range" id="s-rd" min="2" max="16" step="1"></label>
-        <label class="range" for="s-res"><span>Resolution</span><output id="o-res"></output>
-          <input type="range" id="s-res" min="0" max="6" step="1"></label>
-        <label class="range" for="s-fov"><span>Field of view</span><output id="o-fov"></output>
-          <input type="range" id="s-fov" min="50" max="110" step="1"></label>
-        <label class="range" for="s-sens"><span>Mouse sensitivity</span><output id="o-sens"></output>
-          <input type="range" id="s-sens" min="10" max="250" step="5"></label>
-        <label class="range" for="s-bright"><span>Brightness</span><output id="o-bright"></output>
-          <input type="range" id="s-bright" min="0" max="100" step="5"></label>
-        <label class="range" for="s-vol"><span>Sound effects</span><output id="o-vol"></output>
-          <input type="range" id="s-vol" min="0" max="100" step="5"></label>
-        <label class="range" for="s-music"><span>Music</span><output id="o-music"></output>
-          <input type="range" id="s-music" min="0" max="100" step="5"></label>
-        <label class="toggle" for="s-bob"><input type="checkbox" id="s-bob"><span>View bobbing</span></label>
-        <label class="toggle" for="s-clouds"><input type="checkbox" id="s-clouds"><span>Clouds</span></label>
-        <label class="toggle" for="s-invert"><input type="checkbox" id="s-invert"><span>Invert mouse</span></label>
-        <label class="toggle" for="s-fps"><input type="checkbox" id="s-fps"><span>Show FPS</span></label>
-      </div>
-      <div class="panel-actions">
-        <button class="btn primary" data-action="done">Done</button>
-      </div>
-    </div>
+  <section class="screen menu-bg" id="screen-settings" hidden>
+    <h2 class="screen-title">Options</h2>
+    <div class="options" id="options"></div>
+    <button class="btn wide" data-action="done">Done</button>
   </section>
 
-  <section class="screen dim" id="screen-controls" hidden>
-    <div class="panel">
-      <h2>How to play</h2>
+  <section class="screen menu-bg" id="screen-controls" hidden>
+    <h2 class="screen-title">How to Play</h2>
+    <div class="help">
       <dl class="keys">
         <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>Walk</dd>
         <dt><kbd>Mouse</kbd></dt><dd>Look around</dd>
-        <dt><kbd>Left click</kbd></dt><dd>Break block (hold in Survival)</dd>
-        <dt><kbd>Right click</kbd></dt><dd>Place block; use crafting tables, furnaces, chests, doors and beds</dd>
-        <dt><kbd>Hold right click</kbd></dt><dd>Eat the food in your hand (when you're hungry)</dd>
-        <dt><kbd>Space</kbd></dt><dd>Jump — double-tap to fly in Creative</dd>
-        <dt><kbd>Shift</kbd></dt><dd>Sneak (won't fall off edges) / fly down</dd>
+        <dt><kbd>Left Click</kbd></dt><dd>Break blocks (hold), attack</dd>
+        <dt><kbd>Right Click</kbd></dt><dd>Place blocks; use tables, furnaces, chests, doors and beds</dd>
+        <dt><kbd>Hold Right</kbd></dt><dd>Eat the food in your hand</dd>
+        <dt><kbd>Space</kbd></dt><dd>Jump (double-tap to fly in Creative)</dd>
+        <dt><kbd>Shift</kbd></dt><dd>Sneak, fly down</dd>
         <dt><kbd>Ctrl</kbd></dt><dd>Sprint (or double-tap W)</dd>
-        <dt><kbd>1</kbd>–<kbd>9</kbd>, <kbd>Wheel</kbd></dt><dd>Choose hotbar slot</dd>
-        <dt><kbd>E</kbd></dt><dd>Inventory, armor and 2&times;2 crafting</dd>
-        <dt><kbd>Shift</kbd>+<kbd>Click</kbd></dt><dd>Move a stack across, or craft as many as you can</dd>
-        <dt><kbd>Middle click</kbd></dt><dd>Pick the block you're looking at</dd>
+        <dt><kbd>1</kbd>–<kbd>9</kbd> <kbd>Wheel</kbd></dt><dd>Choose a hotbar slot</dd>
+        <dt><kbd>E</kbd></dt><dd>Inventory and crafting</dd>
         <dt><kbd>Q</kbd></dt><dd>Drop the held item</dd>
-        <dt><kbd>T</kbd>, <kbd>/</kbd></dt><dd>Chat and commands (try <code>/help</code>)</dd>
-        <dt><kbd>F3</kbd></dt><dd>Coordinates and debug info</dd>
-        <dt><kbd>Esc</kbd></dt><dd>Pause</dd>
+        <dt><kbd>Middle Click</kbd></dt><dd>Pick the block you look at</dd>
+        <dt><kbd>T</kbd> <kbd>/</kbd></dt><dd>Chat and commands (try /help)</dd>
+        <dt><kbd>F3</kbd></dt><dd>Debug info</dd>
       </dl>
-      <p class="hint-text">Survival tip: punch a tree for logs, turn them into planks in your inventory's crafting grid, then make a crafting table. Right-click the table for the full 3&times;3 grid and craft a wooden pickaxe to mine stone. The green book button opens the recipe book, which lays recipes out for you. Sneak while right-clicking to place blocks against things you can use.</p>
-      <p class="hint-text">Furnaces smelt ores, cook meat and bake sand into glass: put the item in the top slot and fuel (coal, charcoal, wood) in the bottom one. Weapons need a moment to wind up between hits; the meter under the crosshair shows when a swing will hit at full strength. Swords are quick, axes hit hard but slowly.</p>
-      <p class="hint-text">Keep an eye on the drumsticks next to your hearts: you only heal when you're well fed. Cook meat from pigs, cows and chickens in a furnace for the most food. Hitting a mob while you're falling is a critical hit.</p>
-      <p class="hint-text">On a touch screen: the left stick moves, drag anywhere else to look, tap to place, hold to break.</p>
-      <div class="panel-actions">
-        <button class="btn primary" data-action="back">Got it</button>
-      </div>
+      <p class="hint-text">Punch a tree for logs and turn them into planks in your inventory's crafting grid. Four planks make a crafting table: right-click it for the full 3×3 grid, where a wooden pickaxe gets you mining. The green book lists every recipe and lays it out for you.</p>
+      <p class="hint-text">Furnaces smelt ores and cook meat: the item goes on top, fuel below. Weapons need a moment between swings (the bar under the crosshair), so time your hits. You heal while your food bar is nearly full.</p>
+      <p class="hint-text">On a touch screen the left stick walks, dragging looks around, a tap places and holding breaks.</p>
     </div>
+    <button class="btn wide" data-action="back">Done</button>
   </section>
 
   <section class="screen mc-screen" id="screen-container" hidden>
@@ -203,31 +170,26 @@
   </section>
 
   <section class="screen death" id="screen-death" hidden>
-    <div class="panel narrow">
-      <h2>You died</h2>
-      <p id="death-cause" class="death-cause"></p>
-      <nav class="menu">
-        <button class="btn primary" data-action="respawn">Respawn</button>
-        <button class="btn" data-action="quit">Title screen</button>
-      </nav>
+    <h2 class="death-title">You Died!</h2>
+    <p id="death-cause" class="death-cause"></p>
+    <div class="button-rows">
+      <button class="btn wide" data-action="respawn">Respawn</button>
+      <button class="btn wide" data-action="quit">Title Screen</button>
     </div>
   </section>
 
   <div class="modal" id="confirm" hidden>
-    <div class="panel narrow">
-      <p id="confirm-text"></p>
-      <div class="panel-actions">
-        <button class="btn" data-action="cancel">Cancel</button>
-        <button class="btn danger" data-action="ok">Delete</button>
-      </div>
+    <h2 class="screen-title" id="confirm-title"></h2>
+    <p id="confirm-text" class="confirm-text"></p>
+    <div class="row">
+      <button class="btn" data-action="ok">Delete</button>
+      <button class="btn" data-action="cancel">Cancel</button>
     </div>
   </div>
 
-  <section class="screen" id="screen-error" hidden>
-    <div class="panel narrow">
-      <h2>Can't start the game</h2>
-      <p id="error-text"></p>
-    </div>
+  <section class="screen menu-bg" id="screen-error" hidden>
+    <h2 class="screen-title">Can't start the game</h2>
+    <p id="error-text" class="confirm-text"></p>
   </section>
 </div>
 <script type="module" src="src/main.js"></script>

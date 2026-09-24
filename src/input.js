@@ -75,6 +75,8 @@ export class Input {
       const was = this.locked;
       this.locked = document.pointerLockElement === target;
       if (this.locked) { this.lockFailed = false; this.lockFailures = 0; this.skipMoves = 1; }
+      // A lock that arrives after the game stopped wanting it (a menu opened meanwhile) is let go.
+      if (this.locked && !this.capture) { document.exitPointerLock(); return; }
       if (was && !this.locked) { this.buttons = 0; this.onUnlock?.(); }
     });
     document.addEventListener('pointerlockerror', () => this.lockRefused());

@@ -32,8 +32,8 @@ const DEG = Math.PI / 180;
 const COARSE = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 const REDUCED_MOTION = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const DEFAULT_SETTINGS = {
-  renderDistance: COARSE ? 5 : 8, resolution: 0, fov: 75, sensitivity: 100, brightness: 50, volume: 80, music: 35,
-  viewBobbing: !REDUCED_MOTION, clouds: true, invertMouse: false, showFps: false, recipeBook: true, mix: 2,
+  renderDistance: COARSE ? 5 : 8, resolution: 0, fov: 75, sensitivity: 100, brightness: 50, volume: 60, music: 40,
+  viewBobbing: !REDUCED_MOTION, clouds: true, invertMouse: false, showFps: false, recipeBook: true, guiScale: 0, mix: 3,
 };
 const LOG_AXES = { [B.oak_log]: [100, 101], [B.birch_log]: [102, 103], [B.spruce_log]: [104, 105] };
 const FACE_NAMES = ['east (+X)', 'west (-X)', 'up', 'down', 'south (+Z)', 'north (-Z)'];
@@ -69,15 +69,16 @@ export class Game {
     this.ui = new UI();
     this.renderer = new Renderer(this.canvas);
     initIcons(this.renderer.pixels);
+    this.ui.drawLogo(this.renderer.pixels, TEX);
     this.input = new Input(this.canvas);
     this.touch = new TouchControls(this);
     this.audio = new Audio();
     this.settings = storage.loadPrefs(SETTINGS_KEY, DEFAULT_SETTINGS);
-    // Settings saved before the sound rebalance still have the old default volumes.
-    if (!this.settings.mix) {
-      if (this.settings.volume === 70) this.settings.volume = DEFAULT_SETTINGS.volume;
-      if (this.settings.music === 45) this.settings.music = DEFAULT_SETTINGS.music;
-      this.settings.mix = 2;
+    // Settings saved by earlier versions still have their old default volumes.
+    if ((this.settings.mix ?? 1) < 3) {
+      if ([70, 80].includes(this.settings.volume)) this.settings.volume = DEFAULT_SETTINGS.volume;
+      if ([45, 35].includes(this.settings.music)) this.settings.music = DEFAULT_SETTINGS.music;
+      this.settings.mix = 3;
     }
     this.env = makeEnvironment();
     this.particles = new Particles();
@@ -163,7 +164,6 @@ export class Game {
     this.startPanorama();
     this.ui.show('screen-title');
     this.state = 'title';
-    $('title-foot').textContent = COARSE ? 'Touch controls on · Worlds are saved on this device' : 'Worlds are saved on this device';
     requestAnimationFrame(this.frame);
     if (hot.worldId) storage.loadWorld(hot.worldId).then((meta) => meta && this.enterWorld(meta));
   }
@@ -171,6 +171,8 @@ export class Game {
   // Resolution: a fixed share of the screen's pixels, or Auto, which starts at full resolution and
   // trades pixels for frame rate only when frames run slow.
   onResize() {
+    this.ui.applyScale(this.settings.guiScale);
+    if (this.menu) this.gui.fit();
     const dpr = Math.min(window.devicePixelRatio || 1, COARSE ? 1.5 : 2);
     const fixed = this.settings.resolution;
     const scale = fixed ? (40 + fixed * 10) / 100 : this.autoScale;
@@ -201,6 +203,7 @@ export class Game {
   applySettings() {
     this.audio.setVolume(this.settings.volume / 100);
     this.audio.setMusicVolume(this.settings.music / 100);
+    this.ui.applyScale(this.settings.guiScale);
     if (this.renderer) this.onResize();
   }
 
@@ -225,16 +228,17 @@ export class Game {
     });
     ui.on('new-world', () => this.openCreate());
     ui.on('create-world', () => this.createWorld());
-    ui.on('open-world', async (_, btn) => {
+    ui.on('open-world', async () => {
       this.audio.unlock();
-      const meta = await storage.loadWorld(btn.dataset.id);
+      if (!ui.selectedWorld || this.state === 'loading') return;
+      const meta = await storage.loadWorld(ui.selectedWorld);
       if (meta) this.enterWorld(meta);
     });
-    ui.on('delete-world', async (_, btn) => {
+    ui.on('delete-world', async () => {
       const worlds = await storage.listWorlds();
-      const w = worlds.find((x) => x.id === btn.dataset.id);
+      const w = worlds.find((x) => x.id === ui.selectedWorld);
       if (!w) return;
-      if (await ui.confirm(`Delete “${w.name}”? It can't be recovered.`, 'Delete world')) {
+      if (await ui.confirm('Are you sure you want to delete this world?', `“${w.name}” will be lost forever! (A long time!)`, 'Delete')) {
         await storage.deleteWorld(w.id);
         this.openWorlds();
       }
@@ -265,6 +269,7 @@ export class Game {
 
   async openWorlds() {
     this.audio.unlock();
+    this.ui.selectedWorld = null; // the most recently played world gets selected
     this.ui.show('screen-worlds');
     const [worlds, persistent] = await Promise.all([storage.listWorlds(), storage.persistent()]);
     this.ui.renderWorlds(worlds, persistent);
@@ -276,6 +281,8 @@ export class Game {
     while (worlds.some((w) => w.name === name)) name = `New World ${n++}`;
     $('cw-name').value = name;
     $('cw-seed').value = '';
+    this.ui.setCreate('mode', 'survival');
+    this.ui.setCreate('type', 'default');
     this.ui.show('screen-create');
   }
 
@@ -284,8 +291,7 @@ export class Game {
     const name = $('cw-name').value.trim() || 'New World';
     const seedText = $('cw-seed').value.trim();
     const seed = seedFromText(seedText);
-    const mode = document.querySelector('input[name=mode]:checked')?.value ?? 'survival';
-    const type = document.querySelector('input[name=type]:checked')?.value ?? 'default';
+    const { mode, type } = this.ui.createState;
     const meta = {
       id: `w${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`,
       name, seed, seedText, mode, type, created: Date.now(), lastPlayed: Date.now(), time: 1000,
@@ -1627,7 +1633,7 @@ export class Game {
     if (!show) return;
     if (this.invVersion !== this.drawnInvVersion) {
       this.drawnInvVersion = this.invVersion;
-      ui.renderHotbar(this.inv, this.creative);
+      ui.renderHotbar(this.inv);
       if (this.menu) this.gui.render();
     }
     if (this.menu) this.gui.frame();
