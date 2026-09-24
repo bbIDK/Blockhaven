@@ -1,0 +1,11 @@
+{
+  "name": "blockhaven",
+  "version": "1.0.0",
+  "description": "A block-building sandbox game that runs in the browser.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "serve": "python3 -m http.server 8000"
+  }
+}
