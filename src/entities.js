@@ -34,8 +34,32 @@ const MOB_TYPES = {
       ...legs(0.2, 0.35, 0.65, TEX.sheep_wool, 0.11),
     ],
   },
+  cow: {
+    label: 'Cow', hw: 0.45, h: 1.4, health: 10, speed: 1.0, drops: [[I.raw_beef, 1, 3], [I.leather, 0, 2]],
+    parts: () => [
+      box([-0.375, 0.75, -0.5625], [0.375, 1.375, 0.5625], faces(TEX.cow_hide)),
+      box([-0.25, 1.0, -0.9375], [0.25, 1.5, -0.5625], faces(TEX.cow_hide, TEX.cow_face), [0, 1.25, -0.5625], 'head'),
+      box([-0.3125, 1.4375, -0.8125], [-0.25, 1.5625, -0.75], faces(TEX.chicken_feathers), [0, 1.25, -0.5625], 'head'),
+      box([0.25, 1.4375, -0.8125], [0.3125, 1.5625, -0.75], faces(TEX.chicken_feathers), [0, 1.25, -0.5625], 'head'),
+      box([-0.125, 0.6875, 0.125], [0.125, 0.75, 0.375], faces(TEX.pig_skin)),
+      ...legs(0.25, 0.4375, 0.75, TEX.cow_hide),
+    ],
+  },
+  chicken: {
+    label: 'Chicken', hw: 0.2, h: 0.7, health: 4, speed: 1.1, drops: [[I.raw_chicken, 1, 1], [I.feather, 0, 2]], flutter: true,
+    parts: () => [
+      box([-0.1875, 0.3125, -0.25], [0.1875, 0.6875, 0.25], faces(TEX.chicken_feathers)),
+      box([-0.125, 0.5625, -0.4375], [0.125, 0.9375, -0.25], faces(TEX.chicken_feathers, TEX.chicken_face), [0, 0.6875, -0.25], 'head'),
+      box([-0.125, 0.75, -0.5625], [0.125, 0.875, -0.4375], faces(TEX.chicken_beak), [0, 0.6875, -0.25], 'head'),
+      box([-0.0625, 0.625, -0.5], [0.0625, 0.75, -0.4375], faces(TEX.chicken_wattle), [0, 0.6875, -0.25], 'head'),
+      box([-0.25, 0.4375, -0.1875], [-0.1875, 0.625, 0.1875], faces(TEX.chicken_feathers), [-0.1875, 0.625, 0], 'wingA'),
+      box([0.1875, 0.4375, -0.1875], [0.25, 0.625, 0.1875], faces(TEX.chicken_feathers), [0.1875, 0.625, 0], 'wingB'),
+      box([-0.125, 0, -0.0625], [-0.0625, 0.3125, 0], faces(TEX.chicken_legs), [-0.09375, 0.3125, -0.03125], 'legA'),
+      box([0.0625, 0, -0.0625], [0.125, 0.3125, 0], faces(TEX.chicken_legs), [0.09375, 0.3125, -0.03125], 'legB'),
+    ],
+  },
   zombie: {
-    label: 'Zombie', hw: 0.3, h: 1.95, health: 20, speed: 2.3, hostile: true, drops: [],
+    label: 'Zombie', hw: 0.3, h: 1.95, health: 20, speed: 2.3, hostile: true, drops: [[I.rotten_flesh, 0, 2]],
     parts: () => [
       box([-0.25, 0, -0.125], [0, 0.75, 0.125], faces(TEX.zombie_pants), [-0.125, 0.75, 0], 'legA'),
       box([0, 0, -0.125], [0.25, 0.75, 0.125], faces(TEX.zombie_pants), [0.125, 0.75, 0], 'legB'),
@@ -110,7 +134,7 @@ export class Entities {
     e.vx = (Math.random() - 0.5) * 1.2;
     e.vz = (Math.random() - 0.5) * 1.2;
     this.list.push(e);
-    this.game.audio.fuse();
+    this.game.audio.fuse({ x: e.x, y: e.y + 0.5, z: e.z });
   }
 
   spawnMob(type, x, y, z) {
@@ -118,7 +142,7 @@ export class Entities {
     const e = new Entity('mob', t.hw, t.h, x, y, z);
     Object.assign(e, {
       type, label: t.label, def: t, health: t.health, yaw: Math.random() * 6.28, walk: 0, walkPhase: 0,
-      wander: 0, moving: false, panic: 0, hurt: 0, dying: 0, attackCd: 0, swing: 0, burnCd: 0,
+      wander: 0, moving: false, panic: 0, hurt: 0, lastDamage: 0, dying: 0, attackCd: 0, swing: 0, burnCd: 0, flap: 0,
     });
     this.list.push(e);
     return e;
@@ -129,8 +153,9 @@ export class Entities {
     if (!game.meta) return;
     const passive = this.list.filter((e) => e.kind === 'mob' && !e.def.hostile).length;
     if (passive >= 24 || hash2(chunk.cx, chunk.cz, game.meta.seed ^ 0xa11) > 0.1) return;
-    const type = hash2(chunk.cz, chunk.cx, game.meta.seed) < 0.55 ? 'pig' : 'sheep';
-    const n = 2 + Math.floor(hash2(chunk.cx * 7, chunk.cz, 5) * 3);
+    const roll = hash2(chunk.cz, chunk.cx, game.meta.seed);
+    const type = roll < 0.3 ? 'pig' : roll < 0.58 ? 'sheep' : roll < 0.84 ? 'cow' : 'chicken';
+    const n = 2 + Math.floor(hash2(chunk.cx * 7, chunk.cz, 5) * 3) + (type === 'chicken' ? 1 : 0);
     for (let i = 0; i < n; i++) {
       const lx = Math.floor(hash2(chunk.cx, i, chunk.cz) * 16), lz = Math.floor(hash2(i, chunk.cz, chunk.cx) * 16);
       if (!PASSIVE_BIOMES.has(chunk.biomes[lz * 16 + lx])) continue;
@@ -203,7 +228,9 @@ export class Entities {
     if (e.def.hostile) {
       // Burn in daylight.
       const l = w.getLight(Math.floor(e.x), Math.floor(e.y + 1.6), Math.floor(e.z));
-      if (game.env.daylight > 0.75 && (l >> 4) >= 12 && ++e.burnCd >= 20) { e.burnCd = 0; this.hurtMob(e, 2, null); }
+      const burning = game.env.daylight > 0.75 && (l >> 4) >= 12 && game.weather.rain < 0.3;
+      if (burning && Math.random() < 0.25) game.particles.smoke(e.x, e.y + 1 + Math.random() * 0.9, e.z, 1, 0.3);
+      if (burning && ++e.burnCd >= 20) { e.burnCd = 0; this.hurtMob(e, 2, null); }
       const chase = !game.creative && game.state !== 'dead' && dist < 24 && Math.abs(p.y - e.y) < 10;
       if (chase) {
         e.yaw = Math.atan2(-dx, -dz);
@@ -215,14 +242,14 @@ export class Entities {
           game.damage(3, 'You were slain by a zombie', false, [dx * k * 0.3, 4.5, dz * k * 0.3]);
         }
       } else this.wanderTick(e);
-      if (Math.random() < 0.004 && dist < 16) game.audio.mob('zombie');
+      if (Math.random() < 0.005) game.audio.mob('zombie', 'say', { x: e.x, y: e.y + 1.6, z: e.z });
     } else {
       if (e.panic > 0) {
         e.panic--;
         if (e.panic % 20 === 0) e.yaw = Math.random() * 6.28;
         e.moving = true;
       } else this.wanderTick(e);
-      if (Math.random() < 0.003 && dist < 12) game.audio.mob(e.type);
+      if (Math.random() < 0.004) game.audio.mob(e.type, 'say', { x: e.x, y: e.y + e.h * 0.8, z: e.z });
     }
     // Despawn when far away.
     const lim = (game.settings.renderDistance + 2) * 16;
@@ -270,7 +297,7 @@ export class Entities {
   mobPhysics(e, dt, fluid) {
     const w = this.world;
     if (e.dying) {
-      e.dying += dt / 0.8;
+      e.dying += dt;
       if (e.dying >= 1) this.finishDeath(e);
       e.vy -= 20 * dt;
       e.move(w, 0, e.vy * dt, 0);
@@ -294,8 +321,10 @@ export class Entities {
       e.vy += (2.2 - e.vy) * Math.min(1, dt * 4);
     } else {
       e.vy -= 32 * dt;
-      e.vy = Math.max(e.vy, -60);
+      e.vy = Math.max(e.vy, e.def.flutter ? -3 : -60);
     }
+    // Wings flap while a chicken is in the air.
+    e.flap = !e.onGround && e.def.flutter ? e.flap + dt * 30 : 0;
     const wasGround = e.onGround;
     e.move(w, e.vx * dt, e.vy * dt, e.vz * dt);
     if (e.hitWall && (e.onGround || wasGround) && speed) e.vy = 8.6;
@@ -307,12 +336,22 @@ export class Entities {
 
   hurtMob(e, amount, from) {
     if (e.dying || e.dead) return;
+    // Like the original, a mob that was just hurt only takes the part of a new hit that's stronger
+    // than the last one, so spam-clicking doesn't help.
+    if (e.hurt > 0) {
+      if (amount <= e.lastDamage) return;
+      const extra = amount - e.lastDamage;
+      e.lastDamage = amount;
+      amount = extra;
+    } else e.lastDamage = amount;
     e.health -= amount;
-    e.hurt = 8;
-    this.game.audio.mob(e.type);
+    e.hurt = 10;
+    this.game.audio.mob(e.type, e.health <= 0 ? 'death' : 'hurt', { x: e.x, y: e.y + e.h * 0.8, z: e.z });
     if (from) {
+      // Knocked back with a little hop.
       const dx = e.x - from.x, dz = e.z - from.z, d = Math.hypot(dx, dz) || 1;
-      e.vx += (dx / d) * 6; e.vz += (dz / d) * 6; e.vy = 5;
+      e.vx = e.vx / 2 + (dx / d) * 7; e.vz = e.vz / 2 + (dz / d) * 7;
+      if (e.onGround) e.vy = 7;
     }
     if (!e.def.hostile) { e.panic = 80; e.yaw = Math.atan2(e.x - (from?.x ?? e.x), e.z - (from?.z ?? e.z)) + Math.PI; }
     if (e.health <= 0) e.dying = 0.001;
@@ -321,8 +360,8 @@ export class Entities {
   finishDeath(e) {
     e.dead = true;
     const game = this.game;
-    for (let i = 0; i < 12; i++) game.particles.spawn(e.x + (Math.random() - 0.5) * e.hw * 2, e.y + Math.random() * e.h, e.z + (Math.random() - 0.5) * e.hw * 2,
-      (Math.random() - 0.5) * 1.5, Math.random() * 1.5, (Math.random() - 0.5) * 1.5, B.snow_block, 0, 0.6 + Math.random() * 0.4, 0.1);
+    // The body disappears in a puff of smoke.
+    game.particles.smoke(e.x, e.y + e.h * 0.4, e.z, 10 + Math.round(e.h * 6), e.hw + 0.25);
     if (game.creative) return;
     for (const [id, min, max] of e.def.drops) {
       const n = min + Math.floor(Math.random() * (max - min + 1));
@@ -330,9 +369,9 @@ export class Entities {
     }
   }
 
-  attack(e, heldId) {
+  attack(e, heldId, crit = false) {
     const def = itemDef(heldId);
-    const dmg = this.game.creative ? 100 : def?.damage ?? 1;
+    const dmg = this.game.creative ? 100 : (def?.damage ?? 1) * (crit ? 1.5 : 1);
     this.hurtMob(e, dmg, this.game.player);
   }
 
@@ -365,7 +404,7 @@ export class Entities {
       game.particles.spawn(x + (Math.random() - 0.5) * power, y + (Math.random() - 0.5) * power, z + (Math.random() - 0.5) * power,
         (Math.random() - 0.5) * 6, Math.random() * 5, (Math.random() - 0.5) * 6, i % 3 ? B.snow_block : B.cobblestone, 0, 0.8 + Math.random(), 0.18);
     }
-    game.audio.explode();
+    game.audio.explode({ x, y, z });
     const p = game.player;
     const pd = Math.hypot(p.x - x, p.y + 0.9 - y, p.z - z);
     if (pd < power * 2) {
@@ -449,10 +488,16 @@ export class Entities {
           const m = identity(this.mat());
           translate(m, m, rx, ry, rz);
           rotateY(m, m, e.yaw);
-          if (e.dying) rotateZ(m, m, Math.min(1, e.dying * 1.4) * Math.PI / 2);
+          // Falls over sideways when it dies, quickly at first.
+          if (e.dying) rotateZ(m, m, Math.min(1, Math.sqrt(e.dying * 1.6)) * Math.PI / 2);
           if (p.pivot) {
             let a = 0;
-            if (p.anim === 'legA') a = swingA;
+            if (p.anim === 'wingA' || p.anim === 'wingB') {
+              const f = (Math.sin(e.flap) * 0.5 + 0.5) * (e.flap ? 1.2 : 0);
+              translate(m, m, p.pivot[0], p.pivot[1], p.pivot[2]);
+              rotateZ(m, m, p.anim === 'wingA' ? -f : f);
+              translate(m, m, -p.pivot[0], -p.pivot[1], -p.pivot[2]);
+            } else if (p.anim === 'legA') a = swingA;
             else if (p.anim === 'legB') a = -swingA;
             else if (p.anim === 'armA' || p.anim === 'armB') a = Math.PI / 2 * 0.95 - (p.anim === 'armA' ? swingA : -swingA) * 0.3 - e.swing * 0.6;
             else if (p.anim === 'head') a = Math.sin(e.age * 0.7) * 0.08;
@@ -463,7 +508,7 @@ export class Entities {
           translate(m, m, -MODEL_OFFSET, -MODEL_OFFSET, -MODEL_OFFSET);
           parts.push({ mesh: p.mesh, model: m });
         }
-        out.push({ parts, light, tint: e.hurt > 0 || e.dying ? [1, 0.45, 0.45] : null });
+        out.push({ parts, light, tint: null, hurt: e.hurt > 0 || e.dying > 0 });
       }
     }
     return out;

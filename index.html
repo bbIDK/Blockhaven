@@ -28,7 +28,7 @@
     <div id="hud-bottom">
       <div id="stats">
         <div id="hearts"></div>
-        <div id="bubbles"></div>
+        <div class="stats-right"><div id="bubbles"></div><div id="hunger"></div></div>
       </div>
       <div id="hotbar"></div>
     </div>
@@ -138,6 +138,8 @@
       <div class="settings">
         <label class="range" for="s-rd"><span>Render distance</span><output id="o-rd"></output>
           <input type="range" id="s-rd" min="2" max="16" step="1"></label>
+        <label class="range" for="s-res"><span>Resolution</span><output id="o-res"></output>
+          <input type="range" id="s-res" min="0" max="6" step="1"></label>
         <label class="range" for="s-fov"><span>Field of view</span><output id="o-fov"></output>
           <input type="range" id="s-fov" min="50" max="110" step="1"></label>
         <label class="range" for="s-sens"><span>Mouse sensitivity</span><output id="o-sens"></output>
@@ -166,7 +168,8 @@
         <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>Walk</dd>
         <dt><kbd>Mouse</kbd></dt><dd>Look around</dd>
         <dt><kbd>Left click</kbd></dt><dd>Break block (hold in Survival)</dd>
-        <dt><kbd>Right click</kbd></dt><dd>Place block, eat food, open doors and chests, sleep in a bed</dd>
+        <dt><kbd>Right click</kbd></dt><dd>Place block, open doors and chests, sleep in a bed</dd>
+        <dt><kbd>Hold right click</kbd></dt><dd>Eat the food in your hand (when you're hungry)</dd>
         <dt><kbd>Space</kbd></dt><dd>Jump — double-tap to fly in Creative</dd>
         <dt><kbd>Shift</kbd></dt><dd>Sneak (won't fall off edges) / fly down</dd>
         <dt><kbd>Ctrl</kbd></dt><dd>Sprint (or double-tap W)</dd>
@@ -179,6 +182,7 @@
         <dt><kbd>Esc</kbd></dt><dd>Pause</dd>
       </dl>
       <p class="hint-text">Survival tip: punch a tree for logs, turn them into planks and a crafting table, then make a wooden pickaxe to mine stone. Place torches before night falls, or craft a bed from wool and planks to sleep through it. Sneak while right-clicking to place blocks against doors, chests and beds.</p>
+      <p class="hint-text">Keep an eye on the drumsticks next to your hearts: you only heal when you're well fed. Cook meat from pigs, cows and chickens in a furnace for the most food. Hitting a mob while you're falling is a critical hit.</p>
       <p class="hint-text">On a touch screen: the left stick moves, drag anywhere else to look, tap to place, hold to break.</p>
       <div class="panel-actions">
         <button class="btn primary" data-action="back">Got it</button>

@@ -105,6 +105,7 @@ export class Player extends Body {
     } else {
       if (input.jump && this.onGround) {
         this.vy = JUMP_V;
+        this.jumped = true;
         if (this.sprinting) { this.vx -= s * 1.6; this.vz -= c * 1.6; }
       }
       this.vy -= GRAVITY * dt;

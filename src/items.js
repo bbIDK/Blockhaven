@@ -25,10 +25,17 @@ item(258, 'iron_ingot');
 item(259, 'gold_ingot');
 item(260, 'diamond');
 item(261, 'flint');
-item(262, 'apple', { food: 4 });
-item(263, 'raw_porkchop', { label: 'Raw Porkchop', food: 3 });
-item(264, 'cooked_porkchop', { label: 'Cooked Porkchop', food: 8 });
+item(262, 'apple', { food: 4, sat: 0.3 });
+item(263, 'raw_porkchop', { label: 'Raw Porkchop', food: 3, sat: 0.3 });
+item(264, 'cooked_porkchop', { label: 'Cooked Porkchop', food: 8, sat: 0.8 });
 item(265, 'flint_and_steel', { label: 'Flint and Steel', stack: 1, durability: 64 });
+item(290, 'raw_beef', { label: 'Raw Beef', food: 3, sat: 0.3 });
+item(291, 'cooked_beef', { label: 'Steak', food: 8, sat: 0.8 });
+item(292, 'raw_chicken', { label: 'Raw Chicken', food: 2, sat: 0.3 });
+item(293, 'cooked_chicken', { label: 'Cooked Chicken', food: 6, sat: 0.6 });
+item(294, 'rotten_flesh', { label: 'Rotten Flesh', food: 4, sat: 0.1 });
+item(295, 'leather');
+item(296, 'feather');
 
 const MATS = ['wooden', 'stone', 'iron', 'diamond'];
 const SPEED = [2, 4, 6, 8];
@@ -43,6 +50,17 @@ KINDS.forEach(([kind, baseDamage], k) => {
       tool: kind === 'sword' ? null : { type: kind, tier: tier + 1, speed: SPEED[tier] },
       weapon: kind === 'sword',
     });
+  });
+});
+
+// Golden tools: very fast but fragile, and only as strong as wood.
+KINDS.forEach(([kind, baseDamage], k) => {
+  item(286 + k, `golden_${kind}`, {
+    stack: 1,
+    durability: 32,
+    damage: baseDamage,
+    tool: kind === 'sword' ? null : { type: kind, tier: 1, speed: 12 },
+    weapon: kind === 'sword',
   });
 });
 
@@ -102,6 +120,7 @@ export const RECIPES = [
   ...tool('stone', 'cobblestone'),
   ...tool('iron', 'iron_ingot'),
   ...tool('diamond', 'diamond'),
+  ...tool('golden', 'gold_ingot'),
   r('furnace', 1, [['cobblestone', 8]], 'table'),
   r('stone_bricks', 4, [['stone', 4]], 'table'),
   r('sandstone', 1, [['sand', 4]]),
@@ -139,6 +158,8 @@ export const RECIPES = [
   r('iron_ingot', 1, [['iron_ore', 1]], 'furnace'),
   r('gold_ingot', 1, [['gold_ore', 1]], 'furnace'),
   r('cooked_porkchop', 1, [['raw_porkchop', 1]], 'furnace'),
+  r('cooked_beef', 1, [['raw_beef', 1]], 'furnace'),
+  r('cooked_chicken', 1, [['raw_chicken', 1]], 'furnace'),
   r('bricks', 1, [['clay', 1]], 'furnace'),
   r('coal', 1, [['#logs', 1]], 'furnace'),
 ].map((rec) => ({

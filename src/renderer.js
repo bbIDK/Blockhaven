@@ -4,11 +4,14 @@ import {
   frustumPlanes, boxInFrustum, mat4, identity,
 } from './math.js';
 import { generateTextures, TEXTURE_NAMES, TEX } from './textures.js';
-import { STRIDE, meshBlockItem, SECTION_OFFSET } from './mesher.js';
+import { STRIDE, meshBlockItem, SECTION_OFFSET, FACE_PAIR, ALL_OPEN } from './mesher.js';
 import { boxMesh, spriteMesh, MODEL_OFFSET } from './models.js';
 import { RENDER, R, TEXL, BLOCKS, FFLAGS, TINT, TINT_RGB, SHAPE, ICON_SHAPE, DOOR, CLIMB, SHAPE_KIND, BED, boxFaceUV } from './blocks.js';
 import { ITEMS } from './items.js';
 import { SECTIONS } from './config.js';
+
+const OPPOSITE = [1, 0, 3, 2, 5, 4];
+const QCAP = 1 << 15;
 
 const TERRAIN_VS = `#version 300 es
 precision highp float;
@@ -21,6 +24,7 @@ layout(location=4) in vec4 a_tint;
 uniform mat4 u_proj;
 uniform mat4 u_view;
 uniform mat4 u_model;
+uniform vec3 u_offset;
 uniform vec3 u_camPos;
 uniform float u_time;
 uniform float u_wave;
@@ -33,6 +37,7 @@ flat out uint v_flags;
 const float SHADE[7] = float[7](0.6, 0.6, 1.0, 0.5, 0.8, 0.8, 0.9);
 void main() {
   vec4 rel = u_model * vec4(a_pos / 256.0, 1.0);
+  rel.xyz += u_offset;
   uint flags = a_info.z;
   if ((flags & 8u) != 0u && u_wave > 0.0) {
     vec3 wp = rel.xyz + u_camPos;
@@ -65,6 +70,9 @@ uniform float u_alphaMul;
 uniform float u_gamma;
 uniform vec4 u_lightOverride;
 uniform vec4 u_colorMul;
+uniform float u_hurt;
+uniform vec3 u_precip; // falling rain/snow: scroll, sway amount, sway phase
+uniform vec2 u_precipScale;
 in vec3 v_uv;
 in vec4 v_light;
 in vec3 v_tint;
@@ -79,6 +87,10 @@ void main() {
     uv += vec2(sin(u_time * 0.8 + uv.y * 6.2832) * 0.035, -u_time * 0.06);
   } else if ((v_flags & 64u) != 0u) {
     uv += vec2(sin(u_time * 0.35 + uv.y * 3.1416) * 0.06, u_time * 0.025);
+  } else if ((v_flags & 128u) != 0u) {
+    uv *= u_precipScale;
+    uv.y -= u_precip.x;
+    uv.x += sin(u_precip.z + uv.y * 2.0) * u_precip.y;
   }
   vec4 tex = texture(u_tex, vec3(uv, v_uv.z));
   vec3 col = tex.rgb;
@@ -89,6 +101,8 @@ void main() {
     col *= v_tint;
   }
   if (tex.a < u_alphaCut) discard;
+  // Mobs flash red when hurt.
+  col = mix(col, vec3(1.0, 0.0, 0.0), u_hurt);
   vec2 lv = u_lightOverride.x > 0.5 ? u_lightOverride.yz : v_light.xy;
   vec3 light;
   if ((v_flags & 32u) != 0u) {
@@ -125,6 +139,7 @@ uniform float u_stars;
 uniform float u_sunset;
 uniform float u_starAngle;
 uniform float u_underwater;
+uniform float u_rain;
 in vec2 v_ndc;
 out vec4 o_color;
 float hash(vec3 p) {
@@ -155,7 +170,7 @@ void main() {
     if (max(abs(q.x), abs(q.y)) < size) {
       vec2 g = floor(q / size * 4.0);
       float rim = (g.x < -3.0 || g.x > 2.0 || g.y < -3.0 || g.y > 2.0) ? 0.82 : 1.0;
-      col = mix(col, vec3(1.0, 0.95, 0.7) * rim * 1.1, smoothstep(-0.15, 0.02, h));
+      col = mix(col, vec3(1.0, 0.95, 0.7) * rim * 1.1, smoothstep(-0.15, 0.02, h) * (1.0 - u_rain));
     }
   } else {
     vec2 q = vec2(dot(dir, U), dot(dir, V)) / -sd;
@@ -163,7 +178,7 @@ void main() {
     if (max(abs(q.x), abs(q.y)) < size && h > -0.05) {
       vec2 g = floor(q / size * 4.0);
       float crater = hash(vec3(g, 7.0)) > 0.68 ? 0.74 : 1.0;
-      col = mix(col, vec3(0.85, 0.88, 0.97) * crater, clamp(u_stars * 1.2, 0.2, 1.0));
+      col = mix(col, vec3(0.85, 0.88, 0.97) * crater, clamp(u_stars * 1.2, 0.2, 1.0) * (1.0 - u_rain));
     }
   }
   if (u_underwater > 0.5) col = vec3(0.05, 0.16, 0.42);
@@ -256,7 +271,19 @@ export class Renderer {
     this.lines = compile(gl, LINE_VS, LINE_FS);
     this.proj = mat4(); this.view = mat4(); this.viewProj = mat4(); this.inv = mat4(); this.model = mat4();
     this.tmp = mat4(); this.ident = mat4(); this.planes = new Float32Array(24);
-    this.stats = { sections: 0, triangles: 0 };
+    this.stats = { sections: 0, triangles: 0, draws: 0 };
+    // Several index ranges of one section in a single call, where the browser supports it.
+    this.multiDraw = gl.getExtension('WEBGL_multi_draw');
+    this.mdCounts = new Int32Array(8);
+    this.mdOffsets = new Int32Array(8);
+    this.occlusion = true;
+    this.frameId = 0;
+    this.visible = [];
+    this.transList = [];
+    this.qChunk = new Array(QCAP);
+    this.qSy = new Int8Array(QCAP);
+    this.qFrom = new Int8Array(QCAP);
+    this.qDirs = new Uint8Array(QCAP);
     this.itemMeshes = new Map();
 
     this.pixels = generateTextures();
@@ -295,15 +322,20 @@ export class Renderer {
     this.skyVao = gl.createVertexArray();
 
     this.particleMesh = this.createMesh(new Uint8Array(0), true);
+    this.rainMesh = this.createMesh(new Uint8Array(0), true);
+    this.snowMesh = this.createMesh(new Uint8Array(0), true);
+    this.weatherVersion = -1;
     this.cracks = [];
     for (let i = 0; i < 10; i++) {
       const layer = TEX[`destroy_${i}`];
       this.cracks.push(this.createMesh(boxMesh([{ from: [0, 0, 0], to: [1, 1, 1], faces: { layer } }])));
     }
-    const skin = TEX.player_skin, sleeve = TEX.player_sleeve;
+    // The first-person arm, shaped like the original player model's right arm (4x12x4 pixels
+    // around the shoulder pivot; the model's y axis points down the arm).
+    const skin = TEX.player_skin, sleeve = TEX.player_sleeve, px = 1 / 16;
     this.handMesh = this.createMesh(boxMesh([
-      { from: [-0.125, 0, -0.125], to: [0.125, 0.75, 0.125], faces: { layer: skin, uv: [0, 0, 4, 12] } },
-      { from: [-0.135, -0.01, -0.135], to: [0.135, 0.32, 0.135], faces: { layer: sleeve, uv: [0, 0, 4, 5] } },
+      { from: [-3 * px, -2 * px, -2 * px], to: [1 * px, 10 * px, 2 * px], faces: { layer: skin, uv: [0, 0, 4, 12] } },
+      { from: [-3.25 * px, -2.25 * px, -2.25 * px], to: [1.25 * px, 3 * px, 2.25 * px], faces: { layer: sleeve, uv: [0, 0, 4, 5] } },
     ]));
   }
 
@@ -360,7 +392,7 @@ export class Renderer {
     this.gl.deleteVertexArray(mesh.vao);
   }
 
-  uploadSection(sec, chunk, sy, solid, trans) {
+  uploadSection(sec, chunk, sy, solid, trans, groups = null) {
     sec.origin = [chunk.cx * 16, sy * 16, chunk.cz * 16];
     for (const [key, bytes] of [['solid', solid], ['trans', trans]]) {
       if (!bytes.length) {
@@ -375,6 +407,7 @@ export class Renderer {
         sec[key] = this.createMesh(bytes);
       }
     }
+    if (sec.solid) sec.solid.groups = groups;
   }
 
   freeSection(sec) {
@@ -445,6 +478,8 @@ export class Renderer {
     gl.uniform4f(u.u_lightOverride, 0, 0, 0, 0);
     gl.uniform4f(u.u_colorMul, 1, 1, 1, 1);
     gl.uniform1f(u.u_alphaMul, 1);
+    gl.uniform3f(u.u_offset, 0, 0, 0);
+    gl.uniform1f(u.u_hurt, 0);
   }
 
   drawModel(mesh, model) {
@@ -453,6 +488,104 @@ export class Renderer {
     gl.uniformMatrix4fv(this.terrain.u.u_model, false, model);
     gl.bindVertexArray(mesh.vao);
     gl.drawElements(gl.TRIANGLES, (mesh.count / 4) * 6, gl.UNSIGNED_INT, 0);
+  }
+
+  // A terrain section at (ox, oy, oz) relative to the camera. Groups of faces that point away from
+  // the camera are skipped: +X faces can only be seen from the +X side of them, and so on.
+  drawSection(mesh, ox, oy, oz, cull) {
+    const gl = this.gl;
+    gl.uniform3f(this.terrain.u.u_offset, ox - SECTION_OFFSET, oy - SECTION_OFFSET, oz - SECTION_OFFSET);
+    gl.bindVertexArray(mesh.vao);
+    const g = mesh.groups;
+    if (!cull || !g || !this.multiDraw) {
+      gl.drawElements(gl.TRIANGLES, (mesh.count / 4) * 6, gl.UNSIGNED_INT, 0);
+      this.stats.draws++;
+      return mesh.count / 2;
+    }
+    const show = 1 | (ox < 0 ? 2 : 0) | (ox + 16 > 0 ? 4 : 0) | (oy < 0 ? 8 : 0) | (oy + 16 > 0 ? 16 : 0) | (oz < 0 ? 32 : 0) | (oz + 16 > 0 ? 64 : 0);
+    let n = 0, tris = 0;
+    for (let k = 0; k < 7; k++) {
+      if (!(show & (1 << k)) || g[k + 1] === g[k]) continue;
+      // Merge with the previous range when they touch.
+      if (n && this.mdOffsets[n - 1] + this.mdCounts[n - 1] * 4 === g[k] * 24) this.mdCounts[n - 1] += (g[k + 1] - g[k]) * 6;
+      else { this.mdOffsets[n] = g[k] * 24; this.mdCounts[n] = (g[k + 1] - g[k]) * 6; n++; }
+      tris += (g[k + 1] - g[k]) * 2;
+    }
+    if (n) {
+      this.multiDraw.multiDrawElementsWEBGL(gl.TRIANGLES, this.mdCounts, 0, gl.UNSIGNED_INT, this.mdOffsets, 0, n);
+      this.stats.draws++;
+    }
+    return tris;
+  }
+
+  // Sections to draw this frame, near to far. From the camera's section, spread out through
+  // neighbouring sections, but only through faces that open space inside the section connects
+  // (so caves sealed off by rock are skipped), never turning back towards the camera, and only
+  // into sections inside the view frustum (cave culling as in the original game).
+  collectVisible(f) {
+    const world = f.world, cam = f.cam, out = this.visible;
+    out.length = 0;
+    if (!world) return out;
+    const frame = ++this.frameId;
+    const ccx = Math.floor(cam.x) >> 4, ccz = Math.floor(cam.z) >> 4, csy = Math.floor(cam.y) >> 4;
+    const maxD = (f.renderDist + 1) * 16, maxD2 = maxD * maxD;
+    const start = world.chunks.get(((ccx & 0xffff) | ((ccz & 0xffff) << 16)) >>> 0);
+    if (!this.occlusion || !start || start.state !== 2 || csy < 0 || csy >= SECTIONS) {
+      // Plain frustum culling (outside the world, or while the area is still loading).
+      for (const chunk of world.chunks.values()) {
+        const ox = chunk.cx * 16 - cam.x, oz = chunk.cz * 16 - cam.z;
+        const dx = Math.max(0, Math.abs(ox + 8) - 8), dz = Math.max(0, Math.abs(oz + 8) - 8);
+        if (dx * dx + dz * dz > maxD2) continue;
+        for (let sy = 0; sy < SECTIONS; sy++) {
+          const sec = chunk.sections[sy];
+          if (!sec.solid && !sec.trans) continue;
+          const oy = sy * 16 - cam.y;
+          if (!boxInFrustum(this.planes, ox, oy, oz, ox + 16, oy + 16, oz + 16)) continue;
+          sec._ox = ox; sec._oy = oy; sec._oz = oz;
+          sec._d = (ox + 8) * (ox + 8) + (oy + 8) * (oy + 8) + (oz + 8) * (oz + 8);
+          out.push(sec);
+        }
+      }
+      out.sort((a, b) => a._d - b._d);
+      return out;
+    }
+    const qc = this.qChunk, qs = this.qSy, qf = this.qFrom, qd = this.qDirs;
+    let head = 0, tail = 0;
+    qc[0] = start; qs[0] = csy; qf[0] = -1; qd[0] = 0; tail = 1;
+    start.sections[csy]._frame = frame;
+    while (head < tail) {
+      const chunk = qc[head], sy = qs[head], from = qf[head], dirs = qd[head];
+      qc[head] = null;
+      head++;
+      const sec = chunk.sections[sy];
+      const ox = chunk.cx * 16 - cam.x, oy = sy * 16 - cam.y, oz = chunk.cz * 16 - cam.z;
+      if (sec.solid || sec.trans) {
+        sec._ox = ox; sec._oy = oy; sec._oz = oz;
+        sec._d = (ox + 8) * (ox + 8) + (oy + 8) * (oy + 8) + (oz + 8) * (oz + 8);
+        out.push(sec);
+      }
+      const vis = sec.solid || sec.trans || sec.count ? sec.vis : ALL_OPEN;
+      for (let d = 0; d < 6; d++) {
+        if (dirs & (1 << OPPOSITE[d])) continue;
+        if (from >= 0 && !(vis & (1 << FACE_PAIR[from][d]))) continue;
+        let nc = chunk, ns = sy;
+        if (d === 0) nc = chunk.nb[0]; else if (d === 1) nc = chunk.nb[1];
+        else if (d === 2) ns = sy + 1; else if (d === 3) ns = sy - 1;
+        else if (d === 4) nc = chunk.nb[2]; else nc = chunk.nb[3];
+        if (!nc || nc.state !== 2 || ns < 0 || ns >= SECTIONS) continue;
+        const nsec = nc.sections[ns];
+        if (nsec._frame === frame) continue;
+        const nx = nc.cx * 16 - cam.x, ny = ns * 16 - cam.y, nz = nc.cz * 16 - cam.z;
+        const hx = Math.max(0, Math.abs(nx + 8) - 8), hz = Math.max(0, Math.abs(nz + 8) - 8);
+        if (hx * hx + hz * hz > maxD2) continue;
+        if (!boxInFrustum(this.planes, nx, ny, nz, nx + 16, ny + 16, nz + 16)) continue;
+        nsec._frame = frame;
+        if (tail >= QCAP) continue;
+        qc[tail] = nc; qs[tail] = ns; qf[tail] = OPPOSITE[d]; qd[tail] = dirs | (1 << d);
+        tail++;
+      }
+    }
+    return out;
   }
 
   // f: frame description assembled by the game each frame.
@@ -464,6 +597,7 @@ export class Renderer {
     const far = Math.max(160, f.renderDist * 16 + 48);
     perspective(this.proj, (f.fov * Math.PI) / 180, w / h, 0.08, far);
     viewRotation(this.view, cam.yaw, cam.pitch);
+    if (cam.pre) multiply(this.view, cam.pre, this.view);
     multiply(this.viewProj, this.proj, this.view);
     frustumPlanes(this.planes, this.viewProj);
     invert(this.inv, this.viewProj);
@@ -487,6 +621,7 @@ export class Renderer {
     gl.uniform1f(su.u_sunset, f.env.sunset);
     gl.uniform1f(su.u_starAngle, f.env.sunAngle);
     gl.uniform1f(su.u_underwater, f.underwater ? 1 : 0);
+    gl.uniform1f(su.u_rain, f.weather?.rain ?? 0);
     gl.bindVertexArray(this.skyVao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
@@ -499,40 +634,23 @@ export class Renderer {
     this.setCommon(f);
     const u = this.terrain.u;
     gl.uniform1f(u.u_alphaCut, 0.5);
-    const visible = [];
-    const maxD = (f.renderDist + 1) * 16;
+    this.stats.draws = 0;
+    const visible = this.collectVisible(f);
+    gl.uniformMatrix4fv(u.u_model, false, this.ident);
     let tris = 0;
-    if (f.world) {
-      for (const chunk of f.world.chunks.values()) {
-        const ox = chunk.cx * 16 - cam.x, oz = chunk.cz * 16 - cam.z;
-        const dx = Math.max(0, Math.abs(ox + 8) - 8), dz = Math.max(0, Math.abs(oz + 8) - 8);
-        if (dx * dx + dz * dz > maxD * maxD) continue;
-        for (let sy = 0; sy < SECTIONS; sy++) {
-          const sec = chunk.sections[sy];
-          if (!sec.solid && !sec.trans) continue;
-          const oy = sy * 16 - cam.y;
-          if (!boxInFrustum(this.planes, ox, oy, oz, ox + 16, oy + 16, oz + 16)) continue;
-          sec._d = (ox + 8) * (ox + 8) + (oy + 8) * (oy + 8) + (oz + 8) * (oz + 8);
-          sec._ox = ox; sec._oy = oy; sec._oz = oz;
-          visible.push(sec);
-        }
-      }
-    }
-    visible.sort((a, b) => a._d - b._d);
     for (const sec of visible) {
-      if (!sec.solid) continue;
-      identity(this.model);
-      translate(this.model, this.model, sec._ox - SECTION_OFFSET, sec._oy - SECTION_OFFSET, sec._oz - SECTION_OFFSET);
-      this.drawModel(sec.solid, this.model);
-      tris += sec.solid.count / 2;
+      if (sec.solid) tris += this.drawSection(sec.solid, sec._ox, sec._oy, sec._oz, true);
     }
+    gl.uniform3f(u.u_offset, 0, 0, 0);
 
     // Entities and dropped items.
     if (f.entities) for (const e of f.entities) {
       gl.uniform4f(u.u_lightOverride, 1, e.light[0] / 15, e.light[1] / 15, 0);
       gl.uniform4f(u.u_colorMul, e.tint ? e.tint[0] : 1, e.tint ? e.tint[1] : 1, e.tint ? e.tint[2] : 1, 1);
+      gl.uniform1f(u.u_hurt, e.hurt ? 0.45 : 0);
       for (const part of e.parts) this.drawModel(part.mesh, part.model);
     }
+    gl.uniform1f(u.u_hurt, 0);
     gl.uniform4f(u.u_lightOverride, 0, 0, 0, 0);
     gl.uniform4f(u.u_colorMul, 1, 1, 1, 1);
 
@@ -579,17 +697,17 @@ export class Renderer {
     gl.depthMask(false);
     gl.useProgram(this.terrain.prog);
     gl.uniform1f(u.u_alphaCut, 0.01);
-    for (let i = visible.length - 1; i >= 0; i--) {
-      const sec = visible[i];
-      if (!sec.trans) continue;
-      identity(this.model);
-      translate(this.model, this.model, sec._ox - SECTION_OFFSET, sec._oy - SECTION_OFFSET, sec._oz - SECTION_OFFSET);
-      this.drawModel(sec.trans, this.model);
-      tris += sec.trans.count / 2;
-    }
+    const trans = this.transList;
+    trans.length = 0;
+    for (const sec of visible) if (sec.trans) trans.push(sec);
+    trans.sort((a, b) => b._d - a._d);
+    gl.uniformMatrix4fv(u.u_model, false, this.ident);
+    for (const sec of trans) tris += this.drawSection(sec.trans, sec._ox, sec._oy, sec._oz, false);
+    gl.uniform3f(u.u_offset, 0, 0, 0);
     gl.depthMask(true);
     gl.disable(gl.BLEND);
     if (f.clouds && !cloudsAbove) this.drawClouds(f);
+    if (f.weather && f.weather.rain > 0) this.drawWeather(f);
 
     this.stats.sections = visible.length;
     this.stats.triangles = tris;
@@ -643,48 +761,123 @@ export class Renderer {
     gl.useProgram(this.terrain.prog);
   }
 
-  // The first-person hand or held item, drawn over the world with its own projection.
+  // Rain and snow sheets around the player.
+  drawWeather(f) {
+    const gl = this.gl, u = this.terrain.u, w = f.weather, cam = f.cam;
+    if (w.version !== this.weatherVersion) {
+      this.weatherVersion = w.version;
+      this.updateMesh(this.rainMesh, w.rainSheet.bytes());
+      this.updateMesh(this.snowMesh, w.snowSheet.bytes());
+    }
+    gl.useProgram(this.terrain.prog);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.depthMask(false);
+    gl.disable(gl.CULL_FACE);
+    gl.uniform1f(u.u_alphaCut, 0.01);
+    gl.uniform1f(u.u_alphaMul, Math.min(1, w.rain * 1.2));
+    identity(this.model);
+    translate(this.model, this.model, w.base[0] - cam.x, w.base[1] - cam.y, w.base[2] - cam.z);
+    const t = f.time;
+    gl.uniform3f(u.u_precip, (t * 7) % 1, 0, 0);
+    gl.uniform2f(u.u_precipScale, 4, 1);
+    this.drawModel(this.rainMesh, this.model);
+    gl.uniform3f(u.u_precip, (t * 1.2) % 1, 0.05, (t * 0.9) % (Math.PI * 2));
+    gl.uniform2f(u.u_precipScale, 2, 2);
+    this.drawModel(this.snowMesh, this.model);
+    gl.uniform1f(u.u_alphaMul, 1);
+    gl.enable(gl.CULL_FACE);
+    gl.depthMask(true);
+    gl.disable(gl.BLEND);
+  }
+
+  // The first-person hand or held item, drawn over the world with its own projection. The
+  // transforms follow the original game's first-person rendering: walking bob, a slight lag behind
+  // turning, the arm position, the attack swing (a quick jab that twists the item forward), the dip
+  // when switching items, and each item's own "held in first person" placement.
   drawHand(f) {
     const gl = this.gl, u = this.terrain.u, hand = f.hand;
+    const deg = Math.PI / 180;
     gl.clear(gl.DEPTH_BUFFER_BIT);
     gl.useProgram(this.terrain.prog);
-    const proj = this.tmp;
-    perspective(proj, (70 * Math.PI) / 180, this.canvas.width / this.canvas.height, 0.01, 10);
+    const proj = this.tmp, aspect = this.canvas.width / this.canvas.height;
+    perspective(proj, 70 * deg, aspect, 0.01, 10);
+    // The hand is laid out for a 16:9 screen. On narrower screens, shrink it evenly (keeping it on
+    // the bottom edge) so it lands where it would on 16:9, without being cut off or stretched.
+    const fit = Math.min(1, aspect / (16 / 9));
+    if (fit < 1) {
+      const k = this.handFit ?? (this.handFit = mat4());
+      identity(k);
+      // On portrait screens, lift it above the hotbar.
+      k[0] = fit; k[5] = fit; k[13] = fit - 1 + (aspect < 1 ? 0.16 : 0);
+      multiply(proj, k, proj);
+    }
     gl.uniformMatrix4fv(u.u_proj, false, proj);
     gl.uniformMatrix4fv(u.u_view, false, this.ident);
     gl.uniform2f(u.u_fog, 1e5, 2e5);
     gl.uniform1f(u.u_alphaCut, 0.5);
     gl.uniform1f(u.u_wave, 0);
     gl.uniform4f(u.u_lightOverride, 1, hand.light[0] / 15, hand.light[1] / 15, 0);
-    const s = hand.swing, sw = Math.sin(s * Math.PI), sw2 = Math.sin(Math.sqrt(s) * Math.PI);
     const m = identity(this.model);
-    const eq = hand.equip;
-    const bx = hand.bob[0] - sw2 * 0.22, by = hand.bob[1] + sw2 * 0.1 - eq * 0.5, bz = -sw * 0.1;
+    if (hand.roll) rotateZ(m, m, hand.roll);
+    if (hand.bob) {
+      const w = hand.walk * Math.PI, b = hand.bob;
+      translate(m, m, Math.sin(w) * b * 0.5, -Math.abs(Math.cos(w) * b), 0);
+      rotateZ(m, m, Math.sin(w) * b * 3 * deg);
+      rotateX(m, m, Math.abs(Math.cos(w - 0.2) * b) * 5 * deg);
+    }
+    rotateX(m, m, hand.lag[0]);
+    rotateY(m, m, hand.lag[1]);
+    const s = hand.swing, sq = Math.sqrt(s), eq = hand.equip;
     const mesh = hand.item ? this.itemMesh(hand.item) : null;
     if (!mesh) {
-      // Bare arm reaching in from the lower right.
-      translate(m, m, 0.62 + bx, -0.78 + by, -0.62 + bz);
-      rotateY(m, m, -0.35 - sw2 * 0.3);
-      rotateZ(m, m, 0.55 + sw * 0.25);
-      rotateX(m, m, -1.15 - sw * 0.6);
+      // Bare arm.
+      translate(m, m, -0.3 * Math.sin(sq * Math.PI) + 0.64, 0.4 * Math.sin(sq * Math.PI * 2) - 0.6 - eq * 0.6, -0.4 * Math.sin(s * Math.PI) - 0.72);
+      rotateY(m, m, 45 * deg);
+      rotateY(m, m, Math.sin(sq * Math.PI) * 70 * deg);
+      rotateZ(m, m, Math.sin(s * s * Math.PI) * -20 * deg);
+      translate(m, m, -1, 3.6, 3.5);
+      rotateZ(m, m, 120 * deg);
+      rotateX(m, m, 200 * deg);
+      rotateY(m, m, -135 * deg);
+      translate(m, m, 5.6, 0, 0);
+      translate(m, m, -5 / 16, 2 / 16, 0);
       translate(m, m, -MODEL_OFFSET, -MODEL_OFFSET, -MODEL_OFFSET);
-      this.drawModel(this.handMesh, m);
-    } else if (mesh.kind === 'block') {
-      translate(m, m, 0.5 + bx, -0.5 + by, -0.8 + bz);
-      rotateX(m, m, -sw * 0.7);
-      rotateY(m, m, 0.78 - sw2 * 0.3);
-      scale(m, m, 0.27, 0.27, 0.27);
-      translate(m, m, -0.5 - MODEL_OFFSET, -0.5 - MODEL_OFFSET, -0.5 - MODEL_OFFSET);
-      this.drawModel(mesh, m);
-    } else {
-      // Flat items: handle at the lower right, tip leaning in towards the crosshair.
       gl.disable(gl.CULL_FACE);
-      translate(m, m, 0.56 + bx, -0.58 + by, -0.8 + bz);
-      rotateX(m, m, -sw * 0.9);
-      rotateY(m, m, Math.PI - 0.55 - sw2 * 0.25);
-      rotateZ(m, m, 0.15);
-      scale(m, m, 0.5, 0.5, 0.5);
-      translate(m, m, -0.15 - MODEL_OFFSET, -0.12 - MODEL_OFFSET, -0.5 - MODEL_OFFSET);
+      this.drawModel(this.handMesh, m);
+      gl.enable(gl.CULL_FACE);
+    } else {
+      if (hand.eat !== undefined) {
+        // Bringing food to the mouth and chewing.
+        const left = hand.eat, frac = left / 32;
+        if (frac < 0.8) translate(m, m, 0, Math.abs(Math.cos((left / 4) * Math.PI) * 0.1), 0);
+        const k = 1 - frac ** 27;
+        translate(m, m, k * 0.6, k * -0.5, 0);
+        rotateY(m, m, k * 90 * deg);
+        rotateX(m, m, k * 10 * deg);
+        rotateZ(m, m, k * 30 * deg);
+        translate(m, m, 0.56, -0.52 - eq * 0.6, -0.72);
+      } else {
+        translate(m, m, -0.4 * Math.sin(sq * Math.PI), 0.2 * Math.sin(sq * Math.PI * 2), -0.2 * Math.sin(s * Math.PI));
+        translate(m, m, 0.56, -0.52 - eq * 0.6, -0.72);
+        rotateY(m, m, (45 - Math.sin(s * s * Math.PI) * 20) * deg);
+        rotateZ(m, m, Math.sin(sq * Math.PI) * -20 * deg);
+        rotateX(m, m, Math.sin(sq * Math.PI) * -80 * deg);
+        rotateY(m, m, -45 * deg);
+      }
+      if (mesh.kind === 'block') {
+        // (Raised a little from the original so the hotbar doesn't hide it.)
+        translate(m, m, 0, 0.08, 0);
+        rotateY(m, m, 45 * deg);
+        scale(m, m, 0.4, 0.4, 0.4);
+      } else {
+        translate(m, m, 1.13 / 16, 3.2 / 16, 1.13 / 16);
+        rotateY(m, m, -90 * deg);
+        rotateZ(m, m, 25 * deg);
+        scale(m, m, 0.68, 0.68, 0.68);
+      }
+      translate(m, m, -0.5 - MODEL_OFFSET, -0.5 - MODEL_OFFSET, -0.5 - MODEL_OFFSET);
+      if (mesh.kind !== 'block') gl.disable(gl.CULL_FACE);
       this.drawModel(mesh, m);
       gl.enable(gl.CULL_FACE);
     }

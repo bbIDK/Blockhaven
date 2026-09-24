@@ -10,6 +10,7 @@ import { Inventory } from './inventory.js';
 import { initIcons } from './icons.js';
 import { TEX } from './textures.js';
 import { Particles } from './particles.js';
+import { Weather } from './weather.js';
 import { Entities } from './entities.js';
 import { TouchControls } from './touch.js';
 import * as storage from './storage.js';
@@ -21,13 +22,14 @@ import {
 import { ITEMS, I, itemDef, itemLabel, breakTime, dropsFor, blockOfItem, RECIPES } from './items.js';
 import { BIOME_NAMES } from './biomes.js';
 import { CHUNK_VOLUME, HEIGHT, TICKS_PER_DAY } from './config.js';
-import { seedFromText, clamp, hashString } from './math.js';
+import { seedFromText, clamp, hashString, mat4, identity, translate, rotateX, rotateZ } from './math.js';
 
 const SETTINGS_KEY = 'blockhaven.settings';
+const DEG = Math.PI / 180;
 const COARSE = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 const REDUCED_MOTION = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const DEFAULT_SETTINGS = {
-  renderDistance: COARSE ? 5 : 8, fov: 75, sensitivity: 100, brightness: 50, volume: 70, music: 45,
+  renderDistance: COARSE ? 5 : 8, resolution: 0, fov: 75, sensitivity: 100, brightness: 50, volume: 70, music: 45,
   viewBobbing: !REDUCED_MOTION, clouds: true, invertMouse: false, showFps: false,
 };
 const LOG_AXES = { [B.oak_log]: [100, 101], [B.birch_log]: [102, 103], [B.spruce_log]: [104, 105] };
@@ -43,6 +45,10 @@ const TIPS = [
   'Sand and gravel fall when nothing holds them up.',
   'Sleep in a bed to skip the night and set your respawn point.',
   'Chests hold 27 stacks. Shift-click moves a whole stack across.',
+  'You only heal when your food bar is nearly full. Cooked meat fills it best.',
+  'Hit a mob while falling for a critical hit.',
+  'Zombies don’t burn in the rain.',
+  'Golden tools are the fastest, but they wear out quickly.',
 ];
 const CLOUD_HEIGHT = 108.5;
 const REACH = { creative: 5.5, survival: 4.6 };
@@ -76,12 +82,23 @@ export class Game {
     this.useCooldown = 0;
     this.swing = 0;
     this.swinging = false;
-    this.equip = 0;
+    this.handItem = 0;
+    this.handHeight = 1;
     this.lastHeld = -1;
+    this.lagPitch = 0;
+    this.lagYaw = 0;
+    this.viewPre = mat4();
     this.hurtFlash = 0;
-    this.hurtTilt = 0;
+    this.hurtTime = 0;
     this.health = 20;
     this.air = 300;
+    // Hunger, as in the original: food points (the drumsticks), hidden saturation that is used up
+    // first, and exhaustion that builds up from sprinting, jumping, fighting and mining.
+    this.food = 20;
+    this.saturation = 5;
+    this.exhaustion = 0;
+    this.foodTimer = 0;
+    this.eating = null;
     this.fire = 0;
     this.invuln = 0;
     this.sinceDamage = 0;
@@ -100,10 +117,14 @@ export class Game {
     this.invVersion = 0;
     this.containers = new Map();
     this.openChest = null;
+    this.weather = new Weather();
     this.drawnInvVersion = -1;
     this.saveTimer = 0;
     this.tipIndex = Math.floor(Math.random() * TIPS.length);
 
+    this.autoScale = 1;
+    this.slowTime = 0;
+    this.fastTime = 0;
     this.applySettings();
     this.bindUI();
     this.bindInput();
@@ -128,9 +149,31 @@ export class Game {
     if (hot.worldId) storage.loadWorld(hot.worldId).then((meta) => meta && this.enterWorld(meta));
   }
 
+  // Resolution: a fixed share of the screen's pixels, or Auto, which starts at full resolution and
+  // trades pixels for frame rate only when frames run slow.
   onResize() {
     const dpr = Math.min(window.devicePixelRatio || 1, COARSE ? 1.5 : 2);
-    this.renderer.resize(Math.max(1, Math.floor(this.canvas.clientWidth * dpr)), Math.max(1, Math.floor(this.canvas.clientHeight * dpr)));
+    const fixed = this.settings.resolution;
+    const scale = fixed ? (40 + fixed * 10) / 100 : this.autoScale;
+    const w = Math.max(1, Math.floor(this.canvas.clientWidth * dpr * scale));
+    const h = Math.max(1, Math.floor(this.canvas.clientHeight * dpr * scale));
+    this.renderer.resize(w, h);
+  }
+
+  // Auto resolution: watch the frame time over a couple of seconds and step the scale down when
+  // the game can't keep up, or back up when there's room to spare.
+  adaptResolution(dt) {
+    if (this.settings.resolution || this.state !== 'play') { this.slowTime = this.fastTime = 0; return; }
+    if (this.frameMs > 21) { this.slowTime += dt; this.fastTime = 0; }
+    else if (this.frameMs < 14) { this.fastTime += dt; this.slowTime = 0; }
+    else { this.slowTime = this.fastTime = 0; }
+    let next = this.autoScale;
+    if (this.slowTime > 2 && next > 0.55) next = Math.max(0.55, next - 0.12);
+    else if (this.fastTime > 6 && next < 1) next = Math.min(1, next + 0.1);
+    else return;
+    this.slowTime = this.fastTime = 0;
+    this.autoScale = next;
+    this.onResize();
   }
 
   get creative() { return this.meta?.mode === 'creative'; }
@@ -139,6 +182,7 @@ export class Game {
   applySettings() {
     this.audio.setVolume(this.settings.volume / 100);
     this.audio.setMusicVolume(this.settings.music / 100);
+    if (this.renderer) this.onResize();
   }
 
   // ---------------------------------------------------------------- UI wiring
@@ -189,6 +233,7 @@ export class Game {
     ui.on('search', (q) => { this.search = q.trim().toLowerCase(); this.renderInventory(); });
     ui.on('craft', (i, shift) => this.craft(i, shift));
     ui.on('chest-slot', (kind, i, button, shift) => this.chestClick(kind, i, button, shift));
+    ui.onButton = () => { this.audio.unlock(); this.audio.click(); };
     ui.chestItem = (i) => this.openChest?.slots[i]?.id ?? null;
     ui.on('chat-send', (text) => this.sendChat(text));
     ui.on('chat-close', () => this.closeChat());
@@ -284,6 +329,9 @@ export class Game {
       Object.assign(p, { x: meta.player.x, y: meta.player.y, z: meta.player.z, yaw: meta.player.yaw, pitch: meta.player.pitch, flying: !!meta.player.flying });
       this.health = meta.player.health ?? 20;
       this.air = meta.player.air ?? 300;
+      this.food = meta.player.food ?? 20;
+      this.saturation = meta.player.saturation ?? 5;
+      this.exhaustion = meta.player.exhaustion ?? 0;
       this.needsPlacement = false;
     } else if (meta.player && (meta.spawn?.y || meta.bed)) {
       // Saved while dead: come back at the bed or spawn point with full health.
@@ -291,16 +339,19 @@ export class Game {
       this.goToSpawn();
       this.health = 20;
       this.air = 300;
+      this.resetHunger();
       this.needsPlacement = false;
     } else {
       p.x = meta.spawn.x; p.z = meta.spawn.z; p.y = 100;
       p.yaw = Math.random() * Math.PI * 2;
       this.health = 20;
       this.air = 300;
+      this.resetHunger();
       this.needsPlacement = true;
     }
     if (!this.creative) p.flying = false;
     this.entities.reset(meta.entities);
+    this.weather.load(meta.weather);
     this.containers = new Map((meta.containers ?? []).map((c) => [c.k, c.slots.map((x) => (x && itemDef(x.id) ? x : null))]));
     this.fire = 0;
     this.loadStart = performance.now();
@@ -319,7 +370,7 @@ export class Game {
 
   updateLoading(dt) {
     const p = this.player, w = this.world;
-    w.update(p.x, p.z, Math.min(this.settings.renderDistance, 4));
+    w.update(p.x, p.z, Math.min(this.settings.renderDistance, 4), 12);
     const prog = w.progress(2);
     $('loading-bar').style.width = `${Math.round(prog * 100)}%`;
     $('loading-text').textContent = prog < 1 ? 'Generating terrain' : 'Almost there';
@@ -447,10 +498,12 @@ export class Game {
     Object.assign(this.meta, {
       lastPlayed: Date.now(),
       time: Math.floor(this.time),
-      player: { x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, flying: p.flying, health: this.health, air: this.air },
+      player: { x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, flying: p.flying, health: this.health, air: this.air,
+        food: this.food, saturation: this.saturation, exhaustion: this.exhaustion },
       inventory: this.inv.serialize(),
       entities: this.entities.serialize(),
       containers: [...this.containers].map(([k, slots]) => ({ k, slots: slots.map((x) => (x ? { ...x } : null)) })),
+      weather: this.weather.serialize(),
     });
     await storage.saveWorld(this.meta);
   }
@@ -509,11 +562,11 @@ export class Game {
   openChestAt(x, y, z) {
     const key = this.containerKey(x, y, z);
     if (!this.containers.has(key)) this.containers.set(key, new Array(27).fill(null));
-    this.openChest = { key, slots: this.containers.get(key) };
+    this.openChest = { key, slots: this.containers.get(key), at: { x: x + 0.5, y: y + 0.5, z: z + 0.5 } };
     this.state = 'chest';
     this.releasePointer();
     this.mining = null;
-    this.audio.place('wood');
+    this.audio.chest(true, this.openChest.at);
     this.ui.show('screen-chest');
     this.ui.renderChest(this.inv, this.openChest.slots);
   }
@@ -524,6 +577,7 @@ export class Game {
       const left = this.inv.returnCursor();
       if (left) this.entities.dropItem(this.player, { id: held.id, count: left, dmg: held.dmg });
     }
+    if (this.openChest) this.audio.chest(false, this.openChest.at);
     this.openChest = null;
     this.invChanged();
     this.ui.hideCursor();
@@ -548,7 +602,6 @@ export class Game {
     } else {
       this.inv.clickSlots(kind === 'chest' ? chest : this.inv.slots, i, button === 2 ? 2 : 0);
     }
-    this.audio.click();
     this.invChanged();
     this.ui.renderChest(this.inv, chest);
   }
@@ -578,6 +631,8 @@ export class Game {
       this.ui.setSleeping(false);
       if (this.world !== world) return;
       this.time = (Math.floor(this.time / TICKS_PER_DAY) + 1) * TICKS_PER_DAY + 300;
+      this.weather.set(false);
+      this.weather.rain = 0;
       this.ui.message('Good morning! Your bed is now your spawn point.', '#f3b73f');
       if (this.state === 'sleeping') this.state = 'play';
       this.save();
@@ -613,9 +668,18 @@ export class Game {
     this.ui.show('screen-death');
   }
 
+  resetHunger() {
+    this.food = 20;
+    this.saturation = 5;
+    this.exhaustion = 0;
+    this.foodTimer = 0;
+    this.eating = null;
+  }
+
   respawn() {
     this.goToSpawn();
     this.health = 20;
+    this.resetHunger();
     this.air = 300;
     this.fire = 0;
     this.resume();
@@ -668,7 +732,8 @@ export class Game {
       this.lastW = now;
     }
     if (forward <= 0) this.sprintLatch = false;
-    const sprint = k.isDown('ControlLeft') || k.isDown('ControlRight') || this.sprintLatch || t.sprint;
+    let sprint = (k.isDown('ControlLeft') || k.isDown('ControlRight') || this.sprintLatch || t.sprint) && (this.creative || this.food > 6);
+    if (this.eating) { forward *= 0.3; right *= 0.3; sprint = false; }
     if (k.wasPressed('Space') && this.creative) {
       if (now - this.lastSpace < 300) { this.player.flying = !this.player.flying; this.lastSpace = 0; } else this.lastSpace = now;
     }
@@ -715,7 +780,7 @@ export class Game {
       fogColor: this.env.fogColor, fogStart: rd * 16 * 0.5, fogEnd: rd * 16 * 0.92, underwater: false,
       clouds: true, cloudHeight: CLOUD_HEIGHT, brightness: 0.5, wave: true,
     });
-    this.audio.update(true);
+    this.audio.update('title');
   }
 
   updateGame(dt) {
@@ -733,7 +798,7 @@ export class Game {
     if (!paused && this.state !== 'dead') {
       const prevInWater = p.inWater;
       p.update(dt, move, w);
-      if (p.inWater && !prevInWater && p.vy < -4) { this.audio.splash(); }
+      if (p.inWater && !prevInWater && p.vy < -4) this.audio.splash(Math.min(1, -p.vy / 14));
       this.afterMove(dt);
     }
     if (!paused) {
@@ -743,37 +808,66 @@ export class Game {
       if (this.tickAcc > 5) this.tickAcc = 0;
       this.particles.update(dt, w);
       this.entities.update(dt);
+      this.weather.update(dt);
     }
     this.target = this.state === 'play' || this.state === 'inventory' ? this.pickTarget() : null;
     if (active) this.handleActions(dt);
-    else this.mining = null;
+    else { this.mining = null; this.eating = null; }
     this.updateHand(dt);
     this.hurtFlash = Math.max(0, this.hurtFlash - dt * 2.5);
-    this.hurtTilt = Math.max(0, this.hurtTilt - dt * 3);
+    this.hurtTime = Math.max(0, this.hurtTime - dt);
     this.renderScene(dt, false);
     this.updateHUD();
-    this.audio.update(true);
+    this.adaptResolution(dt);
+    this.audio.setListener(p.x, p.eyeY, p.z, p.yaw, p.headInWater);
+    this.audio.update(this.musicMood());
+  }
+
+  // Music follows the time of day, and turns darker deep underground.
+  musicMood() {
+    const p = this.player;
+    if (this.state === 'loading') return null;
+    const sky = this.world.getLight(Math.floor(p.x), Math.floor(p.eyeY), Math.floor(p.z)) >> 4;
+    if (p.y < 52 && sky < 4) return 'cave';
+    return this.env.daylight < 0.45 ? 'night' : 'day';
   }
 
   afterMove(dt) {
     const p = this.player;
-    // Footsteps
-    if (p.onGround && !p.flying) {
+    if (!p.flying) {
+      const moved = Math.hypot(p.vx, p.vz) * dt;
+      if (p.inWater) this.exhaust(0.01 * moved);
+      else if (p.sprinting && p.onGround) this.exhaust(0.1 * moved);
+    }
+    if (p.jumped) { p.jumped = false; this.exhaust(p.sprinting ? 0.2 : 0.05); }
+    // Footsteps, ladder climbing and swimming strokes.
+    if (p.onLadder && !p.onGround && Math.abs(p.vy) > 0.5) {
+      this.stepAcc += Math.abs(p.vy) * dt;
+      if (this.stepAcc > 1.4) { this.stepAcc = 0; this.audio.step('wood', 0.3); }
+    } else if (p.inWater && !p.onGround) {
+      this.stepAcc += Math.hypot(p.vx, p.vy, p.vz) * dt;
+      if (this.stepAcc > 2.2) { this.stepAcc = 0; this.audio.swim(); }
+    } else if (p.onGround && !p.flying) {
+      if (p.sprinting && Math.random() < dt * 14) {
+        const g = p.groundBlock(this.world);
+        if (g) this.particles.spawn(p.x + (Math.random() - 0.5) * 0.5, p.y + 0.1, p.z + (Math.random() - 0.5) * 0.5, -p.vx * 0.15, 1.2 + Math.random(), -p.vz * 0.15, g, 2, 0.35, 0.05);
+      }
       this.stepAcc += Math.hypot(p.vx, p.vz) * dt;
-      if (this.stepAcc > 1.9) {
+      if (this.stepAcc > 1.7) {
         this.stepAcc = 0;
         const g = p.groundBlock(this.world);
-        if (g) this.audio.step(BLOCKS[g]?.sound ?? 'stone');
+        if (g && !p.sneaking) this.audio.step(BLOCKS[g]?.sound ?? 'stone');
       }
     }
-    if (p.inWater && !this.wasInWater) this.audio.splash();
+    if (p.inWater && !this.wasInWater && p.vy >= -4) this.audio.splash(0.3);
     this.wasInWater = p.inWater;
     // Fall damage
     if (p.landed !== null) {
       const d = p.landed;
       p.landed = null;
+      if (d > 3.2 && !p.inWater && !this.creative) this.audio.fall(d > 7);
       if (d > 3.2 && !p.inWater) this.damage(Math.floor(d - 3), 'You fell from a high place');
-      if (d > 1.5) { const g = p.groundBlock(this.world); if (g) this.audio.step(BLOCKS[g]?.sound ?? 'stone'); }
+      if (d > 1.2) { const g = p.groundBlock(this.world); if (g) this.audio.land(BLOCKS[g]?.sound ?? 'stone'); }
     }
     if (this.creative && p.y < -64) { p.y = 120; p.vy = 0; p.flying = true; }
   }
@@ -797,10 +891,66 @@ export class Game {
       }
       if (p.y < -40 && this.time % 10 === 0) this.damage(4, 'You fell out of the world', true);
       if (this.time % 10 === 0 && this.touchingCactus()) this.damage(1, 'You were pricked to death');
-      if (this.health < 20 && this.health > 0 && this.sinceDamage > 80 && this.time % 30 === 0) this.health++;
+      this.hungerTick();
+      if (this.eating) this.eatTick();
     }
+    if (this.time % 20 === 0) this.ambientTick();
     this.saveTimer++;
     if (this.saveTimer >= 600) { this.saveTimer = 0; this.save(); }
+  }
+
+  exhaust(amount) { if (!this.creative) this.exhaustion = Math.min(40, this.exhaustion + amount); }
+
+  hungerTick() {
+    while (this.exhaustion >= 4) {
+      this.exhaustion -= 4;
+      if (this.saturation > 0) this.saturation = Math.max(0, this.saturation - 1);
+      else this.food = Math.max(0, this.food - 1);
+    }
+    this.foodTimer++;
+    if (this.saturation > 0 && this.food >= 20 && this.health < 20) {
+      // Well fed: heal quickly, using up saturation.
+      if (this.foodTimer >= 10) { this.foodTimer = 0; this.health++; this.exhaust(6); }
+    } else if (this.food >= 18 && this.health < 20) {
+      if (this.foodTimer >= 80) { this.foodTimer = 0; this.health++; this.exhaust(6); }
+    } else if (this.food <= 0) {
+      // Starving hurts, down to half a heart.
+      if (this.foodTimer >= 80) { this.foodTimer = 0; if (this.health > 1) this.damage(1, 'You starved to death', true); }
+    } else this.foodTimer = 0;
+  }
+
+  // Eating takes 1.6 seconds of holding right click, with chewing along the way.
+  eatTick() {
+    const e = this.eating, p = this.player;
+    e.left--;
+    if (e.left <= 25 && e.left % 4 === 0) {
+      this.audio.eat();
+      const d = p.lookDir();
+      this.particles.bits(p.x + d[0] * 0.4, p.eyeY - 0.15 + d[1] * 0.4, p.z + d[2] * 0.4, itemDef(e.id).tex, 5, 1.2, 0.5);
+    }
+    if (e.left > 0) return;
+    const def = itemDef(e.id);
+    this.eating = null;
+    if (this.inv.heldId !== e.id) return;
+    this.food = Math.min(20, this.food + def.food);
+    this.saturation = Math.min(this.food, this.saturation + def.food * (def.sat ?? 0.3) * 2);
+    this.inv.consumeHeld();
+    this.invChanged();
+    this.audio.burp();
+  }
+
+  // Now and then, lava close by bubbles and pops.
+  ambientTick() {
+    const p = this.player, w = this.world;
+    if (Math.random() > 0.35) return;
+    for (let i = 0; i < 16; i++) {
+      const x = Math.floor(p.x + (Math.random() - 0.5) * 24), y = Math.floor(p.y + (Math.random() - 0.5) * 12);
+      const z = Math.floor(p.z + (Math.random() - 0.5) * 24);
+      if (w.getBlock(x, y, z) === B.lava && !w.getBlock(x, y + 1, z)) {
+        this.audio.lavaPop({ x: x + 0.5, y: y + 1, z: z + 0.5 });
+        return;
+      }
+    }
   }
 
   touchingCactus() {
@@ -816,10 +966,11 @@ export class Game {
     if (this.creative || this.state === 'dead' || amount <= 0) return false;
     if (this.invuln > 0 && !ignoreInvuln) return false;
     this.health = Math.max(0, this.health - amount);
+    this.exhaust(0.1);
     this.invuln = 10;
     this.sinceDamage = 0;
     this.hurtFlash = 1;
-    this.hurtTilt = 1;
+    this.hurtTime = 0.5;
     this.audio.hurt();
     if (knock) { this.player.vx += knock[0]; this.player.vy = Math.max(this.player.vy, knock[1]); this.player.vz += knock[2]; }
     if (this.health <= 0) this.die(cause);
@@ -847,13 +998,20 @@ export class Game {
     const attackClick = (k.clicked & 1) || t.breakStart;
     const use = (k.buttons & 2);
     const useClick = (k.clicked & 2) || t.tap;
+    const touchTap = !!t.tap;
     t.breakStart = false;
     t.tap = false;
 
     if (attackClick && target?.entity) {
       this.swingArm();
-      this.entities.attack(target.entity, this.inv.heldId);
-      if (!this.creative) this.inv.damageHeld(1) && this.audio.breakBlock('metal');
+      const e = target.entity, p = this.player;
+      // Hitting while falling is a critical hit: half again as much damage, with sparks.
+      const crit = !p.onGround && p.vy < -0.5 && !p.inWater && !p.onLadder && !p.flying;
+      this.audio.punch({ x: e.x, y: e.y + e.def.h * 0.6, z: e.z });
+      if (crit) this.particles.bits(e.x, e.y + e.def.h * 0.7, e.z, TEX.crit, 10, 2.4, 0.5);
+      this.entities.attack(e, this.inv.heldId, crit);
+      this.exhaust(0.1);
+      if (!this.creative && this.inv.damageHeld(1)) this.audio.toolBreak();
       this.invChanged();
     } else if (this.creative) {
       this.breakCooldown -= dt;
@@ -865,6 +1023,16 @@ export class Game {
       if (attackClick && !target) this.swingArm();
     }
 
+    // Holding right click with food eats it (when hungry), unless you're using a door, chest or bed.
+    const held = this.inv.held, hdef = held && itemDef(held.id);
+    const usable = target && !target.entity && !this.player.sneaking && (DOOR[target.id] || CHEST[target.id] !== undefined || BED[target.id]);
+    // (On touch screens a tap starts eating and it carries on by itself.)
+    const eatInput = use || useClick || (this.eating?.touch && !useClick);
+    if (hdef?.food && !this.creative && this.food < 20 && eatInput && !usable) {
+      if (!this.eating || this.eating.id !== held.id || this.eating.slot !== this.inv.selected) {
+        this.eating = { id: held.id, slot: this.inv.selected, left: 32, touch: touchTap };
+      }
+    } else this.eating = null;
     this.useCooldown -= dt;
     if (useClick) { this.useItem(); this.useCooldown = 0.25; }
     else if (use && this.useCooldown <= 0) { this.useItem(true); this.useCooldown = 0.21; }
@@ -886,12 +1054,13 @@ export class Game {
   breakBlockAt(x, y, z, id, byPlayer) {
     const def = BLOCKS[id];
     this.world.setBlock(x, y, z, 0);
+    if (byPlayer) this.exhaust(0.005);
     this.particles.burst(x, y, z, id);
-    this.audio.breakBlock(def.sound);
+    this.audio.breakBlock(def.sound, { x: x + 0.5, y: y + 0.5, z: z + 0.5 });
     if (!this.creative && byPlayer) {
       const held = this.inv.heldId;
       for (const drop of dropsFor(id, held)) this.entities.spawnItem(x + 0.5, y + 0.3, z + 0.5, drop.id, drop.count);
-      if (def.hardness > 0 && itemDef(held)?.durability && this.inv.damageHeld(1)) this.audio.breakBlock('metal');
+      if (def.hardness > 0 && itemDef(held)?.durability && this.inv.damageHeld(1)) this.audio.toolBreak();
       this.invChanged();
     }
     if (id === B.tnt && byPlayer && this.creative) { /* creative players remove TNT without lighting it */ }
@@ -907,10 +1076,10 @@ export class Game {
     const time = breakTime(BLOCKS[target.id], this.inv.heldId);
     cur.progress += time <= 0 ? 1 : dt / time;
     cur.sound -= dt;
-    if (!this.swinging || this.swing > 0.8) this.swingArm();
+    if (!this.swinging || this.swing >= 0.5) this.swingArm();
     if (cur.sound <= 0) {
       cur.sound = 0.24;
-      this.audio.dig(BLOCKS[target.id].sound);
+      this.audio.dig(BLOCKS[target.id].sound, { x: target.x + 0.5, y: target.y + 0.5, z: target.z + 0.5 });
       this.particles.chip(target.x, target.y, target.z, target.face, target.id);
     }
     if (cur.progress >= 1) {
@@ -932,7 +1101,10 @@ export class Game {
     // Doors, chests and beds are used rather than built on (sneak to place blocks against them).
     if (t && !t.entity && !p.sneaking && (DOOR[t.id] || CHEST[t.id] !== undefined || BED[t.id])) {
       if (repeat) return;
-      if (DOOR[t.id] && w.toggleDoor(t.x, t.y, t.z)) { this.audio.place('wood'); this.swingArm(); }
+      if (DOOR[t.id] && w.toggleDoor(t.x, t.y, t.z)) {
+        this.audio.door(!!DOOR[w.getBlock(t.x, t.y, t.z)]?.open, { x: t.x + 0.5, y: t.y + 0.5, z: t.z + 0.5 });
+        this.swingArm();
+      }
       else if (CHEST[t.id] !== undefined) this.openChestAt(t.x, t.y, t.z);
       else if (BED[t.id]) {
         const b = BED[t.id], d = FACE_DIRS[b.dir];
@@ -940,22 +1112,14 @@ export class Game {
       }
       return;
     }
-    if (def?.food && !this.creative && !repeat) {
-      if (this.health < 20) {
-        this.health = Math.min(20, this.health + def.food);
-        this.inv.consumeHeld();
-        this.audio.eat();
-        this.swingArm();
-        this.invChanged();
-      }
-      return;
-    }
+    if (def?.food && !this.creative) return; // eaten by holding right click (see handleActions)
     if (!t || t.entity) {
       if (t?.entity && !repeat) this.entities.interact(t.entity, held);
       return;
     }
     if (t.id === B.tnt && held?.id === I.flint_and_steel && !repeat) {
       w.setBlock(t.x, t.y, t.z, 0);
+      this.audio.ignite({ x: t.x + 0.5, y: t.y + 0.5, z: t.z + 0.5 });
       this.entities.primeTNT(t.x, t.y, t.z, 80);
       if (!this.creative) { this.inv.damageHeld(1); this.invChanged(); }
       this.swingArm();
@@ -1018,7 +1182,7 @@ export class Game {
       w.setBlock(hx, y, hz, bedId(dir, true), { updates: false });
       w.neighborsChanged(x, y, z);
       w.neighborsChanged(hx, y, hz);
-      this.afterPlace(blockId);
+      this.afterPlace(blockId, x, y, z);
       return;
     } else if (DOOR[blockId]) {
       const above = w.getBlock(x, y + 1, z);
@@ -1030,21 +1194,21 @@ export class Game {
       w.setBlock(x, y + 1, z, doorId(facing, false, true), { updates: false });
       w.neighborsChanged(x, y, z);
       w.neighborsChanged(x, y + 1, z);
-      this.afterPlace(id);
+      this.afterPlace(id, x, y, z);
       return;
     }
     if (BLOCKS[id].support && !w.supported(x, y, z, id)) return;
     if (SOLID[id] && (p.intersectsBlock(x, y, z) || this.entities.blocksPlacement(x, y, z))) return;
-    if (w.setBlock(x, y, z, id)) this.afterPlace(id);
+    if (w.setBlock(x, y, z, id)) this.afterPlace(id, x, y, z);
   }
 
   finishPlace(x, y, z, id) {
     if (SOLID[id] && (this.player.intersectsBlock(x, y, z) || this.entities.blocksPlacement(x, y, z))) return;
-    if (this.world.setBlock(x, y, z, id)) this.afterPlace(id);
+    if (this.world.setBlock(x, y, z, id)) this.afterPlace(id, x, y, z);
   }
 
-  afterPlace(id) {
-    this.audio.place(BLOCKS[id].sound);
+  afterPlace(id, x, y, z) {
+    this.audio.place(BLOCKS[id].sound, { x: x + 0.5, y: y + 0.5, z: z + 0.5 });
     this.swingArm();
     if (!this.creative) { this.inv.consumeHeld(); this.invChanged(); }
   }
@@ -1103,6 +1267,13 @@ export class Game {
 
   chunkLoaded(chunk) { this.entities.chunkLoaded(chunk); }
 
+  // World listener: water met lava.
+  fizz(x, y, z) {
+    const at = { x: x + 0.5, y: y + 0.5, z: z + 0.5 };
+    this.audio.fizz(at);
+    this.particles.smoke?.(at.x, at.y + 0.4, at.z, 6);
+  }
+
   // ---------------------------------------------------------------- inventory
   invChanged() { this.invVersion++; }
 
@@ -1134,7 +1305,6 @@ export class Game {
     if (shift && !this.creative) this.inv.quickMove(i);
     else if (shift && this.creative && i < 9) this.inv.slots[i] = null;
     else this.inv.click(i, button === 2 ? 2 : 0);
-    this.audio.click();
     this.invChanged();
     this.renderInventory();
   }
@@ -1152,7 +1322,6 @@ export class Game {
     } else {
       this.inv.cursor = { id, count: button === 2 ? 1 : max, dmg: 0 };
     }
-    this.audio.click();
     this.invChanged();
     this.renderInventory();
   }
@@ -1200,7 +1369,7 @@ export class Game {
     switch (cmd.toLowerCase()) {
       case 'help':
         say('/time set day|noon|night|midnight|<ticks>, /time add <n>');
-        say('/gamemode creative|survival, /tp <x> <y> <z>, /give <item> [count]');
+        say('/gamemode creative|survival, /tp <x> <y> <z>, /give <item> [count], /weather clear|rain');
         say('/spawn, /setspawn, /seed, /fly, /kill, /clear');
         break;
       case 'time': {
@@ -1245,6 +1414,13 @@ export class Game {
       case 'spawn': p.x = this.meta.spawn.x; p.z = this.meta.spawn.z; this.respawnAtBed = false; this.needsRespawnY = true; say('Teleported to spawn'); break;
       case 'setspawn': this.meta.spawn = { x: p.x, y: p.y, z: p.z }; say('Spawn point set here'); break;
       case 'fly': if (this.creative) { p.flying = !p.flying; say(p.flying ? 'Flying' : 'Not flying'); } else say('Flying needs Creative mode', '#e88a78'); break;
+      case 'weather': {
+        const kind = (args[0] ?? '').toLowerCase(), secs = Number(args[1]);
+        if (kind !== 'clear' && kind !== 'rain') { say('Usage: /weather clear|rain [seconds]', '#e88a78'); break; }
+        this.weather.set(kind === 'rain', Number.isFinite(secs) && secs > 0 ? secs : null);
+        say(kind === 'rain' ? 'It starts to rain' : 'The sky clears');
+        break;
+      }
       case 'kill': if (this.creative) { p.y = this.meta.spawn.y ?? 100; } else this.damage(999, 'You gave up', true); break;
       case 'clear': this.inv.slots.fill(null); this.invChanged(); say('Inventory cleared'); break;
       default: say(`Unknown command: /${cmd}. Try /help`, '#e88a78');
@@ -1253,28 +1429,75 @@ export class Game {
 
   // ---------------------------------------------------------------- rendering
   updateHand(dt) {
-    const held = this.inv.heldId;
+    const held = this.inv.heldId, p = this.player;
     if (held !== this.lastHeld) {
-      this.equip = 1;
       this.lastHeld = held;
       if (held) this.ui.showItemName(itemLabel(held));
     }
-    this.equip = Math.max(0, this.equip - dt * 5);
+    // Switching items: the old one dips out of view, then the new one comes up.
+    if (held !== this.handItem) {
+      this.handHeight = Math.max(0, this.handHeight - dt * 8);
+      if (this.handHeight < 0.1) this.handItem = held;
+    } else this.handHeight = Math.min(1, this.handHeight + dt * 6);
     if (this.swinging) {
       this.swing += dt * 3.4;
       if (this.swing >= 1) { this.swing = 0; this.swinging = false; }
     }
+    // The hand trails a little behind the view when turning.
+    const k = 1 - Math.exp(-dt * 14);
+    this.lagPitch += (p.pitch - this.lagPitch) * k;
+    let dyaw = p.yaw - this.lagYaw;
+    dyaw -= Math.round(dyaw / (Math.PI * 2)) * Math.PI * 2;
+    this.lagYaw = p.yaw - dyaw * (1 - k);
+  }
+
+  // Rain greys out the sky, dims the daylight and hides the sun, moon and stars.
+  applyWeather() {
+    const k = this.weather.rain, e = this.env;
+    if (k <= 0) return;
+    const grey = (c, amount, dark) => {
+      const l = (c[0] * 0.3 + c[1] * 0.59 + c[2] * 0.11) * dark;
+      for (let i = 0; i < 3; i++) c[i] += (l - c[i]) * amount;
+    };
+    grey(e.zenith, k * 0.7, 0.75);
+    grey(e.horizon, k * 0.65, 0.8);
+    grey(e.fogColor, k * 0.65, 0.8);
+    grey(e.cloudColor, k * 0.7, 0.7);
+    grey(e.skyLight, k * 0.5, 0.9);
+    e.daylight = Math.max(0.2, e.daylight * (1 - 0.25 * k));
+    e.stars *= 1 - k;
+    e.sunset *= 1 - k * 0.8;
+  }
+
+  updateWeatherEffects(cam, dt) {
+    const w = this.weather, p = this.player, world = this.world;
+    w.build(cam, world, dt);
+    const inRain = w.rain > 0 && w.kind(world, Math.floor(p.x), Math.floor(p.z), Math.floor(p.y)) === 1;
+    if (inRain && w.rain > 0.2) {
+      for (const s of w.splashSpots(cam, world, Math.round(w.rain * 4))) this.particles.bits(s[0], s[1], s[2], TEX.splash, 2, 0.7, 0.25);
+    }
+    // Quieter under a roof, silent in the snow.
+    const sky = world.getLight(Math.floor(p.x), Math.floor(p.eyeY), Math.floor(p.z)) >> 4;
+    this.audio.setRain(inRain ? w.rain * (0.25 + 0.75 * (sky / 15) ** 2) : 0);
   }
 
   renderScene(dt, loading) {
     const p = this.player, s = this.settings;
     updateEnvironment(this.env, this.time);
-    const bobAmt = s.viewBobbing ? p.bob : 0;
-    const bx = Math.sin(p.bobPhase) * 0.045 * bobAmt, by = -Math.abs(Math.cos(p.bobPhase)) * 0.07 * bobAmt;
-    const cam = {
-      x: p.x + Math.cos(p.yaw) * bx, y: p.eyeY + by, z: p.z - Math.sin(p.yaw) * bx,
-      yaw: p.yaw, pitch: p.pitch,
-    };
+    this.applyWeather();
+    // View bobbing and the hurt tilt, done like the original: a small sway and roll while walking,
+    // and a quick roll of the camera when you take damage.
+    const bob = s.viewBobbing ? p.bob * 0.1 : 0, walk = p.bobPhase / Math.PI;
+    const hurtF = this.hurtTime / 0.5;
+    const roll = hurtF > 0 && !REDUCED_MOTION ? -Math.sin(hurtF ** 4 * Math.PI) * 14 * DEG : 0;
+    const pre = identity(this.viewPre);
+    if (roll) rotateZ(pre, pre, roll);
+    if (bob) {
+      translate(pre, pre, Math.sin(walk * Math.PI) * bob * 0.5, -Math.abs(Math.cos(walk * Math.PI) * bob), 0);
+      rotateZ(pre, pre, Math.sin(walk * Math.PI) * bob * 3 * DEG);
+      rotateX(pre, pre, Math.abs(Math.cos(walk * Math.PI - 0.2) * bob) * 5 * DEG);
+    }
+    const cam = { x: p.x, y: p.eyeY, z: p.z, yaw: p.yaw, pitch: p.pitch, pre };
     const fovTarget = (p.sprinting ? 1.12 : 1) * (p.flying && p.sprinting ? 1.08 : 1) * (p.headInWater ? 0.9 : 1);
     this.fovMul += (fovTarget - this.fovMul) * Math.min(1, dt * 8);
     const rd = s.renderDistance;
@@ -1288,6 +1511,7 @@ export class Game {
     } else if (WATERLIKE[eyeBlock] === 2) {
       fogColor = [0.8, 0.3, 0.05]; fogStart = 0; fogEnd = 2.5;
     }
+    if (!loading) this.updateWeatherEffects(cam, dt);
     const target = !loading && this.target && !this.target.entity ? this.target : null;
     const heldLight = this.world.getLight(Math.floor(p.x), Math.floor(p.eyeY), Math.floor(p.z));
     this.particles.build(cam, this.world);
@@ -1298,10 +1522,12 @@ export class Game {
       selection: target && this.state !== 'dead' ? { x: target.x, y: target.y, z: target.z, box: this.world.selectionBox(target.x, target.y, target.z, target.id) } : null,
       crack: this.mining && this.mining.progress > 0 ? { x: this.mining.x, y: this.mining.y, z: this.mining.z, stage: Math.floor(this.mining.progress * 10) } : null,
       particles: this.particles,
+      weather: this.weather,
       entities: this.entities.renderList(cam),
       hand: loading || this.hideHud || this.state === 'dead' ? null : {
-        item: this.inv.heldId, swing: this.swinging ? this.swing : 0, equip: this.equip,
-        bob: [Math.sin(p.bobPhase) * 0.03 * bobAmt, -Math.abs(Math.cos(p.bobPhase)) * 0.03 * bobAmt - this.hurtTilt * 0.05],
+        item: this.handItem, swing: this.swinging ? this.swing : 0, equip: 1 - this.handHeight,
+        bob, walk, roll, lag: [(this.lagPitch - p.pitch) * 0.1, (this.lagYaw - p.yaw) * 0.1],
+        eat: this.eating ? this.eating.left : undefined,
         light: [Math.max(heldLight >> 4, 0), heldLight & 15],
       },
     });
@@ -1317,7 +1543,7 @@ export class Game {
       ui.renderHotbar(this.inv, this.creative);
       if (this.state === 'inventory') this.renderInventory();
     }
-    ui.renderStats(!this.creative, this.health, this.air, p.headInWater);
+    ui.renderStats(!this.creative, this.health, this.air, p.headInWater, this.food);
     this.touch.update();
     ui.setFlags({
       water: p.headInWater,
@@ -1347,7 +1573,8 @@ export class Game {
       `Facing: ${facing} (${deg.toFixed(1)}° / ${((p.pitch * 180) / Math.PI).toFixed(1)}°)`,
       `Biome: ${BIOME_NAMES[biome] ?? '?'} · Light: ${light >> 4} sky, ${light & 15} block`,
       `Day ${Math.floor(this.time / TICKS_PER_DAY) + 1}, ${clockText(this.time)} · ${this.creative ? 'Creative' : 'Survival'}${p.flying ? ' · flying' : ''}`,
-      `Chunks: ${w.chunks.size} · Sections drawn: ${r.sections} · Triangles: ${(r.triangles / 1000).toFixed(0)}k`,
+      `Chunks: ${w.chunks.size} · Sections drawn: ${r.sections} · Triangles: ${(r.triangles / 1000).toFixed(0)}k · ${this.canvas.width}x${this.canvas.height}`,
+      `Food: ${this.food} (saturation ${this.saturation.toFixed(1)}) · Weather: ${this.weather.raining ? 'rain' : 'clear'} ${Math.round(this.weather.rain * 100)}%`,
       `Entities: ${this.entities.list.length} · Particles: ${this.particles.list.length}`,
       t && !t.entity ? `Looking at: ${BLOCKS[t.id].label} (${t.x}, ${t.y}, ${t.z}) face ${FACE_NAMES[t.face] ?? '-'}` : t?.entity ? `Looking at: ${t.entity.label}` : 'Looking at: nothing',
     ];

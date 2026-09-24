@@ -22,8 +22,9 @@ export function runJob(job) {
   if (job.type === 'mesh') {
     const m = meshSection(job.blocks, job.light, job.climate, job.cx, job.cz);
     return {
-      result: { type: 'mesh', id: job.id, cx: job.cx, cz: job.cz, sy: job.sy, version: job.version, solid: m.solid, trans: m.trans },
-      transfer: [m.solid.buffer, m.trans.buffer],
+      result: { type: 'mesh', id: job.id, cx: job.cx, cz: job.cz, sy: job.sy, version: job.version, solid: m.solid, trans: m.trans,
+        groups: m.groups, vis: m.vis },
+      transfer: [m.solid.buffer, m.trans.buffer, m.groups.buffer],
     };
   }
   throw new Error(`Unknown job ${job.type}`);

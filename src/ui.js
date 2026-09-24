@@ -17,12 +17,17 @@ function sprite(rows, colors) {
 }
 const HEART = ['.kk...kk.', 'khrk.krrk', 'krrrkrrrk', 'krrrrrrrk', '.krrrrrk.', '..krrrk..', '...krk...', '....k....', '.........'];
 const HALF = ['.kk...kk.', 'khrk.keek', 'krrrkeeek', 'krrrreeek', '.krrreek.', '..krrek..', '...kek...', '....k....', '.........'];
+const DRUMSTICK = ['....kkk..', '...kmmmk.', '..kmhmmmk', '..kmmmmmk', '.kkmmmmk.', 'kbk.kkk..', 'kbbk.....', '.kk......', '.........'];
+const HALF_DRUM = ['....kkk..', '...keemk.', '..keemmmk', '..keemmmk', '.kkeemmk.', 'kbk.kkk..', 'kbbk.....', '.kk......', '.........'];
 const BUBBLE = ['..kkkkk..', '.kbbbbbk.', 'kbwbbbbbk', 'kbwbbbbbk', 'kbbbbbbbk', 'kbbbbbbbk', 'kbbbbbbbk', '.kbbbbbk.', '..kkkkk..'];
 const SPRITES = {
   heart: sprite(HEART, { k: '#1a0606', r: '#d9261c', h: '#ff9c8c' }),
   half: sprite(HALF, { k: '#1a0606', r: '#d9261c', h: '#ff9c8c', e: '#3a1512' }),
   empty: sprite(HEART.map((r) => r.replace(/[rh]/g, 'e')), { k: '#1a0606', e: '#3a1512' }),
   bubble: sprite(BUBBLE, { k: '#0b2c5c', b: '#4fa3ff', w: '#e8f4ff' }),
+  food: sprite(DRUMSTICK, { k: '#2a1406', m: '#b5642a', h: '#e0975a', b: '#f0e8d8' }),
+  foodHalf: sprite(HALF_DRUM, { k: '#2a1406', m: '#b5642a', e: '#3a2014', b: '#f0e8d8' }),
+  foodEmpty: sprite(DRUMSTICK.map((r) => r.replace(/[mh]/g, 'e')), { k: '#2a1406', e: '#3a2014', b: '#8a7f70' }),
 };
 
 function slotEl(tag = 'div') {
@@ -69,6 +74,7 @@ export class UI {
       const btn = e.target.closest('[data-action]');
       if (!btn) return;
       const where = btn.closest('.screen, .modal');
+      this.onButton?.();
       this.emit(btn.dataset.action, where?.id, btn);
     });
 
@@ -81,6 +87,8 @@ export class UI {
     }
     $('hearts').innerHTML = '<i></i>'.repeat(10);
     $('bubbles').innerHTML = '<i></i>'.repeat(10);
+    $('hunger').innerHTML = '<i></i>'.repeat(10);
+    this.lastFood = -1;
 
     // Inventory grids
     this.storageEls = [];
@@ -184,9 +192,16 @@ export class UI {
     this.nameTimer = setTimeout(() => el.classList.remove('show'), 1500);
   }
 
-  renderStats(survival, health, air, underwater) {
+  renderStats(survival, health, air, underwater, food = 20) {
     $('stats').style.visibility = survival ? 'visible' : 'hidden';
     if (!survival) return;
+    if (food !== this.lastFood) {
+      this.lastFood = food;
+      [...$('hunger').children].forEach((el, i) => {
+        const v = food - i * 2;
+        el.style.backgroundImage = `url(${v >= 2 ? SPRITES.food : v === 1 ? SPRITES.foodHalf : SPRITES.foodEmpty})`;
+      });
+    }
     if (health !== this.lastHealth) {
       this.lastHealth = health;
       [...$('hearts').children].forEach((el, i) => {
@@ -378,8 +393,9 @@ export class UI {
     const fmt = {
       rd: (v) => `${v} chunks`, fov: (v) => `${v}°`, sens: (v) => `${v}%`, bright: (v) => (v <= 0 ? 'Moody' : v >= 100 ? 'Bright' : `${v}%`),
       vol: (v) => (v ? `${v}%` : 'Off'), music: (v) => (v ? `${v}%` : 'Off'),
+      res: (v) => (v ? `${40 + v * 10}%` : 'Auto'),
     };
-    const map = { rd: 'renderDistance', fov: 'fov', sens: 'sensitivity', bright: 'brightness', vol: 'volume', music: 'music' };
+    const map = { rd: 'renderDistance', res: 'resolution', fov: 'fov', sens: 'sensitivity', bright: 'brightness', vol: 'volume', music: 'music' };
     for (const [k, key] of Object.entries(map)) {
       const input = $(`s-${k}`), out = $(`o-${k}`);
       input.value = settings[key];

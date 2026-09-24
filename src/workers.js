@@ -17,15 +17,16 @@ export class JobPool {
     this.workers = [];
     this.inflight = new Map();
     this.local = [];
+    this.results = [];
+    this.resultHead = 0;
     this.nextId = 1;
     const n = Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 1));
     try {
       for (let i = 0; i < n; i++) {
         const w = spawn();
-        w.onmessage = (e) => {
-          this.inflight.set(w, this.inflight.get(w) - 1);
-          this.onResult(e.data);
-        };
+        // Results wait in a queue and are applied a few milliseconds' worth per frame, so a burst
+        // of finished chunks can't stall a frame.
+        w.onmessage = (e) => { this.results.push(w, e.data); };
         w.onerror = (e) => { e.preventDefault?.(); this.fallBack(e.message || 'worker error'); };
         this.workers.push(w);
         this.inflight.set(w, 0);
@@ -43,6 +44,8 @@ export class JobPool {
     for (const w of this.workers) w.terminate();
     this.workers = [];
     this.inflight.clear();
+    this.results = [];
+    this.resultHead = 0;
     this.onFailure?.();
   }
 
@@ -62,16 +65,28 @@ export class JobPool {
     best.postMessage(job, transfer);
   }
 
-  // Main-thread fallback: run queued jobs for up to `budgetMs`.
+  get queued() { return (this.results.length - this.resultHead) / 2 + this.local.length; }
+
+  // Applies finished results (and, without workers, runs queued jobs) for up to `budgetMs`.
   update(budgetMs) {
-    if (this.threaded || !this.local.length) return;
     const end = performance.now() + budgetMs;
-    while (this.local.length && performance.now() < end) this.onResult(runJob(this.local.shift()).result);
+    let n = 0;
+    while (this.resultHead < this.results.length && (n++ === 0 || performance.now() < end)) {
+      const w = this.results[this.resultHead], data = this.results[this.resultHead + 1];
+      this.results[this.resultHead] = this.results[this.resultHead + 1] = null;
+      this.resultHead += 2;
+      if (this.inflight.has(w)) this.inflight.set(w, this.inflight.get(w) - 1);
+      this.onResult(data);
+    }
+    if (this.resultHead >= this.results.length) { this.results.length = 0; this.resultHead = 0; }
+    while (!this.threaded && this.local.length && performance.now() < end) this.onResult(runJob(this.local.shift()).result);
   }
 
   terminate() {
     for (const w of this.workers) w.terminate();
     this.workers = [];
     this.local = [];
+    this.results = [];
+    this.resultHead = 0;
   }
 }

@@ -61,7 +61,11 @@ const AO_OFF = FACE_CORNERS.map((corners, f) => corners.map((c) => {
   return [o1, o2, o1 + o2];
 }));
 
-const solid = new MeshBuffer(8192);
+// Opaque geometry is sorted by the way it faces (+X, -X, +Y, -Y, +Z, -Z), with everything that
+// isn't a flat axis-aligned face (plants, torches, liquids) in its own group first. The renderer
+// can then skip whole groups that face away from the camera.
+const other = new MeshBuffer(2048);
+const dirs = [0, 1, 2, 3, 4, 5].map(() => new MeshBuffer(2048));
 const trans = new MeshBuffer(2048);
 const grassT = new Uint8Array(768), foliageT = new Uint8Array(768);
 const aoV = new Int32Array(4), skyV = new Int32Array(4), blkV = new Int32Array(4);
@@ -230,7 +234,7 @@ function torch(buf, light, x, y, z, p, id) {
   }
 }
 
-function cactus(buf, blocks, light, x, y, z, p, id) {
+function cactus(bufs, blocks, light, x, y, z, p, id) {
   const inset = U / 16;
   const own = light[p];
   for (let f = 0; f < 6; f++) {
@@ -239,6 +243,7 @@ function cactus(buf, blocks, light, x, y, z, p, id) {
     const l = OPAQUE[nid] ? own : light[p + NOFF[f]];
     const sky = (l >> 4) * 17, blk = (l & 15) * 17;
     const layer = TEXL[id * 6 + f];
+    const buf = bufs[f];
     buf.reserve(4);
     FACE_CORNERS[f].forEach((c, k) => {
       let px = c[0] * U, pz = c[2] * U;
@@ -251,7 +256,7 @@ function cactus(buf, blocks, light, x, y, z, p, id) {
 // Shaped blocks (slabs, stairs, doors, fences...): one textured box per part. Faces flush with the
 // cell edge are skipped against opaque neighbours and take the neighbour's light.
 const boundary = (b, f) => (f === 0 ? b[3] === 16 : f === 1 ? b[0] === 0 : f === 2 ? b[4] === 16 : f === 3 ? b[1] === 0 : f === 4 ? b[5] === 16 : b[2] === 0);
-function model(buf, blocks, light, x, y, z, p, id) {
+function model(bufs, blocks, light, x, y, z, p, id) {
   const boxes = shapeBoxes(id, (f) => blocks[p + NOFF[f]]);
   if (!boxes) return;
   const own = light[p];
@@ -265,6 +270,7 @@ function model(buf, blocks, light, x, y, z, p, id) {
       const sky = Math.max(l >> 4, own >> 4) * 17, blk = Math.max(l & 15, own & 15) * 17;
       const uv = boxFaceUV(b, f);
       const layer = TEXL[id * 6 + f];
+      const buf = bufs[f];
       buf.reserve(4);
       FACE_CORNERS[f].forEach((c, k) => {
         buf.vertex(x * U + (c[0] ? b[3] : b[0]) * 16, y * U + (c[1] ? b[4] : b[1]) * 16, z * U + (c[2] ? b[5] : b[2]) * 16,
@@ -276,7 +282,8 @@ function model(buf, blocks, light, x, y, z, p, id) {
 
 // blocks/light: padded 18^3 arrays; climate: 512 bytes for the chunk's columns.
 export function meshSection(blocks, light, climate, cx, cz) {
-  solid.count = 0;
+  other.count = 0;
+  for (const d of dirs) d.count = 0;
   trans.count = 0;
   for (let c = 0; c < 256; c++) {
     const t = fromByte(climate[c * 2]), h = fromByte(climate[c * 2 + 1]);
@@ -291,17 +298,67 @@ export function meshSection(blocks, light, climate, cx, cz) {
         if (id === 0) continue;
         const rt = RENDER[id];
         if (rt === R.CUBE) {
-          const buf = TRANSLUCENT[id] ? trans : solid;
-          for (let f = 0; f < 6; f++) if (faceVisible(id, blocks[p + NOFF[f]])) cubeFace(buf, blocks, light, x, y, z, p, id, f);
-        } else if (rt === R.LIQUID) liquid(TRANSLUCENT[id] ? trans : solid, blocks, light, x, y, z, p, id);
-        else if (rt === R.CROSS) cross(solid, light, x, y, z, p, id, cx * 16 + x, cz * 16 + z);
-        else if (rt === R.TORCH) torch(solid, light, x, y, z, p, id);
-        else if (rt === R.CACTUS) cactus(solid, blocks, light, x, y, z, p, id);
-        else if (rt === R.MODEL) model(solid, blocks, light, x, y, z, p, id);
+          const tr = TRANSLUCENT[id];
+          for (let f = 0; f < 6; f++) if (faceVisible(id, blocks[p + NOFF[f]])) cubeFace(tr ? trans : dirs[f], blocks, light, x, y, z, p, id, f);
+        } else if (rt === R.LIQUID) liquid(TRANSLUCENT[id] ? trans : other, blocks, light, x, y, z, p, id);
+        else if (rt === R.CROSS) cross(other, light, x, y, z, p, id, cx * 16 + x, cz * 16 + z);
+        else if (rt === R.TORCH) torch(other, light, x, y, z, p, id);
+        else if (rt === R.CACTUS) cactus(dirs, blocks, light, x, y, z, p, id);
+        else if (rt === R.MODEL) model(dirs, blocks, light, x, y, z, p, id);
       }
     }
   }
-  return { solid: solid.take(), trans: trans.take() };
+  // groups[g]..groups[g + 1] are the quads of group g: 0 other, 1 + f for faces facing f.
+  const parts = [other, ...dirs];
+  const groups = new Int32Array(8);
+  let total = 0;
+  parts.forEach((b, g) => { groups[g] = total / 4; total += b.count; });
+  groups[7] = total / 4;
+  const out = new Uint8Array(total * STRIDE);
+  let o = 0;
+  for (const b of parts) { out.set(b.u8.subarray(0, b.count * STRIDE), o); o += b.count * STRIDE; }
+  return { solid: out, trans: trans.take(), groups, vis: visibility(blocks) };
+}
+
+// Which faces of the section can see each other through non-opaque blocks: a 15-bit mask with
+// one bit per pair of faces (see FACE_PAIR). Used for cave culling: sections that can only be seen
+// through solid rock are never drawn.
+export const FACE_PAIR = [0, 1, 2, 3, 4, 5].map(() => new Array(6).fill(-1));
+for (let a = 0, bit = 0; a < 6; a++) for (let b = a + 1; b < 6; b++, bit++) FACE_PAIR[a][b] = FACE_PAIR[b][a] = bit;
+export const ALL_OPEN = 0x7fff;
+const seen = new Uint8Array(4096), queue = new Int16Array(4096);
+function visibility(blocks) {
+  seen.fill(0);
+  let open = 0, mask = 0;
+  for (let i = 0; i < 4096; i++) {
+    const p = ((i >> 8) + 1) * P2 + (((i >> 4) & 15) + 1) * P + (i & 15) + 1;
+    if (OPAQUE[blocks[p]]) seen[i] = 1; else open++;
+  }
+  if (open === 4096) return ALL_OPEN;
+  if (open === 0) return 0;
+  for (let start = 0; start < 4096; start++) {
+    if (seen[start]) continue;
+    // Flood one pocket of open cells and note which faces it touches.
+    let head = 0, tail = 0, faces = 0;
+    queue[tail++] = start;
+    seen[start] = 1;
+    while (head < tail) {
+      const i = queue[head++];
+      const x = i & 15, z = (i >> 4) & 15, y = i >> 8;
+      if (x === 15) faces |= 1; else if (!seen[i + 1]) { seen[i + 1] = 1; queue[tail++] = i + 1; }
+      if (x === 0) faces |= 2; else if (!seen[i - 1]) { seen[i - 1] = 1; queue[tail++] = i - 1; }
+      if (y === 15) faces |= 4; else if (!seen[i + 256]) { seen[i + 256] = 1; queue[tail++] = i + 256; }
+      if (y === 0) faces |= 8; else if (!seen[i - 256]) { seen[i - 256] = 1; queue[tail++] = i - 256; }
+      if (z === 15) faces |= 16; else if (!seen[i + 16]) { seen[i + 16] = 1; queue[tail++] = i + 16; }
+      if (z === 0) faces |= 32; else if (!seen[i - 16]) { seen[i - 16] = 1; queue[tail++] = i - 16; }
+    }
+    for (let a = 0; a < 6; a++) {
+      if (!(faces & (1 << a))) continue;
+      for (let b = a + 1; b < 6; b++) if (faces & (1 << b)) mask |= 1 << FACE_PAIR[a][b];
+    }
+    if (mask === ALL_OPEN) break;
+  }
+  return mask;
 }
 
 // Mesh for a single block (the held item and dropped items), lit uniformly.

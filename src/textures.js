@@ -673,10 +673,65 @@ for (let stage = 0; stage < 10; stage++) {
 }
 
 // ---------------------------------------------------------------- items
-function stick(t, x0 = 2, y0 = 13, len = 9) {
-  for (let i = 0; i < len; i++) { t.set(x0 + i, y0 - i, 0x8a6a3a); t.set(x0 + i + 1, y0 - i, 0x5a4020); }
+// Tools are vector shapes on the 16x16 grid, shaded like bevelled pixel art: a dark outline, lit
+// top-left edges and shaded bottom-right edges. Handles run from the bottom-left corner up to the
+// top-right, and heads are drawn so their working edge points up and away from the handle, which is
+// the side that faces forward when the tool is held.
+const WOOD_HANDLE = [0x3b2912, 0x5c411d, 0x7a5a2c, 0x9c7a45, 0xb08d56];
+const AXIS_U = [Math.SQRT1_2, -Math.SQRT1_2], AXIS_N = [-Math.SQRT1_2, -Math.SQRT1_2];
+
+function inPolygon(poly, x, y) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
 }
-def('stick', (t) => { t.clear(); stick(t, 3, 12, 9); });
+
+// A thick polyline whose radius is interpolated along it.
+function stroke(points, radii) {
+  return (x, y) => {
+    for (let i = 0; i + 1 < points.length; i++) {
+      const [ax, ay] = points[i], [bx, by] = points[i + 1];
+      const dx = bx - ax, dy = by - ay;
+      const k = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy)));
+      const r = radii[i] + (radii[i + 1] - radii[i]) * k;
+      if (Math.hypot(x - ax - dx * k, y - ay - dy * k) <= r) return true;
+    }
+    return false;
+  };
+}
+
+// Fills the pixels whose centres pass `test`. pal: [outline, dark, mid, light, highlight].
+function bevel(t, test, pal, grain = 0) {
+  const inside = (x, y) => x >= 0 && y >= 0 && x < 16 && y < 16 && test(x + 0.5, y + 0.5);
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    if (!inside(x, y)) continue;
+    const out = (dx, dy) => !inside(x + dx, y + dy);
+    let k;
+    if (out(-1, 0) || out(1, 0) || out(0, -1) || out(0, 1)) k = 0;
+    else if (out(-1, -1) || (out(-2, 0) && out(0, -2))) k = 4;
+    else if (out(-2, 0) || out(0, -2)) k = 3;
+    else if (out(1, 1) || out(2, 0) || out(0, 2)) k = 1;
+    else k = 2;
+    if (grain && k > 0 && t.r() < grain) k = Math.min(4, Math.max(1, k + (t.r() < 0.5 ? -1 : 1)));
+    t.set(x, y, pal[k]);
+  }
+}
+
+// The wooden handle: a two-pixel diagonal from (x0, y0) going up and right.
+function handle(t, len, x0 = 1, y0 = 14) {
+  const P = WOOD_HANDLE;
+  for (let i = 0; i < len; i++) {
+    const x = x0 + i, y = y0 - i;
+    t.set(x, y - 1, i === 0 ? P[1] : P[3]);
+    t.set(x, y, i === 0 ? P[0] : (i + x0) % 3 === 0 ? P[1] : P[2]);
+    t.set(x + 1, y, P[0]);
+  }
+  t.set(x0 - 1 < 0 ? 0 : x0 - 1, y0, P[0]);
+}
+def('stick', (t) => { t.clear(); handle(t, 11, 2, 13); });
 def('coal', (t) => {
   t.clear();
   const pal = [0x141414, 0x222222, 0x303030, 0x464646];
@@ -731,54 +786,103 @@ function meat(t, pal) {
 }
 def('raw_porkchop', (t) => meat(t, [0xf0a3a0, 0xe68884, 0xf7d9d4]));
 def('cooked_porkchop', (t) => meat(t, [0xa8683a, 0x93572c, 0xd8b58a]));
+function steak(t, pal) {
+  t.clear();
+  for (let y = 3; y < 14; y++) for (let x = 2; x < 14; x++) {
+    const d = Math.hypot((x - 7.5) / 1.35, (y - 8.2) / 1.05) + Math.sin(x * 1.3) * 0.25;
+    if (d < 4.4) t.set(x, y, d > 3.6 ? pal[2] : t.r() < 0.12 ? pal[3] : pick(pal.slice(0, 2), t.r()));
+  }
+}
+def('raw_beef', (t) => steak(t, [0xd23c3c, 0xbc2c2e, 0x8e1e20, 0xf0a0a0]));
+def('cooked_beef', (t) => steak(t, [0x7c4a2a, 0x6a3c22, 0x4a2814, 0xa06a42]));
+function drumstick(t, pal) {
+  t.clear();
+  for (let y = 1; y < 12; y++) for (let x = 5; x < 15; x++) {
+    const d = Math.hypot((x - 9.8) / 1.1, (y - 6.2) / 1.2);
+    if (d < 4.3) t.set(x, y, d > 3.5 ? pal[2] : pick(pal.slice(0, 2), t.r()));
+  }
+  for (let i = 0; i < 5; i++) { t.set(6 - i, 10 + i, 0xf0e8d8); t.set(7 - i, 10 + i, 0xd8cfbf); }
+  t.set(1, 14, 0xf0e8d8); t.set(1, 15, 0xd8cfbf); t.set(2, 15, 0xf0e8d8);
+}
+def('raw_chicken', (t) => drumstick(t, [0xf2c8b4, 0xe8b8a2, 0xc89684]));
+def('cooked_chicken', (t) => drumstick(t, [0xd08c44, 0xbc7a36, 0x8a5424]));
+def('rotten_flesh', (t) => {
+  meat(t, [0x8a6a3e, 0x7a5a32, 0x5a4428]);
+  for (let i = 0; i < 9; i++) t.set(4 + t.ri(8), 5 + t.ri(7), 0x5e7a2c);
+});
+def('leather', (t) => {
+  t.clear();
+  for (let y = 3; y < 13; y++) for (let x = 3; x < 13; x++) {
+    if ((x === 3 || x === 12) && (y === 3 || y === 12)) continue;
+    const edge = x === 3 || x === 12 || y === 3 || y === 12;
+    t.set(x, y, edge ? 0x5e3a1c : pick([0x9a6436, 0x8c5a30, 0xa66e3c], t.r()));
+  }
+});
+def('feather', (t) => {
+  t.clear();
+  for (let i = 0; i < 12; i++) {
+    const x = 2 + i, y = 13 - i;
+    t.set(x, y, 0x8a8a8a);
+    if (i > 1 && i < 11) { t.set(x - 1, y - 1, i % 2 ? 0xf4f4f4 : 0xe4e4e4); t.set(x, y - 1, 0xffffff); t.set(x + 1, y + 1 - 1, 0xd8d8d8); }
+    if (i > 3 && i < 10) t.set(x - 2, y - 1, 0xeaeaea);
+  }
+});
 
 const TOOL_MATS = {
-  wooden: [0x6b5029, 0x9f804b, 0xc4a36a],
-  stone: [0x5a5a5a, 0x8a8a8a, 0xb0b0b0],
-  iron: [0x8a8a8a, 0xd6d6d6, 0xffffff],
-  diamond: [0x1f9aa3, 0x4fdce4, 0xc8fcff],
+  wooden: [0x3d2b12, 0x6b4e24, 0x8f6d38, 0xae8a4f, 0xc7a46a],
+  stone: [0x333333, 0x585858, 0x767676, 0x959595, 0xb0b0b0],
+  iron: [0x404040, 0x969696, 0xc2c2c2, 0xe0e0e0, 0xffffff],
+  golden: [0x6b4a07, 0xc48d0f, 0xeab62a, 0xf7d65a, 0xfff5b0],
+  diamond: [0x0f4448, 0x1f8f95, 0x33c3cb, 0x71e6ea, 0xd2fdff],
 };
-function drawPickaxe(t, m) {
-  t.clear(); stick(t, 2, 13, 9);
-  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
-    const d = Math.hypot(x - 3, y - 12);
-    const a = Math.atan2(12 - y, x - 3);
-    if (a < 0.05 || a > Math.PI / 2 - 0.05) continue;
-    if (d > 8.2 && d < 10.6) t.set(x, y, d > 9.8 ? m[2] : d < 9 ? m[0] : m[1]);
-  }
-}
-function drawAxe(t, m) {
-  t.clear(); stick(t, 2, 13, 10);
-  // The handle runs along x + y = 15; the head sits on its upper-left side and widens outwards.
-  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
-    const along = x - y, across = 15 - (x + y);
-    if (across < 1 || across > 6.5) continue;
-    if (along < 1.6 - across * 0.35 || along > 5.4 + across * 0.35) continue;
-    t.set(x, y, across > 5.4 ? m[2] : across < 2 ? m[0] : m[1]);
-  }
-}
-function drawShovel(t, m) {
-  t.clear(); stick(t, 2, 13, 7);
-  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
-    const along = (x - y - 8.6) / 4.2, across = (x + y - 15) / 3.1;
-    const d = along * along + across * across;
-    if (d < 1) t.set(x, y, across < -0.45 ? m[2] : across > 0.45 ? m[0] : m[1]);
-  }
-}
-function drawSword(t, m) {
+const GRAIN = { wooden: 0.25, stone: 0.3 };
+// Shapes below are given in the handle's frame: `along` runs up the handle from its bottom end,
+// `side` is positive towards the upper left.
+const frame = (along, side) => [1.5 + (along - side) * Math.SQRT1_2, 14 - (along + side) * Math.SQRT1_2];
+const framed = (pts) => pts.map(([a, n]) => frame(a, n));
+// Pickaxe: an arched head across the top-right corner, symmetric about the handle.
+const PICK_SPINE = framed([[10.9, 7.4], [12.7, 6.0], [14.3, 4.2], [15.3, 2.2], [15.7, 0], [15.3, -2.2], [14.3, -4.2], [12.7, -6.0], [10.9, -7.4]]);
+const PICK_RADII = [0.85, 1.35, 1.7, 1.95, 2.1, 1.95, 1.7, 1.35, 0.85];
+function drawPickaxe(t, pal, grain) {
   t.clear();
-  for (let i = 0; i < 10; i++) {
-    t.set(5 + i, 10 - i, m[1]); t.set(6 + i, 10 - i, m[0]); t.set(5 + i, 9 - i, m[2]);
-  }
-  t.set(15, 0, 0, 0);
-  for (let i = 0; i < 5; i++) t.set(2 + i, 8 + i, 0x5a4020);
-  t.line(2, 13, 4, 11, 0x8a6a3a); t.set(1, 14, 0x5a4020);
+  handle(t, 11);
+  bevel(t, stroke(PICK_SPINE, PICK_RADII), pal, grain);
+}
+// Axe: a wedge that flares out to a curved cutting edge on the upper-left side, with a short poll
+// behind the handle and the handle's tip showing above it.
+const AXE_HEAD = framed([[7.5, 0.4], [6.1, 3.0], [4.9, 5.4], [7.1, 6.4], [9.3, 6.7], [11.5, 6.4], [13.7, 5.4], [12.5, 3.0],
+  [11.1, 0.4], [10.7, -1.6], [7.9, -1.6]]);
+function drawAxe(t, pal, grain) {
+  t.clear();
+  handle(t, 11);
+  bevel(t, (x, y) => inPolygon(AXE_HEAD, x, y), pal, grain);
+}
+// Shovel: a pointed spade on the end of the handle.
+const SPADE = framed([[9.4, 0], [10.2, 2.3], [12.6, 2.9], [15.4, 2.3], [17.4, 0], [15.4, -2.3], [12.6, -2.9], [10.2, -2.3]]);
+function drawShovel(t, pal, grain) {
+  t.clear();
+  handle(t, 10);
+  bevel(t, (x, y) => inPolygon(SPADE, x, y), pal, grain);
+}
+// Sword: a long tapered blade, a crossguard and a short grip with a pommel.
+function drawSword(t, pal, grain) {
+  t.clear();
+  const at = (p, a, n) => [p[0] + AXIS_U[0] * a + AXIS_N[0] * n, p[1] + AXIS_U[1] * a + AXIS_N[1] * n];
+  const base = [5.0, 10.0], tip = [14.7, 0.3], neck = at(tip, -2.2, 0);
+  const blade = [at(base, 0, 1.45), at(neck, 0, 1.45), tip, at(neck, 0, -1.45), at(base, 0, -1.45)];
+  bevel(t, (x, y) => inPolygon(blade, x, y), pal, grain);
+  const P = WOOD_HANDLE;
+  bevel(t, stroke([[1.6, 13.4], [4.4, 10.6]], [0.75, 0.75]), [P[0], P[1], P[2], P[3], P[3]]);
+  const guard = [pal[0], pal[0], pal[1], pal[2], pal[3]];
+  bevel(t, stroke([at([4.6, 10.4], 0, 2.9), at([4.6, 10.4], 0, -2.9)], [0.8, 0.8]), guard);
+  bevel(t, stroke([[1.2, 13.8], [1.3, 13.7]], [1.05, 1.05]), guard);
 }
 for (const [mat, pal] of Object.entries(TOOL_MATS)) {
-  def(`${mat}_pickaxe`, (t) => drawPickaxe(t, pal));
-  def(`${mat}_axe`, (t) => drawAxe(t, pal));
-  def(`${mat}_shovel`, (t) => drawShovel(t, pal));
-  def(`${mat}_sword`, (t) => drawSword(t, pal));
+  const grain = GRAIN[mat] ?? 0;
+  def(`${mat}_pickaxe`, (t) => drawPickaxe(t, pal, grain));
+  def(`${mat}_axe`, (t) => drawAxe(t, pal, grain));
+  def(`${mat}_shovel`, (t) => drawShovel(t, pal, grain));
+  def(`${mat}_sword`, (t) => drawSword(t, pal, grain));
 }
 def('flint_and_steel', (t) => {
   t.clear();
@@ -943,6 +1047,57 @@ def('zombie_face', (t) => {
 });
 def('zombie_shirt', (t) => furry(t, [0x2a7f86, 0x2f8b92, 0x35979e, 0x2a767c], 4));
 def('zombie_pants', (t) => furry(t, [0x353a86, 0x3d4292, 0x454a9c, 0x30357a], 4));
+const COW = [0x3b2a1e, 0x45311f, 0x4f3a26, 0x3f2d20];
+const CREAM = [0xe8e2d6, 0xf0ebe0, 0xddd6c8];
+def('cow_hide', (t) => {
+  furry(t, COW, 4);
+  const n = t.noise(4);
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if (n[y * 16 + x] > 0.56) t.set(x, y, pick(CREAM, t.r()));
+});
+def('cow_face', (t) => {
+  furry(t, COW, 4);
+  for (let y = 0; y < 9; y++) for (let x = 6; x < 10; x++) t.set(x, y, pick(CREAM, t.r()));
+  eyes(t, 6, 0xffffff, 0x1a1a1a, 6);
+  for (let y = 10; y < 15; y++) for (let x = 4; x < 12; x++) t.set(x, y, pick([0xb89a86, 0xc4a690, 0xae907c], t.r()));
+  t.set(5, 12, 0x3a2a24); t.set(10, 12, 0x3a2a24);
+});
+const FEATHERS = [0xf2f2f0, 0xe8e8e4, 0xfbfbf9, 0xdcdcd6];
+def('chicken_feathers', (t) => furry(t, FEATHERS, 2));
+def('chicken_face', (t) => {
+  furry(t, FEATHERS, 2);
+  t.set(3, 6, 0x111111); t.set(4, 6, 0x111111); t.set(11, 6, 0x111111); t.set(12, 6, 0x111111);
+});
+def('chicken_beak', (t) => furry(t, [0xe8a33a, 0xf0b44a, 0xd8932a], 4));
+def('chicken_wattle', (t) => furry(t, [0xc8281e, 0xd83a2e, 0xb82018], 4));
+def('chicken_legs', (t) => furry(t, [0xe8a33a, 0xd8932a], 4));
+
+// Falling rain and snow, drawn in vertical sheets that scroll downwards, and rain splashes.
+// (The rain texture is tiled four times across a column, so its one-pixel streaks come out thin.)
+def('rain_fall', (t) => {
+  t.clear();
+  for (let x = 0; x < 16; x++) {
+    if (t.r() < 0.45) continue;
+    const y0 = t.ri(16), len = 5 + t.ri(6);
+    for (let k = 0; k < len; k++) t.set(x, (y0 + k) & 15, k >= len - 2 ? 0xe4ecff : 0xb4c8f0, 90 + t.ri(70));
+  }
+});
+def('snow_fall', (t) => {
+  t.clear();
+  for (let i = 0; i < 5; i++) t.set(t.ri(16), t.ri(16), 0xffffff, 225);
+});
+def('splash', (t) => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, pick([0x9fbef0, 0xc8dcff, 0x7fa4e0], t.r())); });
+
+// Critical-hit sparks.
+def('crit', (t) => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, pick([0xfff3b0, 0xffffff, 0xffd766], t.r())); });
+
+// A puff of smoke (mob deaths, burning zombies, water on lava).
+def('smoke', (t) => {
+  t.clear();
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    const d = Math.hypot(x - 7.5, y - 7.5) + (t.r() - 0.5) * 1.8;
+    if (d < 6.8) t.set(x, y, d < 2.6 ? 0xf6f6f6 : d < 4.8 ? 0xdcdcdc : 0xbababa);
+  }
+});
 
 // ---------------------------------------------------------------- export
 export const TEXTURE_NAMES = defs.map((d) => d.name);

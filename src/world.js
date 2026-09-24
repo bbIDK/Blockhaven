@@ -6,7 +6,7 @@ import {
   WATERLIKE, isWater, waterLevel, WATER_FLOW_BASE, SHAPE, shapeBoxes, DOOR, doorId, LADDER_SIDE, BED,
 } from './blocks.js';
 import { nextLevel } from './light.js';
-import { meshSection, P, P2, PADDED } from './mesher.js';
+import { meshSection, P, P2, PADDED, ALL_OPEN } from './mesher.js';
 import { JobPool } from './workers.js';
 import { WorldGen } from './worldgen.js';
 
@@ -22,6 +22,8 @@ class Section {
     this.count = 0;
     this.solid = null;
     this.trans = null;
+    this.vis = ALL_OPEN; // which faces see each other through the section (cave culling)
+    this._frame = -1;
   }
 }
 
@@ -37,8 +39,11 @@ export class Chunk {
     this.biomes = null;
     this.modified = false;
     this.sections = Array.from({ length: SECTIONS }, () => new Section());
+    this.nb = [null, null, null, null]; // neighbours at +X, -X, +Z, -Z
   }
 }
+
+const NB_OFFSETS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
 const spiralCache = new Map();
 function spiral(r) {
@@ -90,6 +95,7 @@ export class World {
     this.pool = new JobPool((r) => this.onJobResult(r), () => this.onPoolFailure());
     this.center = null;
     this.radius = 6;
+    this.scan = true; // something may need loading or meshing
     this.listener = null;
     this.tickNow = 0;
     this.ticks = new Map();
@@ -173,6 +179,25 @@ export class World {
     return true;
   }
 
+  // Highest block in a column that stops rain (solid blocks, leaves, liquids), or -1. Cached per
+  // column and forgotten when a block in that column changes.
+  rainTop(x, z) {
+    const c = this.readyChunk(x >> 4, z >> 4);
+    if (!c) return HEIGHT;
+    if (!c.rainTops) c.rainTops = new Int16Array(256).fill(-2);
+    const col = ((z & 15) << 4) | (x & 15);
+    let t = c.rainTops[col];
+    if (t === -2) {
+      t = -1;
+      for (let y = HEIGHT - 1; y >= 0; y--) {
+        const id = c.blocks[(y << 8) | col];
+        if (id && (SOLID[id] || WATERLIKE[id])) { t = y; break; }
+      }
+      c.rainTops[col] = t;
+    }
+    return t;
+  }
+
   // Highest non-air block in a column (or -1).
   topAt(x, z) {
     for (let y = HEIGHT - 1; y >= 0; y--) if (this.getBlock(x, y, z)) return y;
@@ -180,16 +205,27 @@ export class World {
   }
 
   // ------------------------------------------------------------------ streaming
-  update(px, pz, radius) {
+  // budgetMs: time allowed for applying finished chunks and meshes this frame.
+  update(px, pz, radius, budgetMs = 4) {
     const pcx = Math.floor(px) >> 4, pcz = Math.floor(pz) >> 4;
     if (!this.center || this.center[0] !== pcx || this.center[1] !== pcz || radius !== this.radius) {
       this.center = [pcx, pcz];
       this.radius = radius;
       this.unloadFar();
+      this.scan = true;
     }
+    // A long backlog gets a bigger slice so it can't build up.
+    this.pool.update(this.pool.queued > 24 ? budgetMs * 2 : budgetMs);
+    if (this.scan) this.schedule(pcx, pcz, radius);
+  }
+
+  // Requests missing chunks and meshes dirty sections, nearest first, as workers become free.
+  schedule(pcx, pcz, radius) {
     const r2 = (radius + 0.5) * (radius + 0.5);
     let slots = this.pool.freeSlots();
+    let busy = slots <= 0;
     for (const [dx, dz, d2] of spiral(radius + 1)) {
+      if (slots <= 0) { busy = true; break; }
       if (slots <= 0) break;
       const cx = pcx + dx, cz = pcz + dz;
       const chunk = this.chunks.get(chunkKey(cx, cz));
@@ -201,14 +237,17 @@ export class World {
         if (sec.count === 0) {
           sec.dirty = false;
           sec.meshVersion = sec.version;
+          sec.vis = ALL_OPEN;
           if (sec.solid || sec.trans) this.renderer.freeSection(sec);
           continue;
         }
         this.submitMesh(chunk, sy);
         slots--;
       }
+      if (chunk.sections.some((sec) => sec.dirty)) busy = true;
     }
-    this.pool.update(10);
+    // Nothing left to do: skip the scan until a chunk arrives or a block changes.
+    if (!busy) this.scan = false;
   }
 
   // Fraction of chunks within `radius` of the centre that are meshed (loading screen).
@@ -232,9 +271,24 @@ export class World {
     return true;
   }
 
+  // Neighbour links let the renderer walk between chunks without map lookups.
+  link(chunk) {
+    NB_OFFSETS.forEach(([dx, dz], i) => {
+      const n = this.chunks.get(chunkKey(chunk.cx + dx, chunk.cz + dz)) ?? null;
+      chunk.nb[i] = n;
+      if (n) n.nb[i ^ 1] = chunk;
+    });
+  }
+
+  unlink(chunk) {
+    chunk.nb.forEach((n, i) => { if (n && n.nb[i ^ 1] === chunk) n.nb[i ^ 1] = null; });
+    chunk.nb.fill(null);
+  }
+
   requestChunk(cx, cz) {
     const chunk = new Chunk(cx, cz);
     this.chunks.set(chunk.key, chunk);
+    this.link(chunk);
     const job = { type: 'gen', seed: this.seed, worldType: this.type, cx, cz, saved: null };
     if (this.store?.has(chunk.key)) {
       this.store.loadChunk(chunk.key).then((saved) => {
@@ -255,6 +309,7 @@ export class World {
       if (dx * dx + dz * dz <= lim) continue;
       if (c.state === S_READY && c.modified) this.store?.saveChunk(key, c.blocks);
       this.freeChunkMeshes(c);
+      this.unlink(c);
       this.chunks.delete(key);
       if (this._cache === c) this._cache = null;
     }
@@ -277,14 +332,15 @@ export class World {
 
   onPoolFailure() {
     // Jobs in flight were lost; request everything again on the main thread.
+    this.scan = true;
     for (const [key, c] of this.chunks) {
-      if (c.state !== S_READY) this.chunks.delete(key);
-      else for (const s of c.sections) { if (s.pending) { s.pending = 0; s.dirty = true; } }
+      if (c.state !== S_READY) { this.unlink(c); this.chunks.delete(key); } else for (const s of c.sections) { if (s.pending) { s.pending = 0; s.dirty = true; } }
     }
     this._cache = null;
   }
 
   onJobResult(r) {
+    this.scan = true;
     if (r.type === 'gen') this.onGen(r);
     else if (r.type === 'mesh') this.onMesh(r);
   }
@@ -303,6 +359,7 @@ export class World {
       chunk.sections[sy].count = n;
     }
     chunk.state = S_READY;
+    this.scan = true;
     this.exchangeBorderLight(chunk);
     this.listener?.chunkLoaded?.(chunk);
   }
@@ -324,7 +381,8 @@ export class World {
     sec.pending = Math.max(0, sec.pending - 1);
     if (r.version < sec.meshVersion) return;
     sec.meshVersion = r.version;
-    this.renderer.uploadSection(sec, chunk, r.sy, r.solid, r.trans);
+    sec.vis = r.vis;
+    this.renderer.uploadSection(sec, chunk, r.sy, r.solid, r.trans, r.groups);
   }
 
   // Mesh a section right now on the main thread (used after the player edits a block).
@@ -333,10 +391,11 @@ export class World {
     if (!sec.dirty || !this.neighborsReady(chunk)) return;
     sec.dirty = false;
     sec.meshVersion = sec.version;
-    if (sec.count === 0) { if (sec.solid || sec.trans) this.renderer.freeSection(sec); return; }
+    if (sec.count === 0) { sec.vis = ALL_OPEN; if (sec.solid || sec.trans) this.renderer.freeSection(sec); return; }
     this.buildPadded(chunk, sy, this.padB, this.padL);
     const m = meshSection(this.padB, this.padL, chunk.climate, chunk.cx, chunk.cz);
-    this.renderer.uploadSection(sec, chunk, sy, m.solid, m.trans);
+    sec.vis = m.vis;
+    this.renderer.uploadSection(sec, chunk, sy, m.solid, m.trans, m.groups);
   }
 
   // Copies blocks and light of a section plus a one-block border from the neighbours.
@@ -377,6 +436,7 @@ export class World {
           const sec = c.sections[s];
           sec.dirty = true;
           sec.version++;
+          this.scan = true;
         }
       }
     }
@@ -515,6 +575,7 @@ export class World {
     if (old === id) return false;
     c.blocks[i] = id;
     c.modified = true;
+    if (c.rainTops) c.rainTops[i & 255] = -2;
     c.sections[y >> 4].count += (id !== 0) - (old !== 0);
     this.markDirty(x, y, z);
     this.relight(x, y, z, old, id);
@@ -536,6 +597,7 @@ export class World {
       if (old === id) continue;
       c.blocks[i] = id;
       c.modified = true;
+      if (c.rainTops) c.rainTops[i & 255] = -2;
       c.sections[y >> 4].count += (id !== 0) - (old !== 0);
       this.markDirty(x, y, z);
       applied.push([x, y, z, old, id]);
@@ -678,7 +740,7 @@ export class World {
     }
     // Spread: down first; sideways only when resting on something.
     const below = this.getBlock(x, y - 1, z);
-    if (y > 0 && WATERLIKE[below] === 2) { this.setBlock(x, y - 1, z, B.obsidian, { remesh: false }); return; }
+    if (y > 0 && WATERLIKE[below] === 2) { this.setBlock(x, y - 1, z, B.obsidian, { remesh: false }); this.listener?.fizz?.(x, y - 1, z); return; }
     if (y > 0 && this.canFlowInto(below)) {
       this.breakFor(x, y - 1, z, below);
       this.setBlock(x, y - 1, z, WATER_FLOW_BASE + 7, { remesh: false });
@@ -692,7 +754,11 @@ export class World {
       const dir = FACE_DIRS[d];
       const nx = x + dir[0], nz = z + dir[2];
       const n = this.getBlock(nx, y, nz);
-      if (WATERLIKE[n] === 2) { this.setBlock(nx, y, nz, n === B.lava ? B.obsidian : B.cobblestone, { remesh: false }); continue; }
+      if (WATERLIKE[n] === 2) {
+        this.setBlock(nx, y, nz, n === B.lava ? B.obsidian : B.cobblestone, { remesh: false });
+        this.listener?.fizz?.(nx, y, nz);
+        continue;
+      }
       if (this.canFlowInto(n)) {
         this.breakFor(nx, y, nz, n);
         this.setBlock(nx, y, nz, WATER_FLOW_BASE - 1 + spread, { remesh: false });

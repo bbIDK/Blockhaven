@@ -245,9 +245,10 @@ code { font-family: var(--font-ui); color: var(--amber); }
   gap: 4px;
 }
 #stats { display: flex; justify-content: space-between; align-items: flex-end; min-height: 18px; padding: 0 2px; }
-#hearts, #bubbles { display: flex; gap: 1px; }
-#bubbles { flex-direction: row-reverse; }
-#hearts i, #bubbles i { width: calc(var(--slot) * 0.36); height: calc(var(--slot) * 0.36); background-size: 100% 100%; image-rendering: pixelated; }
+#hearts, #bubbles, #hunger { display: flex; gap: 1px; }
+#bubbles, #hunger { flex-direction: row-reverse; }
+.stats-right { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+#hearts i, #bubbles i, #hunger i { width: calc(var(--slot) * 0.36); height: calc(var(--slot) * 0.36); background-size: 100% 100%; image-rendering: pixelated; }
 #hotbar {
   display: flex;
   gap: 2px;

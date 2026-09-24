@@ -2,6 +2,7 @@
 // terrain vertex format (so they share the terrain shader and lighting).
 import { STRIDE } from './mesher.js';
 import { TEXL, FFLAGS, TINT, TINT_RGB, SOLID, F_TINT, F_OVERLAY } from './blocks.js';
+import { TEX } from './textures.js';
 
 const MAX = 600;
 const DEFAULT_TINT = { 1: [124, 189, 84], 2: [96, 168, 64] };
@@ -40,6 +41,32 @@ export class Particles {
     }
   }
 
+  // Bits of a texture (food crumbs, critical-hit sparks).
+  bits(x, y, z, layer, n, speed = 1.5, life = 0.6) {
+    for (let i = 0; i < n; i++) {
+      if (this.list.length >= MAX) this.list.shift();
+      this.list.push({
+        x, y, z, vx: (Math.random() - 0.5) * speed * 2, vy: Math.random() * speed * 1.4, vz: (Math.random() - 0.5) * speed * 2,
+        life: life * (0.6 + Math.random() * 0.8), age: 0, size: 0.05 + Math.random() * 0.04, layer, flags: 0,
+        tint: [255, 255, 255], u: 4 + Math.floor(Math.random() * 8), v: 4 + Math.floor(Math.random() * 8),
+      });
+    }
+  }
+
+  // Grey puffs that drift up and shrink away.
+  smoke(x, y, z, n = 8, spread = 0.4) {
+    for (let i = 0; i < n; i++) {
+      if (this.list.length >= MAX) this.list.shift();
+      const g = 190 + Math.floor(Math.random() * 60);
+      this.list.push({
+        x: x + (Math.random() - 0.5) * spread * 2, y: y + (Math.random() - 0.5) * spread, z: z + (Math.random() - 0.5) * spread * 2,
+        vx: (Math.random() - 0.5) * 0.8, vy: 0.3 + Math.random() * 0.7, vz: (Math.random() - 0.5) * 0.8,
+        life: 0.5 + Math.random() * 0.6, age: 0, size: 0.16 + Math.random() * 0.16,
+        layer: TEX.smoke, flags: 0, tint: [g, g, g], u: 0, v: 0, smoke: true,
+      });
+    }
+  }
+
   // A few chips flying off the face being mined.
   chip(x, y, z, face, blockId) {
     const n = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]][face] ?? [0, 1, 0];
@@ -57,6 +84,12 @@ export class Particles {
       const p = list[i];
       p.age += dt;
       if (p.age > p.life) { list.splice(i, 1); continue; }
+      if (p.smoke) {
+        const k = Math.exp(-1.5 * dt);
+        p.vx *= k; p.vz *= k; p.vy = p.vy * k + 0.6 * dt;
+        p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+        continue;
+      }
       p.vy -= 18 * dt;
       p.vx *= Math.exp(-2 * dt);
       p.vz *= Math.exp(-2 * dt);
@@ -79,15 +112,16 @@ export class Particles {
       const px = p.x - this.base[0], py = p.y - this.base[1], pz = p.z - this.base[2];
       if (px < 1 || py < 1 || pz < 1 || px > 250 || py > 250 || pz > 250) continue;
       const l = world.getLight(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z));
-      const s = p.size;
+      const s = p.smoke ? p.size * (1 - 0.7 * (p.age / p.life)) : p.size;
+      const full = p.smoke ? 16 : 3;
       for (let k = 0; k < 4; k++) {
         const a = k === 0 || k === 3 ? -1 : 1, b = k < 2 ? -1 : 1;
         const o = n * STRIDE, h = n * 10;
         u16[h] = Math.round((px + (rx * a + ux * b) * s) * 256);
         u16[h + 1] = Math.round((py + uy * b * s) * 256);
         u16[h + 2] = Math.round((pz + (rz * a + uz * b) * s) * 256);
-        u8[o + 6] = p.u + (a > 0 ? 3 : 0);
-        u8[o + 7] = p.v + (b > 0 ? 0 : 3);
+        u8[o + 6] = p.u + (a > 0 ? full : 0);
+        u8[o + 7] = p.v + (b > 0 ? 0 : full);
         u8[o + 8] = p.layer; u8[o + 9] = 6; u8[o + 10] = p.flags; u8[o + 11] = 0;
         u8[o + 12] = (l >> 4) * 17; u8[o + 13] = (l & 15) * 17; u8[o + 14] = 255; u8[o + 15] = 0;
         u8[o + 16] = p.tint[0]; u8[o + 17] = p.tint[1]; u8[o + 18] = p.tint[2]; u8[o + 19] = 255;
