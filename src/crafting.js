@@ -2,13 +2,17 @@
 // anywhere in the grid, mirrored or not) or shapeless (a list of ingredients in any arrangement).
 // The recipe book shows them by category and can lay them out in the grid for you.
 import { I, maxStack } from './items.js';
+import { WOOD_NAMES, WALL_MATERIALS } from './blocks.js';
+import { DYES } from './colors.js';
 
 // '#name' in a recipe accepts any item of a group.
 export const GROUPS = {
-  planks: ['oak_planks', 'birch_planks', 'spruce_planks'],
-  logs: ['oak_log', 'birch_log', 'spruce_log'],
-  wool: ['white_wool', 'red_wool', 'orange_wool', 'yellow_wool', 'lime_wool', 'blue_wool', 'purple_wool', 'black_wool'],
+  planks: WOOD_NAMES.map((w) => `${w}_planks`),
+  logs: WOOD_NAMES.map((w) => `${w}_log`),
+  wool: DYES.map((d) => `${d.name}_wool`),
   coals: ['coal', 'charcoal'],
+  cobble: ['cobblestone', 'cobbled_deepslate'],
+  wooden_slabs: WOOD_NAMES.map((w) => `${w}_slab`),
 };
 
 const ingredientCache = new Map();
@@ -44,16 +48,19 @@ function shapeless(name, count, list, category) {
 }
 
 // ---------------------------------------------------------------- recipes
-for (const wood of ['oak', 'birch', 'spruce']) shapeless(`${wood}_planks`, 4, [`${wood}_log`], 'building');
+for (const wood of WOOD_NAMES) shapeless(`${wood}_planks`, 4, [`${wood}_log`], 'building');
 shaped('stick', 4, ['#', '#'], { '#': '#planks' }, 'misc');
 shaped('crafting_table', 1, ['##', '##'], { '#': '#planks' }, 'misc');
 shaped('torch', 4, ['C', '#'], { C: '#coals', '#': 'stick' }, 'misc');
 shaped('chest', 1, ['###', '# #', '###'], { '#': '#planks' }, 'misc');
-shaped('furnace', 1, ['###', '# #', '###'], { '#': 'cobblestone' }, 'misc');
+shaped('furnace', 1, ['###', '# #', '###'], { '#': '#cobble' }, 'misc');
 shaped('bed', 1, ['WWW', '###'], { W: '#wool', '#': '#planks' }, 'misc');
-shaped('oak_door', 3, ['##', '##', '##'], { '#': '#planks' }, 'misc');
+for (const w of WOOD_NAMES) {
+  shaped(`${w}_door`, 3, ['##', '##', '##'], { '#': `${w}_planks` }, 'misc');
+  shaped(`${w}_fence`, 3, ['W#W', 'W#W'], { W: `${w}_planks`, '#': 'stick' }, 'misc');
+  shaped(`${w}_fence_gate`, 1, ['#W#', '#W#'], { W: `${w}_planks`, '#': 'stick' }, 'misc');
+}
 shaped('ladder', 3, ['# #', '###', '# #'], { '#': 'stick' }, 'misc');
-shaped('oak_fence', 3, ['W#W', 'W#W'], { W: '#planks', '#': 'stick' }, 'misc');
 shaped('glass_pane', 16, ['###', '###'], { '#': 'glass' }, 'building');
 shaped('bookshelf', 1, ['###', 'BBB', '###'], { '#': '#planks', B: 'book' }, 'building');
 shaped('paper', 3, ['###'], { '#': 'sugar_cane' }, 'misc');
@@ -61,32 +68,97 @@ shapeless('book', 1, ['paper', 'paper', 'paper', 'leather'], 'misc');
 shaped('bowl', 4, ['# #', ' # '], { '#': '#planks' }, 'misc');
 shapeless('mushroom_stew', 1, ['bowl', 'red_mushroom', 'brown_mushroom'], 'misc');
 shaped('jack_o_lantern', 1, ['P', 'T'], { P: 'pumpkin', T: 'torch' }, 'building');
-// There is no gunpowder in these worlds, so TNT is packed with coal instead.
-shaped('tnt', 1, ['CSC', 'SCS', 'CSC'], { C: '#coals', S: 'sand' }, 'misc');
+shaped('tnt', 1, ['GSG', 'SGS', 'GSG'], { G: 'gunpowder', S: 'sand' }, 'misc');
 shapeless('flint_and_steel', 1, ['iron_ingot', 'flint'], 'equipment');
 shaped('stone_bricks', 4, ['##', '##'], { '#': 'stone' }, 'building');
 shaped('sandstone', 1, ['##', '##'], { '#': 'sand' }, 'building');
 shaped('bricks', 1, ['##', '##'], { '#': 'brick' }, 'building');
 shaped('clay', 1, ['##', '##'], { '#': 'clay_ball' }, 'building');
-for (const [block, material] of [['iron_block', 'iron_ingot'], ['gold_block', 'gold_ingot'], ['diamond_block', 'diamond'], ['coal_block', 'coal']]) {
+for (const [block, material] of [['iron_block', 'iron_ingot'], ['gold_block', 'gold_ingot'], ['diamond_block', 'diamond'], ['coal_block', 'coal'],
+  ['copper_block', 'copper_ingot'], ['lapis_block', 'lapis_lazuli'], ['redstone_block', 'redstone'], ['emerald_block', 'emerald'],
+  ['hay_block', 'wheat'], ['iron_ingot', 'iron_nugget'], ['gold_ingot', 'gold_nugget']]) {
   shaped(block, 1, ['###', '###', '###'], { '#': material }, 'building');
   shapeless(material, 9, [block], 'misc');
 }
-for (const [slab, material] of [['oak_slab', 'oak_planks'], ['birch_slab', 'birch_planks'], ['spruce_slab', 'spruce_planks'],
-  ['cobblestone_slab', 'cobblestone'], ['stone_slab', 'stone'], ['brick_slab', 'bricks'], ['stone_brick_slab', 'stone_bricks'],
-  ['sandstone_slab', 'sandstone']]) {
-  shaped(slab, 6, ['###'], { '#': material }, 'building');
+// Slabs and stairs of every material that has them.
+const SLABS = [['stone', 'stone'], ['cobblestone', 'cobblestone'], ['brick', 'bricks'], ['stone_brick', 'stone_bricks'], ['sandstone', 'sandstone'],
+  ['mossy_cobblestone', 'mossy_cobblestone'], ['mossy_stone_brick', 'mossy_stone_bricks'], ['smooth_stone', 'smooth_stone'],
+  ['granite', 'granite'], ['polished_granite', 'polished_granite'], ['diorite', 'diorite'], ['polished_diorite', 'polished_diorite'],
+  ['andesite', 'andesite'], ['polished_andesite', 'polished_andesite'], ['cobbled_deepslate', 'cobbled_deepslate'],
+  ['deepslate_brick', 'deepslate_bricks'], ['red_sandstone', 'red_sandstone'], ...WOOD_NAMES.map((w) => [w, `${w}_planks`])];
+for (const [short, material] of SLABS) shaped(`${short}_slab`, 6, ['###'], { '#': material }, 'building');
+for (const [short, material] of SLABS) {
+  if (short === 'smooth_stone' || I[`${short}_stairs`] === undefined) continue;
+  shaped(`${short}_stairs`, 4, ['#  ', '## ', '###'], { '#': material }, 'building');
 }
-for (const [stairs, material] of [['oak_stairs', '#planks'], ['cobblestone_stairs', 'cobblestone'], ['stone_brick_stairs', 'stone_bricks'],
-  ['brick_stairs', 'bricks'], ['sandstone_stairs', 'sandstone']]) {
-  shaped(stairs, 4, ['#  ', '## ', '###'], { '#': material }, 'building');
+for (const [mat] of WALL_MATERIALS) {
+  const short = mat.replace(/_bricks$/, '_brick').replace(/^bricks$/, 'brick');
+  shaped(`${short}_wall`, 6, ['###', '###'], { '#': mat }, 'building');
 }
-for (const [mat, x] of [['wooden', '#planks'], ['stone', 'cobblestone'], ['iron', 'iron_ingot'], ['golden', 'gold_ingot'], ['diamond', 'diamond']]) {
+for (const [mat, x] of [['wooden', '#planks'], ['stone', '#cobble'], ['iron', 'iron_ingot'], ['golden', 'gold_ingot'], ['diamond', 'diamond']]) {
   shaped(`${mat}_pickaxe`, 1, ['XXX', ' # ', ' # '], { X: x, '#': 'stick' }, 'equipment');
   shaped(`${mat}_axe`, 1, ['XX', 'X#', ' #'], { X: x, '#': 'stick' }, 'equipment');
   shaped(`${mat}_shovel`, 1, ['X', '#', '#'], { X: x, '#': 'stick' }, 'equipment');
   shaped(`${mat}_sword`, 1, ['X', 'X', '#'], { X: x, '#': 'stick' }, 'equipment');
+  shaped(`${mat}_hoe`, 1, ['XX', ' #', ' #'], { X: x, '#': 'stick' }, 'equipment');
 }
+// Stone of every sort.
+for (const [out, from] of [['polished_granite', 'granite'], ['polished_diorite', 'diorite'], ['polished_andesite', 'andesite'],
+  ['cut_sandstone', 'sandstone'], ['cut_red_sandstone', 'red_sandstone'], ['deepslate_bricks', 'cobbled_deepslate']]) {
+  shaped(out, 4, ['##', '##'], { '#': from }, 'building');
+}
+shaped('red_sandstone', 1, ['##', '##'], { '#': 'red_sand' }, 'building');
+shaped('chiseled_stone_bricks', 1, ['#', '#'], { '#': 'stone_brick_slab' }, 'building');
+shaped('chiseled_sandstone', 1, ['#', '#'], { '#': 'sandstone_slab' }, 'building');
+shaped('chiseled_red_sandstone', 1, ['#', '#'], { '#': 'red_sandstone_slab' }, 'building');
+shapeless('mossy_cobblestone', 1, ['cobblestone', 'vine'], 'building');
+shapeless('mossy_stone_bricks', 1, ['stone_bricks', 'vine'], 'building');
+// Colours: dyes from flowers and minerals, mixed dyes, and dyed blocks.
+for (const [dye, from, n] of [['yellow', 'dandelion', 1], ['red', 'poppy', 1], ['blue', 'cornflower', 1], ['magenta', 'allium', 1],
+  ['light_gray', 'azure_bluet', 1], ['light_blue', 'blue_orchid', 1], ['light_gray', 'oxeye_daisy', 1], ['red', 'red_tulip', 1],
+  ['orange', 'orange_tulip', 1], ['light_gray', 'white_tulip', 1], ['pink', 'pink_tulip', 1], ['white', 'lily_of_the_valley', 1],
+  ['yellow', 'sunflower', 2], ['magenta', 'lilac', 2], ['red', 'rose_bush', 2], ['pink', 'peony', 2], ['white', 'bone_meal', 1],
+  ['blue', 'lapis_lazuli', 1], ['black', 'coal', 1], ['red', 'beetroot', 1]]) {
+  shapeless(`${dye}_dye`, n, [from], 'misc');
+}
+for (const [out, a, b] of [['orange', 'red', 'yellow'], ['pink', 'red', 'white'], ['light_blue', 'blue', 'white'], ['purple', 'blue', 'red'],
+  ['magenta', 'purple', 'pink'], ['cyan', 'blue', 'green'], ['gray', 'black', 'white'], ['light_gray', 'gray', 'white'], ['lime', 'green', 'white']]) {
+  shapeless(`${out}_dye`, 2, [`${a}_dye`, `${b}_dye`], 'misc');
+}
+for (const d of DYES) {
+  if (d.name !== 'white') shapeless(`${d.name}_wool`, 1, [`${d.name}_dye`, 'white_wool'], 'building');
+  shaped(`${d.name}_carpet`, 3, ['##'], { '#': `${d.name}_wool` }, 'building');
+  shaped(`${d.name}_stained_glass`, 8, ['###', '#D#', '###'], { '#': 'glass', D: `${d.name}_dye` }, 'building');
+  shaped(`${d.name}_terracotta`, 8, ['###', '#D#', '###'], { '#': 'terracotta', D: `${d.name}_dye` }, 'building');
+  shaped(`${d.name}_concrete`, 8, ['SGS', 'GDG', 'SGS'], { S: 'sand', G: 'gravel', D: `${d.name}_dye` }, 'building');
+}
+// Workshop and village blocks.
+shaped('lantern', 1, ['NNN', 'NTN', 'NNN'], { N: 'iron_nugget', T: 'torch' }, 'misc');
+shaped('campfire', 1, [' S ', 'SCS', 'LLL'], { S: 'stick', C: '#coals', L: '#logs' }, 'misc');
+shaped('barrel', 1, ['PSP', 'P P', 'PSP'], { P: '#planks', S: '#wooden_slabs' }, 'misc');
+shaped('smoker', 1, [' L ', 'LFL', ' L '], { L: '#logs', F: 'furnace' }, 'misc');
+shaped('blast_furnace', 1, ['III', 'IFI', 'SSS'], { I: 'iron_ingot', F: 'furnace', S: 'smooth_stone' }, 'misc');
+shaped('smithing_table', 1, ['II', 'PP', 'PP'], { I: 'iron_ingot', P: '#planks' }, 'misc');
+shaped('fletching_table', 1, ['FF', 'PP', 'PP'], { F: 'flint', P: '#planks' }, 'misc');
+shaped('iron_bars', 16, ['###', '###'], { '#': 'iron_ingot' }, 'building');
+// Gear.
+shaped('bow', 1, [' #S', '# S', ' #S'], { '#': 'stick', S: 'string' }, 'equipment');
+shaped('arrow', 4, ['F', '#', 'E'], { F: 'flint', '#': 'stick', E: 'feather' }, 'equipment');
+shaped('shears', 1, [' I', 'I '], { I: 'iron_ingot' }, 'equipment');
+shaped('bucket', 1, ['I I', ' I '], { I: 'iron_ingot' }, 'equipment');
+shaped('compass', 1, [' I ', 'IRI', ' I '], { I: 'iron_ingot', R: 'redstone' }, 'equipment');
+shaped('clock', 1, [' G ', 'GRG', ' G '], { G: 'gold_ingot', R: 'redstone' }, 'equipment');
+shaped('fishing_rod', 1, ['  #', ' #S', '# S'], { '#': 'stick', S: 'string' }, 'equipment');
+// Food.
+shaped('bread', 1, ['WWW'], { W: 'wheat' }, 'misc');
+shaped('cookie', 8, ['WSW'], { W: 'wheat', S: 'sugar' }, 'misc');
+shapeless('pumpkin_pie', 1, ['pumpkin', 'sugar', 'egg'], 'misc');
+shaped('golden_apple', 1, ['GGG', 'GAG', 'GGG'], { G: 'gold_ingot', A: 'apple' }, 'misc');
+shaped('golden_carrot', 1, ['NNN', 'NCN', 'NNN'], { N: 'gold_nugget', C: 'carrot' }, 'misc');
+shapeless('beetroot_soup', 1, ['bowl', 'beetroot', 'beetroot', 'beetroot', 'beetroot', 'beetroot', 'beetroot'], 'misc');
+shapeless('rabbit_stew', 1, ['bowl', 'cooked_rabbit', 'carrot', 'baked_potato', 'brown_mushroom'], 'misc');
+shapeless('sugar', 1, ['sugar_cane'], 'misc');
+shapeless('bone_meal', 3, ['bone'], 'misc');
 for (const [mat, x] of [['leather', 'leather'], ['iron', 'iron_ingot'], ['golden', 'gold_ingot'], ['diamond', 'diamond']]) {
   shaped(`${mat}_helmet`, 1, ['XXX', 'X X'], { X: x }, 'equipment');
   shaped(`${mat}_chestplate`, 1, ['X X', 'XXX', 'XXX'], { X: x }, 'equipment');
@@ -213,25 +285,39 @@ export function planRecipe(r, counts, size, maxSets = 1) {
 // ---------------------------------------------------------------- smelting
 export const COOK_TIME = 200; // ticks per item, like the original furnace
 
+// [input, result, kind]: smokers only take food, blast furnaces only ores and metal.
 const SMELT = [
-  ['sand', 'glass'], ['cobblestone', 'stone'], ['iron_ore', 'iron_ingot'], ['gold_ore', 'gold_ingot'],
-  ['coal_ore', 'coal'], ['diamond_ore', 'diamond'], ['raw_porkchop', 'cooked_porkchop'], ['raw_beef', 'cooked_beef'],
-  ['raw_chicken', 'cooked_chicken'], ['clay_ball', 'brick'], ['oak_log', 'charcoal'], ['birch_log', 'charcoal'],
-  ['spruce_log', 'charcoal'],
+  ['sand', 'glass'], ['red_sand', 'glass'], ['cobblestone', 'stone'], ['stone', 'smooth_stone'], ['stone_bricks', 'cracked_stone_bricks'],
+  ['cobbled_deepslate', 'deepslate'], ['clay', 'terracotta'], ['clay_ball', 'brick'], ['cactus', 'green_dye'],
+  ...['iron', 'gold', 'copper'].flatMap((m) => [[`raw_${m}`, `${m === 'gold' ? 'gold' : m}_ingot`, 'ore'], [`${m}_ore`, `${m === 'gold' ? 'gold' : m}_ingot`, 'ore'],
+    [`deepslate_${m}_ore`, `${m}_ingot`, 'ore']]),
+  ...['coal', 'diamond', 'emerald', 'lapis', 'redstone'].flatMap((m) => {
+    const out = { lapis: 'lapis_lazuli', redstone: 'redstone' }[m] ?? m;
+    return [[`${m}_ore`, out, 'ore'], [`deepslate_${m}_ore`, out, 'ore']];
+  }),
+  ['raw_porkchop', 'cooked_porkchop', 'food'], ['raw_beef', 'cooked_beef', 'food'], ['raw_chicken', 'cooked_chicken', 'food'],
+  ['raw_mutton', 'cooked_mutton', 'food'], ['raw_rabbit', 'cooked_rabbit', 'food'], ['cod', 'cooked_cod', 'food'],
+  ['salmon', 'cooked_salmon', 'food'], ['potato', 'baked_potato', 'food'],
+  ...GROUPS.logs.map((l) => [l, 'charcoal']),
 ];
 const SMELTING = new Map(SMELT.map(([a, b]) => [I[a], I[b]]));
+const SMELT_KIND = new Map(SMELT.map(([a, , k]) => [I[a], k ?? null]));
+// Can a furnace of kind `only` (null, 'food' or 'ore') smelt this?
+export const smeltsIn = (id, only) => SMELTING.has(id) && (!only || SMELT_KIND.get(id) === only);
 if ([...SMELTING].some(([a, b]) => a === undefined || b === undefined)) throw new Error('Unknown smelting item');
 export const smeltResult = (id) => SMELTING.get(id) ?? null;
 export const SMELTABLE = [...SMELTING.keys()];
 
 // Burn time of fuels, in ticks (an item takes 200 to smelt, so coal does 8).
 const FUELS = [
-  ['coal', 1600], ['charcoal', 1600], ['coal_block', 16000], ['oak_log', 300], ['birch_log', 300], ['spruce_log', 300],
-  ['oak_planks', 300], ['birch_planks', 300], ['spruce_planks', 300], ['stick', 100], ['wooden_pickaxe', 200],
-  ['wooden_axe', 200], ['wooden_shovel', 200], ['wooden_sword', 200], ['oak_slab', 150], ['birch_slab', 150],
-  ['spruce_slab', 150], ['oak_stairs', 300], ['crafting_table', 300], ['chest', 300], ['bookshelf', 300],
-  ['oak_fence', 300], ['ladder', 300], ['oak_door', 200], ['bowl', 100],
+  ['coal', 1600], ['charcoal', 1600], ['coal_block', 16000], ['lava_bucket', 20000], ['stick', 100], ['wooden_pickaxe', 200],
+  ['wooden_axe', 200], ['wooden_shovel', 200], ['wooden_sword', 200], ['wooden_hoe', 200], ['crafting_table', 300], ['chest', 300],
+  ['bookshelf', 300], ['ladder', 300], ['bowl', 100], ['barrel', 300], ['bow', 300], ['fishing_rod', 300], ['fletching_table', 300],
+  ['smithing_table', 300],
+  ...WOOD_NAMES.flatMap((w) => [[`${w}_log`, 300], [`${w}_planks`, 300], [`${w}_slab`, 150], [`${w}_fence`, 300], [`${w}_fence_gate`, 300],
+    [`${w}_door`, 200], [`${w}_sapling`, 100], ...(I[`${w}_stairs`] !== undefined ? [[`${w}_stairs`, 300]] : [])]),
   ...GROUPS.wool.map((w) => [w, 100]),
+  ...DYES.map((d) => [`${d.name}_carpet`, 67]),
 ];
 const FUEL = new Map(FUELS.map(([name, t]) => [I[name], t]));
 if ([...FUEL.keys()].some((id) => id === undefined)) throw new Error('Unknown fuel item');

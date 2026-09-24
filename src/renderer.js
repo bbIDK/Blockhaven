@@ -6,7 +6,7 @@ import {
 import { generateTextures, TEXTURE_NAMES, TEX, ARRAY_LAYERS } from './textures.js';
 import { STRIDE, meshBlockItem, SECTION_OFFSET, FACE_PAIR, ALL_OPEN } from './mesher.js';
 import { boxMesh, spriteMesh, MODEL_OFFSET } from './models.js';
-import { RENDER, R, TEXL, FFLAGS, TINT, TINT_RGB, SHAPE, ICON_SHAPE, DOOR, CLIMB, SHAPE_KIND, BED, boxFaceUV } from './blocks.js';
+import { RENDER, R, TEXL, FFLAGS, TINT, TINT_RGB, SHAPE, ICON_SHAPE, boxFaceUV, spriteOf } from './blocks.js';
 import { ITEMS } from './items.js';
 import { SECTIONS } from './config.js';
 
@@ -457,18 +457,19 @@ export class Renderer {
     if (this.itemMeshes.has(id)) return this.itemMeshes.get(id);
     let mesh = null;
     const def = ITEMS.get(id);
-    const flat = def?.block !== null && def?.block !== undefined && RENDER[def.block] === R.MODEL
-      ? (DOOR[def.block] ? TEX.oak_door_item : BED[def.block] ? TEX.bed_item : CLIMB[def.block] ? TEX.ladder
-        : SHAPE_KIND[def.block] === 3 ? TEX.glass : -1) : -1;
+    const flat = def?.block !== null && def?.block !== undefined ? spriteOf(def.block) : -1;
+    const blockTint = (b) => (TINT[b] === 3 ? [...TINT_RGB.subarray(b * 3, b * 3 + 3)] : TINT[b] === 4 ? [88, 164, 255]
+      : TINT[b] === 1 ? [124, 189, 84] : [110, 170, 70]);
     if (def && def.block !== null && RENDER[def.block] === R.MODEL && flat < 0) {
-      const id = def.block;
+      const id = def.block, tint = TINT[id] ? blockTint(id) : null;
       const parts = (ICON_SHAPE[id] ?? SHAPE[id]).map((b) => ({
-        from: [b[0] / 16, b[1] / 16, b[2] / 16], to: [b[3] / 16, b[4] / 16, b[5] / 16],
+        from: [b[0] / 16, b[1] / 16, b[2] / 16], to: [b[3] / 16, b[4] / 16, b[5] / 16], tint, flags: tint ? 1 : 0,
         faces: [0, 1, 2, 3, 4, 5].map((f) => ({ layer: TEXL[id * 6 + f], uv: boxFaceUV(b, f) })),
       }));
       mesh = { ...this.createMesh(boxMesh(parts)), kind: 'block' };
     } else if (flat >= 0) {
-      mesh = { ...this.createMesh(spriteMesh(flat, this.pixels.subarray(flat * 1024, flat * 1024 + 1024))), kind: 'sprite' };
+      const tint = FFLAGS[def.block * 6] & 1 && TINT[def.block] ? blockTint(def.block) : null;
+      mesh = { ...this.createMesh(spriteMesh(flat, this.pixels.subarray(flat * 1024, flat * 1024 + 1024), tint ? 1 : 0, tint)), kind: 'sprite' };
     } else if (def) {
       if (def.block !== null && (RENDER[def.block] === R.CUBE || RENDER[def.block] === R.CACTUS || RENDER[def.block] === R.LIQUID)) {
         const m = meshBlockItem(def.block);
@@ -480,8 +481,8 @@ export class Renderer {
         mesh = { ...this.createMesh(bytes), kind: 'block' };
       } else {
         const layer = def.block !== null ? TEXL[def.block * 6] : def.tex;
-        const flags = def.block !== null ? FFLAGS[def.block * 6] & 1 : 0;
-        const tint = def.block !== null && TINT[def.block] ? (TINT[def.block] === 3 ? [...TINT_RGB.subarray(def.block * 3, def.block * 3 + 3)] : [110, 170, 70]) : null;
+        const flags = def.block !== null ? FFLAGS[def.block * 6] & 1 : def.tint ? 1 : 0;
+        const tint = def.block !== null ? (TINT[def.block] ? blockTint(def.block) : null) : def.tint;
         const px = this.pixels.subarray(layer * 1024, layer * 1024 + 1024);
         mesh = { ...this.createMesh(spriteMesh(layer, px, flags, tint)), kind: 'sprite' };
       }

@@ -4,7 +4,7 @@
 // slots and double-clicking work the same way on all of them.
 import { maxStack, itemDef } from './items.js';
 import { sameItem } from './inventory.js';
-import { matchGrid, planRecipe, countItems, recipeFits, smeltResult, fuelTime } from './crafting.js';
+import { matchGrid, planRecipe, countItems, recipeFits, smeltsIn, fuelTime } from './crafting.js';
 
 class Slot {
   constructor(menu, arr, i, group, o = {}) {
@@ -405,7 +405,7 @@ export class FurnaceMenu extends Menu {
 
   targets(slot, s) {
     if (slot.group === 'storage' || slot.group === 'hotbar') {
-      if (smeltResult(s.id)) return [[[this.inputSlot], false]];
+      if (smeltsIn(s.id, this.furnace.only)) return [[[this.inputSlot], false]];
       if (fuelTime(s.id)) return [[[this.fuelSlot], false]];
       return super.targets(slot, s);
     }
@@ -415,9 +415,10 @@ export class FurnaceMenu extends Menu {
 
 // A chest, or a double chest: `parts` is one or two 27-slot arrays (the left half first).
 export class ChestMenu extends Menu {
-  constructor(game, parts) {
+  constructor(game, parts, title = null) {
     super(game, parts.length > 1 ? 'large_chest' : 'chest');
     this.parts = parts;
+    this.title = title ?? (parts.length > 1 ? 'Large Chest' : 'Chest');
     this.chestSlots = [];
     for (const arr of parts) arr.forEach((_, i) => this.chestSlots.push(this.add(arr, i, 'chest')));
     this.addPlayer();

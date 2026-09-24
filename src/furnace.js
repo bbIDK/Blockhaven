@@ -1,10 +1,16 @@
 // A furnace's contents and fire, ticked like the original: fuel burns for its burn time once there
 // is something it can smelt, and every 200 ticks of fire turn one input item into its result.
-import { smeltResult, fuelTime, COOK_TIME } from './crafting.js';
+import { smeltResult, smeltsIn, fuelTime, COOK_TIME } from './crafting.js';
 import { itemDef, maxStack } from './items.js';
+import { FURNACE_KINDS } from './blocks.js';
 
+// Smokers (food) and blast furnaces (ores and metal) work twice as fast, burning fuel twice as
+// fast too.
 export class Furnace {
-  constructor(saved = null) {
+  constructor(saved = null, kind = 'furnace') {
+    this.kind = FURNACE_KINDS[saved?.kind] ? saved.kind : FURNACE_KINDS[kind] ? kind : 'furnace';
+    this.speed = FURNACE_KINDS[this.kind].speed;
+    this.only = FURNACE_KINDS[this.kind].only;
     this.slots = [null, null, null]; // input, fuel, output
     this.burn = 0;    // ticks of fire left
     this.burnMax = 0; // burn time of the fuel item that lit it
@@ -23,7 +29,7 @@ export class Furnace {
   // Can the input be smelted, with room for the result?
   canSmelt() {
     const input = this.slots[0];
-    const out = input && smeltResult(input.id);
+    const out = input && smeltsIn(input.id, this.only) && smeltResult(input.id);
     if (!out) return false;
     const o = this.slots[2];
     return !o || (o.id === out && o.count < maxStack(out));
@@ -32,7 +38,7 @@ export class Furnace {
   // One game tick. Returns true when the contents of the slots changed.
   tick() {
     let changed = false;
-    if (this.burn > 0) this.burn--;
+    if (this.burn > 0) this.burn = Math.max(0, this.burn - this.speed);
     const fuel = this.slots[1];
     if (this.burn > 0 || (fuel && this.slots[0])) {
       const can = this.canSmelt();
@@ -45,7 +51,7 @@ export class Furnace {
         }
       }
       if (this.burn > 0 && can) {
-        if (++this.cook >= COOK_TIME) {
+        if ((this.cook += this.speed) >= COOK_TIME) {
           this.cook = 0;
           this.smelt();
           changed = true;
@@ -67,6 +73,6 @@ export class Furnace {
   }
 
   serialize() {
-    return { slots: this.slots.map((s) => (s ? { ...s } : null)), burn: this.burn, burnMax: this.burnMax, cook: this.cook };
+    return { kind: this.kind, slots: this.slots.map((s) => (s ? { ...s } : null)), burn: this.burn, burnMax: this.burnMax, cook: this.cook };
   }
 }

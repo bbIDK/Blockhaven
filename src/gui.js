@@ -7,7 +7,7 @@ import { $ } from './ui.js';
 import { iconFor } from './icons.js';
 import { ITEMS, I, itemDef, itemLabel, ARMOR_PIECES, attackDamage, attackSpeed } from './items.js';
 import { RECIPES, recipeFits, countItems, planRecipe, layout, COOK_TIME } from './crafting.js';
-import { CREATIVE_BLOCKS } from './blocks.js';
+import { CREATIVE_BLOCKS, BLOCKS } from './blocks.js';
 import { PlayerPreview } from './preview.js';
 
 // ---------------------------------------------------------------- sprites
@@ -90,6 +90,7 @@ const SIZES = {
 };
 const TABS = [
   { id: 'building', label: 'Building Blocks', icon: 'bricks' },
+  { id: 'colored', label: 'Colored Blocks', icon: 'cyan_wool' },
   { id: 'nature', label: 'Natural Blocks', icon: 'grass_block' },
   { id: 'utility', label: 'Functional Blocks', icon: 'crafting_table' },
   { id: 'equipment', label: 'Tools & Combat', icon: 'iron_sword' },
@@ -103,17 +104,15 @@ const BOOK_TABS = [
   { id: 'equipment', label: 'Equipment', icon: 'iron_sword' },
   { id: 'misc', label: 'Miscellaneous', icon: 'torch' },
 ];
-const NATURE = new Set(['grass_block', 'dirt', 'snowy_grass', 'sand', 'gravel', 'clay', 'oak_leaves', 'birch_leaves', 'spruce_leaves',
-  'coal_ore', 'iron_ore', 'gold_ore', 'diamond_ore', 'bedrock', 'water', 'lava', 'cactus', 'tall_grass', 'dandelion', 'poppy',
-  'cornflower', 'dead_bush', 'sugar_cane', 'red_mushroom', 'brown_mushroom', 'pumpkin', 'snow_block', 'ice', 'obsidian',
-  'oak_log', 'birch_log', 'spruce_log']);
-const UTILITY = new Set(['crafting_table', 'furnace', 'chest', 'bed', 'oak_door', 'ladder', 'oak_fence', 'torch', 'glowstone',
-  'jack_o_lantern', 'bookshelf', 'tnt']);
-
+const GEAR = new Set(['flint_and_steel', 'bow', 'arrow', 'shears', 'bucket', 'water_bucket', 'lava_bucket', 'compass', 'clock',
+  'fishing_rod', 'saddle']);
 function creativeTab(id) {
   const d = itemDef(id);
-  if (d.block !== null) return NATURE.has(d.name) ? 'nature' : UTILITY.has(d.name) ? 'utility' : 'building';
-  if (d.tool || d.weapon || d.armor || d.name === 'flint_and_steel') return 'equipment';
+  if (d.block !== null) {
+    const cat = BLOCKS[d.block].cat;
+    return cat === 'functional' ? 'utility' : cat ?? 'building';
+  }
+  if (d.tool || d.weapon || d.armor || GEAR.has(d.name)) return 'equipment';
   return 'materials';
 }
 const PALETTE = [...CREATIVE_BLOCKS, ...[...ITEMS.keys()].filter((id) => id >= 256)];
@@ -347,7 +346,7 @@ export class ContainerGUI {
       label('Inventory', win, 8, 72);
       player(83, 141);
     } else if (this.kind === 'furnace') {
-      label('Furnace', win, 88, 6, true);
+      label({ smoker: 'Smoker', blast_furnace: 'Blast Furnace' }[m.furnace?.kind] ?? 'Furnace', win, 88, 6, true);
       slot(m.inputSlot, 55, 16);
       const flame = div('mc-flame', win, 56, 36, 14, 14);
       flame.style.backgroundImage = `url(${S.flame})`;
@@ -363,7 +362,7 @@ export class ContainerGUI {
       player(83, 141);
     } else if (this.kind === 'chest' || this.kind === 'large_chest') {
       const rows = m.chestSlots.length / 9, y0 = (rows - 3) * 18;
-      label(rows > 3 ? 'Large Chest' : 'Chest', win, 8, 6);
+      label(m.title ?? (rows > 3 ? 'Large Chest' : 'Chest'), win, 8, 6);
       m.chestSlots.forEach((s, k) => slot(s, 7 + (k % 9) * 18, 17 + Math.floor(k / 9) * 18));
       label('Inventory', win, 8, 74 + y0);
       player(84 + y0, 142 + y0);
@@ -394,11 +393,11 @@ export class ContainerGUI {
   buildTabs() {
     const bar = div('mc-tabs', this.win, 0, -28, SIZES[this.kind][0], 28);
     TABS.forEach((t, i) => {
-      const el = div(`mc-tab${t.id === this.tab ? ' on' : ''}`, bar, i * 25 + (i > 4 ? 3 : 0), 0, 25, 30);
+      const el = div(`mc-tab${t.id === this.tab ? ' on' : ''}`, bar, i * 24 + (i > 5 ? 3 : 0), 0, 24, 30);
       el.dataset.act = 'tab';
       el.dataset.tab = t.id;
       el.dataset.tip = t.label;
-      image(iconFor(I[t.icon]), el, 4.5, 7, 16, 16);
+      image(iconFor(I[t.icon]), el, 4, 7, 16, 16);
     });
   }
 

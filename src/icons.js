@@ -1,8 +1,7 @@
 // Inventory icons, drawn once from the texture pixels: isometric cubes for blocks, flat sprites
 // for plants and items. Returned as data URLs for <img> tags.
 import { ITEMS } from './items.js';
-import { RENDER, R, TEXL, FFLAGS, TINT, TINT_RGB, F_TINT, F_OVERLAY, SHAPE, ICON_SHAPE, DOOR, CLIMB, SHAPE_KIND, BED } from './blocks.js';
-import { TEX } from './textures.js';
+import { RENDER, R, TEXL, FFLAGS, TINT, TINT_RGB, F_TINT, F_OVERLAY, SHAPE, ICON_SHAPE, spriteOf } from './blocks.js';
 
 const S = 64;
 const DEFAULT_GRASS = [124, 189, 84];
@@ -85,14 +84,6 @@ function drawBoxes(ctx, block, boxes) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 }
 
-// Flat inventory sprite used for doors, ladders and panes.
-function spriteLayer(block) {
-  if (DOOR[block]) return TEX.oak_door_item;
-  if (BED[block]) return TEX.bed_item;
-  if (CLIMB[block]) return TEX.ladder;
-  if (SHAPE_KIND[block] === 3) return TEX.glass;
-  return -1;
-}
 
 export function iconFor(id) {
   if (cache.has(id)) return cache.get(id);
@@ -103,15 +94,14 @@ export function iconFor(id) {
   const ctx = c.getContext('2d');
   ctx.imageSmoothingEnabled = false;
   const block = def.block;
-  if (block !== null && (RENDER[block] === R.CUBE || RENDER[block] === R.CACTUS || RENDER[block] === R.LIQUID)) {
+  const sprite = block !== null ? spriteOf(block) : -1;
+  if (block !== null && sprite < 0 && (RENDER[block] === R.CUBE || RENDER[block] === R.CACTUS || RENDER[block] === R.LIQUID)) {
     drawCube(ctx, block);
-  } else if (block !== null && RENDER[block] === R.MODEL && spriteLayer(block) < 0) {
+  } else if (block !== null && sprite < 0 && RENDER[block] === R.MODEL) {
     drawBoxes(ctx, block, ICON_SHAPE[block] ?? SHAPE[block]);
-  } else if (block !== null && RENDER[block] === R.MODEL) {
-    ctx.drawImage(layerImage(spriteLayer(block), null, null, 1), 4, 4, S - 8, S - 8);
   } else {
-    const layer = block !== null ? TEXL[block * 6] : def.tex;
-    const tint = block !== null && FFLAGS[block * 6] & F_TINT ? tintOf(block) : null;
+    const layer = sprite >= 0 ? sprite : block !== null ? TEXL[block * 6] : def.tex;
+    const tint = block !== null ? (FFLAGS[block * 6] & F_TINT ? tintOf(block) : null) : def.tint;
     ctx.drawImage(layerImage(layer, tint, null, 1), 4, 4, S - 8, S - 8);
   }
   const url = c.toDataURL();

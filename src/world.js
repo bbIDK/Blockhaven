@@ -4,8 +4,9 @@ import { CHUNK, HEIGHT, SECTIONS, chunkKey } from './config.js';
 import {
   B, BLOCKS, OPAQUE, SOLID, FILTER, EMIT, RENDER, R, SELECTABLE, REPLACEABLE, TORCH_LEAN, FACE_DIRS,
   WATERLIKE, isWater, waterLevel, lavaLevel, WATER_FLOW_BASE, LAVA_FLOW_BASE, SHAPE, shapeBoxes, DOOR, doorId, LADDER_SIDE, BED,
-  SPREAD, BURN,
+  SPREAD, BURN, CLIMB, VINE_SIDE, DOUBLE, GATE, gateId, TICKS, LOG, NATURAL_LEAVES,
 } from './blocks.js';
+import { randomTick, logRemoved, leafTick } from './growth.js';
 import { nextLevel } from './light.js';
 import { meshSection, P, P2, PADDED, ALL_OPEN } from './mesher.js';
 import { JobPool } from './workers.js';
@@ -83,7 +84,8 @@ function unionBounds(boxes) {
   return u.map((v) => v / 16);
 }
 
-const SOIL = new Set([B.grass_block, B.dirt, B.snowy_grass]);
+export const SOIL = new Set([B.grass_block, B.dirt, B.snowy_grass, B.coarse_dirt, B.podzol, B.farmland, B.farmland_moist]);
+const FARMLAND = new Set([B.farmland, B.farmland_moist]);
 const posKey = (x, y, z) => (x + 1048576) * 536870912 + (z + 1048576) * 256 + y;
 
 export class World {
@@ -183,9 +185,19 @@ export class World {
     if (!d) return false;
     const ly = d.upper ? y - 1 : y;
     if (!DOOR[this.getBlock(x, ly, z)] || !DOOR[this.getBlock(x, ly + 1, z)]) return false;
-    this.setBlock(x, ly, z, doorId(d.facing, !d.open, false), { updates: false });
-    this.setBlock(x, ly + 1, z, doorId(d.facing, !d.open, true), { updates: false });
+    this.setBlock(x, ly, z, doorId(d.facing, !d.open, false, d.base), { updates: false });
+    this.setBlock(x, ly + 1, z, doorId(d.facing, !d.open, true, d.base), { updates: false });
     return true;
+  }
+
+  // Opens or closes a fence gate; it opens away from `face` (the side it's opened from).
+  toggleGate(x, y, z, face) {
+    const g = GATE[this.getBlock(x, y, z)];
+    if (!g) return false;
+    let facing = g.facing;
+    // Opening from the other side swings the gate the other way.
+    if (!g.open && face !== undefined && (face === facing || face === (facing ^ 1))) facing = face ^ 1;
+    return this.setBlock(x, y, z, gateId(g.base, facing, !g.open));
   }
 
   // Highest block in a column that stops rain (solid blocks, leaves, liquids), or -1. Cached per
@@ -608,6 +620,7 @@ export class World {
     c.sections[y >> 4].count += (id !== 0) - (old !== 0);
     this.markDirty(x, y, z);
     this.relight(x, y, z, old, id);
+    if (LOG[old] && !LOG[id] && !this.remote) logRemoved(this, x, y, z);
     if (remesh) this.remeshAround(x, y, z);
     this.listener?.blockChanged?.(x, y, z, old, id);
     if (updates) this.neighborsChanged(x, y, z);
@@ -683,6 +696,17 @@ export class World {
     const below = this.getBlock(x, y - 1, z);
     switch (BLOCKS[id].support) {
       case 'soil': return SOIL.has(below);
+      case 'farmland': return FARMLAND.has(below);
+      case 'carpet': return below !== 0 && !WATERLIKE[below];
+      case 'water': return below === B.water;
+      case 'lantern': return !!SOLID[below];
+      case 'lantern_hanging': return !!SOLID[this.getBlock(x, y + 1, z)];
+      case 'double_lower': return SOIL.has(below) && DOUBLE[this.getBlock(x, y + 1, z)]?.other === id;
+      case 'double_upper': return DOUBLE[below]?.other === id;
+      case 'vine': {
+        const d = FACE_DIRS[VINE_SIDE[id]];
+        return !!OPAQUE[this.getBlock(x + d[0], y, z + d[2])] || this.getBlock(x, y + 1, z) === id;
+      }
       case 'sand': return below === B.sand || SOIL.has(below);
       case 'solid': return !!SOLID[below];
       case 'cane': return below === B.sugar_cane || below === B.sand || SOIL.has(below);
@@ -729,6 +753,7 @@ export class World {
       if (WATERLIKE[id] === 1) this.flowWater(t.x, t.y, t.z, id);
       else if (WATERLIKE[id] === 2) this.flowLava(t.x, t.y, t.z, id);
       else if (id === B.fire) this.fireTick(t.x, t.y, t.z);
+      else if (NATURAL_LEAVES[id]) leafTick(this, t.x, t.y, t.z, id);
       else if (BLOCKS[id]?.falls) this.fall(t.x, t.y, t.z, id);
     }
   }
@@ -832,6 +857,7 @@ export class World {
             const lx = r & 15, lz = (r >> 4) & 15, ly = (sy << 4) | (r >> 8);
             const id = c.blocks[(ly << 8) | (lz << 4) | lx];
             if (WATERLIKE[id] === 2) this.lavaSpark(cx * 16 + lx, ly, cz * 16 + lz);
+            else if (TICKS[id]) randomTick(this, cx * 16 + lx, ly, cz * 16 + lz, id);
           }
         }
       }
@@ -985,7 +1011,8 @@ export class World {
 
   // ------------------------------------------------------------------ queries
   // Voxel ray cast (Amanatides & Woo). Returns the first selectable block hit.
-  raycast(ox, oy, oz, dx, dy, dz, maxDist) {
+  // (`liquids`: water and lava stop the ray too, for buckets.)
+  raycast(ox, oy, oz, dx, dy, dz, maxDist, liquids = false) {
     let x = Math.floor(ox), y = Math.floor(oy), z = Math.floor(oz);
     const sx = dx > 0 ? 1 : -1, sy = dy > 0 ? 1 : -1, sz = dz > 0 ? 1 : -1;
     const tdx = dx ? Math.abs(1 / dx) : Infinity, tdy = dy ? Math.abs(1 / dy) : Infinity, tdz = dz ? Math.abs(1 / dz) : Infinity;
@@ -995,6 +1022,7 @@ export class World {
     let face = -1, t = 0;
     for (let steps = 0; steps < 256 && t <= maxDist; steps++) {
       const id = this.getBlock(x, y, z);
+      if (liquids && WATERLIKE[id]) return { x, y, z, id, face, t };
       if (id && SELECTABLE[id]) {
         if (RENDER[id] === R.MODEL) {
           let best = null;
@@ -1049,7 +1077,7 @@ export class World {
     for (let y = Math.floor(y0); y <= Math.floor(y1 - 1e-9); y++)
       for (let z = Math.floor(z0); z <= Math.floor(z1 - 1e-9); z++)
         for (let x = Math.floor(x0); x <= Math.floor(x1 - 1e-9); x++)
-          if (LADDER_SIDE[this.getBlock(x, y, z)] !== undefined) return true;
+          if (CLIMB[this.getBlock(x, y, z)]) return true;
     return false;
   }
 }

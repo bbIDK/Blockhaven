@@ -212,7 +212,9 @@ function crossQuad(buf, pts, layer, flags, sky, blk) {
   for (let k = 3; k >= 0; k--) buf.vertex(pts[k][0], pts[k][1], pts[k][2], UV[k][0], UV[k][1], layer, 6, flags, sky, blk, 255, tint[0], tint[1], tint[2]);
 }
 
-const JITTER = new Set([B.tall_grass, B.dandelion, B.poppy, B.cornflower, B.dead_bush, B.red_mushroom, B.brown_mushroom]);
+// Small plants are nudged off-centre a little so a meadow doesn't look planted in rows.
+const JITTER = new Set(['tall_grass', 'fern', 'dandelion', 'poppy', 'cornflower', 'dead_bush', 'red_mushroom', 'brown_mushroom', 'allium',
+  'azure_bluet', 'blue_orchid', 'oxeye_daisy', 'red_tulip', 'orange_tulip', 'white_tulip', 'pink_tulip', 'lily_of_the_valley'].map((n) => B[n]));
 
 function cross(buf, light, x, y, z, p, id, wx, wz) {
   const l = light[p];
@@ -288,7 +290,8 @@ function model(bufs, blocks, light, x, y, z, p, id) {
   const boxes = shapeBoxes(id, (f) => blocks[p + NOFF[f]]);
   if (!boxes) return;
   const own = light[p];
-  const flags = FFLAGS[id * 6] & FLAG_MASK & ~F_TINT;
+  const flags = FFLAGS[id * 6] & FLAG_MASK;
+  if (TINT[id] && flags & F_TINT) tintFor(id, (z << 4) | x, tint); else tint[0] = tint[1] = tint[2] = 255;
   for (const b of boxes) {
     for (let f = 0; f < 6; f++) {
       const edge = boundary(b, f);
@@ -302,10 +305,39 @@ function model(bufs, blocks, light, x, y, z, p, id) {
       buf.reserve(4);
       FACE_CORNERS[f].forEach((c, k) => {
         buf.vertex(x * U + (c[0] ? b[3] : b[0]) * 16, y * U + (c[1] ? b[4] : b[1]) * 16, z * U + (c[2] ? b[5] : b[2]) * 16,
-          UV[k][0] ? uv[2] : uv[0], UV[k][1] ? uv[3] : uv[1], layer, f, flags, sky, blk, 255, 255, 255, 255);
+          UV[k][0] ? uv[2] : uv[0], UV[k][1] ? uv[3] : uv[1], layer, f, flags, sky, blk, 255, tint[0], tint[1], tint[2]);
       });
     }
   }
+}
+
+// Campfire: four logs stacked crosswise, embers glowing on the lit ones, and a flame in the middle.
+const CAMPFIRE_LOGS = [[1, 0, 0, 5, 4, 16], [11, 0, 0, 15, 4, 16], [0, 3, 1, 16, 7, 5], [0, 3, 11, 16, 7, 15]];
+function campfire(bufs, other, blocks, light, x, y, z, p, id) {
+  const own = light[p];
+  const sky = (own >> 4) * 17, blk = Math.max(own & 15, 12) * 17;
+  CAMPFIRE_LOGS.forEach((b, i) => {
+    for (let f = 0; f < 6; f++) {
+      if (f === 3 && b[1] === 0 && OPAQUE[blocks[p - P2]]) continue;
+      // The logs lying along x show their bark on the long sides and their cut ends on the short.
+      const along = i < 2 ? 2 : 0;
+      const end = along === 2 ? f === 4 || f === 5 : f === 0 || f === 1;
+      const layer = end ? TEXL[B.oak_log * 6 + 2] : TEXL[id * 6];
+      const uv = boxFaceUV(b, f);
+      const buf = bufs[f];
+      buf.reserve(4);
+      FACE_CORNERS[f].forEach((c, k) => {
+        buf.vertex(x * U + (c[0] ? b[3] : b[0]) * 16, y * U + (c[1] ? b[4] : b[1]) * 16, z * U + (c[2] ? b[5] : b[2]) * 16,
+          UV[k][0] ? uv[2] : uv[0], UV[k][1] ? uv[3] : uv[1], layer, f, 0, sky, blk, 255, 255, 255, 255);
+      });
+    }
+  });
+  // The flame: two crossed sheets of the animated fire texture.
+  const layer = TEXL[B.fire * 6], flags = (FFLAGS[B.fire * 6] & FLAG_MASK) | F_ANIM;
+  tint[0] = tint[1] = tint[2] = 255;
+  const X = x * U, Y = y * U + 2 * 16, Z = z * U, H = Math.round(0.9 * U), a = Math.round(0.2 * U), b = U - a;
+  crossQuad(other, [[X + a, Y, Z + a], [X + b, Y, Z + b], [X + b, Y + H, Z + b], [X + a, Y + H, Z + a]], layer, flags, sky, 255);
+  crossQuad(other, [[X + a, Y, Z + b], [X + b, Y, Z + a], [X + b, Y + H, Z + a], [X + a, Y + H, Z + b]], layer, flags, sky, 255);
 }
 
 // blocks/light: padded 18^3 arrays; climate: 512 bytes for the chunk's columns.
@@ -335,6 +367,7 @@ export function meshSection(blocks, light, climate, cx, cz) {
         else if (rt === R.TORCH) torch(other, light, x, y, z, p, id);
         else if (rt === R.CACTUS) cactus(dirs, blocks, light, x, y, z, p, id);
         else if (rt === R.MODEL) model(dirs, blocks, light, x, y, z, p, id);
+        else if (rt === R.CAMPFIRE) campfire(dirs, other, blocks, light, x, y, z, p, id);
       }
     }
   }

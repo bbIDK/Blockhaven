@@ -10,7 +10,7 @@
 import { Link, RoomTransport, PeerTransport, PROTOCOL, cleanCode } from './net.js';
 import { RemotePlayer } from './avatars.js';
 import { encodeRLE16, decodeRLE16 } from './storage.js';
-import { BLOCKS, REPLACEABLE, CHEST, FURNACE_IDS } from './blocks.js';
+import { B, BLOCKS, REPLACEABLE, CHEST, FURNACE_IDS } from './blocks.js';
 import { itemDef, maxStack } from './items.js';
 import { chunkKey, HEIGHT, CHUNK_VOLUME } from './config.js';
 import { S_READY, rayBox } from './world.js';
@@ -501,7 +501,7 @@ export class HostSession extends Session {
     const at = parseKey(m.k), w = this.game.world;
     if (!at || !w) return;
     const id = w.getBlock(...at);
-    if (m.kind === 'chest' && CHEST[id] !== undefined) {
+    if (m.kind === 'chest' && (CHEST[id] !== undefined || id === B.barrel)) {
       if (!this.game.containers.has(m.k)) this.game.containers.set(m.k, new Array(27).fill(null));
       this.send(g.addr, { t: 'inv', k: m.k, s: this.game.containers.get(m.k) });
     } else if (m.kind === 'furnace' && FURNACE_IDS.has(id)) {

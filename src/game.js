@@ -1,7 +1,7 @@
 // Game state and the main loop: menus, loading, playing (movement, mining, building, survival),
 // saving, and the rotating title-screen panorama.
 import { Renderer } from './renderer.js';
-import { World } from './world.js';
+import { World, SOIL } from './world.js';
 import { Player } from './player.js';
 import { Input } from './input.js';
 import { UI, $ } from './ui.js';
@@ -23,8 +23,10 @@ import { makeEnvironment, updateEnvironment, clockText } from './sky.js';
 import {
   B, BLOCKS, BASE, SOLID, REPLACEABLE, WATERLIKE, FACING_VARIANTS, WALL_TORCH, FACE_DIRS,
   RENDER, R, SLAB, STAIRS, DOOR, doorId, CLIMB, LADDER, oppositeFace, CHEST, CHEST_PAIR, CHEST_RIGHT, chestId, chestHalf, BED, bedId,
-  FURNACE_IDS, furnaceVariant, isLitFurnace,
+  FURNACE_IDS, furnaceVariant, isLitFurnace, FURNACE_KIND, FURNACE_FRONT, LOG_AXES, GATE, gateId, VINE, DOUBLE, LEAVES_WOOD,
+  NATURAL_LEAVES, WOOD,
 } from './blocks.js';
+import { useItemOnBlock, useBucket, placeLilyPad } from './behaviors.js';
 import { ITEMS, I, itemDef, itemLabel, breakTime, dropsFor, attackDamage, attackSpeed } from './items.js';
 import { BIOME_NAMES } from './biomes.js';
 import { CHUNK_VOLUME, HEIGHT, TICKS_PER_DAY, SAVE_VERSION } from './config.js';
@@ -39,7 +41,6 @@ const DEFAULT_SETTINGS = {
   viewBobbing: !REDUCED_MOTION, clouds: true, invertMouse: false, showFps: false, recipeBook: true, guiScale: 0, mix: 3,
   name: '', blood: true,
 };
-const LOG_AXES = { [B.oak_log]: [100, 101], [B.birch_log]: [102, 103], [B.spruce_log]: [104, 105] };
 const FACE_NAMES = ['east (+X)', 'west (-X)', 'up', 'down', 'south (+Z)', 'north (-Z)'];
 const TIPS = [
   'Punch a tree to collect logs, then turn them into planks.',
@@ -64,7 +65,6 @@ const TIPS = [
 ];
 const CLOUD_HEIGHT = 108.5;
 // Which face of a lit furnace has the fire in it.
-const FURNACE_FRONT = Object.fromEntries(Object.entries(FACING_VARIANTS[218]).map(([face, id]) => [id, Number(face)]));
 const REACH = { creative: 5.5, survival: 4.6 };
 
 export class Game {
@@ -120,6 +120,7 @@ export class Game {
     this.exhaustion = 0;
     this.foodTimer = 0;
     this.eating = null;
+    this.effects = new Map();
     this.fire = 0;
     this.invuln = 0;
     this.sinceDamage = 0;
@@ -912,7 +913,7 @@ export class Game {
     const keys = halves.map(([hx, hy, hz]) => this.containerKey(hx, hy, hz));
     for (const k of keys) if (!this.containers.has(k)) this.containers.set(k, new Array(27).fill(null));
     this.audio.chest(true, at);
-    const menu = new ChestMenu(this, keys.map((k) => this.containers.get(k)));
+    const menu = new ChestMenu(this, keys.map((k) => this.containers.get(k)), id === B.barrel ? 'Barrel' : null);
     // A guest waits for the host to say what's inside before anything can be moved.
     if (this.net?.guest) { menu.waiting = new Set(keys); for (const k of keys) this.net.openContainer(k, 'chest'); }
     this.openMenu(menu, { key: keys[0], keys, at });
@@ -940,7 +941,7 @@ export class Game {
 
   furnaceAt(x, y, z) {
     const key = this.containerKey(x, y, z);
-    if (!this.furnaces.has(key)) this.furnaces.set(key, new Furnace());
+    if (!this.furnaces.has(key)) this.furnaces.set(key, new Furnace(null, FURNACE_KIND[this.world.getBlock(x, y, z)]));
     return this.furnaces.get(key);
   }
 
@@ -1027,7 +1028,9 @@ export class Game {
   // World listener: react to blocks that vanish (chests and furnaces spill their items), and pass
   // every change on in multiplayer.
   blockChanged(x, y, z, old, id) {
-    if ((CHEST[old] !== undefined && CHEST[id] === undefined) || (FURNACE_IDS.has(old) && !FURNACE_IDS.has(id))) this.dropContainer(x, y, z);
+    if ((CHEST[old] !== undefined && CHEST[id] === undefined) || (FURNACE_IDS.has(old) && !FURNACE_IDS.has(id)) || (old === B.barrel && id !== B.barrel)) {
+      this.dropContainer(x, y, z);
+    }
     // Half of a double chest gone: the other half is a single chest again. (A guest leaves that
     // to the host.)
     if (CHEST_PAIR[old] !== undefined && CHEST[id] === undefined && !(this.net?.guest && this.net.applying)) {
@@ -1070,6 +1073,23 @@ export class Game {
     this.exhaustion = 0;
     this.foodTimer = 0;
     this.eating = null;
+    this.effects = new Map();
+  }
+
+  // Status effects from food: regeneration heals, poison hurts (but never kills) and hunger
+  // makes you hungry faster. Level 2 works twice as fast.
+  addEffect(name, seconds, level = 1) {
+    const cur = this.effects.get(name);
+    if (!cur || cur.level < level || cur.ticks < seconds * 20) this.effects.set(name, { ticks: seconds * 20, level });
+  }
+  effectsTick() {
+    for (const [name, e] of this.effects) {
+      const every = Math.max(1, Math.floor((name === 'regeneration' ? 50 : 25) / 2 ** (e.level - 1)));
+      if (name === 'regeneration' && e.ticks % every === 0 && this.health < 20) this.health = Math.min(20, this.health + 1);
+      else if (name === 'poison' && e.ticks % every === 0 && this.health > 1) this.damage(1, 'You were poisoned', true);
+      else if (name === 'hunger') this.exhaust(0.005 * e.level);
+      if (--e.ticks <= 0) this.effects.delete(name);
+    }
   }
 
   respawn() {
@@ -1193,6 +1213,10 @@ export class Game {
       else { this.placeAt(Math.floor(p.x), Math.floor(p.z)); this.needsRespawnY = false; }
     }
     if (active) this.handleLook();
+    // Smoke drifting up from campfires.
+    if (!paused && this.campfires) {
+      for (const [x, y, z] of this.campfires) if (Math.random() < dt * 3) this.particles.smoke(x + 0.5, y + 0.8, z + 0.5, 1, 0.2, true);
+    }
     const move = active ? this.movementInput() : { forward: 0, right: 0, jump: false, sneak: false, sprint: false };
     p.frozen = !w.isLoaded(p.x, p.z) || this.needsRespawnY;
     if (!paused && this.state !== 'dead') {
@@ -1279,6 +1303,7 @@ export class Game {
   gameTick() {
     this.time++;
     this.attackTicks++;
+    this.world.daylight = this.env.daylight;
     this.world.tick();
     if (!this.net?.guest) this.world.randomTicks(this.players().map((t) => [Math.floor(t.x) >> 4, Math.floor(t.z) >> 4]));
     this.entities.tick();
@@ -1291,7 +1316,7 @@ export class Game {
         this.air--;
         if (this.air <= -20) { this.air = 0; this.damage(2, 'You drowned', true); }
       } else this.air = Math.min(300, this.air + 6);
-      const inFire = this.touching(B.fire);
+      const inFire = this.touching(B.fire) || this.touching(B.campfire);
       if (inFire && !p.inWater) { this.fire = Math.max(this.fire, 160); if (this.time % 10 === 0) this.damage(1, 'You went up in flames', true, null, true); }
       if (p.inLava) { this.fire = 300; if (this.time % 10 === 0) this.damage(4, 'You tried to swim in lava', true, null, true); }
       else if (this.fire > 0) {
@@ -1301,6 +1326,7 @@ export class Game {
       if (p.y < -40 && this.time % 10 === 0) this.damage(4, 'You fell out of the world', true);
       if (this.time % 10 === 0 && this.touchingCactus()) this.damage(1, 'You were pricked to death', false, null, true);
       this.hungerTick();
+      this.effectsTick();
       if (this.eating) this.eatTick();
     }
     if (this.time % 20 === 0) this.ambientTick();
@@ -1341,8 +1367,13 @@ export class Game {
     const def = itemDef(e.id);
     this.eating = null;
     if (this.inv.heldId !== e.id) return;
-    this.food = Math.min(20, this.food + def.food);
-    this.saturation = Math.min(this.food, this.saturation + def.food * (def.sat ?? 0.3) * 2);
+    if (def.food) {
+      this.food = Math.min(20, this.food + def.food);
+      this.saturation = Math.min(this.food, this.saturation + def.food * (def.sat ?? 0.3) * 2);
+    }
+    // Milk washes every effect away; some food brings one.
+    if (def.drink) this.effects.clear();
+    for (const [name, seconds, level, chance = 1] of def.effects ?? []) if (Math.random() < chance) this.addEffect(name, seconds, level);
     this.inv.consumeHeld();
     // Stew leaves its bowl behind.
     if (def.leftover) {
@@ -1357,6 +1388,12 @@ export class Game {
   // Now and then, lava close by bubbles and pops.
   ambientTick() {
     const p = this.player, w = this.world;
+    // Look around for campfires to send smoke up from (see updateGame).
+    this.campfires = [];
+    const px = Math.floor(p.x), py = Math.floor(p.y), pz = Math.floor(p.z);
+    for (let y = py - 6; y <= py + 6; y++) for (let z = pz - 16; z <= pz + 16; z++) for (let x = px - 16; x <= px + 16; x++) {
+      if (w.getBlock(x, y, z) === B.campfire) this.campfires.push([x, y, z]);
+    }
     if (Math.random() > 0.35) return;
     for (let i = 0; i < 16; i++) {
       const x = Math.floor(p.x + (Math.random() - 0.5) * 24), y = Math.floor(p.y + (Math.random() - 0.5) * 12);
@@ -1452,7 +1489,7 @@ export class Game {
     const usable = target && !target.entity && !target.player && !this.player.sneaking && this.interactive(target.id);
     // (On touch screens a tap starts eating and it carries on by itself.)
     const eatInput = use || useClick || (this.eating?.touch && !useClick);
-    if (hdef?.food && !this.creative && this.food < 20 && eatInput && !usable) {
+    if ((hdef?.food || hdef?.drink) && !this.creative && (this.food < 20 || hdef.always || hdef.drink) && eatInput && !usable) {
       if (!this.eating || this.eating.id !== held.id || this.eating.slot !== this.inv.selected) {
         this.eating = { id: held.id, slot: this.inv.selected, left: 32, touch: touchTap };
       }
@@ -1515,7 +1552,7 @@ export class Game {
 
   // Blocks you use rather than build against (sneak to build against them).
   interactive(id) {
-    return !!DOOR[id] || CHEST[id] !== undefined || !!BED[id] || id === B.crafting_table || FURNACE_IDS.has(id);
+    return !!DOOR[id] || CHEST[id] !== undefined || !!BED[id] || id === B.crafting_table || FURNACE_IDS.has(id) || !!GATE[id] || id === B.barrel;
   }
 
   breakTarget() {
@@ -1583,7 +1620,10 @@ export class Game {
       this.swingArm();
       if (DOOR[t.id]) {
         if (w.toggleDoor(t.x, t.y, t.z)) this.audio.door(!!DOOR[w.getBlock(t.x, t.y, t.z)]?.open, { x: t.x + 0.5, y: t.y + 0.5, z: t.z + 0.5 });
-      } else if (CHEST[t.id] !== undefined) this.openChestAt(t.x, t.y, t.z);
+      } else if (GATE[t.id]) {
+        if (w.toggleGate(t.x, t.y, t.z, this.lookFace())) this.audio.door(!!GATE[w.getBlock(t.x, t.y, t.z)]?.open, { x: t.x + 0.5, y: t.y + 0.5, z: t.z + 0.5 });
+      } else if (t.id === B.barrel) this.openChestAt(t.x, t.y, t.z);
+      else if (CHEST[t.id] !== undefined) this.openChestAt(t.x, t.y, t.z);
       else if (t.id === B.crafting_table) this.openCraftingTable(t.x, t.y, t.z);
       else if (FURNACE_IDS.has(t.id)) this.openFurnaceAt(t.x, t.y, t.z);
       else if (BED[t.id]) {
@@ -1592,7 +1632,10 @@ export class Game {
       }
       return;
     }
-    if (def?.food && !this.creative) return; // eaten by holding right click (see handleActions)
+    if ((def?.food || def?.drink) && !this.creative) return; // eaten by holding right click (see handleActions)
+    // Buckets and lily pads look for water along the line of sight themselves.
+    if (held && (held.id === I.bucket || held.id === I.water_bucket || held.id === I.lava_bucket)) { if (!repeat) useBucket(this, held); return; }
+    if (held?.id === B.lily_pad) { if (!repeat) placeLilyPad(this); return; }
     // Right-clicking with armor puts it on (swapping with what you were wearing).
     if (def?.armor) {
       if (repeat) return;
@@ -1625,6 +1668,7 @@ export class Game {
       this.swingArm();
       return;
     }
+    if (held && useItemOnBlock(this, held, def, t)) return;
     if (!held || def.block === null || def.block === undefined || t.face < 0) return;
     const blockId = def.block, face = t.face;
     // Where on the clicked block the crosshair landed (for top/bottom halves).
@@ -1665,9 +1709,26 @@ export class Game {
       id = upperHalf ? slab.topId : slab.bottom;
     } else if (STAIRS[blockId]) {
       id = STAIRS[blockId].ids[this.lookFace()][upperHalf ? 1 : 0];
+    } else if (blockId === B.vine) {
+      if (face === 2 || face === 3) return;
+      id = VINE[oppositeFace(face)];
     } else if (CLIMB[blockId]) {
       if (face === 2 || face === 3) return;
       id = LADDER[oppositeFace(face)];
+    } else if (blockId === B.lantern) {
+      if (face === 3) id = B.lantern_hanging;
+    } else if (GATE[blockId]) {
+      id = gateId(blockId, this.lookFace(), false);
+    } else if (NATURAL_LEAVES[blockId]) {
+      id = WOOD[LEAVES_WOOD[blockId]].placedLeaves;
+    } else if (DOUBLE[blockId]) {
+      const top = DOUBLE[blockId].other, above = w.getBlock(x, y + 1, z);
+      if (y + 1 >= HEIGHT || (above && !REPLACEABLE[above]) || !SOIL.has(w.getBlock(x, y - 1, z))) return;
+      w.setBlock(x, y, z, blockId, { updates: false });
+      w.setBlock(x, y + 1, z, top, { updates: false });
+      w.neighborsChanged(x, y, z);
+      this.afterPlace(blockId, x, y, z);
+      return;
     } else if (CHEST[blockId] !== undefined) {
       id = chestId(oppositeFace(this.lookFace()));
     } else if (BED[blockId]) {
@@ -1688,9 +1749,9 @@ export class Game {
       if (y + 1 >= HEIGHT || (above && !REPLACEABLE[above]) || !SOLID[w.getBlock(x, y - 1, z)]) return;
       if (p.intersectsBlock(x, y, z) || p.intersectsBlock(x, y + 1, z) || this.entities.blocksPlacement(x, y, z) ||
           this.entities.blocksPlacement(x, y + 1, z)) return;
-      const facing = this.lookFace();
-      w.setBlock(x, y, z, doorId(facing, false, false), { updates: false });
-      w.setBlock(x, y + 1, z, doorId(facing, false, true), { updates: false });
+      const facing = this.lookFace(), base = DOOR[blockId].base;
+      w.setBlock(x, y, z, doorId(facing, false, false, base), { updates: false });
+      w.setBlock(x, y + 1, z, doorId(facing, false, true, base), { updates: false });
       w.neighborsChanged(x, y, z);
       w.neighborsChanged(x, y + 1, z);
       this.afterPlace(id, x, y, z);
@@ -1756,6 +1817,12 @@ export class Game {
     const left = this.creative ? 0 : this.inv.add(id, count, dmg);
     if (left < count) { this.audio.pop(); this.invChanged(); }
     return left;
+  }
+
+  // World listener: leaves withered away once their tree was cut down.
+  leavesDecayed(x, y, z, id) {
+    this.particles.burst(x, y, z, id);
+    for (const d of dropsFor(id, 0)) this.entities.spawnItem(x + 0.5, y + 0.3, z + 0.5, d.id, d.count);
   }
 
   // World listener: a block was knocked out by a neighbour change (plants, torches, water flow).

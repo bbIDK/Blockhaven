@@ -54,14 +54,17 @@ export class Particles {
   }
 
   // Grey puffs that drift up and shrink away.
-  smoke(x, y, z, n = 8, spread = 0.4) {
+  // (`plume`: the tall, slow column of smoke over a campfire.)
+  smoke(x, y, z, n = 8, spread = 0.4, plume = false) {
     for (let i = 0; i < n; i++) {
       if (this.list.length >= MAX) this.list.shift();
-      const g = 190 + Math.floor(Math.random() * 60);
+      const g = plume ? 150 + Math.floor(Math.random() * 50) : 190 + Math.floor(Math.random() * 60);
       this.list.push({
         x: x + (Math.random() - 0.5) * spread * 2, y: y + (Math.random() - 0.5) * spread, z: z + (Math.random() - 0.5) * spread * 2,
-        vx: (Math.random() - 0.5) * 0.8, vy: 0.3 + Math.random() * 0.7, vz: (Math.random() - 0.5) * 0.8,
-        life: 0.5 + Math.random() * 0.6, age: 0, size: 0.16 + Math.random() * 0.16,
+        vx: (Math.random() - 0.5) * (plume ? 0.25 : 0.8), vy: plume ? 1.1 + Math.random() * 0.7 : 0.3 + Math.random() * 0.7,
+        vz: (Math.random() - 0.5) * (plume ? 0.25 : 0.8),
+        life: plume ? 3 + Math.random() * 2 : 0.5 + Math.random() * 0.6, age: 0,
+        size: plume ? 0.3 + Math.random() * 0.2 : 0.16 + Math.random() * 0.16,
         layer: TEX.smoke, flags: 0, tint: [g, g, g], u: 0, v: 0, smoke: true,
       });
     }
