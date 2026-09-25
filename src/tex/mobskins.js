@@ -562,3 +562,249 @@ for (const mat of Object.keys(ARMOR_MATERIALS)) {
   skin(`armor_${mat}`, (sk) => armorSkin(sk, mat));
   skin(`armor_${mat}_legs`, (sk) => leggingsSkin(sk, mat));
 }
+
+// ---------------------------------------------------------------- more creatures
+// Donkeys: grey-brown, with a pale muzzle and belly, a dark mane and stripe, and long ears lined
+// with dark fur.
+skin('donkey', (sk) => {
+  const coat = ramp(0x8a7a68, 5, 0.1, 6), mane = ramp(0x3a3028, 4, 0.1, 6), pale = ramp(0xcfc4b4, 3, 0.05, 4);
+  fur(sk, 'donkey', ['body', 'head', 'legFR'], coat, { cell: 2, grain: 0.3 });
+  const [, head, earR, , maneCube] = cubesOf('donkey', 'head');
+  sk.box(maneCube, (face, r) => sk.fill(r, mane, { cell: 1, cy: 2 }));
+  sk.box(earR, (face, r) => { sk.fill(r, coat.slice(0, 3), { cell: 1 }); if (face === 'front') for (let y = 1; y < r[3]; y++) at(sk, r, 1, y, mane[0]); });
+  for (const cube of cubesOf('donkey', 'tail')) sk.box(cube, (face, r) => sk.fill(r, mane, { cell: 1, cy: 3 }));
+  const R = reg(head);
+  at(sk, R.right, 5, 1, 0x141010); at(sk, R.right, 6, 1, 0x2a2420);
+  at(sk, R.left, 1, 1, 0x2a2420); at(sk, R.left, 2, 1, 0x141010);
+  for (const face of ['front', 'bottom']) sk.fill([R[face][0], R[face][1] + R[face][3] - 3, R[face][2], 3], pale, { cell: 1 });
+  at(sk, R.front, 1, 3, 0x2a2018); at(sk, R.front, 4, 3, 0x2a2018);
+  const body = reg(cubesOf('donkey', 'body')[0]);
+  sk.fill(body.bottom, pale, { cell: 2 });
+  for (let y = 0; y < body.top[3]; y++) { at(sk, body.top, 4, y, mane[1]); at(sk, body.top, 5, y, mane[2]); }
+  feet(sk, 'donkey', ['legFR'], 2, [0x2a2420, 0x3a322c]);
+});
+
+// Iron golems: iron plates gone rusty in places, vines hanging off them, a heavy brow over
+// deep-set eyes, and a long nose.
+const IRON_G = [0x7a746c, 0x948e84, 0xaaa398, 0xbdb6aa, 0xcfc8bc];
+const RUST = [0x7a4a2a, 0x8e5a34, 0x6a3e22];
+const VINE_G = [0x2e6a22, 0x3a7a2a, 0x4a8c34];
+function ironPlates(sk, bones, wanted) {
+  fur(sk, 'iron_golem', bones, IRON_G, { cell: 2, grain: 0.35 }, wanted);
+  each(sk, 'iron_golem', bones, (face, r) => {
+    // Rivets and seams, rust spots.
+    for (let k = 0; k < Math.ceil(r[2] * r[3] / 30); k++) { const x = sk.ri(r[2]), y = sk.ri(r[3]); at(sk, r, x, y, RUST[sk.ri(3)]); if (sk.r() < 0.5) at(sk, r, Math.min(r[2] - 1, x + 1), y, RUST[0]); }
+    if (face !== 'top' && face !== 'bottom') for (let y = 3; y < r[3]; y += 7) for (let x = 0; x < r[2]; x++) if ((x + y) % 5 === 0) at(sk, r, x, y, IRON_G[0]);
+  }, wanted);
+}
+skin('iron_golem', (sk) => {
+  ironPlates(sk, ['body', 'head'], null);
+  // Vines trailing down the chest and back from the shoulders.
+  const chest = reg(cubesOf('iron_golem', 'body')[0]);
+  for (const face of ['front', 'back', 'top']) {
+    const r = chest[face];
+    for (const x0 of [2, 7, 13]) {
+      const len = face === 'top' ? r[3] : 3 + sk.ri(6);
+      for (let y = 0; y < len; y++) { at(sk, r, x0 + (y % 3 === 2 ? 1 : 0), y, VINE_G[sk.ri(3)]); if (sk.r() < 0.3) at(sk, r, x0 + 1, y, VINE_G[0]); }
+    }
+  }
+  const [head, nose] = cubesOf('iron_golem', 'head');
+  const f = reg(head).front;
+  // A heavy brow, eyes in shadow with a red glint, a crack across the cheek.
+  for (let x = 0; x < 8; x++) { at(sk, f, x, 3, IRON_G[1]); at(sk, f, x, 4, IRON_G[0]); }
+  sk.paint(f[0], f[1] + 5, ['.kr..rk.', '.kk..kk.'], { k: 0x1a1612, r: 0x8a1a10 });
+  for (let x = 2; x < 6; x++) at(sk, f, x, 9, 0x4a4640);
+  at(sk, f, 6, 7, IRON_G[0]); at(sk, f, 7, 8, IRON_G[0]);
+  sk.box(nose, (face, r) => sk.fill(r, IRON_G.slice(0, 4), { cell: 1 }));
+});
+skin('iron_golem_limbs', (sk) => {
+  ironPlates(sk, ['rightArm', 'rightLeg'], 'limbs');
+  // The fists darker; a vine wound round the arm.
+  const arm = reg(cubesOf('iron_golem', 'rightArm')[0]);
+  for (const face of SIDES) { tone(sk, [arm[face][0], arm[face][1] + arm[face][3] - 5, arm[face][2], 5], 0.8); }
+  for (const face of SIDES) for (let y = 4; y < 20; y++) if ((y + SIDES.indexOf(face) * 3) % 6 < 2) at(sk, arm[face], (y * 2) % arm[face][2], y, VINE_G[sk.ri(3)]);
+});
+
+// Cats: a tabby, a black cat, a white one, a Siamese, a calico and a ginger. Stripes across the
+// back, a pink nose and bright eyes.
+const CATS = [
+  ['tabby', 0x9a7a5a, 0x5a4230, 0xd8c8b0, 0x60c040],
+  ['black', 0x222024, 0x141216, 0x3a3638, 0xd8c030],
+  ['white', 0xece8e2, 0xd8d2ca, 0xf8f6f2, 0x40a0e0],
+  ['siamese', 0xe6d8c0, 0x4a3a30, 0xf2e8d8, 0x3080e0],
+  ['calico', 0xf0ece4, 0x2a2420, 0xf8f6f2, 0xd0a020],
+  ['ginger', 0xd88a40, 0xa05a20, 0xf0d0a8, 0x60c040],
+];
+for (const [name, base, dark, belly, eyeC] of CATS) {
+  skin(`cat_${name}`, (sk) => {
+    const pal = ramp(base, 4, 0.08, 6);
+    fur(sk, 'cat', ['body', 'head', 'legFR', 'legBR', 'tail'], pal, { cell: 1, grain: 0.3 });
+    const body = reg(cubesOf('cat', 'body')[0]);
+    if (name === 'tabby' || name === 'ginger') {
+      for (const face of ['top', 'right', 'left']) {
+        const r = body[face], along = face === 'top' ? r[3] : r[2];
+        for (let i = 1; i < along; i += 3) {
+          if (face === 'top') row(sk, r, i, dark);
+          else for (let y = 0; y < Math.min(3, r[3]); y++) at(sk, r, i, y, dark);
+        }
+      }
+    }
+    if (name === 'calico') {
+      for (const face of ['top', 'right', 'left', 'front']) {
+        const r = body[face], n = sk.field(r[2], r[3], 3, 3, 0.2);
+        for (let y = 0; y < r[3]; y++) for (let x = 0; x < r[2]; x++) { const v = n[y * r[2] + x]; if (v > 0.66) at(sk, r, x, y, 0xd07a30); else if (v < 0.3) at(sk, r, x, y, dark); }
+      }
+    }
+    sk.fill(body.bottom, ramp(belly, 3, 0.05, 4), { cell: 1 });
+    const [head, earR, earL, nose] = cubesOf('cat', 'head');
+    const H = reg(head);
+    if (name === 'siamese') {
+      // Dark points: face, ears, paws and tail.
+      sk.fill([H.front[0], H.front[1] + 1, H.front[2], H.front[3] - 1], ramp(dark, 3, 0.08, 4), { cell: 1 });
+      for (const c of [earR, earL]) sk.box(c, (face, r) => sk.fill(r, [dark, mix(dark, 0, 0.2)], { cell: 1 }));
+      for (const cube of cubesOf('cat', 'tail')) sk.box(cube, (face, r) => sk.fill(r, [dark, mix(dark, 0xffffff, 0.1)], { cell: 1 }));
+      feet(sk, 'cat', ['legFR', 'legBR'], 3, [dark, mix(dark, 0, 0.2)]);
+    } else {
+      for (const c of [earR, earL]) sk.box(c, (face, r) => { sk.fill(r, pal.slice(0, 3), { cell: 1 }); if (face === 'front') at(sk, r, 0, 0, 0xd08a8a); });
+      if (name === 'tabby' || name === 'ginger') { at(sk, H.front, 2, 0, dark); at(sk, H.front, 2, 1, dark); at(sk, H.front, 1, 0, dark); at(sk, H.front, 3, 0, dark); }
+    }
+    at(sk, H.front, 0, 1, eyeC); at(sk, H.front, 1, 1, 0x101010); at(sk, H.front, 3, 1, 0x101010); at(sk, H.front, 4, 1, eyeC);
+    sk.box(nose, (face, r) => { sk.fill(r, ramp(belly, 3, 0.05, 4), { cell: 1 }); if (face === 'front') { at(sk, r, 1, 0, 0xe07a8a); at(sk, r, 1, 1, 0x5a3a3a); } });
+  });
+}
+
+// Llamas: thick wool in four colours, a darker muzzle and dark eyes.
+const LLAMAS = [['creamy', 0xe2cfa4], ['white', 0xeae8e2], ['brown', 0x8a5a34], ['gray', 0x8e8a84]];
+for (const [name, c] of LLAMAS) {
+  skin(`llama_${name}`, (sk) => {
+    const wool = ramp(c, 5, 0.08, 6);
+    fur(sk, 'llama', ['body', 'head', 'legFR'], wool, { cell: 1, grain: 0.45 });
+    const [neck, head, earR, earL] = cubesOf('llama', 'head');
+    const H = reg(head);
+    sk.fill([H.front[0], H.front[1] + 2, H.front[2], H.front[3] - 2], ramp(mix(c, 0x3a2a1a, 0.35), 3, 0.06, 4), { cell: 1 });
+    at(sk, H.front, 2, 3, 0x1a1210); at(sk, H.front, 5, 3, 0x1a1210);
+    for (const side of ['right', 'left']) { const r = H[side]; at(sk, r, side === 'right' ? 7 : 2, 1, 0x141010); }
+    for (const e of [earR, earL]) sk.box(e, (face, r) => sk.fill(r, wool.slice(0, 3), { cell: 1 }));
+    void neck;
+    feet(sk, 'llama', ['legFR'], 2, [0x3a3028, 0x4a4036]);
+  });
+}
+
+// Turtles: a green shell of plates (darker seams, lighter rims), olive skin with pale spots.
+skin('turtle', (sk) => {
+  const shell = [0x2e5a24, 0x3a6c2c, 0x467e34, 0x55903e], skinC = ramp(0x6a8a4a, 4, 0.08, 6);
+  fur(sk, 'turtle', ['head', 'legFR', 'legBR'], skinC, { cell: 1, grain: 0.3 });
+  each(sk, 'turtle', ['head', 'legFR', 'legBR'], (face, r) => { for (let k = 0; k < 3; k++) at(sk, r, sk.ri(r[2]), sk.ri(r[3]), 0xb8c890); });
+  const S = reg(cubesOf('turtle', 'body')[0]);
+  sk.fill(S.top, shell, { cell: 2, grain: 0.3 });
+  // Plates: a grid of rounded seams across the top.
+  for (let y = 0; y < S.top[3]; y++) for (let x = 0; x < S.top[2]; x++) if (y % 5 === 0 || (x + (Math.floor(y / 5) % 2) * 2) % 5 === 0) at(sk, S.top, x, y, 0x24481c);
+  for (const face of SIDES) sk.fill(S[face], [0x4a7a36, 0x568a40, 0x62964a], { cell: 1 });
+  sk.fill(S.bottom, [0xc8c890, 0xd4d49c, 0xdedea8], { cell: 2 });
+  const f = reg(cubesOf('turtle', 'head')[0]).front;
+  at(sk, f, 1, 1, 0x101010); at(sk, f, 4, 1, 0x101010); for (let x = 1; x < 5; x++) at(sk, f, x, 3, 0x3a4a2a);
+});
+
+// Bats: dark brown fur, black leathery wings with finger bones, tiny eyes.
+skin('bat', (sk) => {
+  fur(sk, 'bat', ['body', 'head'], [0x2a2018, 0x33271e, 0x3c2e24, 0x46362a], { cell: 1, grain: 0.35 });
+  each(sk, 'bat', ['wingR'], (face, r) => {
+    sk.fill(r, [0x1a1410, 0x221a14, 0x2a2018], { cell: 1, grain: 0.3 });
+    for (let x = 1; x < r[2]; x += 3) for (let y = 0; y < r[3]; y++) if (y <= x * 0.8) at(sk, r, x, y, 0x3a2e24);
+  });
+  const f = reg(cubesOf('bat', 'head')[0]).front;
+  at(sk, f, 0, 1, 0x0a0806); at(sk, f, 3, 1, 0x0a0806); at(sk, f, 1, 3, 0x7a4a3a); at(sk, f, 2, 3, 0x7a4a3a);
+});
+
+// Parrots: five colourings, each with a bright head, contrasting wings and a hooked grey beak.
+const PARROTS = [['red', 0xd02a1e, 0x2a5ac8, 0xf0c020], ['blue', 0x2a6ae0, 0x1a3a90, 0xf0d040], ['green', 0x3aa82a, 0x2a70c0, 0xe03020],
+  ['cyan', 0x3ac0d8, 0xf0d040, 0x2a6ae0], ['gray', 0xa8a8a8, 0x6a6a6a, 0xe8e8e8]];
+for (const [name, body, wing, crest] of PARROTS) {
+  skin(`parrot_${name}`, (sk) => {
+    fur(sk, 'parrot', ['body', 'head', 'tail'], ramp(body, 4, 0.08, 6), { cell: 1, grain: 0.3 });
+    each(sk, 'parrot', ['wingR'], (face, r) => sk.fill(r, ramp(wing, 3, 0.08, 6), { cell: 1 }));
+    each(sk, 'parrot', ['legR'], (face, r) => sk.fill(r, [0x5a5a5a, 0x6a6a6a], { cell: 1 }));
+    const [head, beak, crestC] = cubesOf('parrot', 'head');
+    sk.box(beak, (face, r) => sk.fill(r, [0x3a3a3a, 0x4a4a4a, 0x5a5a5a], { cell: 1 }));
+    sk.box(crestC, (face, r) => sk.fill(r, ramp(crest, 3, 0.06, 4), { cell: 1 }));
+    const H = reg(head);
+    for (const side of ['right', 'left']) { const r = H[side]; at(sk, r, 1, 1, 0xf8f8f8); at(sk, r, side === 'right' ? 0 : 2, 1, 0x101010); }
+    for (const cube of cubesOf('parrot', 'tail')) sk.box(cube, (face, r) => { for (let y = r[3] - 2; y < r[3]; y++) row(sk, r, y, wing); });
+  });
+}
+
+// Phantoms: a dark blue-grey hide, pale bones through thin wing membranes, and glowing green
+// eyes.
+skin('phantom', (sk) => {
+  const hide = [0x2a3050, 0x343c60, 0x3e4870, 0x4a5480];
+  fur(sk, 'phantom', ['body', 'head', 'tail'], hide, { cell: 1, grain: 0.35 });
+  each(sk, 'phantom', ['wingR'], (face, r) => {
+    sk.fill(r, [0x3a4468, 0x445078, 0x505c88], { cell: 2, grain: 0.3 });
+    if (face === 'top' || face === 'bottom') for (let x = 0; x < r[2]; x++) { at(sk, r, x, 1, 0x8a92a8); if (x % 5 === 0) for (let y = 1; y < r[3]; y++) at(sk, r, x, y, 0x6a7290); }
+  });
+  const f = reg(cubesOf('phantom', 'head')[0]).front;
+  for (const x of [1, 2, 4, 5]) at(sk, f, x, 1, x === 2 || x === 4 ? 0xb0ff80 : 0x60d040);
+});
+
+// Witches: a pale green face with a long warty nose, a purple robe, and a tall black hat with a
+// green buckle.
+skin('witch', (sk) => {
+  const face = [0x9aa87a, 0xa6b486, 0xb0be90, 0xbac89a], robe = [0x3a2248, 0x442a54, 0x4e3260, 0x583a6c], hat = [0x1a1a1e, 0x222226, 0x2a2a30];
+  const W = RIGS.witch.bones;
+  const [head, nose, brim, mid, top, tip] = W.head.cubes;
+  sk.box(head, (f, r) => sk.fill(r, face, { cell: 2, grain: 0.2 }));
+  const F = reg(head).front;
+  sk.fill([F[0], F[1], 8, 2], [0x2a2a2a, 0x3a3a3a], { cell: 1 });
+  at(sk, F, 1, 4, 0xf2f2f2); at(sk, F, 2, 4, 0x6a2a8a); at(sk, F, 5, 4, 0x6a2a8a); at(sk, F, 6, 4, 0xf2f2f2);
+  for (let x = 2; x < 6; x++) at(sk, F, x, 8, 0x5a4a3a);
+  sk.box(nose, (f, r) => sk.fill(r, face, { cell: 1 }));
+  at(sk, reg(nose).front, 1, 2, 0x5a6a3a);
+  for (const c of [brim, mid, top, tip]) sk.box(c, (f, r) => sk.fill(r, hat, { cell: 1, grain: 0.25 }));
+  const band = reg(mid);
+  for (const s of SIDES) row(sk, band[s], band[s][3] - 1, 0x3a6a2a);
+  at(sk, band.front, 2, 3, 0x9ad060); at(sk, band.front, 3, 3, 0x9ad060);
+  for (const b of ['body', 'rightArm', 'rightLeg']) each(sk, 'witch', [b], (f, r) => sk.fill(r, robe, { cell: 1, grain: 0.3 }));
+  each(sk, 'witch', ['rightArm'], (f, r) => { if (f !== 'top') sk.fill([r[0], r[1] + r[3] - 2, r[2], 2], face, { cell: 1 }); });
+  const body = reg(W.body.cubes[0]);
+  for (let y = 0; y < 12; y++) at(sk, body.front, 3 + (y % 2), y, 0x6a4a7a);
+  each(sk, 'witch', ['rightLeg'], (f, r) => { if (f !== 'top') sk.fill([r[0], r[1] + r[3] - 2, r[2], 2], [0x2a1a10, 0x3a2418], { cell: 1 }); });
+});
+
+// Cave spiders: a spider's pattern in dark teal, with red eyes.
+skin('cave_spider', (sk) => {
+  fur(sk, 'spider', ['head', 'neck', 'body', 'legR0'], [0x0a2228, 0x0e2c32, 0x12363c, 0x184046, 0x1e4a50], { cell: 1, grain: 0.45 });
+  each(sk, 'spider', ['body'], (face, r) => {
+    if (face !== 'top') return;
+    for (let y = 1; y < r[3] - 1; y += 2) for (let x = 3; x < 7; x++) if ((x + y) % 3) at(sk, r, x, y, 0x2a6a70);
+  });
+  const f = reg(cubesOf('spider', 'head')[0]).front;
+  sk.paint(f[0], f[1], ['........', '.r....r.', '.RR..RR.', '..rRRr..', '........', '........', '..k..k..', '........'],
+    { r: 0x8a0a0a, R: 0xd82020, k: 0x06100e });
+});
+
+// The drowned: a zombie long in the water, blue-green and bloated, in rags with kelp caught on
+// them, and eyes that glow.
+skin('drowned', (sk) => {
+  zombieSkin(sk, [0x3a7070, 0x447c7a, 0x4e8884, 0x58948e], [0x2a5a5a, 0x306464, 0x366e6e, 0x3c7878], [0x3a4a6a, 0x425274, 0x4a5a7e], 0x60f0e0);
+  for (const R of [HR.body, HR.rLeg, HR.lLeg]) {
+    for (const side of SIDES) {
+      const r = R[side];
+      for (let k = 0; k < 2; k++) { const x = sk.ri(r[2]); for (let y = sk.ri(4); y < r[3]; y++) if (sk.r() < 0.8) at(sk, r, x, y, [0x2a6a2a, 0x347a30][y % 2]); }
+    }
+  }
+});
+
+// Dolphins: blue-grey above and pale below, with a darker fin and flippers, and a friendly eye.
+skin('dolphin', (sk) => {
+  const back = [0x4a5a6e, 0x546478, 0x5e6e82, 0x68788c], belly = [0xc0c8d0, 0xcad2da, 0xd4dce2];
+  fur(sk, 'dolphin', ['body', 'head', 'tail', 'finR'], back, { cell: 2, grain: 0.25 });
+  for (const cube of [...cubesOf('dolphin', 'body'), ...cubesOf('dolphin', 'head'), ...cubesOf('dolphin', 'tail')]) {
+    const R = reg(cube);
+    sk.fill(R.bottom, belly, { cell: 2 });
+    for (const side of ['right', 'left', 'front', 'back']) if (R[side][3] > 3) sk.fill([R[side][0], R[side][1] + R[side][3] - 2, R[side][2], 2], belly, { cell: 1 });
+  }
+  const H = reg(cubesOf('dolphin', 'head')[0]);
+  at(sk, H.right, 1, 3, 0x101418); at(sk, H.left, 4, 3, 0x101418);
+  const beak = reg(cubesOf('dolphin', 'head')[1]);
+  for (const side of SIDES) sk.fill(beak[side], belly, { cell: 1 });
+});

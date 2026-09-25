@@ -6,6 +6,7 @@
 import { $ } from './ui.js';
 import { iconFor, setGlint } from './icons.js';
 import { shiny, enchantLabel } from './enchanting.js';
+import { POTIONS, EFFECTS, potionLine } from './potions.js';
 import { ITEMS, I, itemDef, itemLabel, ARMOR_PIECES, attackDamage, attackSpeed } from './items.js';
 import { RECIPES, recipeFits, countItems, planRecipe, layout, COOK_TIME } from './crafting.js';
 import { CREATIVE_BLOCKS, BLOCKS } from './blocks.js';
@@ -235,6 +236,9 @@ export function tooltipLines(stack) {
     if (d.armor.toughness) lines.push(`<span class="t-blue">+${d.armor.toughness} Armor Toughness</span>`);
   } else if (d.food) {
     lines.push(`<span class="t-gray">Restores ${d.food / 2} hunger</span>`);
+  } else if (d.potion || d.splash) {
+    const name = d.potion ?? d.splash;
+    lines.push(`<span class="${EFFECTS[POTIONS[name].effect].bad ? 't-red' : 't-blue'}">${escape(potionLine(name, !!d.splash))}</span>`);
   }
   if (d.durability && stack.dmg) lines.push(`<span class="t-gray">Durability: ${d.durability - stack.dmg} / ${d.durability}</span>`);
   return lines;

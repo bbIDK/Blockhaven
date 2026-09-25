@@ -47,12 +47,12 @@ export const RIGS = {
       head: { pivot: [0, 9, -3], cubes: [c([-4, 5, -11], [8, 8, 8], [32, 4])] },
       neck: { pivot: [0, 9, 0], cubes: [c([-3, 6, -3], [6, 6, 6], [0, 0])] },
       body: { pivot: [0, 9, 9], cubes: [c([-5, 5, 3], [10, 8, 12], [0, 12])] },
-      // Eight legs, splayed out and fanned forward and back.
+      // Eight legs, splayed out: the back pair fanned backwards, the front pair forwards.
       ...Object.fromEntries([2, 1, 0, -1].flatMap((z, i) => {
         const fan = [0.785, 0.39, -0.39, -0.785][i], drop = [0.62, 0.5, 0.5, 0.62][i];
         return [
-          [`legR${i}`, { pivot: [4, 9, z], cubes: [c([4, 8, z - 1], [16, 2, 2], [18, 0])], rest: [0, fan, -drop] }],
-          [`legL${i}`, { pivot: [-4, 9, z], cubes: [c([-20, 8, z - 1], [16, 2, 2], [18, 0], { mirror: true })], rest: [0, -fan, drop] }],
+          [`legR${i}`, { pivot: [4, 9, z], cubes: [c([4, 8, z - 1], [16, 2, 2], [18, 0])], rest: [0, -fan, -drop] }],
+          [`legL${i}`, { pivot: [-4, 9, z], cubes: [c([-20, 8, z - 1], [16, 2, 2], [18, 0], { mirror: true })], rest: [0, fan, drop] }],
         ];
       })),
     },
@@ -204,6 +204,141 @@ export const RIGS = {
         cubes: [c([-5, 21, -5], [10, 1, 10], [0, 0], { skin: 'saddle', inflate: 0.3 }), c([-1.5, 22, -5], [3, 2, 2], [40, 0], { skin: 'saddle' }),
           c([5, 14, -1], [1, 6, 2], [50, 0], { skin: 'saddle' }), c([-6, 14, -1], [1, 6, 2], [50, 0], { skin: 'saddle', mirror: true })],
       },
+    },
+  },
+  // Donkeys: a horse's build, smaller (see MOBS), with long ears.
+  donkey: {
+    bones: {
+      body: { pivot: [0, 16, 0], cubes: [c([-5, 11, -11], [10, 10, 22], [0, 32])] },
+      head: {
+        pivot: [0, 19, -9], rest: [-0.52, 0, 0],
+        cubes: [c([-2, 17, -12], [4, 12, 7], [0, 0]), c([-3, 24, -19], [6, 5, 8], [22, 0]), c([-2.5, 29, -13], [2, 7, 1], [50, 0]),
+          c([0.5, 29, -13], [2, 7, 1], [50, 0], { mirror: true }), c([-1, 17, -5], [2, 12, 2], [56, 0])],
+      },
+      legFR: { pivot: [3, 11, -8], cubes: [c([1, 0, -10], [4, 11, 4], [22, 13])] },
+      legFL: { pivot: [-3, 11, -8], cubes: [c([-5, 0, -10], [4, 11, 4], [22, 13], { mirror: true })] },
+      legBR: { pivot: [3, 11, 8], cubes: [c([1, 0, 6], [4, 11, 4], [22, 13])] },
+      legBL: { pivot: [-3, 11, 8], cubes: [c([-5, 0, 6], [4, 11, 4], [22, 13], { mirror: true })] },
+      tail: { pivot: [0, 20, 11], cubes: [c([-1.5, 8, 11], [3, 12, 3], [38, 13])], rest: [-0.45, 0, 0] },
+      saddle: {
+        pivot: [0, 16, 0], saddle: true, follows: 'body',
+        cubes: [c([-5, 21, -5], [10, 1, 10], [0, 0], { skin: 'saddle', inflate: 0.3 }), c([-1.5, 22, -5], [3, 2, 2], [40, 0], { skin: 'saddle' }),
+          c([5, 14, -1], [1, 6, 2], [50, 0], { skin: 'saddle' }), c([-6, 14, -1], [1, 6, 2], [50, 0], { skin: 'saddle', mirror: true })],
+      },
+    },
+  },
+  // Iron golems: a broad chest over a narrow waist, a long nose, and arms down to their knees
+  // (arms and legs come from a second skin, `limbs`).
+  iron_golem: {
+    bones: {
+      body: { pivot: [0, 19, 0], cubes: [c([-9, 19, -5.5], [18, 12, 11], [0, 18]), c([-4.5, 14, -3], [9, 5, 6], [0, 41])] },
+      head: { pivot: [0, 31, -2], cubes: [c([-4, 31, -7.5], [8, 10, 8], [0, 0]), c([-1, 32, -9.5], [2, 4, 2], [32, 0])] },
+      rightArm: { pivot: [11, 29, 0], cubes: [c([9, 1, -3], [4, 30, 6], [0, 0], { skin: 'limbs' })] },
+      leftArm: { pivot: [-11, 29, 0], cubes: [c([-13, 1, -3], [4, 30, 6], [0, 0], { skin: 'limbs', mirror: true })] },
+      rightLeg: { pivot: [4, 14, 0], cubes: [c([1, 0, -2.5], [6, 14, 5], [24, 0], { skin: 'limbs' })] },
+      leftLeg: { pivot: [-4, 14, 0], cubes: [c([-7, 0, -2.5], [6, 14, 5], [24, 0], { skin: 'limbs', mirror: true })] },
+    },
+  },
+  // Cats: long and low, a small head with pointed ears, and a tail held up behind.
+  cat: {
+    bones: {
+      body: { pivot: [0, 7, 0], cubes: [c([-2, 5, -7], [4, 5, 14], [20, 0])] },
+      head: {
+        pivot: [0, 9, -7],
+        cubes: [c([-2.5, 7, -12], [5, 4, 5], [0, 0]), c([-2, 11, -9], [1, 1, 2], [0, 10]), c([1, 11, -9], [1, 1, 2], [6, 10]),
+          c([-1.5, 7, -13], [3, 2, 1], [0, 24])],
+      },
+      legFR: { pivot: [1, 5, -5], cubes: [c([0, 0, -6], [2, 5, 2], [8, 13])] },
+      legFL: { pivot: [-1, 5, -5], cubes: [c([-2, 0, -6], [2, 5, 2], [8, 13], { mirror: true })] },
+      legBR: { pivot: [1, 5, 5], cubes: [c([0, 0, 4], [2, 5, 2], [40, 20])] },
+      legBL: { pivot: [-1, 5, 5], cubes: [c([-2, 0, 4], [2, 5, 2], [40, 20], { mirror: true })] },
+      tail: { pivot: [0, 9, 7], cubes: [c([-0.5, 1, 6.5], [1, 8, 1], [0, 15])], rest: [-0.9, 0, 0] },
+    },
+  },
+  // Llamas: a woolly body, a long upright neck, a blunt muzzle and tall ears.
+  llama: {
+    bones: {
+      body: { pivot: [0, 17, 0], cubes: [c([-6, 12, -8], [12, 10, 16], [0, 38])] },
+      head: {
+        pivot: [0, 20, -7],
+        cubes: [c([-3, 18, -10], [6, 14, 6], [0, 0]), c([-4, 28, -14], [8, 6, 10], [24, 0]), c([-4, 34, -8], [3, 3, 2], [0, 20]),
+          c([1, 34, -8], [3, 3, 2], [10, 20])],
+      },
+      legFR: { pivot: [3.5, 12, -6], cubes: [c([1.5, 0, -8], [4, 12, 4], [36, 16])] },
+      legFL: { pivot: [-3.5, 12, -6], cubes: [c([-5.5, 0, -8], [4, 12, 4], [36, 16], { mirror: true })] },
+      legBR: { pivot: [3.5, 12, 6], cubes: [c([1.5, 0, 4], [4, 12, 4], [36, 16])] },
+      legBL: { pivot: [-3.5, 12, 6], cubes: [c([-5.5, 0, 4], [4, 12, 4], [36, 16], { mirror: true })] },
+    },
+  },
+  // Turtles: a wide, low shell, a head poking out in front and four paddling flippers.
+  turtle: {
+    bones: {
+      body: { pivot: [0, 4, 0], cubes: [c([-7, 1, -8], [14, 5, 16], [0, 0])] },
+      head: { pivot: [0, 3, -8], cubes: [c([-3, 1, -13], [6, 5, 6], [0, 21])] },
+      legFR: { pivot: [7, 2, -5], cubes: [c([7, 2, -7.5], [10, 1, 5], [24, 21])] },
+      legFL: { pivot: [-7, 2, -5], cubes: [c([-17, 2, -7.5], [10, 1, 5], [24, 21], { mirror: true })] },
+      legBR: { pivot: [5, 2, 7], cubes: [c([3, 2, 7], [5, 1, 8], [24, 28])] },
+      legBL: { pivot: [-5, 2, 7], cubes: [c([-8, 2, 7], [5, 1, 8], [24, 28], { mirror: true })] },
+    },
+  },
+  // Bats: a furry body and head with big ears, and two wide leathery wings.
+  bat: {
+    bones: {
+      body: { pivot: [0, 4, 0], cubes: [c([-1.5, 1, -1], [3, 5, 2], [0, 8])] },
+      head: { pivot: [0, 6, 0], cubes: [c([-2, 6, -2], [4, 4, 4], [0, 0]), c([-2, 10, -1], [1, 2, 1], [16, 0]), c([1, 10, -1], [1, 2, 1], [20, 0])] },
+      wingR: { pivot: [1.5, 5, 0], cubes: [c([1.5, 5, -3], [8, 0, 6], [0, 16])] },
+      wingL: { pivot: [-1.5, 5, 0], cubes: [c([-9.5, 5, -3], [8, 0, 6], [0, 16], { mirror: true })] },
+    },
+  },
+  // Parrots: upright, a hooked beak and a crest, wings folded at the sides and a long tail.
+  parrot: {
+    bones: {
+      body: { pivot: [0, 5, 0], cubes: [c([-1.5, 3, -2], [3, 6, 4], [0, 6])] },
+      head: {
+        pivot: [0, 9, -1],
+        cubes: [c([-1.5, 9, -2.5], [3, 3, 3], [0, 0]), c([-0.5, 9.5, -4.5], [1, 2, 2], [12, 0]), c([0, 12, -1.5], [0, 3, 3], [18, 0])],
+      },
+      wingR: { pivot: [1.5, 8, 0], cubes: [c([1.5, 4, -2], [1, 5, 4], [14, 6])] },
+      wingL: { pivot: [-1.5, 8, 0], cubes: [c([-2.5, 4, -2], [1, 5, 4], [14, 6], { mirror: true })] },
+      tail: { pivot: [0, 3.5, 2], cubes: [c([-1.5, -1, 1.5], [3, 5, 1], [24, 0])], rest: [-0.9, 0, 0] },
+      legR: { pivot: [0.7, 3, 0], cubes: [c([0.2, 1, -0.5], [1, 2, 1], [24, 8])] },
+      legL: { pivot: [-0.7, 3, 0], cubes: [c([-1.2, 1, -0.5], [1, 2, 1], [24, 8], { mirror: true })] },
+    },
+  },
+  // Phantoms: flat and wide-winged, gliding, with a two-part tail.
+  phantom: {
+    bones: {
+      body: { pivot: [0, 3, 0], cubes: [c([-2.5, 1.5, -4.5], [5, 3, 9], [0, 8])] },
+      head: { pivot: [0, 3, -4.5], cubes: [c([-3.5, 1.5, -9.5], [7, 3, 5], [0, 0])] },
+      wingR: { pivot: [2.5, 4, 0], cubes: [c([2.5, 3, -4.5], [19, 2, 9], [0, 20])] },
+      wingL: { pivot: [-2.5, 4, 0], cubes: [c([-21.5, 3, -4.5], [19, 2, 9], [0, 20], { mirror: true })] },
+      tail: { pivot: [0, 3, 4.5], cubes: [c([-1.5, 2, 4.5], [3, 2, 6], [32, 0]), c([-0.5, 2.5, 10.5], [1, 1, 6], [32, 8])] },
+    },
+  },
+  // Witches: a person with a long nose, and a tall crooked hat.
+  witch: {
+    bones: {
+      head: {
+        pivot: [0, 24, 0],
+        cubes: [c([-4, 24, -4], [8, 10, 8], [0, 0]), c([-1, 25, -6], [2, 4, 2], [32, 0]), c([-5, 33, -5], [10, 2, 10], [0, 46]),
+          c([-3, 35, -3], [6, 4, 6], [40, 46]), c([-2, 39, -1.5], [4, 4, 4], [40, 56]), c([-0.5, 43, 0], [1, 2, 1], [56, 56])],
+      },
+      body: { pivot: [0, 24, 0], cubes: [c([-4, 12, -3], [8, 12, 6], [16, 20])] },
+      rightArm: { pivot: [5, 22, 0], cubes: [c([4, 12, -2], [4, 12, 4], [44, 20])] },
+      leftArm: { pivot: [-5, 22, 0], cubes: [c([-8, 12, -2], [4, 12, 4], [44, 20], { mirror: true })] },
+      rightLeg: { pivot: [2, 12, 0], cubes: [c([0, 0, -2], [4, 12, 4], [0, 20])] },
+      leftLeg: { pivot: [-2, 12, 0], cubes: [c([-4, 0, -2], [4, 12, 4], [0, 20], { mirror: true })] },
+    },
+    hand: { bone: 'rightArm', at: [6, 13, -1] },
+  },
+  // Dolphins: a sleek body, a beak, a fin on the back, flippers and a fluked tail.
+  dolphin: {
+    bones: {
+      body: { pivot: [0, 3.5, 0], cubes: [c([-4, 0, -6.5], [8, 7, 13], [0, 13]), c([-0.5, 7, -1], [1, 4, 5], [40, 0])] },
+      head: { pivot: [0, 3.5, -6.5], cubes: [c([-4, 0, -12.5], [8, 7, 6], [0, 0]), c([-1, 0, -16.5], [2, 2, 4], [28, 0])] },
+      finR: { pivot: [4, 4, -3], cubes: [c([4, 0, -4], [1, 4, 7], [42, 13])], rest: [0, 0, 0.9] },
+      finL: { pivot: [-4, 4, -3], cubes: [c([-5, 0, -4], [1, 4, 7], [42, 13], { mirror: true })], rest: [0, 0, -0.9] },
+      tail: { pivot: [0, 3, 6.5], cubes: [c([-2, 1, 6.5], [4, 5, 11], [0, 33]), c([-5, 3, 16.5], [10, 1, 6], [0, 49])] },
     },
   },
   polar_bear: {

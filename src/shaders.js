@@ -96,6 +96,7 @@ uniform vec2 u_fog;
 uniform float u_alphaCut;
 uniform float u_alphaMul;
 uniform float u_gamma;
+uniform float u_night;
 uniform vec4 u_lightOverride;
 uniform vec4 u_colorMul;
 uniform float u_hurt;
@@ -214,6 +215,8 @@ void main() {
     float blk = curve(lv.y);
     light = max(u_skyLight * sky, vec3(1.0, 0.86, 0.66) * blk);
     light = pow(max(light, vec3(0.0)), vec3(u_gamma)) * 0.96 + 0.04;
+    // Night Vision: everything as bright as in full daylight.
+    light = max(light, vec3(0.92 * u_night));
   }
   float ao = 0.5 + 0.5 * v_light.z;
   col *= light * ao * v_shade;
@@ -247,6 +250,7 @@ void main() {
     amb *= vec3(0.4, 0.62, 0.8);
   }
   vec3 light = direct + amb + torch + vec3(0.012, 0.013, 0.02) + (1.0 - u_gamma) * 0.12;
+  light = max(light, vec3(0.8 * u_night));
   float ao = 0.35 + 0.65 * v_light.z;
   light *= mix(ao, 1.0, sun * 0.35);
   if ((v_flags & 32u) != 0u) light = vec3(1.8);

@@ -70,6 +70,28 @@ export class Particles {
     }
   }
 
+  // A potion bursting: drops of its colour spraying out in a ring.
+  splash(x, y, z, colour, n = 28) {
+    const tint = [(colour >> 16) & 255, (colour >> 8) & 255, colour & 255];
+    for (let i = 0; i < n; i++) {
+      if (this.list.length >= MAX) this.list.shift();
+      const a = Math.random() * Math.PI * 2, s = 1.2 + Math.random() * 2.6;
+      this.list.push({
+        x, y: y + 0.15, z, vx: Math.cos(a) * s, vy: 1.2 + Math.random() * 2.8, vz: Math.sin(a) * s, life: 0.5 + Math.random() * 0.7, age: 0,
+        size: 0.045 + Math.random() * 0.05, layer: TEX.spark, flags: 1, tint, u: Math.floor(Math.random() * 12), v: Math.floor(Math.random() * 12),
+      });
+    }
+    // ...and wisps of it curling up for a moment after.
+    for (let i = 0; i < 10; i++) {
+      if (this.list.length >= MAX) this.list.shift();
+      const a = Math.random() * Math.PI * 2, r = Math.random() * 1.6;
+      this.list.push({
+        x: x + Math.cos(a) * r, y: y + 0.2 + Math.random() * 0.6, z: z + Math.sin(a) * r, vx: Math.cos(a) * 0.3, vy: 0.4 + Math.random() * 0.6, vz: Math.sin(a) * 0.3,
+        life: 1 + Math.random() * 0.8, age: 0, size: 0.1 + Math.random() * 0.1, layer: TEX.smoke, flags: 1, tint, u: 0, v: 0, smoke: true,
+      });
+    }
+  }
+
   // A glyph of the enchanting table's writing drifting from a bookshelf to the table, in an arc.
   glyph(x, y, z, tx, ty, tz) {
     if (this.list.length >= MAX) this.list.shift();

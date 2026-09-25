@@ -19,8 +19,9 @@ const MATERIALS = {
 
 // Mob sound fallbacks: hurt reuses the idle sound pitched up, death reuses hurt pitched down.
 const MOB_PITCH = { chicken: 1.1 };
-const BORROW = { goat: ['sheep', 0.78], bear: ['cow', 0.55], husk: ['zombie', 0.8] };
-const SYNTH = new Set(['rabbit', 'fox', 'wolf', 'fish', 'skeleton', 'creeper', 'spider', 'enderman', 'slime', 'horse']);
+const BORROW = { goat: ['sheep', 0.78], bear: ['cow', 0.55], husk: ['zombie', 0.8], llama: ['sheep', 0.62] };
+const SYNTH = new Set(['rabbit', 'fox', 'wolf', 'fish', 'skeleton', 'creeper', 'spider', 'enderman', 'slime', 'horse', 'golem', 'cat', 'bat',
+  'donkey', 'witch', 'phantom', 'parrot', 'dolphin', 'turtle']);
 
 // A low thump layered under breaking and placing, by block material: [start Hz, end Hz, gain].
 const THUMP = {
@@ -286,6 +287,10 @@ export class Audio {
     this.play('furnace.crackle', { volume: 0.7, at, vary: 0.05, offset: Math.random() * list[0].duration, length: len });
   }
   eat() { this.play('player.eat', { volume: 0.45 + Math.random() * 0.35, vary: 0.15 }); }
+  // Gulps: a potion or a bucket of milk going down.
+  drink() { this.hiss(null, { f: 380 + Math.random() * 120, q: 3, time: 0.12, volume: 0.35, sweep: 220, type: 'lowpass' }); this.thump(null, 160, 90, 0.18, 0.06); }
+  // A thrown bottle breaking.
+  smash(at) { this.play('glass.break', { volume: 0.8, vary: 0.1, at }); }
   burp() { this.play('player.burp', { volume: 0.45, vary: 0.05 }); }
   splash(strength = 1, at = null) { this.play('water.splash', { volume: Math.min(1, 0.35 + strength * 0.35), at }); }
   swim() { this.play('water.swim', { volume: 0.18 }); }
@@ -433,6 +438,78 @@ export class Audio {
       case 'rabbit':
         if (hurt || death) this.tone(at, { type: 'sine', f0: 1800 * r(), f1: 1200, time: 0.12, volume: 0.2 });
         break;
+      case 'golem':
+        // Iron: a heavy thud when it swings, a clang when it's struck, a long ringing groan as it falls.
+        if (event === 'attack') { this.thump(at, 140, 45, 0.5, 0.18); this.hiss(at, { f: 700, q: 0.8, time: 0.25, volume: 0.25, sweep: 250, type: 'lowpass' }); }
+        else if (hurt || death) {
+          this.tone(at, { type: 'square', f0: 330 * r(), f1: 300, time: death ? 1.1 : 0.35, volume: 0.07, filter: { f: 1300, q: 8 } });
+          this.tone(at, { type: 'triangle', f0: 165 * r(), f1: death ? 90 : 150, time: death ? 1.2 : 0.4, volume: 0.16 });
+          this.thump(at, 200, 70, 0.4, 0.12);
+        }
+        break;
+      case 'cat': {
+        // A meow: rising then falling through two vowel formants (a yowl when hurt).
+        const f = (hurt || death ? 700 : 520) * pitch * r(), time = death ? 0.9 : hurt ? 0.35 : 0.55;
+        for (const [ff, q] of [[900, 4], [2400, 6]]) {
+          this.tone(at, { type: 'sawtooth', f0: f, f1: f * (death ? 0.45 : 0.8), time, volume: 0.06, attack: 0.06, filter: { f: ff, q }, vibrato: f * 0.02, vibratoRate: 6 });
+          this.tone(at, { type: 'sawtooth', f0: f * 1.35, f1: f * 1.2, time: time * 0.4, volume: 0.05, attack: 0.05, filter: { f: ff * 1.2, q } });
+        }
+        break;
+      }
+      case 'bat':
+        // Squeaks, too high for comfort.
+        for (let i = 0; i < (hurt || death ? 2 : 3); i++) this.tone(at, { type: 'sine', f0: 4200 * r(), f1: 3200, time: 0.05, volume: 0.07, delay: i * 0.08 });
+        break;
+      case 'donkey': {
+        // Hee-haw: a buzzy two-note bray, twice over.
+        const f = 480 * pitch * r();
+        const n = hurt || death ? 1 : 2;
+        for (let i = 0; i < n; i++) {
+          for (const [ff, q] of [[800, 3], [1900, 5]]) {
+            this.tone(at, { type: 'sawtooth', f0: f * 1.6, f1: f * 1.5, time: 0.28, volume: 0.07, attack: 0.04, filter: { f: ff, q }, delay: i * 0.72 });
+            this.tone(at, { type: 'sawtooth', f0: f * 0.6, f1: f * (death ? 0.3 : 0.5), time: 0.4, volume: 0.08, attack: 0.05, filter: { f: ff * 0.7, q }, delay: i * 0.72 + 0.3 });
+          }
+        }
+        break;
+      }
+      case 'witch':
+        if (event === 'drink') for (let i = 0; i < 3; i++) this.hiss(at, { f: 400, q: 2, time: 0.09, volume: 0.3, delay: i * 0.18, type: 'lowpass' });
+        else {
+          // A cackle: quick breathy syllables, falling in pitch.
+          const n = hurt ? 2 : death ? 5 : 4, f = (hurt || death ? 420 : 330) * pitch * r();
+          for (let i = 0; i < n; i++) {
+            for (const [ff, q] of [[700, 4], [1500, 6]]) {
+              this.tone(at, { type: 'sawtooth', f0: f * (1 - i * 0.06), f1: f * (0.8 - i * 0.06), time: 0.1, volume: 0.07, attack: 0.015, filter: { f: ff, q }, delay: i * 0.12 });
+            }
+            this.hiss(at, { f: 2000, q: 1, time: 0.08, volume: 0.05, delay: i * 0.12 });
+          }
+        }
+        break;
+      case 'phantom':
+        // A thin screech, sweeping down (and up again as it dives).
+        if (event === 'swoop') {
+          this.hiss(at, { f: 800, q: 0.7, time: 0.8, volume: 0.25, sweep: 3000 });
+          this.tone(at, { type: 'sawtooth', f0: 900, f1: 1900, time: 0.6, volume: 0.05, filter: { f: 2200, q: 5 }, vibrato: 60, vibratoRate: 20 });
+        } else {
+          const f = 1500 * pitch * r();
+          this.tone(at, { type: 'sawtooth', f0: f, f1: f * (death ? 0.3 : 0.6), time: death ? 1 : 0.5, volume: 0.06, filter: { f: 2400, q: 4 }, vibrato: 40, vibratoRate: 25 });
+          this.tone(at, { type: 'square', f0: f * 0.51, f1: f * 0.3, time: 0.4, volume: 0.03, filter: { f: 1200, q: 3 } });
+        }
+        break;
+      case 'parrot':
+        if (hurt || death) this.tone(at, { type: 'sawtooth', f0: 1400 * r(), f1: 700, time: 0.2, volume: 0.08, filter: { f: 2200, q: 3 } });
+        else for (let i = 0; i < 2; i++) this.tone(at, { type: 'sine', f0: (1800 + Math.random() * 900) * pitch, f1: 2600 + Math.random() * 900, time: 0.09, volume: 0.1, delay: i * 0.12 });
+        break;
+      case 'dolphin':
+        if (hurt || death) this.tone(at, { type: 'triangle', f0: 2400 * r(), f1: 1200, time: 0.25, volume: 0.12 });
+        else {
+          for (let i = 0; i < 6; i++) this.hiss(at, { f: 3500 + Math.random() * 2000, q: 4, time: 0.012, volume: 0.25, delay: i * 0.035 });
+          this.tone(at, { type: 'sine', f0: 1500 * r(), f1: 2800, time: 0.35, volume: 0.09, vibrato: 90, vibratoRate: 11, delay: 0.1 });
+        }
+        break;
+      case 'turtle':
+        if (hurt || death) this.tone(at, { type: 'triangle', f0: 200 * r(), f1: death ? 80 : 130, time: death ? 0.6 : 0.2, volume: 0.2 });
+        break;
       case 'fish':
         if (hurt || death) this.hiss(at, { f: 900, q: 1, time: 0.08, volume: 0.25, type: 'lowpass' });
         break;
@@ -449,7 +526,10 @@ export class Audio {
         attack: 0.04, filter: { f: ff, q }, vibrato: 3, vibratoRate: 7 });
     }
   }
-  bow(at) { this.hiss(at, { f: 1500, q: 1.5, time: 0.12, volume: 0.35, sweep: 600 }); this.tone(at, { type: 'triangle', f0: 180, f1: 90, time: 0.15, volume: 0.2 }); }
+  bow(at, light = false) {
+    this.hiss(at, { f: 1500, q: 1.5, time: 0.12, volume: light ? 0.2 : 0.35, sweep: 600 });
+    if (!light) this.tone(at, { type: 'triangle', f0: 180, f1: 90, time: 0.15, volume: 0.2 });
+  }
   arrowHit(flesh, at) {
     if (flesh) this.thump(at, 220, 90, 0.4, 0.08);
     else { this.tick(at, 0.5, 1800); this.thump(at, 400, 200, 0.25, 0.05); }

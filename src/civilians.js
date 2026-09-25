@@ -29,13 +29,15 @@ export const ROLES = {
   butcher: { title: 'Butcher', held: 'iron_axe', trades: [['buy', 'cooked_porkchop', 5, 2], ['buy', 'cooked_beef', 5, 2], ['buy', 'cooked_chicken', 6, 2],
     ['buy', 'cooked_mutton', 5, 2], ['buy', 'rabbit_stew', 1, 2], ['sell', 'raw_porkchop', 7, 1], ['sell', 'raw_beef', 7, 1], ['sell', 'raw_chicken', 10, 1],
     ['sell', 'raw_mutton', 7, 1], ['sell', 'raw_rabbit', 5, 1], ['sell', 'coal', 12, 1]] },
-  hunter: { title: 'Hunter', held: 'bow', trades: [['buy', 'bow', 1, 4], ['buy', 'arrow', 16, 2], ['buy', 'leather_helmet', 1, 3], ['buy', 'leather_chestplate', 1, 5],
+  hunter: { title: 'Hunter', held: 'bow', trades: [['buy', 'bow', 1, 4], ['buy', 'arrow', 16, 2], ['buy', 'potion_night_vision', 1, 6], ['buy', 'potion_swiftness', 1, 6],
+    ['buy', 'leather_helmet', 1, 3], ['buy', 'leather_chestplate', 1, 5],
     ['buy', 'leather_leggings', 1, 4], ['buy', 'leather_boots', 1, 3], ['buy', 'saddle', 1, 8], ['sell', 'leather', 6, 1], ['sell', 'rabbit_hide', 9, 1],
     ['sell', 'feather', 16, 1], ['sell', 'string', 14, 1], ['sell', 'flint', 10, 1]] },
   librarian: { title: 'Librarian', held: 'book', trades: [['buy', 'enchanted_book', 1, 0], ['buy', 'enchanted_book', 1, 0], ['buy', 'book', 1, 2],
     ['buy', 'bookshelf', 1, 6], ['buy', 'enchanting_table', 1, 20], ['buy', 'compass', 1, 5], ['buy', 'clock', 1, 5], ['buy', 'paper', 12, 1],
     ['buy', 'lantern', 1, 3], ['buy', 'lapis_lazuli', 4, 2], ['sell', 'paper', 24, 1], ['sell', 'book', 4, 1], ['sell', 'lapis_lazuli', 8, 1]] },
   innkeeper: { title: 'Innkeeper', held: null, trades: [['buy', 'mushroom_stew', 1, 2], ['buy', 'bread', 4, 2], ['buy', 'cooked_salmon', 3, 2],
+    ['buy', 'potion_healing', 1, 5], ['buy', 'potion_regeneration', 1, 7], ['buy', 'potion_strength', 1, 8],
     ['buy', 'pumpkin_pie', 2, 2], ['buy', 'cookie', 8, 1], ['buy', 'bed', 1, 5], ['sell', 'wheat', 20, 1], ['sell', 'sugar_cane', 20, 1],
     ['sell', 'red_mushroom', 8, 1], ['sell', 'brown_mushroom', 8, 1]] },
   baker: { title: 'Baker', held: 'bread', trades: [['buy', 'bread', 4, 2], ['buy', 'cookie', 10, 1], ['buy', 'pumpkin_pie', 2, 2], ['buy', 'golden_carrot', 3, 3],
@@ -46,9 +48,11 @@ export const ROLES = {
   shepherd: { title: 'Shepherd', held: 'shears', trades: [['buy', 'white_wool', 2, 1], ['buy', 'bed', 1, 3], ['buy', 'shears', 1, 2], ['buy', 'white_carpet', 4, 1],
     ['buy', 'red_wool', 2, 1], ['buy', 'blue_wool', 2, 1], ['sell', 'white_wool', 18, 1], ['sell', 'white_dye', 12, 1], ['sell', 'black_dye', 12, 1]] },
   miner: { title: 'Miner', held: 'iron_pickaxe', trades: [['buy', 'iron_pickaxe', 1, 8], ['buy', 'torch', 16, 1], ['buy', 'coal', 8, 1], ['buy', 'raw_iron', 3, 2],
+    ['buy', 'potion_fire_resistance', 1, 7],
     ['buy', 'lapis_lazuli', 6, 2], ['buy', 'redstone', 8, 2], ['buy', 'diamond', 1, 10], ['buy', 'tnt', 2, 4], ['sell', 'cobblestone', 32, 1],
     ['sell', 'coal', 12, 1], ['sell', 'iron_ingot', 4, 1], ['sell', 'copper_ingot', 12, 1], ['sell', 'diamond', 1, 9]] },
   fisher: { title: 'Fisher', held: 'fishing_rod', trades: [['buy', 'cooked_cod', 6, 2], ['buy', 'cooked_salmon', 6, 2], ['buy', 'fishing_rod', 1, 3],
+    ['buy', 'potion_water_breathing', 1, 6],
     ['sell', 'string', 20, 1], ['sell', 'cod', 15, 1], ['sell', 'salmon', 13, 1]] },
 };
 
@@ -106,12 +110,13 @@ export class Civilians {
     this.ents = ents;
     this.live = new Map();     // resident id -> entity
     this.penned = new Set();   // villages whose pen animals are out
+    this.keepers = new Map();  // village key -> its iron golem and cats
     this.pathBudget = 0;
     this.currentVillage = null;
   }
   get game() { return this.ents.game; }
   get world() { return this.ents.world; }
-  reset() { this.live.clear(); this.penned.clear(); this.currentVillage = null; }
+  reset() { this.live.clear(); this.penned.clear(); this.keepers.clear(); this.currentVillage = null; }
 
   // Saved state per village: reputation, who has died (and when), trade stock used today.
   record(plan) {
@@ -145,9 +150,24 @@ export class Civilians {
     if (!this.penned.has(plan.key)) {
       this.penned.add(plan.key);
       for (const a of villageAnimals(plan)) {
-        const m = this.ents.spawnMob(a.type, a.at[0] + 0.5, a.at[1] + 0.1, a.at[2] + 0.5, { colour: 0, pinned: plan.key });
+        const m = this.ents.spawnMob(a.type, a.at[0] + 0.5, a.at[1] + 0.1, a.at[2] + 0.5, { colour: 0, pinned: plan.key, penned: true });
         m.home = { x: a.at[0] + 0.5, z: a.at[2] + 0.5 };
       }
+    }
+    // An iron golem keeps watch over the plaza, and a few cats laze about the village. (They come
+    // back whenever the village does, unless someone has seen to them all.)
+    const keepers = this.keepers.get(plan.key);
+    if (!keepers || keepers.every((m) => m.dead)) {
+      const h = hashString(plan.key), home = { x: plan.x + 0.5, z: plan.z + 0.5 }, list = [];
+      const golem = this.ents.spawnMob('iron_golem', plan.x + 0.5, plan.y + 1, plan.z + 5.5, { pinned: plan.key, home });
+      golem.yaw = Math.PI;
+      list.push(golem);
+      const cats = 1 + (h % 3), spots = [[-6, 3], [6, -3], [3, 6], [-3, -6]];
+      for (let k = 0; k < cats; k++) {
+        const [dx, dz] = spots[(h + k) % spots.length];
+        list.push(this.ents.spawnMob('cat', plan.x + dx + 0.5, plan.y + 1, plan.z + dz + 0.5, { pinned: plan.key, home, variant: (h >> (k * 3)) % 6 }));
+      }
+      this.keepers.set(plan.key, list);
     }
   }
 
@@ -193,6 +213,10 @@ export class Civilians {
       if (g.role === 'guard' && !g.dead && Math.hypot(g.x - e.x, g.z - e.z) < 40) { g.aggro = who; g.aggroTime = 1200; }
     }
     if (e.role === 'guard') { e.aggro = who; e.aggroTime = 1200; }
+    // The village's iron golem won't stand for it either.
+    for (const g of this.keepers.get(e.village?.key) ?? []) {
+      if (g.type === 'iron_golem' && !g.dead && !g.dying && Math.hypot(g.x - e.x, g.z - e.z) < 32) { g.angry = 600; g.target = who; }
+    }
   }
 
   // ---------------------------------------------------------------- the clock
@@ -244,7 +268,7 @@ export class Civilians {
     if (danger || e.fear > 0) {
       e.speedMul = 1.7;
       this.goTo(e, e.resident.home, 'home');
-      if (!e.path && danger) { e.yaw = Math.atan2(e.x - danger.x, e.z - danger.z); e.moving = true; }
+      if (!e.path && danger) { e.yaw = Math.atan2(danger.x - e.x, danger.z - e.z); e.moving = true; }
       this.follow(e);
       return;
     }

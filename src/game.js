@@ -35,6 +35,7 @@ import { seatY, startRide, driveFrom, dismountSpot } from './riding.js';
 import { addXp, xpToNext, enchLevel, SMELT_XP, ORE_XP, shiny } from './enchanting.js';
 import { Fishing, bobberMesh, bobberModel, linePoints } from './fishing.js';
 import { tableBook } from './tablebook.js';
+import { POTIONS, EFFECTS } from './potions.js';
 import { ITEMS, I, itemDef, itemLabel, breakTime, dropsFor, attackDamage, attackSpeed, canHarvest } from './items.js';
 import { BIOME_NAMES } from './biomes.js';
 import { CHUNK_VOLUME, HEIGHT, TICKS_PER_DAY, SAVE_VERSION } from './config.js';
@@ -457,6 +458,7 @@ export class Game {
       this.food = meta.player.food ?? 20;
       this.saturation = meta.player.saturation ?? 5;
       this.exhaustion = meta.player.exhaustion ?? 0;
+      this.loadEffects(meta.player.fx);
       this.needsPlacement = false;
     } else if (meta.player && (meta.spawn?.y || meta.bed)) {
       // Saved while dead: come back at the bed or spawn point with full health.
@@ -530,7 +532,8 @@ export class Game {
     const p = this.player;
     return {
       player: { x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, flying: p.flying, health: this.health, air: this.air,
-        food: this.food, saturation: this.saturation, exhaustion: this.exhaustion, riding: this.riding ? 1 : 0, xp: [this.xp.level, this.xp.points], es: this.enchantSeed },
+        food: this.food, saturation: this.saturation, exhaustion: this.exhaustion, riding: this.riding ? 1 : 0, xp: [this.xp.level, this.xp.points], es: this.enchantSeed,
+        fx: this.effectsData() },
       inventory: this.inv.serialize(), mode: this.meta?.mode ?? 'survival', bed: this.meta?.bed ?? null,
     };
   }
@@ -597,10 +600,13 @@ export class Game {
   }
 
   // Everyone in the world (for mobs and explosions): this player and, in multiplayer, the rest.
+  // Everyone creatures can see. (The same object stands for this player from one tick to the next,
+  // so a creature after them keeps up with where they are.)
   players() {
     const p = this.player;
-    const me = { x: p.x, y: p.y, z: p.z, addr: null, creative: this.creative, dead: this.state === 'dead', held: this.inv.heldId,
-      look: p.lookDir(), sneaking: p.sneaking };
+    const me = (this.me ??= { addr: null });
+    Object.assign(me, { x: p.x, y: p.y, z: p.z, creative: this.creative, dead: this.state === 'dead', held: this.inv.heldId,
+      look: p.lookDir(), sneaking: p.sneaking, invisible: this.effects.has('invisibility') });
     return this.net ? [me, ...this.net.others()] : [me];
   }
 
@@ -791,7 +797,8 @@ export class Game {
       lastPlayed: Date.now(),
       time: Math.floor(this.time),
       player: { x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, flying: p.flying, health: this.health, air: this.air,
-        food: this.food, saturation: this.saturation, exhaustion: this.exhaustion, riding: this.riding ? 1 : 0, xp: [this.xp.level, this.xp.points], es: this.enchantSeed },
+        food: this.food, saturation: this.saturation, exhaustion: this.exhaustion, riding: this.riding ? 1 : 0, xp: [this.xp.level, this.xp.points], es: this.enchantSeed,
+        fx: this.effectsData() },
       inventory: this.inv.serialize(),
       entities: this.entities.serialize(),
       containers: [...this.containers].map(([k, slots]) => ({ k, slots: slots.map((x) => (x ? { ...x } : null)) })),
@@ -1136,9 +1143,17 @@ export class Game {
     }, 1400);
   }
 
+  // How much Night Vision brightens the world (it flickers in its last ten seconds).
+  nightVision() {
+    const e = this.effects.get('night_vision');
+    if (!e) return 0;
+    return e.ticks > 200 ? 1 : 0.7 + 0.3 * Math.sin(e.ticks * Math.PI * 0.2);
+  }
+
   // Morning: time jumps to the next day, the rain stops, and everyone in bed wakes up.
   skipNight() {
     this.time = (Math.floor(this.time / TICKS_PER_DAY) + 1) * TICKS_PER_DAY + 300;
+    this.meta.lastSleep = this.time;
     this.weather.set(false);
     this.weather.rain = 0;
     this.wake(true);
@@ -1210,11 +1225,41 @@ export class Game {
     this.effects = new Map();
   }
 
-  // Status effects from food: regeneration heals, poison hurts (but never kills) and hunger
-  // makes you hungry faster. Level 2 works twice as fast.
+  // Status effects, from food and potions: regeneration heals, poison hurts (but never kills),
+  // hunger makes you hungry faster; the rest change how you move, fight and see while they
+  // last (see effectLevel). Level 2 works twice as fast.
   addEffect(name, seconds, level = 1) {
+    if (!EFFECTS[name]) return;
     const cur = this.effects.get(name);
-    if (!cur || cur.level < level || cur.ticks < seconds * 20) this.effects.set(name, { ticks: seconds * 20, level });
+    if (!cur || cur.level < level || cur.ticks < seconds * 20) this.effects.set(name, { ticks: Math.round(seconds * 20), level });
+  }
+  effectLevel(name) { return this.effects.get(name)?.level ?? 0; }
+  effectsData() { return [...this.effects].map(([n, e]) => [n, e.ticks, e.level]); }
+  loadEffects(list) {
+    this.effects = new Map();
+    for (const x of Array.isArray(list) ? list : []) {
+      if (Array.isArray(x) && EFFECTS[x[0]] && Number.isFinite(x[1]) && x[1] > 0) this.effects.set(x[0], { ticks: Math.min(x[1], 36000), level: clamp(x[2] | 0, 1, 5) });
+    }
+  }
+  // A potion takes effect: drunk, or splashed over this player (`scale`: 1 for a direct hit, less
+  // the further away it broke; splashes last three quarters as long).
+  applyPotion(name, scale = 1, splash = false) {
+    const p = POTIONS[name];
+    if (!p || this.state === 'dead' || scale <= 0) return;
+    if (p.effect === 'healing') {
+      this.health = Math.min(20, this.health + Math.max(1, Math.round(4 * scale)));
+      this.particles.bits(this.player.x, this.player.y + 1.5, this.player.z, TEX.heart, 4, 0.8, 0.4);
+    } else if (p.effect === 'harming') this.damage(Math.max(1, Math.round(6 * scale)), 'You were killed by magic', true);
+    else if (!this.creative || !EFFECTS[p.effect].bad) this.addEffect(p.effect, Math.round(p.seconds * (splash ? 0.75 : 1) * scale), 1);
+  }
+  // A creature (or a splash) gives player `t` an effect: this one, or a guest over the network.
+  giveEffect(t, name, seconds, level = 1) {
+    if (t?.addr) this.net?.giveEffect?.(t.addr, name, seconds, level);
+    else if (!this.creative) this.addEffect(name, seconds, level);
+  }
+  potionOn(t, name, scale) {
+    if (t?.addr) this.net?.potionOn?.(t.addr, name, scale);
+    else this.applyPotion(name, scale, true);
   }
   effectsTick() {
     for (const [name, e] of this.effects) {
@@ -1366,6 +1411,8 @@ export class Game {
       if (this.riding) this.steer(move);
       else {
         p.depthStrider = enchLevel(this.inv.armor[3], 'depth_strider');
+        p.speedMul = (1 + 0.2 * this.effectLevel('speed')) * Math.max(0.1, 1 - 0.15 * this.effectLevel('slowness'));
+        p.jumpBoost = this.effectLevel('jump_boost');
         const prevInWater = p.inWater;
         p.update(dt, move, w);
         if (p.inWater && !prevInWater && p.vy < -4) this.audio.splash(Math.min(1, -p.vy / 14));
@@ -1443,7 +1490,7 @@ export class Game {
       const d = p.landed;
       p.landed = null;
       if (d > 3.2 && !p.inWater && !this.creative) this.audio.fall(d > 7);
-      if (d > 3.2 && !p.inWater) this.damage(Math.floor(d - 3), 'You fell from a high place');
+      if (d > 3.2 + this.effectLevel('jump_boost') && !p.inWater) this.damage(Math.floor(d - 3 - this.effectLevel('jump_boost')), 'You fell from a high place');
       if (d > 1.2) { const g = p.groundBlock(this.world); if (g) this.audio.land(BLOCKS[g]?.sound ?? 'stone'); }
     }
     if (this.creative && p.y < -64) { p.y = 120; p.vy = 0; p.flying = true; }
@@ -1594,6 +1641,8 @@ export class Game {
   gameTick() {
     this.time++;
     this.attackTicks++;
+    // (Here as well as when drawing: a host's game carries on in a background tab.)
+    updateEnvironment(this.env, this.time);
     this.world.daylight = this.env.daylight;
     this.world.tick();
     if (!this.net?.guest) this.world.randomTicks(this.players().map((t) => [Math.floor(t.x) >> 4, Math.floor(t.z) >> 4]));
@@ -1604,7 +1653,7 @@ export class Game {
     if (!this.creative && this.state !== 'dead') {
       this.invuln = Math.max(0, this.invuln - 1);
       this.sinceDamage++;
-      if (p.headInWater) {
+      if (p.headInWater && !this.effects.has('water_breathing')) {
         const r = enchLevel(this.inv.armor[0], 'respiration');
         if (!r || Math.random() < 1 / (r + 1)) this.air--;
         if (this.air <= -20) { this.air = 0; this.damage(2, 'You drowned', true); }
@@ -1652,7 +1701,7 @@ export class Game {
     const e = this.eating, p = this.player;
     e.left--;
     if (e.left <= 25 && e.left % 4 === 0) {
-      this.audio.eat();
+      if (itemDef(e.id)?.potion || itemDef(e.id)?.drink) this.audio.drink(); else this.audio.eat();
       const d = p.lookDir();
       this.particles.bits(p.x + d[0] * 0.4, p.eyeY - 0.15 + d[1] * 0.4, p.z + d[2] * 0.4, itemDef(e.id).tex, 5, 1.2, 0.5);
     }
@@ -1664,9 +1713,11 @@ export class Game {
       this.food = Math.min(20, this.food + def.food);
       this.saturation = Math.min(this.food, this.saturation + def.food * (def.sat ?? 0.3) * 2);
     }
-    // Milk washes every effect away; some food brings one.
+    // Milk washes every effect away; some food brings one; potions bring theirs.
     if (def.drink) this.effects.clear();
     for (const [name, seconds, level, chance = 1] of def.effects ?? []) if (Math.random() < chance) this.addEffect(name, seconds, level);
+    if (def.potion) this.applyPotion(def.potion);
+    if (this.creative) return;
     this.inv.consumeHeld();
     // Stew leaves its bowl behind.
     if (def.leftover) {
@@ -1675,7 +1726,7 @@ export class Game {
       else if (this.inv.add(bowl, 1)) this.entities.dropItem(this.player, { id: bowl, count: 1, dmg: 0 });
     }
     this.invChanged();
-    this.audio.burp();
+    if (!def.potion) this.audio.burp();
   }
 
   // Now and then, lava close by bubbles and pops.
@@ -1726,6 +1777,7 @@ export class Game {
   // `armored`: the hit is one that armor protects against (mobs, explosions, lava, cactus).
   damage(amount, cause, ignoreInvuln = false, knock = null, armored = false) {
     if (this.creative || this.state === 'dead' || amount <= 0) return false;
+    if (this.effects.has('fire_resistance') && /flames|lava|burned/.test(cause)) return false;
     if (this.invuln > 0 && !ignoreInvuln) return false;
     const points = armored ? this.inv.armorPoints : 0;
     if (points > 0) {
@@ -1812,7 +1864,7 @@ export class Game {
       return;
     }
     this.drawing = null;
-    if ((hdef?.food || hdef?.drink) && !this.creative && (this.food < 20 || hdef.always || hdef.drink) && eatInput && !usable) {
+    if ((hdef?.food || hdef?.drink || hdef?.potion) && (!this.creative || hdef.potion) && (this.food < 20 || hdef.always || hdef.drink || hdef.potion) && eatInput && !usable) {
       if (!this.eating || this.eating.id !== held.id || this.eating.slot !== this.inv.selected) {
         this.eating = { id: held.id, slot: this.inv.selected, left: 32, touch: touchTap };
       }
@@ -1848,6 +1900,16 @@ export class Game {
     }
   }
 
+  // A splash potion thrown from the hand: it arcs away and breaks over whatever it hits.
+  throwPotion(name) {
+    const p = this.player, d = p.lookDir(), v = 11;
+    this.entities.spawnArrow(p.x + d[0] * 0.4, p.eyeY - 0.1 + d[1] * 0.4, p.z + d[2] * 0.4, d[0] * v + p.vx, d[1] * v + 2.4, d[2] * v + p.vz,
+      this.players()[0], 0, false, { potion: name });
+    this.audio.bow({ x: p.x, y: p.eyeY, z: p.z }, true);
+    this.swingArm();
+    if (!this.creative) { this.inv.consumeHeld(); this.invChanged(); }
+  }
+
   // Minecraft 1.9 combat: a weapon winds up again after every swing (faster for swords, slower
   // for axes), and a hit only does full damage, knockback and critical hits once it has.
   attackPeriod() { return 20 / attackSpeed(this.inv.heldId); }
@@ -1870,7 +1932,7 @@ export class Game {
     // Sharpness (and Smite on the undead, Bane of Arthropods on spiders) add their own damage,
     // scaled by the wind-up like the rest, with blue sparks.
     const extra = enchantDamage(ench, e.type) * f;
-    amount += extra;
+    amount += extra + 3 * this.effectLevel('strength');
     this.swingArm();
     this.resetAttack();
     this.audio.attack(crit ? 'crit' : strong ? 'strong' : 'weak', { x: e.x, y: e.y + e.h * 0.6, z: e.z }, def?.weapon || def?.tool?.type === 'axe');
@@ -1889,7 +1951,7 @@ export class Game {
     const p = this.player, held = this.inv.heldId, def = itemDef(held);
     const f = this.attackStrength(this.tickAcc), strong = f > 0.9;
     const crit = strong && !p.onGround && p.vy < -0.5 && !p.inWater && !p.onLadder && !p.flying;
-    let amount = attackDamage(held) * (0.2 + f * f * 0.8) + enchantDamage(this.inv.held?.ench, 'player') * f;
+    let amount = attackDamage(held) * (0.2 + f * f * 0.8) + enchantDamage(this.inv.held?.ench, 'player') * f + 3 * this.effectLevel('strength');
     if (crit) amount *= 1.5;
     this.swingArm();
     this.resetAttack();
@@ -2022,7 +2084,8 @@ export class Game {
       }
       return;
     }
-    if ((def?.food || def?.drink) && !this.creative) return; // eaten by holding right click (see handleActions)
+    if ((def?.food || def?.drink || def?.potion) && (!this.creative || def.potion)) return; // eaten by holding right click (see handleActions)
+    if (def?.splash) { if (!repeat) this.throwPotion(def.splash); return; }
     // Buckets and lily pads look for water along the line of sight themselves.
     if (held && (held.id === I.bucket || held.id === I.water_bucket || held.id === I.lava_bucket)) { if (!repeat) useBucket(this, held); return; }
     if (held?.id === B.lily_pad) { if (!repeat) placeLilyPad(this); return; }
@@ -2487,7 +2550,8 @@ export class Game {
     const cam = { x: p.x, y: p.eyeY, z: p.z, yaw: p.yaw, pitch: p.pitch, pre };
     this.lastCam = cam;
     const draw = this.drawing ? Math.min(1, this.drawing.t) : 0;
-    const fovTarget = (p.sprinting ? 1.12 : 1) * (p.flying && p.sprinting ? 1.08 : 1) * (p.headInWater ? 0.9 : 1) * (1 - draw * draw * 0.15);
+    const fovTarget = (p.sprinting ? 1.12 : 1) * (p.flying && p.sprinting ? 1.08 : 1) * (p.headInWater ? 0.9 : 1) * (1 - draw * draw * 0.15) *
+      (1 + 0.05 * this.effectLevel('speed')) * (1 - 0.05 * this.effectLevel('slowness'));
     this.fovMul += (fovTarget - this.fovMul) * Math.min(1, dt * 8);
     const rd = s.renderDistance;
     let fogColor = this.env.fogColor, fogStart = rd * 16 * 0.55, fogEnd = rd * 16 * 0.95;
@@ -2507,7 +2571,7 @@ export class Game {
     this.renderer.render({
       cam, fov: s.fov * this.fovMul, env: this.env, time: performance.now() / 1000, renderDist: rd, world: this.world,
       fogColor, fogStart, fogEnd, underwater, clouds: s.clouds, cloudHeight: CLOUD_HEIGHT, brightness: s.brightness / 100,
-      wave: true, shaders: Math.min(s.shaders, this.shaderCap),
+      wave: true, shaders: Math.min(s.shaders, this.shaderCap), nightVision: this.nightVision(),
       selection: target && this.state !== 'dead' ? { x: target.x, y: target.y, z: target.z, box: this.world.selectionBox(target.x, target.y, target.z, target.id) } : null,
       crack: this.mining && this.mining.progress > 0 ? { x: this.mining.x, y: this.mining.y, z: this.mining.z, stage: Math.floor(this.mining.progress * 10) } : null,
       particles: this.particles,
@@ -2580,7 +2644,8 @@ export class Game {
       if (this.menu) this.gui.render();
     }
     if (this.menu) this.gui.frame();
-    ui.renderStats(!this.creative, Math.ceil(this.health), this.air, p.headInWater, this.food, this.inv.armorPoints);
+    ui.renderStats(!this.creative, Math.ceil(this.health), this.air, p.headInWater, this.food, this.inv.armorPoints, this.effects.has('poison'), this.effects.has('hunger'));
+    ui.renderEffects(this.state === 'dead' ? [] : [...this.effects].map(([name, e]) => ({ name, ...e })).sort((a, b) => (EFFECTS[a.name].bad ? 1 : 0) - (EFFECTS[b.name].bad ? 1 : 0)));
     ui.renderXp(!this.creative, this.xp.level, this.xp.points / xpToNext(this.xp.level));
     const wind = this.attackStrength(this.tickAcc);
     ui.setAttackMeter(this.state === 'play' && wind < 1 ? wind : -1);

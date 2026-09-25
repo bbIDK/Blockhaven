@@ -317,6 +317,7 @@ export class Renderer {
     gl.uniform3fv(u.u_fogColor, f.fogColor);
     gl.uniform2f(u.u_fog, f.fogStart, f.fogEnd);
     gl.uniform1f(u.u_gamma, 1 - 0.45 * f.brightness);
+    gl.uniform1f(u.u_night, f.nightVision ?? 0);
     gl.uniform4f(u.u_lightOverride, 0, 0, 0, 0);
     gl.uniform4f(u.u_colorMul, 1, 1, 1, 1);
     gl.uniform1f(u.u_alphaMul, 1);

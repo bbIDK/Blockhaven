@@ -1,7 +1,8 @@
 // Item textures. Every item is a hand-drawn 16x16 shape shaded by the same rule (see `shaded`
 // in core.js): lit from the top left, darker to the bottom right, with a dark outline on the
 // shadow side. Tools share their shapes across materials and only swap palettes.
-import { def, pick, lighten, shaded, paint } from './core.js';
+import { def, pick, lighten, shaded, paint, mix, shade } from './core.js';
+import { POTIONS } from '../potions.js';
 import { WOODS, DOOR_STYLE } from './terrain.js';
 
 // [outline, dark, mid, light, highlight]
@@ -558,4 +559,35 @@ def('campfire_item', (t) => {
   paint(t, ['', '', '', '', '.......f........', '......fFf.......', '.....fFYFf......', '....fFYYYFf.....', '....fYYWYYf.....', '..bbbbbbbbbbbb..',
     '..BBBBBBBBBBBB..', '.bbbbbbbbbbbbbb.', '.BBBBBBBBBBBBBB.', '..eeeeeeeeeeee..'],
   { f: 0xd84a10, F: 0xf08a20, Y: 0xffc840, W: 0xfff4c0, b: 0x6a5231, B: 0x3f301c, e: 0x2a2a2a });
+});
+
+// Glass bottles and potions: a round flask with a cork, the liquid in the potion's colour (lit
+// top left, darker to the bottom right) behind a glint on the glass. Splash potions come in a
+// squatter, wider flask with a flared neck.
+const FLASK = ['', '......####......', '......#cc#......', '......#CC#......', '.....##gg##.....', '......#gg#......', '.....#gLLg#.....',
+  '....#gLLLLg#....', '...#gLLLLLLg#...', '...#LhLLLLLL#...', '...#LhLLLLLL#...', '...#LLLLLLLL#...', '...#LLLLLLLL#...', '....#LLLLLL#....',
+  '.....######.....'];
+const SPLASH = ['', '', '......####......', '......#cc#......', '.....#gggg#.....', '......#gg#......', '.....#gLLg#.....', '...##gLLLLg##...',
+  '..#gLLLLLLLLg#..', '..#LhLLLLLLLL#..', '..#LhLLLLLLLL#..', '..#LLLLLLLLLL#..', '..#LLLLLLLLLL#..', '...#LLLLLLLL#...', '....########....'];
+function flask(t, rows, liquid) {
+  t.clear();
+  const glass = 0xd6e2ea;
+  paint(t, rows, {
+    '#': 0x2b2d3a, c: 0x9a6a34, C: 0x6e4822, g: glass, h: 0xf4f8fc,
+    // Empty, the glass shows the light through it; full, the potion, shaded across the flask.
+    L: (x, y) => (liquid === null ? ((x + y) % 5 === 0 ? 0xeef4f8 : 0xc4d2dc)
+      : (x + y < 14 ? mix(liquid, 0xffffff, 0.22) : x + y > 19 ? shade(liquid, 0.62) : liquid)),
+  });
+}
+def('glass_bottle', (t) => flask(t, FLASK, null));
+for (const [name, p] of Object.entries(POTIONS)) {
+  def(`potion_${name}`, (t) => flask(t, FLASK, p.colour));
+  def(`splash_potion_${name}`, (t) => flask(t, SPLASH, p.colour));
+}
+// Phantom membrane: a torn, grey-violet scrap of skin.
+def('phantom_membrane', (t) => {
+  t.clear();
+  paint(t, ['', '', '...##...........', '..#mm##.....##..', '..#mMmm#...#mm#.', '...#mMMm###mMm#.', '...#mmMMmmmMmm#.', '....#mmMMMMmm#..',
+    '....#mmmMMmmm#..', '...#mmmmmMmmm#..', '...#mm##mmMmm#..', '..#m#..#mmmm#...', '..##....#mm#....', '.........##.....'],
+  { '#': 0x3a3448, m: 0x8c86a0, M: 0xb8b2c8 });
 });

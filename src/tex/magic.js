@@ -74,3 +74,6 @@ def('glyph', (t) => {
   const G = ['.x.x', 'xxx.', '.x..', 'x.xx'];
   for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if (G[y % 4][x % 4] === 'x') t.set(x, y, 0xe8e8ff);
 });
+
+// A plain light speck, tinted when drawn (potion splashes).
+def('spark', (t) => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, [0xffffff, 0xf0f0f0, 0xe0e0e0][(x * 5 + y * 3 + t.ri(3)) % 3]); });

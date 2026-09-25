@@ -6,17 +6,18 @@
 import { Body } from './body.js';
 import { boxMesh, MODEL_OFFSET } from './models.js';
 import { TEX } from './textures.js';
-import { mat4, identity, translate, rotateX, rotateY, scale, hash2 } from './math.js';
+import { mat4, identity, translate, rotateX, rotateY, rotateZ, scale, hash2 } from './math.js';
 import { B, BLOCKS, BASE, SOLID, WATERLIKE, FILTER, REPLACEABLE } from './blocks.js';
 import { I, itemDef } from './items.js';
 import { rayBox } from './world.js';
-import { HEIGHT } from './config.js';
+import { HEIGHT, TICKS_PER_DAY } from './config.js';
 import { villageAt } from './villages.js';
 import { MOBS, initMob, mobTick, mobPhysics, renderMob, provoked, mobUseEffect, applyMobUse, applyHeldUse, mobDrops, mobXp, herdFor, monsterFor, HOSTILE_TYPES } from './mobs.js';
 import { Civilians } from './civilians.js';
 import { extras, cleanExtras } from './inventory.js';
 import { boatPhysics, boatMesh, boatModel, BOAT_WOODS } from './riding.js';
 import { splitXp, orbSize } from './enchanting.js';
+import { POTIONS, UNDEAD } from './potions.js';
 
 class Entity extends Body {
   constructor(kind, hw, h, x, y, z) {
@@ -45,10 +46,12 @@ export function mobExtra(e) {
 const extraOpts = (s) => ({ variant: Number.isInteger(s.v) ? s.v : 0, colour: Number.isInteger(s.c) ? s.c : 0, size: [1, 2, 4].includes(s.s) ? s.s : 1,
   baby: !!s.b, sheared: !!s.sh, tame: !!s.tm, saddled: !!s.sd, temper: Number.isFinite(s.te) ? Math.max(0, Math.min(100, s.te)) : 0 });
 // Flags sent with each creature update: 1 hurt, 2 dying, 4 swinging, 8 burning, 16 shorn, 32 angry,
-// 64 about to explode, 128 drawing a bow, 256 asleep, 512 saddled, 1024 tame, 2048 being ridden.
+// 64 about to explode, 128 drawing a bow, 256 asleep, 512 saddled, 1024 tame, 2048 being ridden,
+// 4096 roosting (a bat hanging upside down), 8192 drinking (a witch).
 export function mobFlags(e) {
   return (e.hurt > 0 ? 1 : 0) | (e.dying ? 2 : 0) | (e.swing > 0.3 ? 4 : 0) | (e.burning ? 8 : 0) | (e.sheared ? 16 : 0) | (e.angry > 0 ? 32 : 0) |
-    (e.fuse > 0 ? 64 : 0) | (e.aim > 0 ? 128 : 0) | (e.pose === 'sleep' ? 256 : 0) | (e.saddled ? 512 : 0) | (e.tame ? 1024 : 0) | (e.rider ? 2048 : 0);
+    (e.fuse > 0 ? 64 : 0) | (e.aim > 0 ? 128 : 0) | (e.pose === 'sleep' ? 256 : 0) | (e.saddled ? 512 : 0) | (e.tame ? 1024 : 0) | (e.rider ? 2048 : 0) |
+    (e.roost ? 4096 : 0) | (e.drinking > 0 ? 8192 : 0);
 }
 
 export class Entities {
@@ -230,11 +233,13 @@ export class Entities {
 
   // An arrow flying from (x, y, z). `owner`: who shot it (not hit by it at first); `pickup`:
   // whether it can be collected where it lands.
-  // (`fx`: what the bow's enchantments add: { punch: extra knockback, flame: sets things alight }.)
+  // (`fx`: what the bow's enchantments add: { punch: extra knockback, flame: sets things alight };
+  // or { potion }: a thrown splash potion rather than an arrow.)
   spawnArrow(x, y, z, vx, vy, vz, owner, damage, pickup, fx = null) {
     if (this.guest) { this.game.net.shootArrow?.(x, y, z, vx, vy, vz, damage, pickup, fx); return null; }
     const e = new Entity('arrow', 0.05, 0.1, x, y, z);
-    Object.assign(e, { vx, vy, vz, owner, damage, pickup, stuck: false, life: 0, punch: fx?.punch ?? 0, flame: !!fx?.flame });
+    Object.assign(e, { vx, vy, vz, owner, damage, pickup, stuck: false, life: 0, punch: fx?.punch ?? 0, flame: !!fx?.flame,
+      potion: POTIONS[fx?.potion] ? fx.potion : null, spin: 0 });
     this.list.push(e);
     return e;
   }
@@ -265,6 +270,12 @@ export class Entities {
       for (let y = Math.min(HEIGHT - 4, Math.floor(p.y) + 14); y > Math.max(1, Math.floor(p.y) - 24); y--) {
         const below = w.getBlock(x, y - 1, z);
         if (!SOLID[below] || BLOCKS[below].name.endsWith('leaves') || SOLID[w.getBlock(x, y, z)] || SOLID[w.getBlock(x, y + 1, z)]) continue;
+        if (WATERLIKE[w.getBlock(x, y, z)] === 1 && WATERLIKE[w.getBlock(x, y + 1, z)] === 1) {
+          // The drowned rise from the beds of dark rivers and seas.
+          const l = w.getLight(x, y, z);
+          if (Math.random() < 0.4 && (l & 15) <= 7 && (l >> 4) * day <= 7) { this.spawnMob('drowned', x + 0.5, y, z + 0.5); return; }
+          break;
+        }
         if (WATERLIKE[w.getBlock(x, y, z)] || FILTER[w.getBlock(x, y, z)]) break;
         const l = w.getLight(x, y, z);
         if ((l & 15) > 7 || (l >> 4) * day > 7) break;
@@ -284,13 +295,46 @@ export class Entities {
     }
   }
 
+  // Bats flit about in dark caves (never many at once).
+  trySpawnBat() {
+    const w = this.world;
+    if (!this.players.length || this.list.filter((e) => e.type === 'bat' && !e.dead).length >= 5) return;
+    const p = this.players[Math.floor(Math.random() * this.players.length)];
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const x = Math.floor(p.x + (Math.random() - 0.5) * 48), y = Math.floor(p.y + (Math.random() - 0.5) * 24), z = Math.floor(p.z + (Math.random() - 0.5) * 48);
+      if (y < 4 || y > 62 || !w.isLoaded(x, z) || Math.hypot(x - p.x, z - p.z) < 12) continue;
+      if (SOLID[w.getBlock(x, y, z)] || SOLID[w.getBlock(x, y + 1, z)] || WATERLIKE[w.getBlock(x, y, z)]) continue;
+      const l = w.getLight(x, y, z);
+      if ((l >> 4) > 0 || (l & 15) > 3) continue;
+      this.spawnMob('bat', x + 0.5, y, z + 0.5);
+      return;
+    }
+  }
+
+  // Phantoms come for those who haven't slept for three nights or more: out of the night sky,
+  // over anyone standing in the open.
+  trySpawnPhantoms() {
+    const game = this.game, w = this.world;
+    if (game.env.daylight > 0.25 || game.time - (game.meta.lastSleep ?? 0) < 3 * TICKS_PER_DAY) return;
+    if (this.list.filter((e) => e.type === 'phantom' && !e.dead).length >= 3 || Math.random() < 0.5) return;
+    const open = this.players.filter((p) => !p.creative && !p.dead && p.y > 50 &&
+      (w.getLight(Math.floor(p.x), Math.floor(p.y + 1.7), Math.floor(p.z)) >> 4) >= 15);
+    if (!open.length) return;
+    const p = open[Math.floor(Math.random() * open.length)];
+    for (let k = 1 + Math.floor(Math.random() * 2); k > 0; k--) {
+      const a = Math.random() * Math.PI * 2;
+      this.spawnMob('phantom', p.x + Math.cos(a) * 10, Math.min(HEIGHT - 4, p.y + 20 + Math.random() * 10), p.z + Math.sin(a) * 10);
+    }
+  }
+
   // ---------------------------------------------------------------- simulation
   tick() {
     const game = this.game;
     if (this.guest) { this.remoteTick(); return; }
     // Everyone creatures can see: this player and, in multiplayer, the others.
     this.players = game.players();
-    if (++this.spawnTimer >= 40) { this.spawnTimer = 0; this.trySpawnHostile(); }
+    if (++this.spawnTimer >= 40) { this.spawnTimer = 0; this.trySpawnHostile(); if (Math.random() < 0.5) this.trySpawnBat(); }
+    if ((this.phantomTimer = (this.phantomTimer ?? 0) + 1) >= 600) { this.phantomTimer = 0; this.trySpawnPhantoms(); }
     this.civilians.tick();
     for (const e of this.list) {
       if (e.dead) continue;
@@ -402,6 +446,11 @@ export class Entities {
       const r = rayBox(e.x - q.x, e.y - q.y, e.z - q.z, dx, dy, dz, [-0.4, 0, -0.4, 0.4, 1.8, 0.4]);
       if (r && r.t <= len) { len = r.t; victim = q; }
     }
+    if (e.potion && (victim || hit)) {
+      e.x += dx * len; e.y += dy * len; e.z += dz * len;
+      this.shatter(e, victim);
+      return;
+    }
     if (victim) {
       const dmg = Math.max(1, Math.round(e.damage * Math.min(1.5, sp / 25)));
       const at = { x: e.x, y: e.y, z: e.z };
@@ -418,6 +467,41 @@ export class Entities {
       game.audio.arrowHit?.(false, { x: e.x, y: e.y, z: e.z });
     }
     if (e.life > 30 || e.y < -20) e.dead = true;
+  }
+
+  // A splash potion breaks: glass, a burst of its colour, and everyone within four blocks gets
+  // its effect (all of it with a direct hit, less the further away).
+  shatter(e, direct) {
+    const game = this.game, name = e.potion;
+    e.dead = true;
+    game.net?.entityGone?.(e, 'x');
+    this.splashFx(e.x, e.y, e.z, name);
+    game.net?.effect?.('splash', e.x, e.y, e.z, name);
+    const near = (t, x, y, z) => (t === direct ? 1 : Math.max(0, 1 - Math.hypot(x - e.x, y - e.y, z - e.z) / 4));
+    for (const q of this.players) {
+      const k = q.dead ? 0 : near(q, q.x, q.y + 0.9, q.z);
+      if (k > 0.05) game.potionOn(q, name, k);
+    }
+    for (const o of this.list) {
+      if (o.kind !== 'mob' || o.dead || o.dying) continue;
+      const k = near(o, o.x, o.y + o.h / 2, o.z);
+      if (k > 0.05) this.potionOnMob(o, name, k, e.owner);
+    }
+  }
+  splashFx(x, y, z, name) {
+    const p = POTIONS[name];
+    this.game.audio.smash({ x, y, z });
+    if (p) this.game.particles.splash(x, y, z, p.colour);
+  }
+  // What a splash does to a creature. (Healing hurts the undead and harming heals them.)
+  potionOnMob(o, name, k, from) {
+    const p = POTIONS[name], undead = UNDEAD.has(o.type), mob = from?.kind === 'mob' ? from : null;
+    if (!p) return;
+    if ((p.effect === 'harming' && !undead) || (p.effect === 'healing' && undead)) this.hurtMob(o, Math.max(1, Math.round(6 * k)), mob ?? (from?.addr !== undefined ? from : null));
+    else if (p.effect === 'healing' || p.effect === 'harming') o.health = Math.min(o.maxHealth ?? o.health, o.health + Math.round(4 * k));
+    else if (p.effect === 'poison' && !undead) o.poisoned = Math.max(o.poisoned ?? 0, Math.round(p.seconds * 15 * k));
+    else if (p.effect === 'slowness') o.slowed = Math.max(o.slowed ?? 0, Math.round(p.seconds * 15 * k));
+    else if (p.effect === 'regeneration' && !undead) o.regen = Math.max(o.regen ?? 0, Math.round(p.seconds * 15 * k));
   }
 
   // A falling block lands: it becomes a block again where there's room, or breaks into an item.
@@ -450,9 +534,9 @@ export class Entities {
     e.hurt = 10;
     const t = e.def;
     this.game.audio.mob(t.sound ?? e.type, e.health <= 0 ? 'death' : 'hurt', { x: e.x, y: e.y + e.h * 0.8, z: e.z }, t.pitch);
-    if (t.kind !== 'water' && t.type !== 'skeleton' && t.type !== 'stray' && t.type !== 'slime') this.game.bleed(e.x, e.y + e.h * 0.6, e.z, Math.min(14, 4 + Math.round(amount * 1.5)));
-    if (from) {
-      // Knocked back with a little hop.
+    if (t.kind !== 'water' && !t.noBlood) this.game.bleed(e.x, e.y + e.h * 0.6, e.z, Math.min(14, 4 + Math.round(amount * 1.5)));
+    if (from && t.knockback !== 0) {
+      // Knocked back with a little hop (iron golems stand firm).
       const dx = e.x - from.x, dz = e.z - from.z, d = Math.hypot(dx, dz) || 1;
       const k = (t.type === 'enderman' || t.type === 'polar_bear' ? 4 : 7) * (1 + bonus * 0.9);
       e.vx = e.vx / 2 + (dx / d) * k; e.vz = e.vz / 2 + (dz / d) * k;
@@ -582,7 +666,8 @@ export class Entities {
         e.block = s.b;
       } else if (s.k === 'a') {
         e = new Entity('arrow', 0.05, 0.1, s.x, s.y, s.z);
-        Object.assign(e, { stuck: false, life: 0, ayaw: Number.isFinite(s.a) ? s.a : 0, apitch: Number.isFinite(s.p) ? s.p : 0 });
+        Object.assign(e, { stuck: false, life: 0, ayaw: Number.isFinite(s.a) ? s.a : 0, apitch: Number.isFinite(s.p) ? s.p : 0,
+          potion: POTIONS[s.po] ? s.po : null });
       } else if (s.k === 'x') {
         e = new Entity('xp', 0.125, 0.25, s.x, s.y, s.z);
         e.value = Number.isInteger(s.v) && s.v > 0 ? s.v : 1;
@@ -641,7 +726,7 @@ export class Entities {
     else if ((f & 1) && !(e.flags & 1) && !e.dying) {
       e.hurt = 10;
       this.game.audio.mob(snd, 'hurt', at, e.def.pitch);
-      if (e.def.kind !== 'water' && e.def.type !== 'skeleton' && e.def.type !== 'stray') this.game.bleed(e.x, e.y + e.h * 0.6, e.z, 8);
+      if (e.def.kind !== 'water' && !e.def.noBlood) this.game.bleed(e.x, e.y + e.h * 0.6, e.z, 8);
     }
     if (f & 4) e.swing = 1;
     e.burning = !!(f & 8);
@@ -654,6 +739,8 @@ export class Entities {
     e.saddled = !!(f & 512);
     e.tame = !!(f & 1024);
     e.ridden = !!(f & 2048);
+    e.roost = !!(f & 4096);
+    e.drinking = f & 8192 ? 1 : 0;
     e.flags = f;
   }
 
@@ -724,7 +811,14 @@ export class Entities {
         e.swing = Math.max(0, e.swing - dt * 3);
         e.onGround = Math.abs(e.y - oy) < dt * 0.5;
         e.inWater = WATERLIKE[this.world.getBlock(Math.floor(e.x), Math.floor(e.y + 0.3), Math.floor(e.z))] === 1;
-        e.flap = e.def.flutter && !e.onGround ? e.flap + dt * 30 : 0;
+        const fl = e.def.flies;
+        if (fl) e.flap += dt * (fl === 'bat' ? 32 : fl === 'parrot' ? (e.onGround ? 0 : 26) : 5);
+        else e.flap = e.def.flutter && !e.onGround ? e.flap + dt * 30 : 0;
+        // (Flyers and dolphins pitch with the way they're going.)
+        if (fl || e.def.anim === 'dolphin') {
+          const vy = (e.y - oy) / Math.max(dt, 1e-3), want = Math.max(-1.2, Math.min(1.2, Math.atan2(vy, Math.max(speed, fl ? 0.5 : 1))));
+          e.tilt = (e.tilt ?? 0) + (want - (e.tilt ?? 0)) * Math.min(1, dt * 5);
+        }
         if (e.dying) e.dying += dt;
       }
     }
@@ -826,6 +920,17 @@ export class Entities {
         scale(m, m, s, s, s);
         translate(m, m, -MODEL_OFFSET, -MODEL_OFFSET, -MODEL_OFFSET);
         out.push({ parts: [{ mesh: this.orbModel(), model: m }], light: [15, 15], tint: [0.75 + k * 0.5, 1.25, 0.35 + k * 0.15] });
+      } else if (e.kind === 'arrow' && e.potion) {
+        // A thrown potion tumbles as it flies.
+        const mesh = r.itemMesh(I[`splash_potion_${e.potion}`]);
+        if (!mesh) continue;
+        const m = identity(this.mat());
+        translate(m, m, rx, ry, rz);
+        rotateY(m, m, cam.yaw);
+        rotateZ(m, m, e.age * 9);
+        scale(m, m, 0.4, 0.4, 0.4);
+        translate(m, m, -0.5 - MODEL_OFFSET, -0.5 - MODEL_OFFSET, -MODEL_OFFSET);
+        out.push({ parts: [{ mesh, model: m }], light, tint: null });
       } else if (e.kind === 'arrow') {
         if (!e.stuck && !e.remote) { e.ayaw = Math.atan2(-e.vx, -e.vz); e.apitch = Math.atan2(e.vy, Math.hypot(e.vx, e.vz)); }
         const m = identity(this.mat());

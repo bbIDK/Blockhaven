@@ -8,10 +8,12 @@ const TABLES = {
   dungeon: { rolls: [4, 8], items: [['bone', 1, 6, 10], ['rotten_flesh', 1, 6, 10], ['string', 1, 5, 8], ['gunpowder', 1, 4, 8],
     ['bread', 1, 3, 6], ['wheat', 1, 4, 6], ['iron_ingot', 1, 4, 6], ['gold_ingot', 1, 3, 4], ['gold_coin', 2, 12, 8], ['redstone', 1, 4, 5],
     ['coal', 2, 8, 6], ['saddle', 1, 1, 3], ['golden_apple', 1, 1, 2], ['diamond', 1, 2, 1], ['iron_nugget', 2, 9, 4], ['bucket', 1, 1, 3],
-    ['apple', 1, 3, 5], ['beetroot_seeds', 2, 4, 4], ['melon_slice', 1, 4, 3]] },
+    ['apple', 1, 3, 5], ['beetroot_seeds', 2, 4, 4], ['melon_slice', 1, 4, 3], ['potion_healing', 1, 1, 2], ['potion_night_vision', 1, 1, 1],
+    ['splash_potion_harming', 1, 1, 1], ['potion_regeneration', 1, 1, 1], ['glass_bottle', 1, 3, 2]] },
   village: { rolls: [3, 7], items: [['bread', 1, 4, 10], ['apple', 1, 5, 10], ['wheat', 2, 7, 8], ['carrot', 1, 5, 6], ['potato', 1, 5, 6],
     ['wheat_seeds', 2, 8, 6], ['gold_coin', 3, 15, 10], ['emerald', 1, 2, 2], ['feather', 1, 3, 4], ['leather', 1, 3, 4], ['torch', 2, 8, 5],
-    ['paper', 1, 5, 3], ['book', 1, 2, 2], ['oak_sapling', 1, 3, 3], ['string', 1, 3, 3], ['cookie', 2, 6, 3], ['saddle', 1, 1, 2]] },
+    ['paper', 1, 5, 3], ['book', 1, 2, 2], ['oak_sapling', 1, 3, 3], ['string', 1, 3, 3], ['cookie', 2, 6, 3], ['saddle', 1, 1, 2],
+    ['potion_healing', 1, 1, 1], ['glass_bottle', 1, 2, 2]] },
   house: { rolls: [2, 5], items: [['bread', 1, 3, 10], ['apple', 1, 3, 8], ['gold_coin', 2, 8, 8], ['wheat', 1, 5, 6], ['torch', 1, 4, 5],
     ['potato', 1, 4, 5], ['carrot', 1, 4, 5], ['book', 1, 1, 2], ['white_wool', 1, 3, 3], ['cookie', 1, 4, 3], ['stick', 2, 6, 3]] },
   smith: { rolls: [3, 7], items: [['iron_ingot', 1, 5, 10], ['gold_ingot', 1, 3, 5], ['iron_sword', 1, 1, 3], ['iron_pickaxe', 1, 1, 3],
@@ -25,7 +27,8 @@ const TABLES = {
     ['wheat', 2, 8, 8], ['bone_meal', 2, 8, 6], ['bread', 1, 3, 6], ['wooden_hoe', 1, 1, 3], ['iron_hoe', 1, 1, 1], ['gold_coin', 1, 6, 6],
     ['apple', 1, 4, 5], ['oak_sapling', 1, 3, 3]] },
   desert: { rolls: [2, 6], items: [['bone', 2, 7, 8], ['rotten_flesh', 1, 5, 8], ['gold_coin', 3, 14, 10], ['gold_ingot', 1, 4, 5],
-    ['emerald', 1, 3, 4], ['diamond', 1, 2, 2], ['sand', 3, 8, 6], ['gunpowder', 1, 5, 6], ['string', 1, 4, 5], ['saddle', 1, 1, 3]] },
+    ['emerald', 1, 3, 4], ['diamond', 1, 2, 2], ['sand', 3, 8, 6], ['gunpowder', 1, 5, 6], ['string', 1, 4, 5], ['saddle', 1, 1, 3],
+    ['potion_fire_resistance', 1, 1, 2], ['potion_swiftness', 1, 1, 2]] },
 };
 
 // 27 slots of loot for a chest at (x, y, z).

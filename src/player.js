@@ -89,6 +89,8 @@ export class Player extends Body {
     else if (this.inWater) { speed = 2.2 + (4.32 - 2.2) * Math.min(3, this.depthStrider ?? 0) / 3; accel = 5; }
     else if (this.sneaking) { speed = 1.31; accel = 14; }
     else { speed = this.sprinting ? 5.61 : 4.32; accel = this.onGround ? 14 : 2.8; }
+    // (Swiftness and Slowness.)
+    if (!this.flying) speed *= this.speedMul ?? 1;
     const k = 1 - Math.exp(-accel * dt);
     this.vx += (mx * speed - this.vx) * k;
     this.vz += (mz * speed - this.vz) * k;
@@ -104,7 +106,7 @@ export class Player extends Body {
       this.vy = Math.max(this.vy, -3.5);
     } else {
       if (input.jump && this.onGround) {
-        this.vy = JUMP_V;
+        this.vy = JUMP_V + 1.7 * (this.jumpBoost ?? 0);
         this.jumped = true;
         if (this.sprinting) { this.vx -= s * 1.6; this.vz -= c * 1.6; }
       }

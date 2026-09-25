@@ -169,6 +169,7 @@ shaped('bow', 1, [' #S', '# S', ' #S'], { '#': 'stick', S: 'string' }, 'equipmen
 shaped('arrow', 4, ['F', '#', 'E'], { F: 'flint', '#': 'stick', E: 'feather' }, 'equipment');
 shaped('shears', 1, [' I', 'I '], { I: 'iron_ingot' }, 'equipment');
 shaped('bucket', 1, ['I I', ' I '], { I: 'iron_ingot' }, 'equipment');
+shaped('glass_bottle', 3, ['G G', ' G '], { G: 'glass' }, 'misc');
 shaped('compass', 1, [' I ', 'IRI', ' I '], { I: 'iron_ingot', R: 'redstone' }, 'equipment');
 shaped('clock', 1, [' G ', 'GRG', ' G '], { G: 'gold_ingot', R: 'redstone' }, 'equipment');
 shaped('fishing_rod', 1, ['  #', ' #S', '# S'], { '#': 'stick', S: 'string' }, 'equipment');

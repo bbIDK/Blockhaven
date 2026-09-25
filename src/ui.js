@@ -3,6 +3,7 @@
 import { iconFor, setGlint } from './icons.js';
 import { shiny } from './enchanting.js';
 import { itemDef } from './items.js';
+import { EFFECTS, clock, roman } from './potions.js';
 
 export const $ = (id) => document.getElementById(id);
 
@@ -39,6 +40,29 @@ const SPRITES = {
   armor: sprite(CHESTPLATE, { k: '#1c1c1c', w: '#ffffff', m: '#c8c8c8', d: '#8a8a8a' }),
   armorHalf: sprite(HALF_PLATE, { k: '#1c1c1c', w: '#ffffff', m: '#c8c8c8', d: '#8a8a8a', e: '#3a3a3a' }),
   armorEmpty: sprite(CHESTPLATE.map((r) => r.replace(/[wmd]/g, 'e')), { k: '#1c1c1c', e: '#3a3a3a' }),
+  // Poisoned, the hearts go sickly green; with the Hunger effect, so does the food.
+  heartPoison: sprite(HEART, { k: '#161a06', r: '#839f1e', h: '#c8dc5a' }),
+  halfPoison: sprite(HALF, { k: '#161a06', r: '#839f1e', h: '#c8dc5a', e: '#3a1512' }),
+  foodHunger: sprite(DRUMSTICK, { k: '#1a2a0a', m: '#6e8a3a', h: '#9ab86a', b: '#d8e0c8' }),
+  foodHalfHunger: sprite(HALF_DRUM, { k: '#1a2a0a', m: '#6e8a3a', e: '#3a2014', b: '#d8e0c8' }),
+};
+// Status effect icons (see renderEffects).
+const EFFECT_ICONS = {
+  speed: sprite(['.........', '.k..k....', '.bk.bk...', '..bk.bk..', '...bk.bk.', '..bk.bk..', '.bk.bk...', '.k..k....', '.........'], { k: '#1c3a4a', b: '#9ad4ec' }),
+  slowness: sprite(['.........', '....k..k.', '...kb.kb.', '..kb.kb..', '.kb.kb...', '..kb.kb..', '...kb.kb.', '....k..k.', '.........'], { k: '#1e242c', b: '#7a8ca1' }),
+  jump_boost: sprite(['....k....', '...kbk...', '..kbbbk..', '.kbbbbbk.', 'kkkbbbkkk', '...kbk...', '...kbk...', '...kbk...', '...kkk...'], { k: '#0a4a18', b: '#48ff6c' }),
+  strength: sprite(['......kk.', '.....kbbk', '....kbbk.', '.k.kbbk..', '.kkbbk...', '..kgk....', '.kgkk....', 'kgk......', 'kk.......'],
+    { k: '#300808', b: '#e85050', g: '#7a4a24' }),
+  regeneration: sprite(HEART, { k: '#3a0a24', r: '#cd5cab', h: '#f4a8dc' }),
+  fire_resistance: sprite(['....k....', '...kyk...', '...kyyk..', '..kyoyk..', '.kyoooyk.', '.koorook.', '.korrrok.', '..korrk..', '...kkkk..'],
+    { k: '#4a1a04', y: '#ffe060', o: '#f08a20', r: '#c83010' }),
+  water_breathing: sprite(BUBBLE, { k: '#0b2c5c', b: '#4fa3ff', w: '#e8f4ff' }),
+  night_vision: sprite(['.........', '.........', '..kkkkk..', '.kwwbwwk.', 'kwwbbbwwk', '.kwwbwwk.', '..kkkkk..', '.........', '.........'],
+    { k: '#0a0a3a', w: '#dfe6ff', b: '#3a3ad8' }),
+  invisibility: sprite(['..k.k.k..', '.k.....k.', 'k..k.k..k', '.........', 'k.......k', '.........', 'k.......k', '.........', 'k.k.k.k.k'], { k: '#b4bac8' }),
+  poison: sprite(['....k....', '...kgk...', '...kgk...', '..kgggk..', '.kgghggk.', '.kgghggk.', '.kgggggk.', '..kgggk..', '...kkk...'],
+    { k: '#14300c', g: '#4e9331', h: '#9ad860' }),
+  hunger: sprite(DRUMSTICK, { k: '#1a2a0a', m: '#6e8a3a', h: '#9ab86a', b: '#d8e0c8' }),
 };
 
 // The hotbar: nine 20x20 cells in a translucent bar, and the frame around the selected one.
@@ -455,7 +479,24 @@ export class UI {
     el.lastChild.textContent = level > 0 ? String(level) : '';
   }
 
-  renderStats(survival, health, air, underwater, food = 20, armor = 0) {
+  // Active status effects, top right: an icon for each (the good ones first) with the time left;
+  // one about to run out blinks.
+  renderEffects(list) {
+    const key = list.map((e) => `${e.name}${e.level}:${Math.ceil(e.ticks / 20)}:${e.ticks < 200 ? Math.floor(e.ticks / 10) % 2 : 0}`).join(',');
+    if (key === this.lastEffects) return;
+    this.lastEffects = key;
+    $('effects').replaceChildren(...list.filter((e) => EFFECT_ICONS[e.name]).map((e) => {
+      const box = document.createElement('div'), icon = document.createElement('i'), time = document.createElement('span');
+      box.className = `effect${EFFECTS[e.name].bad ? ' bad' : ''}${e.ticks < 200 && Math.floor(e.ticks / 10) % 2 ? ' blink' : ''}`;
+      icon.style.backgroundImage = `url(${EFFECT_ICONS[e.name]})`;
+      time.textContent = `${roman(e.level).trim()} ${clock(e.ticks)}`.trim();
+      box.title = `${EFFECTS[e.name].label}${roman(e.level)}`;
+      box.append(icon, time);
+      return box;
+    }));
+  }
+
+  renderStats(survival, health, air, underwater, food = 20, armor = 0, poisoned = false, hungry = false) {
     $('stats').style.visibility = survival ? 'visible' : 'hidden';
     if (!survival) return;
     if (armor !== this.lastArmor) {
@@ -467,18 +508,18 @@ export class UI {
         i.style.backgroundImage = `url(${v >= 2 ? SPRITES.armor : v === 1 ? SPRITES.armorHalf : SPRITES.armorEmpty})`;
       });
     }
-    if (food !== this.lastFood) {
-      this.lastFood = food;
+    if (food + (hungry ? 100 : 0) !== this.lastFood) {
+      this.lastFood = food + (hungry ? 100 : 0);
       [...$('hunger').children].forEach((el, i) => {
         const v = food - i * 2;
-        el.style.backgroundImage = `url(${v >= 2 ? SPRITES.food : v === 1 ? SPRITES.foodHalf : SPRITES.foodEmpty})`;
+        el.style.backgroundImage = `url(${v >= 2 ? (hungry ? SPRITES.foodHunger : SPRITES.food) : v === 1 ? (hungry ? SPRITES.foodHalfHunger : SPRITES.foodHalf) : SPRITES.foodEmpty})`;
       });
     }
-    if (health !== this.lastHealth) {
-      this.lastHealth = health;
+    if (health + (poisoned ? 100 : 0) !== this.lastHealth) {
+      this.lastHealth = health + (poisoned ? 100 : 0);
       [...$('hearts').children].forEach((el, i) => {
         const v = health - i * 2;
-        el.style.backgroundImage = `url(${v >= 2 ? SPRITES.heart : v === 1 ? SPRITES.half : SPRITES.empty})`;
+        el.style.backgroundImage = `url(${v >= 2 ? (poisoned ? SPRITES.heartPoison : SPRITES.heart) : v === 1 ? (poisoned ? SPRITES.halfPoison : SPRITES.half) : SPRITES.empty})`;
       });
     }
     // With two hearts or less left, the hearts tremble.

@@ -19,6 +19,7 @@ import { chunkKey, HEIGHT, CHUNK_VOLUME } from './config.js';
 import { S_READY, rayBox } from './world.js';
 import { clamp } from './math.js';
 import { startRide, seatY, BOAT_WOODS } from './riding.js';
+import { POTIONS, EFFECTS } from './potions.js';
 
 const MAX_GUESTS = 7;
 const KEEP_RADIUS = 4;   // chunks the host keeps loaded (and mobs going) around each guest
@@ -180,7 +181,7 @@ class Session {
     if (g.world && g.meta && g.state !== 'loading') {
       pres.p = [r2(p.x), r2(p.y), r2(p.z), r2(p.yaw), r2(p.pitch)];
       pres.f = (p.sneaking ? 1 : 0) | (p.sprinting ? 2 : 0) | (p.flying ? 4 : 0) | (p.onGround ? 8 : 0) |
-        (g.state === 'dead' ? 16 : 0) | (g.state === 'sleeping' ? 32 : 0) | (g.creative ? 64 : 0);
+        (g.state === 'dead' ? 16 : 0) | (g.state === 'sleeping' ? 32 : 0) | (g.creative ? 64 : 0) | (g.effects?.has('invisibility') ? 128 : 0);
       pres.i = g.handLook;
       if (shiny(g.inv.held)) pres.ih = 1;
       pres.a = g.inv.armor.map((s) => s?.id ?? 0);
@@ -351,6 +352,7 @@ export class HostSession extends Session {
     g.dead = !!(f & 16);
     g.sleeping = !!(f & 32);
     g.creative = !!(f & 64);
+    g.invisible = !!(f & 128);
     if (Array.isArray(pres.r)) this.rideMove(g, pres.r);
     this.seePlayer(addr, pres);
   }
@@ -392,6 +394,7 @@ export class HostSession extends Session {
 
   remove(g, why) {
     if (!this.guests.delete(g.addr)) return;
+    if (g.ref) g.ref.dead = true;
     this.players.delete(g.addr);
     for (const set of this.viewers.values()) set.delete(g.addr);
     for (const e of this.game.entities.list) if (e.rider === g.addr) this.unride(e);
@@ -560,7 +563,7 @@ export class HostSession extends Session {
     if (![...v, ...at].every(num) || g.x === null || Math.hypot(m.x - g.x, m.y - g.y - 1.5, m.z - g.z) > 3) return;
     const owner = this.others().find((o) => o.addr === g.addr) ?? { x: g.x, y: g.y, z: g.z, addr: g.addr };
     this.game.entities.spawnArrow(m.x, m.y, m.z, clamp(m.vx, -80, 80), clamp(m.vy, -80, 80), clamp(m.vz, -80, 80), owner,
-      clamp(num(m.d) ? m.d : 2, 0, 30), !!m.p, { punch: int(m.pu) ? clamp(m.pu, 0, 2) : 0, flame: !!m.fl });
+      clamp(num(m.d) ? m.d : 2, 0, 30), !!m.p, { punch: int(m.pu) ? clamp(m.pu, 0, 2) : 0, flame: !!m.fl, potion: POTIONS[m.po] ? m.po : null });
   }
 
   // One player hits another.
@@ -684,7 +687,10 @@ export class HostSession extends Session {
   others() {
     const out = [];
     for (const g of this.guests.values()) {
-      if (g.x !== null) out.push({ x: g.x, y: g.y, z: g.z, addr: g.addr, creative: g.creative, dead: g.dead, name: g.name, look: g.look, held: g.held, sneaking: g.sneaking });
+      // (One object per guest, kept up to date, so creatures chasing them follow where they go.)
+      if (g.x === null) continue;
+      out.push(Object.assign(g.ref ??= { addr: g.addr }, { x: g.x, y: g.y, z: g.z, creative: g.creative, dead: g.dead, name: g.name, look: g.look,
+        held: g.held, sneaking: g.sneaking, invisible: g.invisible }));
     }
     return out;
   }
@@ -692,6 +698,9 @@ export class HostSession extends Session {
   hurt(addr, amount, why, knock, armored) {
     this.send(addr, { t: 'hurt', a: r2(amount), why, k: knock ? knock.map(r2) : null, arm: armored ? 1 : 0 });
   }
+  // A status effect (a cave spider's bite) or a splash potion reaches a guest.
+  giveEffect(addr, name, seconds, level) { this.send(addr, { t: 'eff', n: name, s: seconds, l: level }); }
+  potionOn(addr, name, scale) { this.send(addr, { t: 'pot', n: name, k: r2(scale) }); }
 
   attackPlayer(rp, amount, bonus) {
     if (!this.pvp) return;
@@ -705,7 +714,7 @@ export class HostSession extends Session {
   // An experience orb reached a guest.
   giveXp(addr, n) { this.send(addr, { t: 'xp', n }); }
   ride() {} // (the host's own riding needs no one's say-so)
-  effect(k, x, y, z) { this.link.broadcast({ t: 'fx', k, x: r2(x), y: r2(y), z: r2(z) }); }
+  effect(k, x, y, z, n = undefined) { this.link.broadcast({ t: 'fx', k, x: r2(x), y: r2(y), z: r2(z), n }); }
 
   chat(text) { this.say(`<${this.name}> ${text}`); }
 
@@ -733,7 +742,7 @@ function entityState(e) {
   if (e.kind === 'item') return Object.assign(s, { k: 'i', id: e.id, n: e.count, d: e.dmg ?? 0, pd: r2(Math.max(0, e.pickupDelay)), ex: e.extra ?? undefined });
   if (e.kind === 'tnt') return Object.assign(s, { k: 't', f: e.fuse });
   if (e.kind === 'falling') return Object.assign(s, { k: 'f', b: e.block });
-  if (e.kind === 'arrow') return Object.assign(s, { k: 'a', a: r2(e.ayaw ?? Math.atan2(-e.vx, -e.vz)), p: r2(e.apitch ?? 0) });
+  if (e.kind === 'arrow') return Object.assign(s, { k: 'a', a: r2(e.ayaw ?? Math.atan2(-e.vx, -e.vz)), p: r2(e.apitch ?? 0), po: e.potion ?? undefined });
   if (e.kind === 'boat') return Object.assign(s, { k: 'b', w: e.wood, a: r2(e.yaw), f: boatFlags(e) });
   if (e.kind === 'xp') return Object.assign(s, { k: 'x', v: e.value });
   return Object.assign(s, { k: 'm', ty: e.type, a: r2(e.yaw), f: mobFlags(e), ...mobExtra(e) });
@@ -894,6 +903,8 @@ export class GuestSession extends Session {
       case 'wake': game.wake(true); break;
       case 'buck': if (game.riding && game.riding.nid === msg.e) game.dismount(true); break;
       case 'xp': if (int(msg.n) && msg.n > 0) game.gainXp(Math.min(msg.n, 5000)); break;
+      case 'eff': if (EFFECTS[msg.n] && num(msg.s) && !game.creative) game.addEffect(msg.n, clamp(msg.s, 0, 600), int(msg.l) ? clamp(msg.l, 1, 5) : 1); break;
+      case 'pot': if (POTIONS[msg.n] && num(msg.k)) game.applyPotion(msg.n, clamp(msg.k, 0, 1), true); break;
       case 'pvp': this.pvp = !!msg.on; break;
       case 'fx': this.effect(msg); break;
       case 'bye': game.disconnected('The host closed the game.'); break;
@@ -1011,6 +1022,7 @@ export class GuestSession extends Session {
     const game = this.game, at = { x: msg.x, y: msg.y, z: msg.z };
     if (msg.k === 'boom') game.explosionFx(at.x, at.y, at.z, 4);
     else if (msg.k === 'fizz') game.fizz(Math.floor(at.x), Math.floor(at.y), Math.floor(at.z));
+    else if (msg.k === 'splash' && POTIONS[msg.n]) game.entities.splashFx(at.x, at.y, at.z, msg.n);
   }
 
   // Game hooks.
@@ -1037,7 +1049,7 @@ export class GuestSession extends Session {
   useMob(e, id, effect) { this.toHost({ t: 'um', e: e.nid, i: id, f: effect }); }
   shootArrow(x, y, z, vx, vy, vz, damage, pickup, fx) {
     this.toHost({ t: 'arw', x: r2(x), y: r2(y), z: r2(z), vx: r2(vx), vy: r2(vy), vz: r2(vz), d: damage, p: pickup ? 1 : 0,
-      pu: fx?.punch || undefined, fl: fx?.flame ? 1 : undefined });
+      pu: fx?.punch || undefined, fl: fx?.flame ? 1 : undefined, po: fx?.potion || undefined });
   }
 
   hitMob(e, amount, bonus, opts = null) {

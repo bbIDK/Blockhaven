@@ -100,7 +100,7 @@ export function boatPhysics(w, e, dt, drive) {
 // front, so where they "stand" is that far below their hips (they're drawn from their feet).
 export const SEAT = { boat: 0.25, horse: 1.38 };
 const HIP = 0.75;
-export const seatY = (e) => e.y + (e.kind === 'boat' ? SEAT.boat : SEAT.horse) - HIP;
+export const seatY = (e) => e.y + (e.kind === 'boat' ? SEAT.boat : e.def?.seat ?? SEAT.horse) - HIP;
 
 // Someone (`rider`: 'me', or a guest's address on the host) gets on. An untamed horse gives them
 // a few seconds before it decides what it thinks of that.

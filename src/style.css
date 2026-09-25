@@ -404,6 +404,33 @@ kbd {
   image-rendering: pixelated;
 }
 #bubbles i, #hunger i { margin: 0 0 0 calc(var(--u) * -1); }
+/* Status effects, top right. */
+#effects {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + var(--u) * 2);
+  right: calc(env(safe-area-inset-right) + var(--u) * 2);
+  display: flex;
+  flex-direction: row-reverse;
+  flex-wrap: wrap;
+  gap: var(--u);
+  max-width: calc(var(--u) * 150);
+}
+#effects .effect {
+  width: calc(var(--u) * 24);
+  height: calc(var(--u) * 28);
+  background: rgba(20, 20, 30, 0.72);
+  border: var(--u) solid #6f7ab8;
+  box-shadow: inset 0 0 0 var(--u) rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--u);
+}
+#effects .effect.bad { border-color: #a8484a; }
+#effects .effect.blink i { opacity: 0.35; }
+#effects .effect i { width: calc(var(--u) * 14); height: calc(var(--u) * 14); background-size: 100% 100%; image-rendering: pixelated; }
+#effects .effect span { font: 400 calc(var(--u) * 6)/1 var(--font-display); color: #e8e8f0; text-shadow: calc(var(--u) * 0.5) calc(var(--u) * 0.5) 0 #222; white-space: nowrap; }
 #item-name {
   position: absolute;
   left: 50%;

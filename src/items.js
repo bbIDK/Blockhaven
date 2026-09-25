@@ -4,6 +4,7 @@ import { BLOCKS, B, BASE, CROP, LEAVES_WOOD, DOUBLE, POTTED } from './blocks.js'
 import { TEX } from './textures.js';
 import { DYES, rgb } from './colors.js';
 import { leafDrops } from './growth.js';
+import { POTIONS, POTION_NAMES } from './potions.js';
 
 export const ITEMS = new Map();
 export const I = {};
@@ -108,6 +109,14 @@ item(379, 'saddle', { stack: 1 });
 item(407, 'tropical_fish', { label: 'Tropical Fish', food: 1, sat: 0.1 });
 item(408, 'pufferfish', { food: 1, sat: 0.1, effects: [['poison', 60, 2], ['hunger', 15, 3]] });
 item(409, 'enchanted_book', { label: 'Enchanted Book', stack: 1 });
+item(410, 'glass_bottle', { label: 'Glass Bottle' });
+item(411, 'phantom_membrane', { label: 'Phantom Membrane' });
+// Potions (see potions.js): drunk from the bottle, or thrown to break over everyone nearby.
+POTION_NAMES.forEach((name, i) => {
+  const label = POTIONS[name].label;
+  item(412 + i, `potion_${name}`, { label: `Potion of ${label}`, stack: 1, potion: name, leftover: 'glass_bottle' });
+  item(424 + i, `splash_potion_${name}`, { label: `Splash Potion of ${label}`, stack: 1, splash: name });
+});
 // (Only ever seen in a hand: the rod while its line is out.)
 item(1020, 'fishing_rod_cast', { label: 'Fishing Rod', stack: 1, hidden: true });
 // Dyes are one texture in sixteen colours.

@@ -46,6 +46,7 @@ export class RemotePlayer {
   get dead() { return !!(this.flags & 16); }
   get sleeping() { return !!(this.flags & 32); }
   get creative() { return !!(this.flags & 64); }
+  get invisible() { return !!(this.flags & 128); }
 
   // Presence: { n: name, p: [x, y, z, yaw, pitch], f: flags, i: held item, a: armour, k: look,
   // s: swings, u: hurts }.
@@ -181,7 +182,7 @@ export class Avatars {
   render(players, cam, world, maxDist, out) {
     this.matIndex = 0;
     for (const rp of players) {
-      if (!rp.ready || rp.dead) continue;
+      if (!rp.ready || rp.dead || rp.invisible) continue;
       const rx = rp.x - cam.x, ry = rp.y - cam.y, rz = rp.z - cam.z;
       if (rx * rx + rz * rz > maxDist * maxDist) continue;
       const l = world.getLight(Math.floor(rp.x), Math.floor(rp.y + 1.2), Math.floor(rp.z));
