@@ -35,8 +35,10 @@ export const MOBS = {
     sound: 'fox', shy: 5 },
   goat: { label: 'Goat', rig: 'goat', skins: ['goat'], hw: 0.45, h: 1.3, health: 10, speed: 1.2, kind: 'animal', anim: 'quad', food: ['wheat'],
     drops: [d('raw_mutton', 0, 1)], sound: 'goat', leaps: true },
-  wolf: { label: 'Wolf', rig: 'wolf', skins: ['wolf', 'wolf_angry'], hw: 0.3, h: 0.85, health: 8, speed: 1.5, kind: 'neutral', anim: 'quad',
-    damage: 4, drops: [], sound: 'wolf', pack: true },
+  wolf: { label: 'Wolf', rig: 'wolf', skins: ['wolf', 'wolf_angry'], extraSkins: { collar: 'collar' }, hw: 0.3, h: 0.85, health: 8, speed: 1.5,
+    kind: 'neutral', anim: 'quad', damage: 4, drops: [], sound: 'wolf', pack: true, tameWith: ['bone'], tameHealth: 20, defends: true,
+    petFood: ['raw_beef', 'cooked_beef', 'raw_porkchop', 'cooked_porkchop', 'raw_chicken', 'cooked_chicken', 'raw_mutton', 'cooked_mutton',
+      'raw_rabbit', 'cooked_rabbit', 'rotten_flesh'] },
   horse: { label: 'Horse', rig: 'horse', skins: HORSE_COATS.map(([n]) => `horse_${n}`), variants: true, saddleSkin: 'horse_saddle', hw: 0.65, h: 1.6, health: 22,
     speed: 1.2, rideSpeed: 9, kind: 'animal', anim: 'horse', food: ['wheat', 'apple', 'sugar', 'carrot', 'hay_block', 'golden_apple', 'golden_carrot'],
     breedFood: ['golden_apple', 'golden_carrot'], drops: [d('leather', 0, 2)], sound: 'horse', rideable: true },
@@ -70,13 +72,14 @@ export const MOBS = {
     breedFood: ['golden_apple', 'golden_carrot'], drops: [d('leather', 0, 2)], sound: 'donkey', rideable: true, scale: 0.87, seat: 1.22 },
   llama: { label: 'Llama', rig: 'llama', skins: ['llama_creamy', 'llama_white', 'llama_brown', 'llama_gray'], variants: true, hw: 0.45, h: 1.87, health: 22,
     speed: 1.1, kind: 'animal', anim: 'quad', food: ['wheat', 'hay_block'], drops: [d('leather', 0, 2)], sound: 'llama', scale: 0.85 },
-  cat: { label: 'Cat', rig: 'cat', skins: ['cat_tabby', 'cat_black', 'cat_white', 'cat_siamese', 'cat_calico', 'cat_ginger'], variants: true, hw: 0.3,
-    h: 0.7, health: 10, speed: 1.7, kind: 'animal', anim: 'quad', food: ['cod', 'salmon'], drops: [d('string', 0, 2)], sound: 'cat', shy: 3, homeRange: 12 },
+  cat: { label: 'Cat', rig: 'cat', skins: ['cat_tabby', 'cat_black', 'cat_white', 'cat_siamese', 'cat_calico', 'cat_ginger'], extraSkins: { collar: 'collar' },
+    variants: true, hw: 0.3, h: 0.7, health: 10, speed: 1.7, kind: 'animal', anim: 'quad', food: ['cod', 'salmon'], tameWith: ['cod', 'salmon'],
+    drops: [d('string', 0, 2)], sound: 'cat', shy: 3, homeRange: 12 },
   turtle: { label: 'Turtle', rig: 'turtle', skins: ['turtle'], hw: 0.6, h: 0.4, health: 30, speed: 0.6, kind: 'animal', anim: 'turtle',
     drops: [], sound: 'turtle', scale: 1.2, swimmer: true },
   parrot: { label: 'Parrot', rig: 'parrot', skins: ['parrot_red', 'parrot_blue', 'parrot_green', 'parrot_cyan', 'parrot_gray'], variants: true, hw: 0.25, h: 0.9,
-    health: 6, speed: 2.2, kind: 'animal', anim: 'parrot', food: ['wheat_seeds', 'beetroot_seeds'], drops: [d('feather', 1, 2)], sound: 'parrot',
-    flies: 'parrot', flutter: true },
+    health: 6, speed: 2.2, kind: 'animal', anim: 'parrot', tameWith: ['wheat_seeds', 'beetroot_seeds', 'pumpkin_seeds', 'melon_seeds'],
+    drops: [d('feather', 1, 2)], sound: 'parrot', flies: 'parrot', flutter: true },
   bat: { label: 'Bat', rig: 'bat', skins: ['bat'], hw: 0.25, h: 0.5, health: 6, speed: 3.2, kind: 'animal', anim: 'bat', drops: [], sound: 'bat',
     flies: 'bat', scale: 0.7, xp: 0 },
   iron_golem: { label: 'Iron Golem', rig: 'iron_golem', skins: ['iron_golem'], extraSkins: { limbs: 'iron_golem_limbs' }, hw: 0.7, h: 2.7,
@@ -102,7 +105,10 @@ for (const [type, m] of Object.entries(MOBS)) {
   m.type = type;
   m.hostile = m.kind === 'hostile';
   m.drops = m.drops.map(([name, lo, hi, chance]) => [I[name] ?? B[name], lo, hi, chance]).filter((x) => x[0] !== undefined);
-  m.foodIds = new Set((m.food ?? []).map((n) => I[n] ?? B[n]).filter((id) => id !== undefined));
+  const ids = (names) => new Set((names ?? []).map((n) => I[n] ?? B[n]).filter((id) => id !== undefined));
+  m.foodIds = ids(m.food);
+  m.tameIds = ids(m.tameWith);
+  m.petFoodIds = m.petFood ? ids(m.petFood) : m.foodIds;
   m.breedIds = m.breedFood ? new Set(m.breedFood.map((n) => I[n] ?? B[n])) : null;
   m.rigDef = RIGS[m.rig];
 }
@@ -120,8 +126,11 @@ export function initMob(e, type, o = {}) {
     grow: o.baby ? 24000 : 0, sheared: !!o.sheared, colour: o.colour ?? 0, eggTimer: 6000 + Math.floor(Math.random() * 6000), fuse: 0,
     aim: 0, lookAt: null, lookTime: 0, squish: 0, jumpCd: 0, teleportCd: 0, graze: 0, pinned: o.pinned ?? null, penned: !!o.penned, home: o.home ?? null,
     tame: !!o.tame, saddled: !!o.saddled, temper: o.temper ?? 0, rider: null,
+    // (Pets: whose they are (a player's id), whether they've been told to sit, their collar's dye.)
+    owner: o.owner ?? null, sitting: !!o.sitting, collar: o.collar ?? RED,
   });
   if (type === 'horse' && o.health === undefined) e.health = 15 + Math.floor(Math.random() * 16);
+  if (e.owner && t.tameHealth) e.health = t.tameHealth;
   e.maxHealth = e.health;
   if (t.sized) { e.hw = 0.26 * size; e.h = 0.52 * size; }
   else if (e.baby) { e.hw = t.hw * 0.5; e.h = t.h * 0.5; }
@@ -138,6 +147,7 @@ export function sheepColour(r) {
   return DYES.findIndex((dd) => dd.name === 'pink');
 }
 export const woolBlock = (colour) => B[`${DYES[colour]?.name ?? 'white'}_wool`] ?? B.white_wool;
+const RED = DYES.findIndex((dd) => dd.name === 'red');
 
 // ---------------------------------------------------------------- behaviour (20 times a second)
 // `ents` is the Entities list (players, world, game).
@@ -185,6 +195,7 @@ export function mobTick(ents, e) {
     if ((e.drowning = (e.drowning ?? 0) + 1) >= 600) { becomeDrowned(ents, e); return; }
   } else e.drowning = 0;
   if (e.rider) { riddenTick(ents, e); return; }
+  if (e.owner && petTick(ents, e)) { lookTick(ents, e); return; }
   if (t.flies === 'phantom') phantomTick(ents, e);
   else if (t.flies) flyTick(ents, e);
   else switch (t.kind) {
@@ -276,28 +287,13 @@ function animalTick(ents, e) {
     e.moving = true; e.speedMul = 1.8;
     return;
   }
-  // Shy creatures keep away from players.
-  if (t.shy) {
+  // Shy creatures keep away from players (not from their owner, once tamed).
+  if (t.shy && !e.tame) {
     const p = ents.players.find((q) => !q.dead && dist2(q, e) < t.shy && !(q.sneaking));
     if (p) { faceAway(e, p.x, p.z); e.moving = true; e.speedMul = 1.6; return; }
   }
   // Animals follow someone holding their food, and look for a partner when in love.
-  if (e.love > 0) {
-    const mate = ents.list.find((o) => o !== e && o.kind === 'mob' && o.type === e.type && o.love > 0 && !o.baby && !o.dead && !o.dying && dist2(o, e) < 8);
-    if (mate) {
-      faceTowards(e, mate.x, mate.z);
-      e.moving = dist2(mate, e) > 1.2;
-      if (!e.moving && e.love > 0 && mate.love > 0) {
-        e.love = mate.love = 0; e.breedCd = mate.breedCd = 6000;
-        // (A foal of two tame horses is born tame.)
-        const baby = ents.spawnMob(e.type, (e.x + mate.x) / 2, e.y, (e.z + mate.z) / 2, { baby: true, variant: Math.random() < 0.5 ? e.variant : mate.variant,
-          colour: Math.random() < 0.5 ? e.colour : mate.colour, tame: e.tame && mate.tame });
-        game.particles.bits(baby.x, baby.y + 0.5, baby.z, TEX.heart, 6, 1, 0.5);
-        ents.spawnXp(baby.x, baby.y + 0.5, baby.z, 1 + Math.floor(Math.random() * 7));
-      }
-      return;
-    }
-  }
+  if (e.love > 0 && seekMate(ents, e)) return;
   if (e.penned) { e.moving = false; }
   const tempter = t.foodIds.size && ents.players.find((p) => !p.dead && p.held && t.foodIds.has(p.held) && dist2(p, e) < 9);
   if (tempter) {
@@ -321,6 +317,92 @@ function animalTick(ents, e) {
   // Rabbits hop about quickly and stop often.
   wander(e, t.hops ? 0.55 : 0.4);
   if (e.home && dist2(e, e.home) > (t.homeRange ?? 4)) { faceTowards(e, e.home.x, e.home.z); e.moving = true; }
+}
+
+// In love: go to a partner (another of its kind in love nearby) and have a baby with them.
+function seekMate(ents, e) {
+  const game = ents.game;
+  const mate = ents.list.find((o) => o !== e && o.kind === 'mob' && o.type === e.type && o.love > 0 && !o.baby && !o.dead && !o.dying && dist2(o, e) < 8);
+  if (!mate) return false;
+  faceTowards(e, mate.x, mate.z);
+  e.moving = dist2(mate, e) > 1.2;
+  if (!e.moving && e.love > 0 && mate.love > 0) {
+    e.love = mate.love = 0; e.breedCd = mate.breedCd = 6000;
+    // (A foal of two tame horses is born tame; puppies and kittens belong to their parents' owner.)
+    const baby = ents.spawnMob(e.type, (e.x + mate.x) / 2, e.y, (e.z + mate.z) / 2, { baby: true, variant: Math.random() < 0.5 ? e.variant : mate.variant,
+      colour: Math.random() < 0.5 ? e.colour : mate.colour, tame: e.tame && mate.tame, owner: e.owner && e.owner === mate.owner ? e.owner : null });
+    game.particles.bits(baby.x, baby.y + 0.5, baby.z, TEX.heart, 6, 1, 0.5);
+    ents.spawnXp(baby.x, baby.y + 0.5, baby.z, 1 + Math.floor(Math.random() * 7));
+  }
+  return true;
+}
+
+// ---------------------------------------------------------------- pets
+// Whose pet `e` is, if they're about. (Playing alone, every pet is yours.)
+export function ownerOf(ents, e) {
+  if (!e.owner) return null;
+  return ents.players.find((p) => p.uid === e.owner) ?? (ents.game.net ? null : ents.players[0] ?? null);
+}
+// Tamed wolves, cats and parrots follow their owner about (catching up by appearing beside them
+// when left far behind), sit when told to, and wolves fight for them. True when it has decided
+// what to do this tick; false leaves it to its usual ways (wandering near).
+function petTick(ents, e) {
+  const t = e.def, owner = ownerOf(ents, e);
+  if (e.sitting) {
+    e.moving = false; e.target = null; e.angry = 0; e.panic = 0;
+    if (t.flies) e.flyVel = null;
+    return true;
+  }
+  if (e.love > 0 && !t.flies && seekMate(ents, e)) return true;
+  // Wolves go for whatever their owner fights, or whatever hurt them.
+  const tg = e.target;
+  if (t.defends && tg && !targetGone(tg) && tg !== owner && dist2(tg, e) < 24) {
+    faceTowards(e, tg.x, tg.z);
+    const dist = dist2(tg, e);
+    e.moving = dist > 0.8; e.speedMul = 1.5; e.angry = Math.max(e.angry, 20);
+    meleeTick(ents, e, tg, dist, tg.y - e.y);
+    return true;
+  }
+  e.target = null; e.angry = 0;
+  if (!owner || owner.dead) return false;
+  const d = Math.hypot(owner.x - e.x, owner.z - e.z);
+  if ((d > 20 || Math.abs(owner.y - e.y) > 10) && petTeleport(ents, e, owner)) return true;
+  if (t.flies) {
+    // A parrot flies after its owner, to hover about their shoulders.
+    if (d > 3.5 || Math.abs(owner.y + 2 - e.y) > 3) {
+      e.flyTarget = { x: owner.x + (Math.random() - 0.5) * 2, y: owner.y + 2.2, z: owner.z + (Math.random() - 0.5) * 2 };
+      e.landing = false;
+      steer(e, e.flyTarget, t.speed * 1.3);
+      return true;
+    }
+    return false;
+  }
+  if (d > 5) { faceTowards(e, owner.x, owner.z); e.moving = true; e.speedMul = d > 10 ? 1.7 : 1.25; return true; }
+  if (d < 2.5) { e.moving = false; return true; }
+  return false;
+}
+// Appear on solid ground a step or two from `owner`.
+function petTeleport(ents, e, owner) {
+  const w = ents.world;
+  for (let k = 0; k < 12; k++) {
+    const x = Math.floor(owner.x + (Math.random() - 0.5) * 5), z = Math.floor(owner.z + (Math.random() - 0.5) * 5);
+    if (Math.abs(x + 0.5 - owner.x) < 1 && Math.abs(z + 0.5 - owner.z) < 1) continue;
+    for (let y = Math.floor(owner.y) + 1; y >= Math.floor(owner.y) - 2; y--) {
+      if (!SOLID[w.getBlock(x, y - 1, z)] || SOLID[w.getBlock(x, y, z)] || SOLID[w.getBlock(x, y + 1, z)] || WATERLIKE[w.getBlock(x, y, z)]) continue;
+      e.x = x + 0.5; e.y = y; e.z = z + 0.5; e.vx = e.vy = e.vz = 0; e.flyTarget = null;
+      return true;
+    }
+  }
+  return false;
+}
+// Someone's wolves go after `foe`: whatever their owner (a player's id) attacked, or whatever
+// attacked them. (Not creepers, and not another of the same owner's pets.)
+export function rallyPets(ents, uid, foe) {
+  if (!foe || foe.kind !== 'mob' || foe.def.explodes || (foe.owner && foe.owner === uid)) return;
+  for (const o of ents.list) {
+    if (o.kind !== 'mob' || !o.def.defends || !o.owner || o.sitting || o.dead || o.dying || o === foe) continue;
+    if ((o.owner === uid || !ents.game.net) && dist2(o, foe) < 20) { o.target = foe; o.angry = 200; }
+  }
 }
 
 function grazeDone(ents, e) {
@@ -355,11 +437,12 @@ function swimTick(ents, e) {
   }
 }
 
-// Players (and for zombies, villagers) a monster could go after.
-function preyFor(ents, e, range) {
+// Players (and for zombies, villagers) a monster could go after (no more than `tall` blocks above
+// or below it).
+function preyFor(ents, e, range, tall = 12) {
   let best = null, bd = range;
   for (const p of ents.players) {
-    if (p.creative || p.dead || Math.abs(p.y - e.y) > 12) continue;
+    if (p.creative || p.dead || Math.abs(p.y - e.y) > tall) continue;
     const dd = Math.hypot(p.x - e.x, p.y - e.y, p.z - e.z);
     // (Someone invisible has to all but walk into them to be noticed.)
     if (dd < bd && (!p.invisible || dd < 2.5)) { bd = dd; best = p; }
@@ -377,6 +460,11 @@ const targetGone = (t) => !t || t.dead || t.dying || t.creative;
 
 function hostileTick(ents, e) {
   const t = e.def, game = ents.game, w = ents.world;
+  // Creepers are afraid of cats.
+  if (t.explodes) {
+    const cat = ents.list.find((o) => o.type === 'cat' && !o.dead && !o.dying && dist2(o, e) < 6 && Math.abs(o.y - e.y) < 4);
+    if (cat) { faceAway(e, cat.x, cat.z); e.moving = true; e.speedMul = 1.5; e.fuse = Math.max(0, e.fuse - 1); return; }
+  }
   // Spiders leave you alone in daylight unless provoked.
   const calm = t.calmInDaylight && game.env.daylight > 0.6 && e.angry <= 0 &&
     ((w.getLight(Math.floor(e.x), Math.floor(e.y + 0.5), Math.floor(e.z)) >> 4) >= 12);
@@ -412,7 +500,7 @@ function meleeTick(ents, e, tg, dist, dy) {
     // Iron golems fling what they hit into the air.
     const up = e.def.heavy ? 9 : 4.5;
     if (tg.kind === 'mob') { ents.hurtMob(tg, dmg, e, e.def.heavy ? 1.5 : 0); if (e.def.heavy) tg.vy = up; }
-    else ents.game.hurtPlayer(tg, dmg, why, [(tg.x - e.x) * k * 0.3, up, (tg.z - e.z) * k * 0.3], true);
+    else { ents.game.hurtPlayer(tg, dmg, why, [(tg.x - e.x) * k * 0.3, up, (tg.z - e.z) * k * 0.3], true); rallyPets(ents, tg.uid, e); }
     if (e.def.poison && tg.kind !== 'mob') ents.game.giveEffect?.(tg, 'poison', ...e.def.poison);
     if (e.def.heavy) ents.game.audio.mob('golem', 'attack', { x: e.x, y: e.y + 2, z: e.z });
   }
@@ -592,7 +680,7 @@ function steer(e, f, sp) {
 function phantomTick(ents, e) {
   const tg = targetGone(e.target) ? null : e.target;
   if (!tg) {
-    if ((e.targetCd = (e.targetCd ?? 0) - 1) <= 0) { e.targetCd = 20; e.target = preyFor(ents, e, 48); }
+    if ((e.targetCd = (e.targetCd ?? 0) - 1) <= 0) { e.targetCd = 20; e.target = preyFor(ents, e, 64, 40); }
     e.circle = (e.circle ?? Math.random() * TAU) + 0.03;
     const c = e.anchor ?? (e.anchor = { x: e.x, y: e.y, z: e.z });
     e.flyVel = [Math.cos(e.circle) * 5 + (c.x - e.x) * 0.3, (c.y - e.y) * 0.5, Math.sin(e.circle) * 5 + (c.z - e.z) * 0.3];
@@ -605,8 +693,9 @@ function phantomTick(ents, e) {
     const dx = tg.x - e.x, dy = tg.y + 1 - e.y, dz = tg.z - e.z, len = Math.hypot(dx, dy, dz) || 1;
     e.flyVel = [(dx / len) * 12, (dy / len) * 12, (dz / len) * 12];
     if (len < 1.8 && e.attackCd === 0) {
-      e.attackCd = 20; e.swoop = 0;
-      meleeTick(ents, e, tg, 0.5, tg.y - e.y);
+      // A bite, as it sweeps past. (Coming down at their head, it's close enough to reach.)
+      e.swoop = 0;
+      meleeTick(ents, e, tg, 0.5, 0);
     } else if (e.y < tg.y + 0.3 || e.hitWall) e.swoop = 0;
     if (e.swoop === 0) { e.cool = 60 + Math.floor(Math.random() * 60); e.flyVel = [e.vx, 6, e.vz]; }
     return;
@@ -681,11 +770,17 @@ export function teleport(ents, e, near = null) {
 // Something hurt this creature: animals flee, neutral ones (and their pack) fight back.
 export function provoked(ents, e, from) {
   const t = e.def;
+  // A pet doesn't turn on its owner (a wolf fights back against anyone else).
+  if (e.owner) {
+    if (!from || from.uid === e.owner || (!ents.game.net && from === ents.players[0])) return;
+    e.sitting = false;
+    if (t.defends) { e.target = from; e.angry = 200; return; }
+  }
   if (t.kind === 'animal') { e.panic = 80; if (from) faceAway(e, from.x, from.z); e.love = 0; e.flyTarget = null; e.roost = false; }
   else if (t.kind === 'water') { e.panic = 60; ents.game.particles.smoke?.(e.x, e.y + 0.4, e.z, 4, 0.4); }
   else if (t.kind === 'neutral' && from && !from.creative) {
     e.angry = 400; e.target = from;
-    if (t.pack) for (const o of ents.list) if (o !== e && o.type === e.type && !o.dead && dist2(o, e) < 16) { o.angry = 400; o.target = from; }
+    if (t.pack) for (const o of ents.list) if (o !== e && o.type === e.type && !o.dead && !o.owner && dist2(o, e) < 16) { o.angry = 400; o.target = from; }
     if (t.teleports && Math.random() < 0.5) teleport(ents, e);
   } else if (t.kind === 'hostile' && from && (from.addr !== undefined || from.kind === 'mob')) {
     if (!from.creative) { e.target = from; e.angry = 200; }
@@ -693,9 +788,21 @@ export function provoked(ents, e, from) {
 }
 
 // What using item `id` on creature `e` would do: 'milk', 'shear', 'breed', 'grow', 'dye' or null.
-export function mobUseEffect(e, id) {
+// (`mine`: the creature is a pet of whoever's using it.)
+export function mobUseEffect(e, id, mine = false) {
   const t = e.def;
-  if (!id || e.dying) return null;
+  if (e.dying) return null;
+  // Taming: a wolf with a bone, a cat with fish, a parrot with seeds (it takes a few goes). A pet
+  // of yours is fed to heal it (and to breed it, once it's well), its collar can be dyed, and
+  // anything else tells it to sit, or to get up again.
+  if (t.tameIds.size) {
+    if (!e.tame) return id && t.tameIds.has(id) && !(e.angry > 0) ? 'tame' : null;
+    if (!mine) return null;
+    if (id && DYE_OF[id] !== undefined && t.rigDef.bones.collar) return DYE_OF[id] !== e.collar ? 'collar' : null;
+    if (id && t.petFoodIds.has(id)) return e.baby ? 'grow' : e.health < e.maxHealth ? 'heal' : !t.flies && e.breedCd === 0 && e.love === 0 ? 'breed' : null;
+    return 'sit';
+  }
+  if (!id) return null;
   if (t.rideable) {
     // Horses: saddled once tame; fed to heal and to warm to you; golden food to breed.
     if (id === I.saddle) return e.tame && !e.saddled && !e.baby ? 'saddle' : null;
@@ -709,10 +816,28 @@ export function mobUseEffect(e, id) {
   if (t.wool && !e.sheared && DYE_OF[id] !== undefined && DYE_OF[id] !== e.colour) return 'dye';
   return null;
 }
-// The creature's side of it (on the host).
-export function applyMobUse(ents, e, id, effect) {
+// The creature's side of it (on the host). `uid`: who's using it.
+export function applyMobUse(ents, e, id, effect, uid = null) {
   const game = ents.game, at = { x: e.x, y: e.y + 1, z: e.z };
   switch (effect) {
+    case 'tame':
+      if (Math.random() < 1 / 3) {
+        // (A village cat that's taken in is no longer the village's.)
+        e.tame = true; e.owner = uid; e.angry = 0; e.target = null; e.panic = 0; e.pinned = null; e.home = null;
+        // (Wolves and parrots sit down to wait for their new owner.)
+        e.sitting = e.type !== 'cat';
+        if (e.def.tameHealth) { e.maxHealth = e.def.tameHealth; e.health = e.maxHealth; }
+        game.particles.bits(e.x, e.y + e.h + 0.3, e.z, TEX.heart, 7, 1, 0.5);
+        game.audio.mob(e.def.sound, 'say', at);
+        game.net?.resend?.(e);
+      } else game.particles.smoke(e.x, e.y + e.h + 0.2, e.z, 5, 0.3);
+      break;
+    case 'sit': e.sitting = !e.sitting; e.target = null; e.moving = false; e.vx = e.vz = 0; break;
+    case 'heal':
+      e.health = Math.min(e.maxHealth ?? e.health, e.health + 4);
+      game.particles.bits(e.x, e.y + e.h + 0.2, e.z, TEX.heart, 3, 0.8, 0.4);
+      break;
+    case 'collar': e.collar = DYE_OF[id] ?? e.collar; game.net?.resend?.(e); break;
     case 'milk': game.audio.bucket('fill', at); break;
     case 'shear': {
       e.sheared = true;
@@ -736,6 +861,7 @@ export function applyMobUse(ents, e, id, effect) {
 }
 // The player's side: what happens to what they're holding.
 export function applyHeldUse(game, effect) {
+  if (effect === 'sit') { game.swingArm(); return; }
   if (effect === 'milk') game.swapHeldTo(I.milk_bucket);
   else if (effect === 'shear') { if (!game.creative && game.inv.damageHeld(1)) game.audio.toolBreak(); game.invChanged(); }
   else if (!game.creative) { game.inv.consumeHeld(); game.invChanged(); }
@@ -865,7 +991,8 @@ function flyPhysics(ents, e, dt) {
   e.flap += dt * (t.flies === 'bat' ? 32 : t.flies === 'parrot' ? 26 : 5);
   e.swing = Math.max(0, e.swing - dt * 3);
   if (e.roost) { e.vx = e.vy = e.vz = 0; e.walk = 0; e.tilt = 0; return; }
-  const v = e.flyVel ?? [0, -0.5, 0], k = 1 - Math.exp(-(t.flies === 'phantom' ? 2.2 : 4) * dt);
+  // (A phantom turns slowly as it circles, but homes in hard once it dives.)
+  const v = e.flyVel ?? [0, -0.5, 0], k = 1 - Math.exp(-(t.flies === 'phantom' ? (e.swoop > 0 ? 6 : 2.2) : 4) * dt);
   e.vx += (v[0] - e.vx) * k; e.vy += (v[1] - e.vy) * k; e.vz += (v[2] - e.vz) * k;
   e.move(ents.world, e.vx * dt, e.vy * dt, e.vz * dt);
   const hs = Math.hypot(e.vx, e.vz);
@@ -889,6 +1016,15 @@ export function poseMob(e, pose) {
       pose.tail = [Math.sin(age * (e.angry ? 12 : 4)) * 0.1, Math.sin(age * 3) * (e.angry ? 0.5 : 0.25), 0];
       // Grazing: the head goes down to the grass.
       if (e.graze > 0) { pose.head = [-0.9, 0, 0]; pose['head@'] = [0, -5.8, -5.7]; }
+      // Sitting (the whole body is tipped back on its haunches; see renderMob): front legs
+      // straight down, back legs folded forwards along the ground, head level, tail on the ground.
+      const sit = e.sitting && sitPose(t.rig);
+      if (sit) {
+        pose.legFR = pose.legFL = [-sit.theta, 0, 0];
+        pose.legBR = pose.legBL = [Math.PI / 2 - sit.theta, 0, 0];
+        pose.head = [head[0] - sit.theta, head[1], 0];
+        pose.tail = [sit.theta * 0.8, Math.sin(age * 2) * 0.1, 0];
+      }
       break;
     }
     case 'horse': {
@@ -1035,6 +1171,20 @@ export function poseMob(e, pose) {
 
 // ---------------------------------------------------------------- drawing
 const baseMat = new Float32Array(16);
+// How a four-legged creature sits: tipped back about its hips (the back legs' pivot) until its
+// front legs just reach the ground with the hips lowered almost to it.
+const sits = new Map();
+function sitPose(rigName) {
+  if (sits.has(rigName)) return sits.get(rigName);
+  const b = RIGS[rigName].bones, hind = b.legBR?.pivot, front = b.legFR?.pivot;
+  let out = null;
+  if (hind && front && hind[2] > front[2]) {
+    const drop = hind[1] - 1.5;
+    out = { hipY: hind[1], hipZ: hind[2], drop, theta: Math.asin(Math.min(0.95, drop / (hind[2] - front[2]))) };
+  }
+  sits.set(rigName, out);
+  return out;
+}
 // Adds creature `e` to the render list `out` (camera-relative position rx, ry, rz).
 export function renderMob(ents, e, rx, ry, rz, light, out) {
   const t = e.def, r = ents.game.renderer;
@@ -1043,7 +1193,8 @@ export function renderMob(ents, e, rx, ry, rz, light, out) {
   if (t.saddleSkin) skins.saddle = t.saddleSkin;
   if (t.type === 'wolf' && e.angry > 0) skins.main = 'wolf_angry';
   if (t.kind === 'civilian') skins.main = e.skin;
-  const tint = t.wool ? woolTint(e.colour) : null;
+  const pet = !!e.owner || (e.tame && t.tameIds.size > 0);
+  const tint = t.wool ? woolTint(e.colour) : pet && t.rigDef.bones.collar ? woolTint(e.collar ?? RED) : null;
   const meshes = rigMeshes(r, t.rig, skins, tint);
   const base = identity(baseMat);
   translate(base, base, rx, ry, rz);
@@ -1067,11 +1218,17 @@ export function renderMob(ents, e, rx, ry, rz, light, out) {
     const f = Math.min(1, e.fuse / 30), swell = 1 + f * 0.25 + Math.sin(f * 60) * f * 0.03;
     scale(base, base, s * swell, s * (1 + f * 0.1), s * swell);
   } else if (s !== 1) scale(base, base, s, s, s);
+  const sit = e.sitting && t.anim === 'quad' && sitPose(t.rig);
+  if (sit) {
+    translate(base, base, 0, (sit.hipY - sit.drop) / 16, sit.hipZ / 16);
+    rotateX(base, base, sit.theta);
+    translate(base, base, 0, -sit.hipY / 16, -sit.hipZ / 16);
+  }
   const pose = {};
   poseMob(e, pose);
   const parts = [];
   for (const m of meshes) {
-    if ((m.bone.wool && e.sheared) || (m.bone.saddle && !e.saddled)) continue;
+    if ((m.bone.wool && e.sheared) || (m.bone.saddle && !e.saddled) || (m.bone.collar && !pet)) continue;
     parts.push({ mesh: m.mesh, model: boneMatrix(ents.mat(), base, m.bone, pose, m.name) });
   }
   // What it holds: attached to the hand of the arm bone.

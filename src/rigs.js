@@ -138,6 +138,8 @@ export const RIGS = {
       legBR: { pivot: [1.5, 8, 6], cubes: [c([0.5, 0, 5], [2, 8, 2], [0, 18])] },
       legBL: { pivot: [-1.5, 8, 6], cubes: [c([-2.5, 0, 5], [2, 8, 2], [0, 18], { mirror: true })] },
       tail: { pivot: [0, 12, 7], cubes: [c([-1, 4, 6], [2, 8, 2], [9, 18])], rest: [-0.7, 0, 0] },
+      // A tame wolf's collar (dyed to taste).
+      collar: { pivot: [0, 10, -2], follows: 'mane', collar: true, cubes: [c([-4, 7.5, -6], [8, 6, 1], [0, 0], { skin: 'collar', inflate: 0.35 })] },
     },
   },
   fox: {
@@ -253,6 +255,7 @@ export const RIGS = {
       legBR: { pivot: [1, 5, 5], cubes: [c([0, 0, 4], [2, 5, 2], [40, 20])] },
       legBL: { pivot: [-1, 5, 5], cubes: [c([-2, 0, 4], [2, 5, 2], [40, 20], { mirror: true })] },
       tail: { pivot: [0, 9, 7], cubes: [c([-0.5, 1, 6.5], [1, 8, 1], [0, 15])], rest: [-0.9, 0, 0] },
+      collar: { pivot: [0, 7, 0], follows: 'body', collar: true, cubes: [c([-2, 5, -7], [4, 5, 1], [0, 0], { skin: 'collar', inflate: 0.3 })] },
     },
   },
   // Llamas: a woolly body, a long upright neck, a blunt muzzle and tall ears.
@@ -397,7 +400,7 @@ export function rigMeshes(renderer, rigName, skins, tint = null) {
   out = [];
   for (const [name, bone] of Object.entries(rig.bones)) {
     const cubes = bone.cubes.map((cb) => (cb.skin ? { ...cb, layer: skinLayer(skins[cb.skin]) } : cb));
-    const t = bone.wool && tint ? [(tint >> 16) & 255, (tint >> 8) & 255, tint & 255] : null;
+    const t = (bone.wool || bone.collar) && tint ? [(tint >> 16) & 255, (tint >> 8) & 255, tint & 255] : null;
     out.push({ name, bone, mesh: renderer.createMesh(skinMesh(cubes, skinLayer(skins.main), bone.pivot, t)) });
   }
   meshCache.set(key, out);

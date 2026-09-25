@@ -150,6 +150,13 @@ function wolfSkin(sk, angry) {
   each(sk, 'wolf', ['tail'], (face, r) => { if (face !== 'top' && face !== 'bottom') sk.fill([r[0], r[1] + r[3] - 2, r[2], 2], WOLF_LIGHT, { cell: 1 }); });
 }
 skin('wolf', (sk) => wolfSkin(sk, false));
+// A pet's collar: a light band (tinted with its dye when drawn) with a darker stitched edge and a
+// little silver tag at the front.
+skin('collar', (sk) => {
+  sk.fill([0, 0, 64, 64], [0xf4f4f4, 0xeaeaea, 0xe2e2e2], { cell: 1, grain: 0.2 });
+  for (let x = 0; x < 64; x++) { sk.set(x, 0, 0xb8b8b8); sk.set(x, 63, 0xb8b8b8); }
+  for (let y = 0; y < 64; y += 2) for (let x = 0; x < 64; x += 4) sk.set(x + (y % 4 ? 2 : 0), y, 0xd0d0d0);
+});
 skin('wolf_angry', (sk) => wolfSkin(sk, true));
 
 const FOX = ramp(0xd8702c, 5, 0.12, 8), FOX_WHITE = ramp(0xece4da, 3, 0.05, 4), FOX_DARK = [0x221a16, 0x2e241e, 0x3a2e26];

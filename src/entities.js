@@ -12,7 +12,8 @@ import { I, itemDef } from './items.js';
 import { rayBox } from './world.js';
 import { HEIGHT, TICKS_PER_DAY } from './config.js';
 import { villageAt } from './villages.js';
-import { MOBS, initMob, mobTick, mobPhysics, renderMob, provoked, mobUseEffect, applyMobUse, applyHeldUse, mobDrops, mobXp, herdFor, monsterFor, HOSTILE_TYPES } from './mobs.js';
+import { MOBS, initMob, mobTick, mobPhysics, renderMob, provoked, mobUseEffect, applyMobUse, applyHeldUse, mobDrops, mobXp, herdFor, monsterFor, HOSTILE_TYPES,
+  rallyPets } from './mobs.js';
 import { Civilians } from './civilians.js';
 import { extras, cleanExtras } from './inventory.js';
 import { boatPhysics, boatMesh, boatModel, BOAT_WOODS } from './riding.js';
@@ -40,18 +41,21 @@ export function mobExtra(e) {
   if (e.tame) o.tm = 1;
   if (e.saddled) o.sd = 1;
   if (e.temper) o.te = e.temper;
+  if (e.owner) { o.ow = e.owner; o.co = e.collar; }
+  if (e.sitting) o.si = 1;
   if (e.def.kind === 'civilian') { o.r = e.rid; o.sk = e.skin; o.n = e.name; o.ro = e.role; }
   return o;
 }
 const extraOpts = (s) => ({ variant: Number.isInteger(s.v) ? s.v : 0, colour: Number.isInteger(s.c) ? s.c : 0, size: [1, 2, 4].includes(s.s) ? s.s : 1,
-  baby: !!s.b, sheared: !!s.sh, tame: !!s.tm, saddled: !!s.sd, temper: Number.isFinite(s.te) ? Math.max(0, Math.min(100, s.te)) : 0 });
+  baby: !!s.b, sheared: !!s.sh, tame: !!s.tm, saddled: !!s.sd, temper: Number.isFinite(s.te) ? Math.max(0, Math.min(100, s.te)) : 0,
+  owner: typeof s.ow === 'string' && s.ow ? s.ow.slice(0, 64) : null, sitting: !!s.si, collar: Number.isInteger(s.co) && s.co >= 0 && s.co < 16 ? s.co : undefined });
 // Flags sent with each creature update: 1 hurt, 2 dying, 4 swinging, 8 burning, 16 shorn, 32 angry,
 // 64 about to explode, 128 drawing a bow, 256 asleep, 512 saddled, 1024 tame, 2048 being ridden,
-// 4096 roosting (a bat hanging upside down), 8192 drinking (a witch).
+// 4096 roosting (a bat hanging upside down), 8192 drinking (a witch), 16384 sitting (a pet).
 export function mobFlags(e) {
   return (e.hurt > 0 ? 1 : 0) | (e.dying ? 2 : 0) | (e.swing > 0.3 ? 4 : 0) | (e.burning ? 8 : 0) | (e.sheared ? 16 : 0) | (e.angry > 0 ? 32 : 0) |
     (e.fuse > 0 ? 64 : 0) | (e.aim > 0 ? 128 : 0) | (e.pose === 'sleep' ? 256 : 0) | (e.saddled ? 512 : 0) | (e.tame ? 1024 : 0) | (e.rider ? 2048 : 0) |
-    (e.roost ? 4096 : 0) | (e.drinking > 0 ? 8192 : 0);
+    (e.roost ? 4096 : 0) | (e.drinking > 0 ? 8192 : 0) | (e.sitting ? 16384 : 0);
 }
 
 export class Entities {
@@ -455,7 +459,10 @@ export class Entities {
       const dmg = Math.max(1, Math.round(e.damage * Math.min(1.5, sp / 25)));
       const at = { x: e.x, y: e.y, z: e.z };
       if (victim.kind === 'mob') this.hurtMob(victim, dmg, e.owner ?? at, e.punch, e.flame ? { fire: 5 } : null);
-      else game.hurtPlayer(victim, dmg, e.owner?.label ? `You were shot by a ${e.owner.label.toLowerCase()}` : 'You were shot', [dx * 3, 2, dz * 3], true);
+      else {
+        game.hurtPlayer(victim, dmg, e.owner?.label ? `You were shot by a ${e.owner.label.toLowerCase()}` : 'You were shot', [dx * 3, 2, dz * 3], true);
+        if (e.owner?.kind === 'mob') rallyPets(this, victim.uid, e.owner);
+      }
       game.audio.arrowHit?.(true, at);
       e.dead = true;
       return;
@@ -585,20 +592,23 @@ export class Entities {
   interact(e, held) {
     if (e.kind === 'boat') { this.game.mount(e); return; }
     if (e.def.kind === 'civilian') { this.civilians.talk(e); return; }
-    const effect = mobUseEffect(e, held?.id);
+    const uid = this.game.uid, mine = !!e.owner && (e.owner === uid || !this.game.net);
+    const effect = mobUseEffect(e, held?.id ?? 0, mine);
     if (!effect) {
       if (e.def.rideable && !e.baby && !this.game.player.sneaking) this.game.mount(e);
       return;
     }
     applyHeldUse(this.game, effect);
-    if (e.remote) this.game.net.useMob(e, held.id, effect);
-    else applyMobUse(this, e, held.id, effect);
+    if (e.remote) this.game.net.useMob(e, held?.id ?? 0, effect);
+    else applyMobUse(this, e, held?.id ?? 0, effect, uid);
   }
-  // A guest used something on a creature (checked again here).
-  remoteUse(nid, id, effect) {
+  // A guest (`uid`) used something on a creature (checked again here).
+  remoteUse(nid, id, effect, uid) {
     const e = this.list.find((x) => x.nid === nid && x.kind === 'mob' && !x.dead);
-    if (e && mobUseEffect(e, id) === effect) applyMobUse(this, e, id, effect);
+    if (e && mobUseEffect(e, id, !!e.owner && e.owner === uid) === effect) applyMobUse(this, e, id, effect, uid);
   }
+  // A player (`uid`) attacked `foe`: their wolves join in.
+  rallyPets(uid, foe) { rallyPets(this, uid, foe); }
 
   // Explosion: carve a rough sphere, hurt anything nearby, set off other TNT.
   explode(x, y, z, power) {
@@ -697,6 +707,8 @@ export class Entities {
     } else if (s.k === 'm') {
       e.tyaw = Number.isFinite(s.a) ? s.a : e.yaw;
       if (Number.isInteger(s.c)) e.colour = s.c;
+      const x = extraOpts(s);
+      e.owner = x.owner; if (x.collar !== undefined) e.collar = x.collar;
       this.remoteFlags(e, Number.isInteger(s.f) ? s.f : 0);
     } else if (s.k === 'b') {
       e.tyaw = Number.isFinite(s.a) ? s.a : e.yaw;
@@ -741,6 +753,7 @@ export class Entities {
     e.ridden = !!(f & 2048);
     e.roost = !!(f & 4096);
     e.drinking = f & 8192 ? 1 : 0;
+    e.sitting = !!(f & 16384);
     e.flags = f;
   }
 

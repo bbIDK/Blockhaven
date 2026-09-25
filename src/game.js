@@ -16,7 +16,7 @@ import { Particles } from './particles.js';
 import { Weather } from './weather.js';
 import { Entities } from './entities.js';
 import { TouchControls } from './touch.js';
-import { HostSession, GuestSession, openRoom, openGames, cleanName, COLORS } from './multiplayer.js';
+import { HostSession, GuestSession, openRoom, openGames, cleanName, COLORS, playerUid } from './multiplayer.js';
 import { Avatars, playerSkin } from './avatars.js';
 import * as storage from './storage.js';
 import { makeEnvironment, updateEnvironment, clockText } from './sky.js';
@@ -282,6 +282,8 @@ export class Game {
   }
 
   get creative() { return this.meta?.mode === 'creative'; }
+  // This player's lasting id (their pets know them by it).
+  get uid() { return playerUid(); }
   get mode() { return this.creative ? 'creative' : 'survival'; }
 
   applySettings() {
@@ -604,7 +606,7 @@ export class Game {
   // so a creature after them keeps up with where they are.)
   players() {
     const p = this.player;
-    const me = (this.me ??= { addr: null });
+    const me = (this.me ??= { addr: null, uid: this.uid });
     Object.assign(me, { x: p.x, y: p.y, z: p.z, creative: this.creative, dead: this.state === 'dead', held: this.inv.heldId,
       look: p.lookDir(), sneaking: p.sneaking, invisible: this.effects.has('invisibility') });
     return this.net ? [me, ...this.net.others()] : [me];
@@ -1940,6 +1942,7 @@ export class Game {
     if (extra > 0.5) this.particles.bits(e.x, e.y + e.h * 0.7, e.z, TEX.magic_crit, 10, 2.2, 0.5);
     const opts = ench ? { fire: (ench.fire_aspect ?? 0) * 4, looting: ench.looting ?? 0 } : null;
     this.entities.attack(e, amount, (strong && p.sprinting ? 1 : 0) + (ench?.knockback ?? 0), opts);
+    if (!this.net?.guest) this.entities.rallyPets(this.uid, e);
     this.exhaust(0.1);
     // Swords wear by one per hit; tools used as weapons wear twice as fast.
     if (!this.creative && def?.durability && this.inv.damageHeld(def.tool ? 2 : 1)) this.audio.toolBreak();

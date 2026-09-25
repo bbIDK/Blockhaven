@@ -421,7 +421,7 @@ export class HostSession extends Session {
           this.game.entities.spawnXp(msg.x, msg.y, msg.z, Math.min(msg.n, 200));
         }
         break;
-      case 'um': if (int(msg.e) && int(msg.i) && typeof msg.f === 'string') this.game.entities.remoteUse(msg.e, msg.i, msg.f); break;
+      case 'um': if (int(msg.e) && int(msg.i) && typeof msg.f === 'string') this.game.entities.remoteUse(msg.e, msg.i, msg.f, g.uid); break;
       case 'arw': this.arrow(g, msg); break;
       case 'pvp': this.pvpHit(g, msg); break;
       case 'tnt': if ([msg.x, msg.y, msg.z].every(int) && int(msg.f)) this.game.entities.primeTNT(msg.x, msg.y, msg.z, clamp(msg.f, 1, 200)); break;
@@ -552,9 +552,11 @@ export class HostSession extends Session {
     const E = this.game.entities, e = E.list.find((x) => x.nid === m.e && (x.kind === 'mob' || x.kind === 'boat') && !x.dead);
     if (!e || e.dying || !num(m.a) || !num(m.x) || !num(m.z)) return;
     if (e.kind === 'boat') { E.hitBoat(e, g.creative); return; }
-    const who = E.players?.find((p) => p.addr === g.addr) ?? { x: m.x, y: g.y ?? e.y, z: m.z, addr: g.addr };
-    E.hurtMob(e, clamp(m.a, 0, 100), { ...who, x: m.x, z: m.z }, num(m.b) ? clamp(m.b, 0, 3) : 0,
+    // (The guest's own entry, not a copy, so anything that goes after them follows where they go.)
+    const who = E.players?.find((p) => p.addr === g.addr) ?? { x: m.x, y: g.y ?? e.y, z: m.z, addr: g.addr, uid: g.uid };
+    E.hurtMob(e, clamp(m.a, 0, 100), who, num(m.b) ? clamp(m.b, 0, 3) : 0,
       { fire: num(m.f) ? clamp(m.f, 0, 8) : 0, looting: int(m.l) ? clamp(m.l, 0, 3) : 0 });
+    E.rallyPets(g.uid, e);
   }
 
   // A guest's arrow: shot from where they stand.
@@ -689,7 +691,7 @@ export class HostSession extends Session {
     for (const g of this.guests.values()) {
       // (One object per guest, kept up to date, so creatures chasing them follow where they go.)
       if (g.x === null) continue;
-      out.push(Object.assign(g.ref ??= { addr: g.addr }, { x: g.x, y: g.y, z: g.z, creative: g.creative, dead: g.dead, name: g.name, look: g.look,
+      out.push(Object.assign(g.ref ??= { addr: g.addr, uid: g.uid }, { x: g.x, y: g.y, z: g.z, creative: g.creative, dead: g.dead, name: g.name, look: g.look,
         held: g.held, sneaking: g.sneaking, invisible: g.invisible }));
     }
     return out;
@@ -709,6 +711,8 @@ export class HostSession extends Session {
   }
 
   entityGone(e, how) { if (e.nid) this.gone.set(e.nid, how); }
+  // Send an entity in full again (a pet that's just been tamed, a new collar).
+  resend(e) { if (e.nid) this.sentEnts.delete(e.nid); }
   // An untamed horse (or a broken boat) throws a guest off.
   buck(addr, e) { this.send(addr, { t: 'buck', e: e.nid ?? 0 }); }
   // An experience orb reached a guest.
