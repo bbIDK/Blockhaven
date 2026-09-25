@@ -32,8 +32,8 @@ The host's game runs the world: mobs, items, TNT, water, furnaces, time and weat
 | `W` `A` `S` `D` | Walk |
 | Mouse | Look around (click the game to capture the mouse) |
 | Left click | Break block (hold to mine in Survival), attack |
-| Right click | Place block; use crafting tables, furnaces, chests, doors and beds; put on armor; light TNT with flint and steel |
-| Hold right click | Eat the food you're holding (when hungry) |
+| Right click | Place block; use crafting tables, furnaces, chests, doors, beds and levers; put on armor; light fires and TNT with flint and steel; talk and trade with villagers; get into boats and minecarts, onto horses; cast a fishing rod; feed, tame, saddle, lead and name creatures |
+| Hold right click | Eat or drink what you're holding, draw a bow, raise a shield |
 | Middle click | Pick the block you're looking at |
 | `Space` | Jump. Double-tap to toggle flying in Creative |
 | `Shift` | Sneak (you won't fall off edges) / fly down |
@@ -52,28 +52,37 @@ On phones and tablets, on-screen controls appear automatically. The left stick m
 
 ### Commands
 
-`/help`, `/time set day|noon|night|midnight|<ticks>`, `/time add <ticks>`, `/weather clear|rain [seconds]`, `/gamemode creative|survival`, `/tp <x> <y> <z>` (supports `~`), `/give <item> [count]` (e.g. `/give diamond_pickaxe`), `/spawn`, `/setspawn`, `/seed`, `/fly`, `/kill`, `/clear`. In multiplayer: `/list` shows who's online and `/pvp on|off` (host only) sets whether players can hurt each other.
+`/help`, `/time set day|noon|night|midnight|<ticks>`, `/time add <ticks>`, `/weather clear|rain [seconds]`, `/gamemode creative|survival`, `/tp <x> <y> <z>` (supports `~`), `/give <item> [count]` (e.g. `/give diamond_pickaxe`), `/locate village`, `/spawn`, `/setspawn`, `/seed`, `/fly`, `/kill`, `/clear`. In multiplayer: `/list` shows who's online and `/pvp on|off` (host only) sets whether players can hurt each other.
 
 ## What's in it
 
-- **Endless worlds** from a seed: continents and oceans, rivers, beaches, plains, forests, birch forests, taiga, snowy taiga, deserts, mountains with snowy peaks, and a flat world option.
-- **Underground:** winding cave tunnels and caverns, lava lakes deep down, coal, iron, gold and diamond ore veins.
-- **Minecraft-style lighting:** sunlight and block light flood-fill through the world, smooth lighting with ambient occlusion, torches, glowstone and jack o'lanterns. There's also a day/night cycle with a sun, moon, stars and drifting clouds.
-- **60+ blocks:** logs that face the way you place them, wall torches, glass, wool colors, bricks, bookshelves, furnaces, TNT, flowers, sugar cane and cacti.
+- **Endless worlds** from a seed, in 37 biomes: mountain ranges with stony, jagged and frozen peaks, snowy slopes and meadows; plains, flower forests, dark forests, birch and old-growth forests, taiga, jungles, swamps, savannas, badlands, deserts, cherry groves and ice spikes; rivers, beaches and warm, cold and deep oceans. Trees grow big, and there's a flat world option.
+- **Underground:** winding caves and caverns, deepslate, ores by depth (coal, copper, iron, gold, lapis, redstone, diamond, emerald), lava lakes, and dungeons with loot chests. On the surface you'll also find desert wells, icebergs, boulders and fallen trees.
+- **Walled villages:** stone walls with corner towers, a gatehouse on every side and a walk along the top, streets and a market square with a well, and some thirty kinds of buildings: houses, a smithy, butcher's, hunter's lodge, library, inn, bakery, farms, pens and a mine.
+- **Villagers who talk and trade:** friendly people with jobs (merchant, guard, blacksmith, butcher, hunter, librarian, innkeeper, baker, farmer, shepherd, miner and fisher). They go about their day, chat when you talk to them, and buy and sell for gold coins. Iron golems and cats live there too.
+- **Creatures:** pigs, cows, sheep, chickens, rabbits, foxes, goats, horses, donkeys, llamas, cats, parrots, turtles, bats, wolves and polar bears; squid, cod, salmon and dolphins in the water; and zombies, husks, drowned, skeletons, strays, creepers, spiders, cave spiders, slimes, endermen, witches and phantoms. They all share one Minecraft-style look, flash red when hit (the living ones bleed), and drop what you'd expect.
+- **Pets and golems:** tame wolves with bones, cats with fish and parrots with seeds; they follow you, sit when told and defend you. Build iron golems from four iron blocks and a pumpkin, and snow golems from two snow blocks and a pumpkin.
+- **339 blocks and hundreds of items**, with 362 recipes. Every block, item and creature is drawn in one consistent pixel-art style.
 - **Crafting like Minecraft:** shaped recipes in a 2×2 grid in your inventory and a 3×3 grid at a crafting table, with a recipe book that lists what you can make and lays recipes out for you (recipes you're missing things for show as a faint "ghost" in the grid).
 - **Furnaces:** put something in the top slot and fuel in the bottom one. They smelt ores, cook meat, bake sand into glass and clay into bricks, turn logs into charcoal, keep going while you're away, and glow while they burn.
-- **Armor:** leather, iron, gold and diamond helmets, chestplates, leggings and boots, with Minecraft's damage reduction and wear. You can see your character wearing it in the inventory.
-- **Shaped blocks:** slabs (stack two into a full block), stairs you can walk up, doors that open, climbable ladders, fences that connect and can't be jumped, and glass panes.
-- **Chests and beds:** chests store 27 stacks and spill their contents when broken. Using a bed makes it your respawn point, and sleeping in it at night skips to morning.
+- **Farming:** hoes and farmland, wheat, carrots, potatoes and beetroots, saplings that grow into trees, bone meal and composters.
+- **Building:** slabs, stairs, doors, trapdoors, fence gates, ladders, fences, walls, glass panes and more. Also levers, buttons, pressure plates and redstone lamps, and signs you can write on.
+- **Fire and fluids:** flint and steel lights fires that spread through wood and leaves and burn out. Water spreads quickly and lava slowly, as in Minecraft, and where they meet you get obsidian, cobblestone or stone. Sand and gravel fall smoothly as blocks. TNT explosions chain.
+- **Chests and beds:** two chests side by side make a double chest. Sleeping in a bed sets your spawn point and skips the night.
+- **Combat:** it works like Minecraft 1.9 onwards. Each weapon winds up again after a swing (swords quickly, axes slowly, shown by a meter under the crosshair), and fully wound-up hits while falling are critical hits. There are bows and arrows, and a shield to block with.
+- **Armor:** leather, chainmail, iron, gold and diamond, with Minecraft's damage reduction and wear. Your character wears it, and so do other players.
+- **Experience and enchanting:** orbs and levels, an enchanting table with 24 enchantments, and anvils and grindstones.
+- **Potions:** 12 kinds, to drink or throw as splash potions. Witches throw them at you, and status effects show on the HUD.
+- **Getting about:** boats, horses, donkeys and mules to tame and saddle, and minecarts on rails, including powered and detector rails.
+- **Fishing:** cast, wait for a bite, and reel in fish, junk or treasure.
+- **And more:** cake, name tags and leads, item frames, 15 paintings, flower pots, note blocks, and a jukebox with 8 music discs.
+- **Shaders:** **Options → Shaders** (Low or High) adds sunlight with soft shadows, glinting water, a glowing sky, bloom and light shafts.
 - **Multiplayer:** host a world for your friends from the game menu, on claude.ai or with a join code (see [Play with friends](#play-with-friends)).
-- **Physics:** flowing water that spreads and falls, sand and gravel that fall, water that hardens lava into obsidian, and TNT explosions that chain.
 - **Weather:** rain showers come and go, with streaks of rain, splashes, a grey sky and the sound of rain (quieter indoors). It snows in cold biomes and high up, and deserts stay dry. Sleeping clears the weather.
-- **Survival:** health, hunger (sprinting, jumping, fighting and mining make you hungry, and you only heal when well fed), fall damage, drowning, lava, cacti, and mining speeds that depend on the tool and block. There are wooden to diamond (and golden) pickaxes, axes, shovels and swords. Combat works like Minecraft 1.9 onwards: each weapon winds up again after a swing (swords quickly, axes slowly, shown by a meter under the crosshair), hits before then do much less damage, and fully wound-up hits while falling are critical hits.
-- **Creatures:** pigs, sheep, cows and chickens wander the grasslands and drop food (cook it in a furnace), leather, feathers and wool. In Survival, zombies come out at night and in dark caves, and burn in sunlight unless it's raining. Mobs flash red and get knocked back when hit, and fall over and vanish in a puff of smoke when they die.
+- **Survival:** health, hunger (sprinting, jumping, fighting and mining make you hungry, and you only heal when well fed), fall damage, drowning, fire and lava, and mining speeds that depend on the tool and block.
 - **Creative:** every block, flying, instant breaking, and a searchable inventory.
 - **Interface:** menus, HUD and inventories styled after the classic game (bevelled buttons, sliders with their value written on them, a pixel-art logo with splash text) and all drawn to one GUI scale. **Options → GUI Scale** makes the whole interface bigger or smaller; Auto picks the largest size that fits, like the original.
-- **Sound and music:** recorded sounds for every block material (breaking, placing, footsteps), doors, chests, weapon hits, armor, furnaces, eating, animals, zombies, explosions and rain, positioned in 3D and muffled underwater, with a low thump under breaking and placing and a compressor that keeps it punchy. The soundtrack is calm piano music composed while you play, with a piano synthesised in the browser. It stays in the background: at the default settings it plays well under the effects, and both volume sliders follow a perceptual curve.
-- **Held items:** tools and blocks are held, swung and switched the way the original game does it.
+- **Sound and music:** recorded sounds for every block material, creatures, weapons, doors, chests, furnaces, eating, explosions and rain, positioned in 3D and muffled underwater. The soundtrack is calm piano music composed while you play, with a piano synthesised in the browser.
 - **Performance:** terrain generation and meshing run in Web Workers. Chunks stream in around you, with finished chunks applied a few milliseconds' worth per frame. Cave culling skips sections you can't see into, faces pointing away from the camera are skipped, and the Auto resolution setting lowers the render scale when frames run slow.
 
 ## Project layout
