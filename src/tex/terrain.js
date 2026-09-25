@@ -105,7 +105,7 @@ def('deepslate_top', (t) => {
 });
 def('cobbled_deepslate', (t) => drawCobble(t, [0x2f2f34, 0x3b3b41, 0x46464c, 0x515157, 0x5d5d63, 0x6b6b71], [0x222226, 0x28282c], 11));
 // Brick courses four pixels high; the joints are dark and each brick is bevelled.
-function bricks(t, pal, mortar, { h = 4, w = 8, stagger = 4, bevel = true } = {}) {
+export function bricks(t, pal, mortar, { h = 4, w = 8, stagger = 4, bevel = true } = {}) {
   const rows = 16 / h;
   for (let r = 0; r < rows; r++) {
     const off = (r % 2) * stagger;
@@ -288,7 +288,7 @@ const LAYOUTS = [
   [[1, 3, 'D'], [6, 0, 'E'], [12, 2, 'B'], [8, 6, 'A'], [2, 9, 'G'], [11, 11, 'D'], [5, 13, 'F']],
   [[3, 1, 'G'], [10, 2, 'D'], [5, 7, 'B'], [11, 8, 'A'], [0, 10, 'E'], [7, 12, 'D'], [14, 13, 'F']],
 ];
-function ore(t, base, pal, layout, shadow) {
+export function ore(t, base, pal, layout, shadow) {
   base(t);
   for (const [x0, y0, s] of LAYOUTS[layout]) {
     NUGGETS[s].forEach((row, dy) => [...row].forEach((ch, dx) => {
@@ -411,7 +411,7 @@ function drawCherryBark(t, pal) {
   }
 }
 // The cut end of a log: growth rings inside a ring of bark.
-function drawLogTop(t, pal, bark) {
+export function drawLogTop(t, pal, bark) {
   const n = t.noise(4);
   for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
     const dx = x - 7.5, dy = y - 7.5, sq = Math.max(Math.abs(dx), Math.abs(dy));

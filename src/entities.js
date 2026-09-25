@@ -10,7 +10,7 @@ import { mat4, identity, translate, rotateX, rotateY, rotateZ, scale, hash2 } fr
 import { B, BLOCKS, BASE, SOLID, WATERLIKE, FILTER, REPLACEABLE, RAIL, RAIL_ID } from './blocks.js';
 import { I, itemDef, DISCS } from './items.js';
 import { rayBox } from './world.js';
-import { HEIGHT, TICKS_PER_DAY } from './config.js';
+import { HEIGHT, TICKS_PER_DAY, inNether } from './config.js';
 import { villageAt } from './villages.js';
 import { MOBS, initMob, mobTick, mobPhysics, renderMob, provoked, mobUseEffect, applyMobUse, applyHeldUse, mobDrops, mobXp, herdFor, monsterFor, HOSTILE_TYPES,
   rallyPets } from './mobs.js';
@@ -385,6 +385,7 @@ export class Entities {
     const targets = this.players.filter((t) => !t.creative && !t.dead);
     if (!targets.length) return;
     const p = targets[Math.floor(Math.random() * targets.length)];
+    if (inNether(p.x)) return;
     const hostiles = this.list.filter((e) => e.kind === 'mob' && e.def.hostile && !e.dead).length;
     if (hostiles >= 8 + targets.length * 4) return;
     const day = game.env.daylight;
@@ -425,6 +426,7 @@ export class Entities {
     const w = this.world;
     if (!this.players.length || this.list.filter((e) => e.type === 'bat' && !e.dead).length >= 5) return;
     const p = this.players[Math.floor(Math.random() * this.players.length)];
+    if (inNether(p.x)) return;
     for (let attempt = 0; attempt < 4; attempt++) {
       const x = Math.floor(p.x + (Math.random() - 0.5) * 48), y = Math.floor(p.y + (Math.random() - 0.5) * 24), z = Math.floor(p.z + (Math.random() - 0.5) * 48);
       if (y < 4 || y > 62 || !w.isLoaded(x, z) || Math.hypot(x - p.x, z - p.z) < 12) continue;

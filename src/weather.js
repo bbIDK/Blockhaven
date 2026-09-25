@@ -5,6 +5,7 @@ import { STRIDE } from './mesher.js';
 import { TEX } from './textures.js';
 import { BIOME } from './biomes.js';
 import { hash2 } from './math.js';
+import { inNether } from './config.js';
 
 const RADIUS = 9;
 const MAX_QUADS = (RADIUS * 2 + 1) ** 2;
@@ -58,7 +59,7 @@ export class Weather {
   // Precipitation type for a column: 0 none, 1 rain, 2 snow.
   kind(world, x, z, y) {
     const b = world.biomeAt(x, z);
-    if (b === BIOME.DESERT) return 0;
+    if (b === BIOME.DESERT || inNether(x)) return 0;
     return SNOWY.has(b) || y > 104 ? 2 : 1;
   }
 

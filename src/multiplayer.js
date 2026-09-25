@@ -16,7 +16,7 @@ import { B, BLOCKS, REPLACEABLE, CHEST, FURNACE_IDS, SIGN, RAIL } from './blocks
 import { itemDef, maxStack } from './items.js';
 import { extras, cleanExtras } from './inventory.js';
 import { shiny } from './enchanting.js';
-import { chunkKey, HEIGHT, CHUNK_VOLUME } from './config.js';
+import { chunkKey, HEIGHT, CHUNK_VOLUME, inNether } from './config.js';
 import { S_READY, rayBox } from './world.js';
 import { clamp, hashString } from './math.js';
 import { startRide, seatY, BOAT_WOODS } from './riding.js';
@@ -459,6 +459,12 @@ export class HostSession extends Session {
       case 'sign': this.sign(msg); break;
       case 'pvp': this.pvpHit(g, msg); break;
       case 'tnt': if ([msg.x, msg.y, msg.z].every(int) && int(msg.f)) this.game.entities.primeTNT(msg.x, msg.y, msg.z, clamp(msg.f, 1, 200)); break;
+      // (A guest tried to sleep in the Nether.)
+      case 'bed':
+        if ([msg.x, msg.y, msg.z].every(int) && inNether(msg.x) && g.x !== null && Math.hypot(msg.x + 0.5 - g.x, msg.y - g.y, msg.z + 0.5 - g.z) < 8) {
+          this.game.bedBlast(msg.x, msg.y, msg.z);
+        }
+        break;
       case 'chat': {
         const text = String(msg.s ?? '').replace(/\p{C}/gu, '').trim().slice(0, 120);
         if (text) this.say(`<${g.name}> ${text}`);
@@ -1117,6 +1123,7 @@ export class GuestSession extends Session {
   }
 
   primeTNT(x, y, z, fuse) { this.toHost({ t: 'tnt', x, y, z, f: fuse }); }
+  bedBlast(x, y, z) { this.toHost({ t: 'bed', x, y, z }); }
   placeBoat(x, y, z, wood, yaw) { this.toHost({ t: 'boat', x: r2(x), y: r2(y), z: r2(z), w: wood, a: r2(yaw) }); }
   placeCart(x, y, z, yaw) { this.toHost({ t: 'cart', x: r2(x), y: r2(y), z: r2(z), a: r2(yaw) }); }
   dropXp(x, y, z, n) { this.toHost({ t: 'orb', x: r2(x), y: r2(y), z: r2(z), n }); }

@@ -8,6 +8,8 @@ const MODES = {
   lydian: { scale: [0, 2, 4, 6, 7, 9, 11], progs: [[0, 1, 0, 1], [0, 1, 5, 0], [0, 5, 1, 0], [0, 1, 4, 0]] },
   aeolian: { scale: [0, 2, 3, 5, 7, 8, 10], progs: [[0, 5, 2, 6], [0, 3, 5, 4], [0, 6, 5, 6], [0, 5, 3, 4], [5, 6, 0, 0], [0, 3, 6, 2], [0, 2, 3, 6]] },
   dorian: { scale: [0, 2, 3, 5, 7, 9, 10], progs: [[0, 3, 0, 3], [0, 3, 6, 0], [0, 6, 3, 0], [0, 1, 3, 0]] },
+  // (The Nether's: the flattened second makes it brood.)
+  phrygian: { scale: [0, 1, 3, 5, 7, 8, 10], progs: [[0, 1, 0, 1], [0, 1, 6, 0], [0, 5, 1, 0], [0, 6, 5, 1], [0, 1, 5, 1]] },
 };
 
 // Arpeggio figures as indices into a chord "ladder" (bottom to top), one per eighth note; -1 rests.
@@ -183,7 +185,8 @@ export class Music {
     }
   }
 
-  // Called every frame. mood: 'title', 'day', 'night' or 'cave'; null stops music after this piece.
+  // Called every frame. mood: 'title', 'day', 'night', 'cave' or 'nether'; null stops music after
+  // this piece.
   update(mood) {
     const ctx = this.ctx;
     if (!this.ready || ctx.state !== 'running') return;
@@ -191,10 +194,11 @@ export class Music {
     if (mood !== this.mood) {
       // Going between the title screen and a world ends the current piece gently. In a world the
       // first piece comes after a while, like the original game.
-      const isTitle = mood === 'title';
-      if (mood && (this.mood === null || (this.mood === 'title') !== isTitle)) {
+      // Going into the Nether or out of it does too, and its music comes sooner.
+      const isTitle = mood === 'title', crossing = this.mood !== null && mood !== null && (this.mood === 'nether') !== (mood === 'nether');
+      if (mood && (this.mood === null || (this.mood === 'title') !== isTitle || crossing)) {
         if (this.piece) this.fadeOut();
-        this.nextStart = now + (isTitle ? 1.5 : 25 + Math.random() * 35);
+        this.nextStart = now + (isTitle ? 1.5 : crossing ? 4 + Math.random() * 8 : 25 + Math.random() * 35);
       }
       this.mood = mood;
     }
@@ -317,21 +321,22 @@ export class Music {
 export function compose(seed, mood, style = {}) {
   const r = rng(seed);
   const pick = (list) => list[Math.floor(r() * list.length)];
-  const dark = mood === 'night' || mood === 'cave';
-  const modeName = style.mode ?? (dark ? (r() < 0.6 ? 'aeolian' : 'dorian') : (r() < 0.72 ? 'major' : 'lydian'));
+  const nether = mood === 'nether';
+  const dark = mood === 'night' || mood === 'cave' || nether;
+  const modeName = style.mode ?? (nether ? (r() < 0.65 ? 'phrygian' : 'aeolian') : dark ? (r() < 0.6 ? 'aeolian' : 'dorian') : (r() < 0.72 ? 'major' : 'lydian'));
   const mode = MODES[modeName];
   const scale = mode.scale;
   const beats = style.beats ?? (r() < 0.7 ? 4 : 3);
   const eighths = beats * 2;
-  const cave = mood === 'cave';
-  const bpm = style.bpm ?? (cave ? 46 + r() * 10 : dark ? 54 + r() * 12 : 60 + r() * 18);
+  const cave = mood === 'cave' || nether;
+  const bpm = style.bpm ?? (nether ? 40 + r() * 8 : cave ? 46 + r() * 10 : dark ? 54 + r() * 12 : 60 + r() * 18);
   const e8 = 30 / bpm; // seconds per eighth note
   const key = 48 + Math.floor(r() * 8) - (cave ? 5 : 0); // tonic in octave 3
   const prog = pick(mode.progs);
   const chordBars = r() < 0.55 ? 1 : 2;
   const figure = pick(FIGURES[beats]);
   const figureB = pick(cave ? SPARSE[beats] : FIGURES[beats]);
-  const withPad = style.pad ?? r() < (dark ? 0.6 : 0.4);
+  const withPad = style.pad ?? r() < (nether ? 0.85 : dark ? 0.6 : 0.4);
   const events = [];
   let group = 0;
 

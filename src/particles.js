@@ -101,6 +101,29 @@ export class Particles {
     });
   }
 
+  // A mote hanging in the air: the Nether's ash and spores, drifting slowly (`vy` up or down)
+  // and wandering a little. `glow`: it shines by itself.
+  mote(x, y, z, colour, vy, glow = false) {
+    if (this.list.length >= MAX) this.list.shift();
+    this.list.push({
+      x, y, z, vx: (Math.random() - 0.5) * 0.3, vy, vz: (Math.random() - 0.5) * 0.3, life: 3 + Math.random() * 3, age: 0,
+      size: 0.02 + Math.random() * 0.025, layer: TEX.spark, flags: glow ? 33 : 1, tint: [(colour >> 16) & 255, (colour >> 8) & 255, colour & 255],
+      u: Math.floor(Math.random() * 12), v: Math.floor(Math.random() * 12), float: Math.random() * 6.28,
+    });
+  }
+
+  // A speck of a portal's light, drawn in towards it from round about.
+  portal(x, y, z) {
+    if (this.list.length >= MAX) this.list.shift();
+    const ox = (Math.random() - 0.5) * 2.4, oy = (Math.random() - 0.5) * 2.4, oz = (Math.random() - 0.5) * 2.4, life = 0.8 + Math.random() * 0.8;
+    const c = 150 + Math.floor(Math.random() * 90);
+    this.list.push({
+      x: x + ox, y: y + oy, z: z + oz, vx: -ox / life, vy: -oy / life, vz: -oz / life, life, age: 0, size: 0.03 + Math.random() * 0.03,
+      layer: TEX.spark, flags: 33, tint: [Math.floor(c * 0.7), Math.floor(c * 0.25), c], u: Math.floor(Math.random() * 12), v: Math.floor(Math.random() * 12),
+      float: -1,
+    });
+  }
+
   // A glyph of the enchanting table's writing drifting from a bookshelf to the table, in an arc.
   glyph(x, y, z, tx, ty, tz) {
     if (this.list.length >= MAX) this.list.shift();
@@ -134,6 +157,12 @@ export class Particles {
         continue;
       }
       if (p.drift) { p.vy *= Math.exp(-4 * dt); p.y += p.vy * dt; continue; }
+      if (p.float !== undefined) {
+        // (Motes wander as they drift; a portal's specks go straight in.)
+        const w = p.float < 0 ? 0 : 0.25;
+        p.x += (p.vx + Math.sin(p.age * 1.3 + p.float) * w) * dt; p.y += p.vy * dt; p.z += (p.vz + Math.cos(p.age * 1.1 + p.float) * w) * dt;
+        continue;
+      }
       if (p.smoke) {
         const k = Math.exp(-1.5 * dt);
         p.vx *= k; p.vz *= k; p.vy = p.vy * k + 0.6 * dt;

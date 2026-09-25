@@ -1272,7 +1272,7 @@ function sitPose(rigName) {
 // Adds creature `e` to the render list `out` (camera-relative position rx, ry, rz).
 export function renderMob(ents, e, rx, ry, rz, light, out) {
   const t = e.def, r = ents.game.renderer;
-  const skins = { ...t.extraSkins, main: t.skins[Math.min(e.variant, t.skins.length - 1)] };
+  const skins = { ...t.extraSkins, main: t.skins[Math.max(0, Math.min(e.variant | 0, t.skins.length - 1))] };
   if (t.wool) skins.wool = t.wool;
   if (t.saddleSkin) skins.saddle = t.saddleSkin;
   if (t.type === 'wolf' && e.angry > 0) skins.main = 'wolf_angry';

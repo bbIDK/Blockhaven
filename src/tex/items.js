@@ -234,6 +234,7 @@ function powder(t, pal) {
 def('bone_meal', (t) => powder(t, [0x9a988a, 0xc6c4b6, 0xe2e0d4, 0xf6f4ec]));
 def('gunpowder', (t) => powder(t, [0x2e2e2e, 0x4a4a4a, 0x6a6a6a, 0x8e8e8e]));
 def('sugar', (t) => powder(t, [0xc8c8cc, 0xe0e0e4, 0xf2f2f4, 0xffffff]));
+def('glowstone_dust', (t) => powder(t, [0x8a6a1e, 0xd0a030, 0xf4d060, 0xfff4b0]));
 def('slime_ball', (t) => {
   shaded(t, ['', '', '', '', '.....xxxxx......', '....xxxxxxx.....', '...xxxxxxxxx....', '...xxxxxxxxx....', '...xxxxxxxxx....',
     '...xxxxxxxxx....', '....xxxxxxx.....', '.....xxxxx......'], [0x2a6a1e, 0x4a9a3a, 0x68b850, 0x8ad46a, 0xc4f4a4], {}, { outline: 'all' });

@@ -1,10 +1,10 @@
 // The live world: chunk streaming around the player, block access, light updates, block ticks
 // (flowing water, falling sand) and scheduling of section meshes.
-import { CHUNK, HEIGHT, SECTIONS, chunkKey } from './config.js';
+import { CHUNK, HEIGHT, SECTIONS, chunkKey, inNether } from './config.js';
 import {
   B, BLOCKS, OPAQUE, SOLID, FILTER, EMIT, RENDER, R, SELECTABLE, REPLACEABLE, TORCH_LEAN, FACE_DIRS,
   WATERLIKE, isWater, waterLevel, lavaLevel, WATER_FLOW_BASE, LAVA_FLOW_BASE, SHAPE, shapeBoxes, DOOR, doorId, LADDER_SIDE, BED,
-  SPREAD, BURN, CLIMB, VINE_SIDE, DOUBLE, GATE, gateId, TICKS, LOG, NATURAL_LEAVES, SWITCH, SIGN, RAIL,
+  SPREAD, BURN, CLIMB, VINE_SIDE, DOUBLE, GATE, gateId, TICKS, LOG, NATURAL_LEAVES, SWITCH, SIGN, RAIL, PORTAL,
 } from './blocks.js';
 import { powerChanged, powerMatters } from './power.js';
 import { randomTick, logRemoved, leafTick } from './growth.js';
@@ -12,6 +12,7 @@ import { nextLevel } from './light.js';
 import { meshSection, P, P2, PADDED, ALL_OPEN } from './mesher.js';
 import { JobPool } from './workers.js';
 import { makeGenerator } from './worldgen.js';
+import { lightPortal } from './portals.js';
 
 export const S_REQUESTED = 1, S_READY = 2;
 const QSIZE = 1 << 16, QMASK = QSIZE - 1;
@@ -109,6 +110,7 @@ export class World {
     // off) to the host, and a host keeps the ground around its guests loaded (but not drawn).
     this.remote = false;
     this.keep = [];
+    this.arrival = null; // [cx, cz, radius]: ground to load (not draw) where someone is going through a portal
     this.keepKey = '';
     this.keepChanged = false;
     this.tickNow = 0;
@@ -271,8 +273,8 @@ export class World {
       }
       if (chunk.sections.some((sec) => sec.dirty)) busy = true;
     }
-    // Around other players (multiplayer host): load only.
-    for (const [kx, kz, r] of this.keep) {
+    // Around other players (multiplayer host), and where a portal leads: load only.
+    for (const [kx, kz, r] of this.keeps()) {
       for (const [dx, dz] of spiral(r)) {
         if (this.chunks.has(chunkKey(kx + dx, kz + dz))) continue;
         if (slots <= 0) { busy = true; break; }
@@ -282,6 +284,15 @@ export class World {
     }
     // Nothing left to do: skip the scan until a chunk arrives or a block changes.
     if (!busy) this.scan = false;
+  }
+
+  keeps() { return this.arrival ? [...this.keep, this.arrival] : this.keep; }
+
+  // Ground to load for someone arriving through a portal ([cx, cz, radius], or null when done).
+  setArrival(area) {
+    this.arrival = area;
+    this.keepChanged = true;
+    this.scan = true;
   }
 
   // Multiplayer host: chunk columns [cx, cz, radius] to keep loaded around other players.
@@ -303,6 +314,13 @@ export class World {
       const c = this.chunks.get(chunkKey(this.center[0] + dx, this.center[1] + dz));
       if (c && c.state === S_READY && c.sections.every((s) => !s.dirty && !s.pending)) done++;
     }
+    return done / total;
+  }
+
+  // The fraction of the chunks within `radius` of (cx, cz) that are loaded.
+  readyAround(cx, cz, radius) {
+    let total = 0, done = 0;
+    for (const [dx, dz] of spiral(radius)) { total++; if (this.readyChunk(cx + dx, cz + dz)) done++; }
     return done / total;
   }
 
@@ -351,7 +369,7 @@ export class World {
     for (const [key, c] of this.chunks) {
       const dx = c.cx - pcx, dz = c.cz - pcz;
       if (dx * dx + dz * dz <= lim) continue;
-      if (this.keep.some(([kx, kz, r]) => (c.cx - kx) ** 2 + (c.cz - kz) ** 2 <= (r + 2) ** 2)) continue;
+      if (this.keeps().some(([kx, kz, r]) => (c.cx - kx) ** 2 + (c.cz - kz) ** 2 <= (r + 2) ** 2)) continue;
       if (c.state === S_READY && c.modified) this.store?.saveChunk(key, c.blocks);
       this.freeChunkMeshes(c);
       this.unlink(c);
@@ -691,10 +709,12 @@ export class World {
   checkBlock(x, y, z) {
     const id = this.getBlock(x, y, z);
     if (!id) return;
-    // Water spreads a block every 5 ticks, lava every 30 (Minecraft's speeds).
+    // Water spreads a block every 5 ticks, lava every 30 (every 10 in the Nether, where it runs
+    // hot): Minecraft's speeds.
     if (WATERLIKE[id] === 1) { this.scheduleTick(x, y, z, 5); return; }
-    if (WATERLIKE[id] === 2) { this.scheduleTick(x, y, z, 30); return; }
-    if (id === B.fire) { this.scheduleTick(x, y, z, 30 + ((x * 7 + z * 13 + y) & 7)); return; }
+    if (WATERLIKE[id] === 2) { this.scheduleTick(x, y, z, inNether(x) ? 10 : 30); return; }
+    // (Fire lit inside an obsidian frame opens a portal.)
+    if (id === B.fire) { if (!lightPortal(this, x, y, z)) this.scheduleTick(x, y, z, 30 + ((x * 7 + z * 13 + y) & 7)); return; }
     const def = BLOCKS[id];
     if (def.falls) { this.scheduleTick(x, y, z, 2); return; }
     if (def.support && !this.supported(x, y, z, id)) {
@@ -726,6 +746,18 @@ export class World {
       }
       case 'cane': return below === B.sugar_cane || below === B.sand || SOIL.has(below);
       case 'cactus': return below === B.sand || below === B.cactus;
+      case 'nylium': return below === B.crimson_nylium || below === B.warped_nylium || below === B.soul_soil || SOIL.has(below);
+      // A portal stands while each of its blocks has portal or obsidian on all four sides in its
+      // plane: break the frame and the whole sheet goes out. (Unloaded ground counts as whole.)
+      case 'portal': {
+        const ok = (px, py, pz) => {
+          if (!this.readyChunk(px >> 4, pz >> 4)) return true;
+          const b = this.getBlock(px, py, pz);
+          return b === id || b === B.obsidian;
+        };
+        const alongX = PORTAL[id] === 'x';
+        return ok(x, y - 1, z) && ok(x, y + 1, z) && (alongX ? ok(x - 1, y, z) && ok(x + 1, y, z) : ok(x, y, z - 1) && ok(x, y, z + 1));
+      }
       case 'bed': {
         const b = BED[id], d = FACE_DIRS[b.dir], s = b.head ? -1 : 1;
         const o = BED[this.getBlock(x + d[0] * s, y, z + d[2] * s)];
@@ -833,9 +865,11 @@ export class World {
     let age = this.fireAge.get(key) ?? 0;
     age = Math.min(15, age + (Math.random() < 0.5 ? 1 : 0) + (Math.random() < 0.3 ? 1 : 0));
     this.fireAge.set(key, age);
-    // On something that doesn't burn, a fire dies down after a while.
-    if (!nearFuel && age > 3 && Math.random() < 0.3) { out(); return; }
-    if (!SPREAD[below] && age >= 15 && Math.random() < 0.25) { out(); return; }
+    // On something that doesn't burn, a fire dies down after a while; on netherrack and magma
+    // it burns for ever.
+    const forever = below === B.netherrack || below === B.magma_block;
+    if (!forever && !nearFuel && age > 3 && Math.random() < 0.3) { out(); return; }
+    if (!forever && !SPREAD[below] && age >= 15 && Math.random() < 0.25) { out(); return; }
     // Burn the blocks around it.
     for (let f = 0; f < 6; f++) {
       const d = FACE_DIRS[f];
@@ -908,11 +942,12 @@ export class World {
   }
 
   // ------------------------------------------------------------------ lava
-  // Flows like water but slowly (every 30 ticks) and three blocks at most across flat ground.
-  // Where it meets water it hardens: a still pool into obsidian, a flow into cobblestone, and
-  // lava pouring onto water turns the water to stone.
+  // Flows like water but slowly (every 30 ticks) and three blocks at most across flat ground;
+  // in the Nether it runs as far as water does. Where it meets water it hardens: a still pool
+  // into obsidian, a flow into cobblestone, and lava pouring onto water turns the water to stone.
   flowLava(x, y, z, id) {
     let level = lavaLevel(id);
+    const step = inNether(x) ? 1 : 2;
     for (let d = 0; d < 6; d++) {
       if (d === 3) continue;
       const dir = FACE_DIRS[d];
@@ -935,7 +970,7 @@ export class World {
           if (nl < 0) continue;
           best = Math.min(best, nl === 8 ? 0 : nl);
         }
-        want = best + 2 <= 7 ? best + 2 : -1;
+        want = best + step <= 7 ? best + step : -1;
       }
       if (want !== level) {
         this.setBlock(x, y, z, want < 0 ? 0 : want === 0 ? B.lava : LAVA_FLOW_BASE - 1 + want, { remesh: false });
@@ -951,7 +986,7 @@ export class World {
       return;
     }
     if (y > 0 && lavaLevel(below) >= 0 && level !== 0) return;
-    const spread = level === 8 ? 2 : level + 2;
+    const spread = level === 8 ? step : level + step;
     if (spread > 7) return;
     for (let d = 0; d < 6; d++) {
       if (d === 2 || d === 3) continue;

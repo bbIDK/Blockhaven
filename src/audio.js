@@ -563,6 +563,53 @@ export class Audio {
     this.thump(at, 300, 120, 0.3, 0.06);
   }
 
+  // A Nether portal: 'trigger' as you step in (a rising, wavering rush that swells over the
+  // seconds it takes), 'travel' as you come out the other side (a rush falling away), 'ambient'
+  // the breathy whoosh of one close by. Returns a function that cuts the sound short.
+  portal(kind, at = null) {
+    if (!this.ready) return () => {};
+    const sp = this.spatial(at, kind === 'ambient' ? 0.6 : 1);
+    if (!sp) return () => {};
+    const ctx = this.ctx, t = ctx.currentTime;
+    const [len, f0, f1, vol] = { trigger: [4.2, 220, 1500, 0.3], travel: [2.4, 1700, 160, 0.34], ambient: [1.8, 380, 760, 0.1] }[kind];
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseLong ??= (() => {
+      const b = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate), d = b.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      return b;
+    })();
+    src.loop = true;
+    const fl = ctx.createBiquadFilter();
+    fl.type = 'bandpass'; fl.Q.value = 2.5;
+    fl.frequency.setValueAtTime(f0, t); fl.frequency.exponentialRampToValueAtTime(f1, t + len);
+    // A slow waver in the rush.
+    const lfo = ctx.createOscillator(), lg = ctx.createGain();
+    lfo.frequency.value = kind === 'ambient' ? 1.4 : 3.1; lg.gain.value = f0 * 0.35;
+    lfo.connect(lg).connect(fl.frequency);
+    const g = ctx.createGain(), peak = vol * sp.gain;
+    g.gain.setValueAtTime(0.0001, t);
+    if (kind === 'trigger') { g.gain.exponentialRampToValueAtTime(peak, t + len * 0.9); g.gain.linearRampToValueAtTime(0.0001, t + len); }
+    else { g.gain.exponentialRampToValueAtTime(peak, t + 0.12); g.gain.exponentialRampToValueAtTime(0.0001, t + len); }
+    src.connect(fl);
+    this.output(fl, g, sp.pan);
+    // Under it, a drone that climbs (or sinks) with it.
+    const osc = ctx.createOscillator(), og = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(kind === 'travel' ? 180 : 70, t);
+    osc.frequency.exponentialRampToValueAtTime(kind === 'travel' ? 55 : 150, t + len);
+    og.gain.setValueAtTime(0.0001, t);
+    og.gain.exponentialRampToValueAtTime(peak * 0.5, t + (kind === 'trigger' ? len * 0.9 : 0.2));
+    og.gain.exponentialRampToValueAtTime(0.0001, t + len);
+    this.output(osc, og, sp.pan);
+    const nodes = [src, lfo, osc];
+    for (const n of nodes) { n.start(t); n.stop(t + len + 0.05); }
+    return () => {
+      const now = ctx.currentTime;
+      for (const gn of [g, og]) { gn.gain.cancelScheduledValues(now); gn.gain.setValueAtTime(gn.gain.value, now); gn.gain.linearRampToValueAtTime(0, now + 0.15); }
+      for (const n of nodes) { try { n.stop(now + 0.2); } catch { /* already stopped */ } }
+    };
+  }
+
   // The steady sound of rain, faded towards `volume` (0 lets it die away).
   setRain(volume) {
     const ctx = this.ctx, list = this.buffers['weather.rain'];

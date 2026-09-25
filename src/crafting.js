@@ -7,7 +7,7 @@ import { DYES } from './colors.js';
 
 // '#name' in a recipe accepts any item of a group.
 export const GROUPS = {
-  planks: WOOD_NAMES.map((w) => `${w}_planks`),
+  planks: [...WOOD_NAMES.map((w) => `${w}_planks`), 'crimson_planks', 'warped_planks'],
   logs: WOOD_NAMES.map((w) => `${w}_log`),
   wool: DYES.map((d) => `${d.name}_wool`),
   coals: ['coal', 'charcoal'],
@@ -197,6 +197,17 @@ shapeless('beetroot_soup', 1, ['bowl', 'beetroot', 'beetroot', 'beetroot', 'beet
 shapeless('rabbit_stew', 1, ['bowl', 'cooked_rabbit', 'carrot', 'baked_potato', 'brown_mushroom'], 'misc');
 shapeless('sugar', 1, ['sugar_cane'], 'misc');
 shapeless('bone_meal', 3, ['bone'], 'misc');
+// The Nether's blocks.
+shaped('nether_bricks', 1, ['NN', 'NN'], { N: 'nether_brick' }, 'building');
+shaped('nether_brick_fence', 6, ['BNB', 'BNB'], { B: 'nether_bricks', N: 'nether_brick' }, 'building');
+shaped('nether_brick_stairs', 4, ['B  ', 'BB ', 'BBB'], { B: 'nether_bricks' }, 'building');
+shaped('nether_brick_slab', 6, ['BBB'], { B: 'nether_bricks' }, 'building');
+shaped('quartz_block', 1, ['QQ', 'QQ'], { Q: 'quartz' }, 'building');
+shaped('glowstone', 1, ['GG', 'GG'], { G: 'glowstone_dust' }, 'building');
+shaped('bone_block', 1, ['BBB', 'BBB', 'BBB'], { B: 'bone_meal' }, 'building');
+shapeless('bone_meal', 9, ['bone_block'], 'misc');
+shapeless('crimson_planks', 4, ['crimson_stem'], 'building');
+shapeless('warped_planks', 4, ['warped_stem'], 'building');
 for (const [mat, x] of [['leather', 'leather'], ['iron', 'iron_ingot'], ['golden', 'gold_ingot'], ['diamond', 'diamond']]) {
   shaped(`${mat}_helmet`, 1, ['XXX', 'X X'], { X: x }, 'equipment');
   shaped(`${mat}_chestplate`, 1, ['X X', 'XXX', 'XXX'], { X: x }, 'equipment');
@@ -336,6 +347,7 @@ const SMELT = [
   ['raw_porkchop', 'cooked_porkchop', 'food'], ['raw_beef', 'cooked_beef', 'food'], ['raw_chicken', 'cooked_chicken', 'food'],
   ['raw_mutton', 'cooked_mutton', 'food'], ['raw_rabbit', 'cooked_rabbit', 'food'], ['cod', 'cooked_cod', 'food'],
   ['salmon', 'cooked_salmon', 'food'], ['potato', 'baked_potato', 'food'],
+  ['netherrack', 'nether_brick'], ['nether_quartz_ore', 'quartz', 'ore'], ['nether_gold_ore', 'gold_ingot', 'ore'],
   ...GROUPS.logs.map((l) => [l, 'charcoal']),
 ];
 const SMELTING = new Map(SMELT.map(([a, b]) => [I[a], I[b]]));

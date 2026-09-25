@@ -103,6 +103,7 @@ uniform float u_hurt;
 uniform float u_glint;  // enchanted things shimmer
 uniform vec3 u_precip; // falling rain/snow: scroll, sway amount, sway phase
 uniform vec2 u_precipScale;
+uniform vec3 u_floorLight; // the least light anywhere (the Nether's dim glow; nothing in the overworld)
 in vec3 v_uv;
 in vec4 v_light;
 in vec3 v_tint;
@@ -213,7 +214,7 @@ void main() {
   } else {
     float sky = curve(lv.x) * u_daylight;
     float blk = curve(lv.y);
-    light = max(u_skyLight * sky, vec3(1.0, 0.86, 0.66) * blk);
+    light = max(max(u_skyLight * sky, vec3(1.0, 0.86, 0.66) * blk), u_floorLight);
     light = pow(max(light, vec3(0.0)), vec3(u_gamma)) * 0.96 + 0.04;
     // Night Vision: everything as bright as in full daylight.
     light = max(light, vec3(0.92 * u_night));
@@ -249,7 +250,7 @@ void main() {
     direct *= vec3(0.2, 0.45, 0.55) * (0.45 + 2.2 * ca * ca * ca);
     amb *= vec3(0.4, 0.62, 0.8);
   }
-  vec3 light = direct + amb + torch + vec3(0.012, 0.013, 0.02) + (1.0 - u_gamma) * 0.12;
+  vec3 light = direct + amb + torch + u_floorLight + vec3(0.012, 0.013, 0.02) + (1.0 - u_gamma) * 0.12;
   light = max(light, vec3(0.8 * u_night));
   float ao = 0.35 + 0.65 * v_light.z;
   light *= mix(ao, 1.0, sun * 0.35);
@@ -336,6 +337,7 @@ uniform float u_rain;
 uniform float u_time;
 uniform vec3 u_sunGlow;
 uniform float u_outScale;
+uniform float u_flat; // no sky at all (the Nether): just the haze
 in vec2 v_ndc;
 out vec4 o_color;
 float hash(vec3 p) {
@@ -397,9 +399,10 @@ void main() {
   }
 #ifndef FANCY
   if (u_underwater > 0.5) col = vec3(0.05, 0.16, 0.42);
+  if (u_flat > 0.5) col = u_horizon;
   o_color = vec4(col, 1.0);
 #else
-  if (u_underwater > 0.5) col = pow(u_horizon, vec3(2.2));
+  if (u_underwater > 0.5 || u_flat > 0.5) col = pow(u_horizon, vec3(2.2));
   o_color = vec4(col * u_outScale, 1.0);
 #endif
 }`;

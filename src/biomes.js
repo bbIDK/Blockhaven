@@ -9,6 +9,7 @@ export const BIOME = {
   SNOWY_PLAINS: 18, ICE_SPIKES: 19, SAVANNA: 20, BADLANDS: 21, JUNGLE: 22, SWAMP: 23, CHERRY_GROVE: 24,
   MEADOW: 25, STONY_PEAKS: 26, JAGGED_PEAKS: 27, FROZEN_PEAKS: 28, SNOWY_SLOPES: 29, STONY_SHORE: 30,
   DEEP_OCEAN: 31, WARM_OCEAN: 32, SNOWY_BEACH: 33, FROZEN_RIVER: 34, SPARSE_JUNGLE: 35, WINDSWEPT_FOREST: 36,
+  NETHER_WASTES: 37, CRIMSON_FOREST: 38, WARPED_FOREST: 39, SOUL_SAND_VALLEY: 40, BASALT_DELTAS: 41,
 };
 
 export const BIOME_NAMES = [
@@ -18,7 +19,17 @@ export const BIOME_NAMES = [
   'Snowy Plains', 'Ice Spikes', 'Savanna', 'Badlands', 'Jungle', 'Swamp', 'Cherry Grove',
   'Meadow', 'Stony Peaks', 'Jagged Peaks', 'Frozen Peaks', 'Snowy Slopes', 'Stony Shore',
   'Deep Ocean', 'Warm Ocean', 'Snowy Beach', 'Frozen River', 'Sparse Jungle', 'Windswept Forest',
+  'Nether Wastes', 'Crimson Forest', 'Warped Forest', 'Soul Sand Valley', 'Basalt Deltas',
 ];
+export const isNetherBiome = (b) => b >= BIOME.NETHER_WASTES && b <= BIOME.BASALT_DELTAS;
+// The haze that fills each of the Nether's biomes (the Nether has no sky), as 0..1 RGB.
+export const NETHER_FOG = {
+  [BIOME.NETHER_WASTES]: [0.2, 0.03, 0.03],
+  [BIOME.CRIMSON_FOREST]: [0.2, 0.012, 0.012],
+  [BIOME.WARPED_FOREST]: [0.1, 0.02, 0.1],
+  [BIOME.SOUL_SAND_VALLEY]: [0.106, 0.278, 0.27],
+  [BIOME.BASALT_DELTAS]: [0.408, 0.373, 0.439],
+};
 
 // Climate values are stored per column as bytes: 0..255 maps to -1..1.
 export const toByte = (v) => Math.max(0, Math.min(255, Math.round((v + 1) * 127.5)));

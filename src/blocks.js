@@ -5,7 +5,7 @@
 import { TEX } from './textures.js';
 import { DYES, tintFor } from './colors.js';
 
-export const R = { NONE: 0, CUBE: 1, CROSS: 2, TORCH: 3, LIQUID: 4, CACTUS: 5, MODEL: 6, FIRE: 7, CAMPFIRE: 8, RAIL: 9 };
+export const R = { NONE: 0, CUBE: 1, CROSS: 2, TORCH: 3, LIQUID: 4, CACTUS: 5, MODEL: 6, FIRE: 7, CAMPFIRE: 8, RAIL: 9, PORTAL: 10 };
 
 // Per-face flags (also copied into vertex flags for the shader). F_UVROT only matters while
 // meshing, so in vertices the same bit means F_ANIM: an 8-frame flipbook (consecutive layers).
@@ -975,6 +975,56 @@ export const RAIL_ID = { rail: [[], []], powered: [[], []], detector: [[], []] }
   }
 });
 
+// ---------------------------------------------------------------- the Nether (see nether.js)
+block(2387, 'netherrack', { tex: 'netherrack', hardness: 0.4, tool: 'pickaxe', cat: 'nature' });
+block(2388, 'soul_sand', { tex: 'soul_sand', hardness: 0.5, tool: 'shovel', sound: 'sand', cat: 'nature' });
+block(2389, 'soul_soil', { tex: 'soul_soil', hardness: 0.5, tool: 'shovel', sound: 'sand', cat: 'nature' });
+block(2390, 'magma_block', { label: 'Magma Block', tex: 'magma_block', hardness: 0.5, tool: 'pickaxe', emit: 3, emissive: true, cat: 'nature' });
+block(2391, 'basalt', { tex: { side: 'basalt_side', top: 'basalt_top' }, hardness: 1.25, tool: 'pickaxe', tier: 1, cat: 'nature' });
+block(2392, 'blackstone', { tex: { side: 'blackstone', top: 'blackstone_top' }, hardness: 1.5, tool: 'pickaxe', tier: 1, cat: 'nature' });
+block(2393, 'nether_bricks', { tex: 'nether_bricks', hardness: 2, tool: 'pickaxe', tier: 1 });
+block(2394, 'red_nether_bricks', { tex: 'red_nether_bricks', hardness: 2, tool: 'pickaxe', tier: 1 });
+block(2395, 'nether_quartz_ore', { label: 'Nether Quartz Ore', tex: 'nether_quartz_ore', hardness: 3, tool: 'pickaxe', tier: 1, drop: 'quartz', cat: 'nature' });
+block(2396, 'nether_gold_ore', { label: 'Nether Gold Ore', tex: 'nether_gold_ore', hardness: 3, tool: 'pickaxe', tier: 1, drop: 'gold_nugget', cat: 'nature' });
+// The two forests: nylium (netherrack with fungus over it; it drops netherrack), stems (lying
+// either way, like logs), planks, wart blocks, shroomlight, fungi and roots.
+for (const [w, first] of [['crimson', 2397], ['warped', 2398]]) {
+  block(first, `${w}_nylium`, { tex: { top: `${w}_nylium`, bottom: 'netherrack', side: `${w}_nylium_side` }, hardness: 0.4, tool: 'pickaxe',
+    drop: 'netherrack', cat: 'nature' });
+}
+for (const [w, base] of [['crimson', 2399], ['warped', 2402]]) {
+  const common = { hardness: 2, tool: 'axe', sound: 'wood' }, side = `${w}_stem`, end = `${w}_stem_top`;
+  block(base, `${w}_stem`, { ...common, tex: { side, top: end } });
+  block(base + 1, `${w}_stem_x`, { ...common, base, item: false, drop: `${w}_stem`, tex: [end, end, side, side, side, side], uvrot: [2, 3, 4, 5] });
+  block(base + 2, `${w}_stem_z`, { ...common, base, item: false, drop: `${w}_stem`, tex: [side, side, side, side, end, end], uvrot: [0, 1] });
+  LOG_AXES[base] = [base + 1, base + 2];
+}
+block(2405, 'crimson_planks', { tex: 'crimson_planks', hardness: 2, tool: 'axe', sound: 'wood' });
+block(2406, 'warped_planks', { tex: 'warped_planks', hardness: 2, tool: 'axe', sound: 'wood' });
+block(2407, 'nether_wart_block', { tex: 'nether_wart_block', hardness: 1, tool: 'hoe', sound: 'grass', cat: 'nature' });
+block(2408, 'warped_wart_block', { tex: 'warped_wart_block', hardness: 1, tool: 'hoe', sound: 'grass', cat: 'nature' });
+block(2409, 'shroomlight', { tex: 'shroomlight', hardness: 1, tool: 'hoe', sound: 'grass', emit: 15, emissive: true, cat: 'nature' });
+block(2410, 'crimson_fungus', plant({ tex: 'crimson_fungus', support: 'nylium', cat: 'nature' }));
+block(2411, 'warped_fungus', plant({ tex: 'warped_fungus', support: 'nylium', cat: 'nature' }));
+block(2412, 'crimson_roots', plant({ tex: 'crimson_roots', support: 'nylium', replaceable: true, cat: 'nature' }));
+block(2413, 'warped_roots', plant({ tex: 'warped_roots', support: 'nylium', replaceable: true, cat: 'nature' }));
+block(2414, 'quartz_block', { label: 'Block of Quartz', tex: 'quartz_block', hardness: 0.8, tool: 'pickaxe', tier: 1 });
+block(2415, 'bone_block', { tex: { side: 'bone_block_side', top: 'bone_block_top' }, hardness: 2, tool: 'pickaxe', tier: 1 });
+// The portal: a swirling sheet of violet light, standing along x or along z, that takes whoever
+// stands in it to the other side. It's made (and unmade) with its obsidian frame.
+export const PORTAL = { 2416: 'x', 2417: 'z' };
+for (const [id, axis] of [[2416, 'x'], [2417, 'z']]) {
+  block(id, axis === 'x' ? 'nether_portal' : 'nether_portal_z', { label: 'Nether Portal', render: R.PORTAL, tex: 'nether_portal', solid: false,
+    opaque: false, translucent: true, emit: 11, emissive: true, anim: true, hardness: -1, sound: 'glass', item: false, drop: null, base: 2416,
+    selectable: false, support: 'portal' });
+}
+block(2418, 'nether_brick_fence', { render: R.MODEL, opaque: false, solid: true, tex: 'nether_bricks', hardness: 2, tool: 'pickaxe', tier: 1,
+  label: 'Nether Brick Fence' });
+SHAPE_KIND[2418] = 2;
+ICON_SHAPE[2418] = [[1, 0, 6, 5, 16, 10], [11, 0, 6, 15, 16, 10], [5, 6, 7, 11, 9, 9], [5, 12, 7, 11, 15, 9]];
+stairs([['nether_bricks', 'nether_brick', 'Nether Brick']], 2419);
+slabs([['nether_bricks', 'nether_brick', 'Nether Brick']], 2427);
+
 // Blocks shown in the inventory and in the hand as a flat picture rather than a little model
 // (-1 for the rest). Tall flowers show their flowering top.
 export function spriteOf(block) {
@@ -1140,6 +1190,11 @@ const CREATIVE_ORDER = [
   ...WOOD_NAMES.flatMap((w) => [`${w}_door`, `${w}_trapdoor`, `${w}_fence`, `${w}_fence_gate`]), 'iron_door', 'iron_trapdoor',
   'lever', 'stone_button', 'oak_button', 'stone_pressure_plate', 'oak_pressure_plate', 'redstone_lamp', 'redstone_block', 'note_block', 'jukebox',
   'rail', 'powered_rail', 'detector_rail',
+  // the Nether
+  'netherrack', 'nether_quartz_ore', 'nether_gold_ore', 'soul_sand', 'soul_soil', 'magma_block', 'basalt', 'blackstone', 'crimson_nylium',
+  'warped_nylium', 'crimson_stem', 'warped_stem', 'crimson_planks', 'warped_planks', 'nether_wart_block', 'warped_wart_block', 'shroomlight',
+  'crimson_fungus', 'warped_fungus', 'crimson_roots', 'warped_roots', 'nether_bricks', 'nether_brick_stairs', 'nether_brick_slab',
+  'nether_brick_fence', 'red_nether_bricks', 'quartz_block', 'bone_block',
 ];
 export const CREATIVE_BLOCKS = (() => {
   const out = [], seen = new Set();

@@ -168,7 +168,7 @@ export class Civilians {
       const cats = 1 + (h % 3), spots = [[-6, 3], [6, -3], [3, 6], [-3, -6]];
       for (let k = 0; k < cats; k++) {
         const [dx, dz] = spots[(h + k) % spots.length];
-        list.push(this.ents.spawnMob('cat', plan.x + dx + 0.5, plan.y + 1, plan.z + dz + 0.5, { pinned: plan.key, home, variant: (h >> (k * 3)) % 6 }));
+        list.push(this.ents.spawnMob('cat', plan.x + dx + 0.5, plan.y + 1, plan.z + dz + 0.5, { pinned: plan.key, home, variant: (h >>> (k * 3)) % 6 }));
       }
       this.keepers.set(plan.key, list);
     }

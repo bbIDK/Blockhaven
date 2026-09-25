@@ -126,6 +126,10 @@ item(448, 'painting', { hangs: 'painting', tex: TEX.painting_item });
 item(449, 'shield', { stack: 1, durability: 336, shield: true });
 // A minecart: set on a rail, it rolls along the track (see rails.js).
 item(450, 'minecart', { stack: 1, cart: true, tex: TEX.minecart_item });
+// From the Nether: quartz (from its ore), nether bricks (smelted netherrack) and glowstone dust.
+item(451, 'quartz', { label: 'Nether Quartz' });
+item(452, 'nether_brick', { label: 'Nether Brick' });
+item(453, 'glowstone_dust', { label: 'Glowstone Dust' });
 // Potions (see potions.js): drunk from the bottle, or thrown to break over everyone nearby.
 POTION_NAMES.forEach((name, i) => {
   const label = POTIONS[name].label;
@@ -257,6 +261,7 @@ export function dropsFor(blockId, tool, rand = Math.random) {
     case 'gravel': if (rand() < 0.1) return one('flint'); break;
     case 'dead_bush': return one('stick', n(0, 2));
     case 'clay': return one('clay_ball', 4);
+    case 'glowstone': return one('glowstone_dust', n(2, 4));
     case 'snow_block': return one('snowball', 4);
     case 'snow': return one('snowball');
     case 'bookshelf': return one('book', 3);

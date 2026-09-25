@@ -4,7 +4,7 @@
 // 0 still, 1..254 the direction the surface flows, 255 falling down the sides.
 import {
   R, RENDER, OPAQUE, AO, TEXL, FFLAGS, TINT, TINT_RGB, CULL_SELF, TRANSLUCENT, B, ANIM,
-  F_TINT, F_OVERLAY, F_UVROT, F_ANIM, liquidHeight, liquidLevel, sameCullGroup, TORCH_LEAN, shapeBoxes, boxFaceUV, boxLayer, RAIL,
+  F_TINT, F_OVERLAY, F_UVROT, F_ANIM, liquidHeight, liquidLevel, sameCullGroup, TORCH_LEAN, shapeBoxes, boxFaceUV, boxLayer, RAIL, PORTAL,
 } from './blocks.js';
 import { columnColors, fromByte } from './biomes.js';
 import { hash2 } from './math.js';
@@ -233,6 +233,26 @@ function rail(buf, light, x, y, z, p, id) {
   for (const k of [0, 1, 2, 3]) corner(k);
 }
 
+// A Nether portal: a sheet of swirling light a quarter of a block thick standing in the middle
+// of the block, its edges showing only where the portal ends (not against more of it, nor the
+// frame). It glows, so it needs no light of its own.
+const PORTAL_BOX = { x: [0, 0, 6, 16, 16, 10], z: [6, 0, 0, 10, 16, 16] };
+function portal(buf, blocks, x, y, z, p, id) {
+  const axis = PORTAL[id], b = PORTAL_BOX[axis];
+  const layer = TEXL[id * 6], flags = (FFLAGS[id * 6] & FLAG_MASK) | F_ANIM;
+  for (let f = 0; f < 6; f++) {
+    const inPlane = axis === 'x' ? f < 4 : f !== 0 && f !== 1;
+    const nid = blocks[p + NOFF[f]];
+    if (inPlane && (nid === id || OPAQUE[nid])) continue;
+    const uv = boxFaceUV(b, f);
+    buf.reserve(4);
+    FACE_CORNERS[f].forEach((c, k) => {
+      buf.vertex(x * U + (c[0] ? b[3] : b[0]) * 16, y * U + (c[1] ? b[4] : b[1]) * 16, z * U + (c[2] ? b[5] : b[2]) * 16,
+        UV[k][0] ? uv[2] : uv[0], UV[k][1] ? uv[3] : uv[1], layer, f, flags, 255, 255, 255, 255, 255, 255);
+    });
+  }
+}
+
 // Small plants are nudged off-centre a little so a meadow doesn't look planted in rows.
 const JITTER = new Set(['tall_grass', 'fern', 'dandelion', 'poppy', 'cornflower', 'dead_bush', 'red_mushroom', 'brown_mushroom', 'allium',
   'azure_bluet', 'blue_orchid', 'oxeye_daisy', 'red_tulip', 'orange_tulip', 'white_tulip', 'pink_tulip', 'lily_of_the_valley'].map((n) => B[n]));
@@ -391,6 +411,7 @@ export function meshSection(blocks, light, climate, cx, cz, biomes = null) {
         else if (rt === R.MODEL) model(dirs, blocks, light, x, y, z, p, id);
         else if (rt === R.CAMPFIRE) campfire(dirs, other, blocks, light, x, y, z, p, id);
         else if (rt === R.RAIL) rail(other, light, x, y, z, p, id);
+        else if (rt === R.PORTAL) portal(trans, blocks, x, y, z, p, id);
       }
     }
   }
