@@ -130,6 +130,14 @@ item(450, 'minecart', { stack: 1, cart: true, tex: TEX.minecart_item });
 item(451, 'quartz', { label: 'Nether Quartz' });
 item(452, 'nether_brick', { label: 'Nether Brick' });
 item(453, 'glowstone_dust', { label: 'Glowstone Dust' });
+// ...and from its creatures: ghast tears, blaze rods (and their powder), magma cream; a fire
+// charge lights fires like flint and steel, once; a warped fungus on a stick steers a strider.
+item(454, 'ghast_tear', { label: 'Ghast Tear' });
+item(455, 'blaze_rod', { label: 'Blaze Rod' });
+item(456, 'blaze_powder', { label: 'Blaze Powder' });
+item(457, 'magma_cream', { label: 'Magma Cream' });
+item(458, 'warped_fungus_on_a_stick', { label: 'Warped Fungus on a Stick', stack: 1, durability: 100 });
+item(459, 'fire_charge', { label: 'Fire Charge' });
 // Potions (see potions.js): drunk from the bottle, or thrown to break over everyone nearby.
 POTION_NAMES.forEach((name, i) => {
   const label = POTIONS[name].label;

@@ -43,6 +43,9 @@ const SPRITES = {
   // Poisoned, the hearts go sickly green; with the Hunger effect, so does the food.
   heartPoison: sprite(HEART, { k: '#161a06', r: '#839f1e', h: '#c8dc5a' }),
   halfPoison: sprite(HALF, { k: '#161a06', r: '#839f1e', h: '#c8dc5a', e: '#3a1512' }),
+  // Withering, they go black.
+  heartWither: sprite(HEART, { k: '#000000', r: '#2a2626', h: '#5a5252' }),
+  halfWither: sprite(HALF, { k: '#000000', r: '#2a2626', h: '#5a5252', e: '#3a1512' }),
   foodHunger: sprite(DRUMSTICK, { k: '#1a2a0a', m: '#6e8a3a', h: '#9ab86a', b: '#d8e0c8' }),
   foodHalfHunger: sprite(HALF_DRUM, { k: '#1a2a0a', m: '#6e8a3a', e: '#3a2014', b: '#d8e0c8' }),
 };
@@ -63,6 +66,8 @@ const EFFECT_ICONS = {
   poison: sprite(['....k....', '...kgk...', '...kgk...', '..kgggk..', '.kgghggk.', '.kgghggk.', '.kgggggk.', '..kgggk..', '...kkk...'],
     { k: '#14300c', g: '#4e9331', h: '#9ad860' }),
   hunger: sprite(DRUMSTICK, { k: '#1a2a0a', m: '#6e8a3a', h: '#9ab86a', b: '#d8e0c8' }),
+  wither: sprite(['..kkkkk..', '.kwwwwwk.', 'kwwwwwwwk', 'kwkkwkkwk', 'kwkkwkkwk', 'kwwwkwwwk', '.kwwwwwk.', '..kwkwk..', '..kkkkk..'],
+    { k: '#0a0808', w: '#4a4242' }),
 };
 
 // The hotbar: nine 20x20 cells in a translucent bar, and the frame around the selected one.
@@ -498,7 +503,8 @@ export class UI {
     }));
   }
 
-  renderStats(survival, health, air, underwater, food = 20, armor = 0, poisoned = false, hungry = false) {
+  // `tinted`: 'poison' or 'wither' colours the hearts.
+  renderStats(survival, health, air, underwater, food = 20, armor = 0, tinted = null, hungry = false) {
     $('stats').style.visibility = survival ? 'visible' : 'hidden';
     if (!survival) return;
     if (armor !== this.lastArmor) {
@@ -517,11 +523,14 @@ export class UI {
         el.style.backgroundImage = `url(${v >= 2 ? (hungry ? SPRITES.foodHunger : SPRITES.food) : v === 1 ? (hungry ? SPRITES.foodHalfHunger : SPRITES.foodHalf) : SPRITES.foodEmpty})`;
       });
     }
-    if (health + (poisoned ? 100 : 0) !== this.lastHealth) {
-      this.lastHealth = health + (poisoned ? 100 : 0);
+    const key = `${health}${tinted ?? ''}`;
+    if (key !== this.lastHealth) {
+      this.lastHealth = key;
+      const full = tinted === 'wither' ? SPRITES.heartWither : tinted === 'poison' ? SPRITES.heartPoison : SPRITES.heart;
+      const half = tinted === 'wither' ? SPRITES.halfWither : tinted === 'poison' ? SPRITES.halfPoison : SPRITES.half;
       [...$('hearts').children].forEach((el, i) => {
         const v = health - i * 2;
-        el.style.backgroundImage = `url(${v >= 2 ? (poisoned ? SPRITES.heartPoison : SPRITES.heart) : v === 1 ? (poisoned ? SPRITES.halfPoison : SPRITES.half) : SPRITES.empty})`;
+        el.style.backgroundImage = `url(${v >= 2 ? full : v === 1 ? half : SPRITES.empty})`;
       });
     }
     // With two hearts or less left, the hearts tremble.

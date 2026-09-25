@@ -124,7 +124,9 @@ export function horseDrive(e, drive, dt) {
   e.yaw += wrap(drive.yaw - e.yaw) * Math.min(1, dt * 8);
   e.moving = drive.forward !== 0;
   e.rideDir = drive.forward < 0 ? Math.PI : 0;
-  e.speedMul = (drive.forward < 0 ? 0.25 : 1) * (e.def.rideSpeed / e.def.speed);
+  // (A strider spurred on with a warped fungus goes twice as fast for a while.)
+  if (e.boost > 0) e.boost -= dt * 20;
+  e.speedMul = (drive.forward < 0 ? 0.25 : 1) * (e.def.rideSpeed / e.def.speed) * (e.boost > 0 ? 2 : 1);
   if (drive.jump && e.onGround && e.rideJump <= 0) { e.vy = 10.5; e.rideJump = 0.6; }
   return true;
 }

@@ -839,3 +839,210 @@ skin('snow_golem', (sk) => {
   for (const x of [2, 4, 6]) at(sk, f, x, 6, lit);
   for (const x of [1, 3, 5]) at(sk, f, x, 6, dark);
 });
+
+// ---------------------------------------------------------------- the Nether's
+// Piglins: pink hide, a darker snout with its nostrils, cream tusks, and the gold they love (a
+// medallion on a leather strap, bracers, a buckle) over a leather loincloth. Zombified ones are
+// half rotted away: green-grey flesh, the skull showing through the side of the head, ribs
+// through the chest, one eye gone.
+const PIG_HIDE = ramp(0xe8948c, 5, 0.1, 6);
+const LEATHER = [0x3e2412, 0x4e2e18, 0x5e3a1e, 0x6e4626];
+const GOLD_BITS = [0xb07a10, 0xd8a020, 0xf2c83a, 0xffe676];
+const PIG_BONE = [0xb4b0a0, 0xcac6b6, 0xdcd8c8, 0xeeeade];
+function piglinSkin(sk, hide, zombified) {
+  const P = RIGS.piglin.bones, [head, snout, tuskR, tuskL] = P.head.cubes, H = reg(head);
+  const deep = hide.map((c) => mix(c, 0x7a2e2c, 0.22));
+  sk.box(head, (face, r) => sk.fill(r, hide, { cell: 2, grain: 0.25 }));
+  const f = H.front;
+  // Brows, small eyes, a mouth line under the snout.
+  for (const x of [1, 2, 3, 6, 7, 8]) at(sk, f, x, 2, deep[0]);
+  at(sk, f, 2, 3, 0xf2eee8); at(sk, f, 3, 3, 0x1a1210); at(sk, f, 6, 3, 0x1a1210); at(sk, f, 7, 3, 0xf2eee8);
+  for (let x = 2; x < 8; x++) at(sk, f, x, 7, deep[1]);
+  sk.box(snout, (face, r) => sk.fill(r, deep.slice(1), { cell: 1, grain: 0.2 }));
+  const s = reg(snout).front;
+  row(sk, s, 0, deep[4]); at(sk, s, 1, 1, 0x5a2422); at(sk, s, 2, 1, 0x5a2422); at(sk, s, 1, 2, deep[1]); at(sk, s, 2, 2, deep[1]);
+  for (const t of [tuskR, tuskL]) sk.box(t, (face, r) => sk.fill(r, [0xd4c8a4, 0xe4dabc, 0xf2ead6], { cell: 1 }));
+  for (const b of ['rightEar', 'leftEar']) sk.box(P[b].cubes[0], (face, r) => sk.fill(r, face === 'right' || face === 'left' ? deep : hide, { cell: 1, grain: 0.2 }));
+  // The body: bare, crossed by a strap with a gold medallion; a belt with a buckle and a loincloth.
+  for (const R of [HR.body, HR.rArm, HR.lArm, HR.rLeg, HR.lLeg]) fillAll(sk, R, hide, { cell: 2, grain: 0.25 });
+  for (const R of [HR.hat, HR.jacket, HR.rSleeve, HR.lSleeve, HR.rPants, HR.lPants]) clearAll(sk, R);
+  const b = HR.body.front;
+  for (let y = 0; y < 8; y++) { at(sk, b, y, y, LEATHER[2]); at(sk, b, y + 1 > 7 ? 7 : y + 1, y, LEATHER[1]); }
+  at(sk, b, 3, 3, GOLD_BITS[3]); at(sk, b, 4, 3, GOLD_BITS[2]); at(sk, b, 3, 4, GOLD_BITS[1]); at(sk, b, 4, 4, GOLD_BITS[0]);
+  for (const side of SIDES) {
+    const r = HR.body[side];
+    sk.fill([r[0], r[1] + 8, r[2], 1], LEATHER.slice(0, 2), { cell: 1 });
+    sk.fill([r[0], r[1] + 9, r[2], 3], LEATHER, { cell: 1, grain: 0.35 });
+    // The loincloth hangs over the tops of the legs; hooves below.
+    for (const R of [HR.rLeg, HR.lLeg]) {
+      sk.fill([R[side][0], R[side][1], R[side][2], 3], LEATHER, { cell: 1, grain: 0.35 });
+      sk.fill([R[side][0], R[side][1] + 10, R[side][2], 2], [0x2e2220, 0x3a2c28, 0x463430], { cell: 1 });
+    }
+    // Gold bracers on the right wrist, leather on the left.
+    sk.fill([HR.rArm[side][0], HR.rArm[side][1] + 9, HR.rArm[side][2], 2], GOLD_BITS, { cell: 1 });
+    sk.fill([HR.lArm[side][0], HR.lArm[side][1] + 9, HR.lArm[side][2], 2], LEATHER, { cell: 1 });
+  }
+  at(sk, b, 3, 8, GOLD_BITS[3]); at(sk, b, 4, 8, GOLD_BITS[2]);
+  if (!zombified) return;
+  // Rot: green-grey patches over everything that's flesh.
+  const rot = [0x6e7e5e, 0x7c8c6a, 0x8a9a76, 0x98a882];
+  for (const R of [H, HR.body, HR.rArm, HR.lArm, HR.rLeg, HR.lLeg]) {
+    for (const r of all(R)) {
+      const n = sk.field(r[2], r[3], 3, 3, 0.3);
+      for (let y = 0; y < r[3]; y++) for (let x = 0; x < r[2]; x++) {
+        const c = sk.get(r[0] + x, r[1] + y);
+        if (n[y * r[2] + x] > 0.6 && !LEATHER.includes(c) && !GOLD_BITS.includes(c)) sk.set(r[0] + x, r[1] + y, rot[sk.ri(rot.length)]);
+      }
+    }
+  }
+  // The skull showing through the right side of the head, and its empty eye.
+  sk.fill([H.right[0] + 1, H.right[1] + 1, 5, 5], PIG_BONE, { cell: 1, grain: 0.3 });
+  at(sk, H.right, 2, 3, 0x1a1414); at(sk, H.right, 3, 3, 0x1a1414);
+  at(sk, f, 7, 3, 0x0e0a0a); at(sk, f, 8, 3, PIG_BONE[1]); at(sk, f, 8, 4, PIG_BONE[2]); at(sk, f, 7, 4, PIG_BONE[0]);
+  // Ribs through the chest (on the right, clear of the strap).
+  for (let y = 2; y < 8; y += 2) for (let x = 0; x < 3; x++) { at(sk, HR.body.front, x, y, PIG_BONE[2 + (x % 2)]); at(sk, HR.body.front, x, y + 1, 0x2a1a18); }
+  // Bone at the elbow of the left arm.
+  for (const side of ['front', 'right', 'back']) sk.fill([HR.lArm[side][0], HR.lArm[side][1] + 4, HR.lArm[side][2], 3], PIG_BONE, { cell: 1 });
+}
+skin('piglin', (sk) => piglinSkin(sk, PIG_HIDE, false));
+skin('zombified_piglin', (sk) => piglinSkin(sk, ramp(0xd88e86, 5, 0.1, 6), true));
+
+// Ghasts: white and soft, with closed, weeping eyes (open and red, and the mouth wide, when about
+// to spit fire).
+function ghastSkin(sk, firing) {
+  const G = RIGS.ghast.bones, WHITE = [0xd4d4d4, 0xe0e0e0, 0xebebeb, 0xf4f4f4, 0xfcfcfc];
+  sk.box(G.body.cubes[0], (face, r) => {
+    sk.fill(r, face === 'bottom' ? WHITE.slice(0, 3) : WHITE, { cell: 3, grain: 0.12 });
+    if (face !== 'top' && face !== 'bottom') for (let k = 0; k < 6; k++) { const x = sk.ri(r[2]); for (let y = 8 + sk.ri(4); y < r[3]; y++) at(sk, r, x, y, WHITE[1]); }
+  });
+  sk.box(G.tentacle0.cubes[0], (face, r) => sk.fill(r, WHITE.slice(0, 4), { cell: 1, grain: 0.2 }));
+  const f = reg(G.body.cubes[0]).front;
+  if (!firing) {
+    for (const x0 of [3, 9]) {
+      for (let x = x0; x < x0 + 4; x++) { at(sk, f, x, 5, 0x6a6a70); at(sk, f, x, 4, WHITE[1]); }
+      // Tears: grey streaks down from the eyes.
+      for (let y = 6; y < 11; y++) at(sk, f, x0 + (x0 === 3 ? 1 : 2), y, y % 2 ? 0xb8bcc4 : 0xa8acb4);
+    }
+    for (let x = 6; x < 10; x++) at(sk, f, x, 11, 0x7a7a80);
+  } else {
+    for (const x0 of [3, 9]) {
+      for (let y = 3; y < 7; y++) for (let x = x0; x < x0 + 4; x++) {
+        const edge = y === 3 || y === 6 || x === x0 || x === x0 + 3;
+        at(sk, f, x, y, edge ? 0x3a0808 : y === 4 ? 0xff5a3a : 0xd41c1c);
+      }
+      for (let y = 7; y < 11; y++) at(sk, f, x0 + (x0 === 3 ? 1 : 2), y, 0x9aa0aa);
+    }
+    for (let y = 10; y < 14; y++) for (let x = 5; x < 11; x++) at(sk, f, x, y, y === 10 || x === 5 || x === 10 ? 0x2a1010 : 0x100606);
+    at(sk, f, 7, 12, 0x6a1010); at(sk, f, 8, 12, 0x6a1010);
+  }
+}
+skin('ghast', (sk) => ghastSkin(sk, false));
+skin('ghast_fire', (sk) => ghastSkin(sk, true));
+
+// Blazes: a head of living fire, gold and orange with dark smoke curling over it, and black
+// eyes; rods glowing hotter towards their tips.
+skin('blaze', (sk) => {
+  const B2 = RIGS.blaze.bones, FIRE = [0xa85206, 0xd47a12, 0xeea424, 0xf8c63c, 0xffe478];
+  sk.box(B2.head.cubes[0], (face, r) => {
+    sk.fill(r, FIRE, { cell: 2, grain: 0.3 });
+    const n = sk.field(r[2], r[3], 2, 2, 0.3);
+    for (let y = 0; y < r[3]; y++) for (let x = 0; x < r[2]; x++) if (n[y * r[2] + x] > 0.72) at(sk, r, x, y, [0x3a2210, 0x4e2e14][sk.ri(2)]);
+  });
+  const f = reg(B2.head.cubes[0]).front;
+  sk.fill(f, FIRE.slice(1), { cell: 2, grain: 0.25 });
+  for (const x of [1, 2, 5, 6]) { at(sk, f, x, 3, 0x120a06); at(sk, f, x, 4, 0x5a2a08); }
+  for (let x = 2; x < 6; x++) at(sk, f, x, 6, 0x6a3408);
+  sk.box(B2.rod0.cubes[0], (face, r) => {
+    for (let y = 0; y < r[3]; y++) for (let x = 0; x < r[2]; x++) at(sk, r, x, y, FIRE[Math.min(4, Math.max(0, 4 - Math.floor(y / 2) + (sk.r() < 0.3 ? -1 : 0)))]);
+  });
+});
+
+// Magma cubes: slabs of black-red crust with lava glowing in the cracks and between them, and
+// glowing eyes; a white-hot core.
+skin('magma_cube', (sk) => {
+  const M = RIGS.magma_cube.bones, CRUST = [0x1c0604, 0x2a0a06, 0x3a1008, 0x4c160a], LAVA = [0xc83808, 0xe86010, 0xf89a20, 0xffd060];
+  for (let i = 0; i < 8; i++) {
+    sk.box(M[`slice${i}`].cubes[0], (face, r) => {
+      sk.fill(r, CRUST, { cell: 2, grain: 0.35 });
+      const n = sk.field(r[2], r[3], 2, 2, 0.4);
+      for (let y = 0; y < r[3]; y++) for (let x = 0; x < r[2]; x++) {
+        const v = n[y * r[2] + x];
+        if (v > 0.74) at(sk, r, x, y, LAVA[v > 0.86 ? 3 : v > 0.8 ? 2 : 1]);
+        else if (v > 0.66) at(sk, r, x, y, 0x6a1c0a);
+      }
+    });
+  }
+  // Eyes, across the fourth and fifth slabs.
+  const e4 = reg(M.slice4.cubes[0]).front, e5 = reg(M.slice5.cubes[0]).front;
+  for (const x of [1, 2, 5, 6]) { at(sk, e5, x, 0, LAVA[3]); at(sk, e4, x, 0, x === 2 || x === 5 ? 0x8a1004 : LAVA[2]); }
+  sk.box(M.core.cubes[0], (face, r) => sk.fill(r, LAVA.slice(1), { cell: 1, grain: 0.3 }));
+});
+
+// Wither skeletons: charred black bones, darker than the dark.
+skin('wither_skeleton', (sk) => {
+  skeletonSkin(sk, [0x141414, 0x1c1c1c, 0x262626, 0x303030, 0x3c3c3c], null);
+  const S = RIGS.skeleton.bones, f = reg(S.head.cubes[0]).front;
+  sk.paint(f[0], f[1], ['........', '........', '........', '.kk..kk.', '.kk..kk.', '...kk...', '.k.k.k..', '........'], { k: 0x050505 });
+  const body = reg(S.body.cubes[0]);
+  for (const side of ['front', 'back']) {
+    const r = body[side];
+    for (let y = 1; y < 8; y += 2) for (let x = 1; x < 7; x++) if (x !== 3 && x !== 4) at(sk, r, x, y, 0x080808);
+  }
+});
+
+// Hoglins: tawny bristling hide with a dark crest, a pink snout, cream tusks and dark hooves.
+skin('hoglin', (sk) => {
+  const HB = RIGS.hoglin.bones, HIDE = ramp(0xb8845a, 5, 0.1, 8), DARK = [0x3e2818, 0x4c3220, 0x5a3c26];
+  fur(sk, 'hoglin', ['body', 'legFR'], HIDE, { cell: 2, grain: 0.35 });
+  // A darker, bristly back.
+  const top = reg(HB.body.cubes[0]).top;
+  for (let y = 0; y < top[3]; y++) for (let x = 3; x < 9; x++) if (sk.r() < 0.7) at(sk, top, x, y, DARK[sk.ri(3)]);
+  sk.box(HB.crest.cubes[0], (face, r) => sk.fill(r, DARK, { cell: 1, grain: 0.5 }));
+  const [headBox, tusk] = HB.head.cubes, Hd = reg(headBox);
+  sk.box(headBox, (face, r) => sk.fill(r, HIDE, { cell: 2, grain: 0.3 }));
+  sk.fill(Hd.front, [0xc8847c, 0xd8948c, 0xe4a49c], { cell: 1, grain: 0.2 });
+  at(sk, Hd.front, 3, 2, 0x5a2a28); at(sk, Hd.front, 6, 2, 0x5a2a28);
+  for (const side of ['right', 'left']) {
+    const r = Hd[side];
+    // Small eyes near the back of the head (the head's side runs back to front).
+    const x = side === 'right' ? r[2] - 3 : 2;
+    at(sk, r, x, 1, 0x141010); at(sk, r, side === 'right' ? x + 1 : x - 1, 1, 0xe8e4dc);
+  }
+  sk.box(tusk, (face, r) => sk.fill(r, [0xd0c4a0, 0xe0d6b8, 0xeee6d0], { cell: 1 }));
+  sk.box(HB.rightEar.cubes[0], (face, r) => sk.fill(r, face === 'bottom' ? [0xc8847c, 0xd8948c] : HIDE, { cell: 1 }));
+  feet(sk, 'hoglin', ['legFR'], 2, [0x2a2220, 0x3a302c]);
+});
+
+// Striders: warm red and speckled on the lava, a wide mouth, pale bristles; out of it they go cold
+// and purple.
+function striderSkin(sk, body, legs, bristle) {
+  const S2 = RIGS.strider.bones;
+  sk.box(S2.body.cubes[0], (face, r) => {
+    sk.fill(r, body, { cell: 2, grain: 0.3 });
+    for (let k = 0; k < (r[2] * r[3]) / 10; k++) at(sk, r, sk.ri(r[2]), sk.ri(r[3]), body[0]);
+  });
+  const f = reg(S2.body.cubes[0]).front;
+  for (const x0 of [3, 11]) { at(sk, f, x0, 3, 0x0e0a0a); at(sk, f, x0 + 1, 3, 0x0e0a0a); at(sk, f, x0, 4, 0x0e0a0a); at(sk, f, x0 + 1, 4, 0x2a2020); at(sk, f, x0, 3, 0xf0e8e8); }
+  for (let x = 2; x < 14; x++) { at(sk, f, x, 9, 0x1a0808); at(sk, f, x, 10, x % 3 === 0 ? 0xe8dcc8 : 0x2a0e0c); }
+  sk.box(S2.rightLeg.cubes[0], (face, r) => sk.fill(r, legs, { cell: 1, cy: 3, grain: 0.3 }));
+  // The bristles: strands of hair fanning out from the body (its edge is the right of the
+  // picture), clear between; the underside is the same strands seen from below.
+  const Br = reg(S2.bristle0.cubes[0]);
+  for (let y = 0; y < 16; y++) {
+    if (y % 3 === 2) continue;
+    const len = 6 + sk.ri(7);
+    for (let k = 0; k < len; k++) {
+      const c = k < 2 ? bristle[0] : k > len - 3 ? bristle[2] : bristle[1 + ((k + y) & 1)];
+      at(sk, Br.top, 11 - k, y, c); at(sk, Br.bottom, 11 - k, 15 - y, c);
+    }
+  }
+}
+skin('strider', (sk) => striderSkin(sk, [0x782020, 0x962e2a, 0xb03c36, 0xc64c44, 0xd66052], [0x3a1826, 0x4a2032, 0x5a2a3e], [0xc8a8a0, 0xe0c4bc, 0xf0dcd4]));
+skin('strider_cold', (sk) => striderSkin(sk, [0x46304e, 0x563a60, 0x664472, 0x785084, 0x8a5c96], [0x2a1e34, 0x342640, 0x3e2e4c], [0xa89cb8, 0xc0b4d0, 0xd8d0e4]));
+// A strider's saddle: leather with a stitched rim, and its straps.
+skin('strider_saddle', (sk) => {
+  const [seat, strap] = RIGS.strider.bones.saddle.cubes, L = [0x4a2a14, 0x5c341a, 0x6e4020, 0x804c28];
+  sk.box(seat, (face, r) => { sk.fill(r, L, { cell: 1, grain: 0.3 }); if (face === 'top') for (let x = 0; x < r[2]; x++) { at(sk, r, x, 0, L[0]); at(sk, r, x, r[3] - 1, L[0]); } });
+  sk.box(strap, (face, r) => sk.fill(r, [0x2e1a0c, 0x3a2210], { cell: 1 }));
+  at(sk, reg(strap).right, 0, 5, 0xb0b0b8); at(sk, reg(strap).right, 1, 5, 0xd0d0d8);
+});

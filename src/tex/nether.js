@@ -132,3 +132,9 @@ def('quartz', (t) => paint(t, ['', '', '', '.......##.......', '......#hl#......
   '....#llmmmd#....', '.....#lmmd#.....', '......#md#......', '.......##.......'], { '#': 0x6a605a, h: 0xffffff, l: 0xf0e8e0, m: 0xd8ccc2, d: 0xb8aca2 }));
 def('nether_brick', (t) => paint(t, ['', '', '', '', '', '...##########...', '..#hhhhhhhhhl#..', '..#lllllllllm#..', '..#lmmmmmmmmd#..', '..#mmmmmmmmdd#..',
   '...##########...'], { '#': 0x140608, h: 0x7a2c30, l: 0x5e2428, m: 0x44181c, d: 0x301014 }));
+
+// Bits of flame, for particles (a blaze's fire, a small fireball bursting).
+def('flame', (t) => {
+  const f = t.field([[2, 2, 0.6], [1, 1, 0.4]], 0.3);
+  for (let i = 0; i < 256; i++) t.set(i & 15, i >> 4, f[i] > 0.7 ? 0xfff2a8 : f[i] > 0.5 ? 0xffc444 : f[i] > 0.3 ? 0xf2861c : 0xd45412);
+});

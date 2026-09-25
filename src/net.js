@@ -100,6 +100,8 @@ export class RoomTransport {
 
   get maxPacket() { return this.canEmit ? 3200 : 1400; }
   get ready() { return !this.dead && !!this.me; }
+  // (Packets still waiting their turn to go out, or not yet acknowledged from the mailbox.)
+  get busy() { return !this.dead && this.connected && (this.queue.length > 0 || this.mailbox.length > 0); }
   get self() { return this.me ? `r:${this.me}` : null; }
 
   // Resolves true once the room knows who we are and we're connected (false after `ms`).
@@ -509,6 +511,8 @@ export class Link {
 
   send(to, msg) { this.stream(to).queue.push(msg); }
   broadcast(msg) { this.stream('*').queue.push(msg); }
+  // True while anything handed over hasn't gone out yet.
+  get busy() { return [...this.out.values()].some((s) => s.queue.length > 0) || this.transports.some((t) => t.busy); }
 
   setPresence(obj) { for (const t of this.transports) t.setPresence(obj); }
 

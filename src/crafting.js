@@ -208,6 +208,10 @@ shaped('bone_block', 1, ['BBB', 'BBB', 'BBB'], { B: 'bone_meal' }, 'building');
 shapeless('bone_meal', 9, ['bone_block'], 'misc');
 shapeless('crimson_planks', 4, ['crimson_stem'], 'building');
 shapeless('warped_planks', 4, ['warped_stem'], 'building');
+shapeless('blaze_powder', 2, ['blaze_rod'], 'misc');
+shapeless('magma_cream', 1, ['blaze_powder', 'slime_ball'], 'misc');
+shapeless('fire_charge', 3, ['blaze_powder', '#coals', 'gunpowder'], 'misc');
+shaped('warped_fungus_on_a_stick', 1, ['R ', ' W'], { R: 'fishing_rod', W: 'warped_fungus' }, 'misc');
 for (const [mat, x] of [['leather', 'leather'], ['iron', 'iron_ingot'], ['golden', 'gold_ingot'], ['diamond', 'diamond']]) {
   shaped(`${mat}_helmet`, 1, ['XXX', 'X X'], { X: x }, 'equipment');
   shaped(`${mat}_chestplate`, 1, ['X X', 'XXX', 'XXX'], { X: x }, 'equipment');
@@ -360,7 +364,7 @@ export const SMELTABLE = [...SMELTING.keys()];
 
 // Burn time of fuels, in ticks (an item takes 200 to smelt, so coal does 8).
 const FUELS = [
-  ['coal', 1600], ['charcoal', 1600], ['coal_block', 16000], ['lava_bucket', 20000], ['stick', 100], ['wooden_pickaxe', 200],
+  ['coal', 1600], ['charcoal', 1600], ['coal_block', 16000], ['lava_bucket', 20000], ['blaze_rod', 2400], ['stick', 100], ['wooden_pickaxe', 200],
   ['wooden_axe', 200], ['wooden_shovel', 200], ['wooden_sword', 200], ['wooden_hoe', 200], ['crafting_table', 300], ['chest', 300],
   ['bookshelf', 300], ['ladder', 300], ['bowl', 100], ['barrel', 300], ['bow', 300], ['fishing_rod', 300], ['fletching_table', 300],
   ['smithing_table', 300], ['composter', 300], ['loom', 300], ['lectern', 300], ['cartography_table', 300],

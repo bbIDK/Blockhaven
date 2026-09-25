@@ -395,7 +395,89 @@ export const RIGS = {
       tail: { pivot: [0, 2.5, 4], cubes: [c([-1.5, 0, 4], [3, 5, 4], [0, 13]), c([0, 0, 8], [0, 5, 5], [20, 10])] },
     },
   },
+
+  // ---------------------------------------------------------------- the Nether's
+  // Piglins and zombified piglins: a broad snouted head with tusks and floppy ears, on a person's
+  // body (Minecraft's piglin model; no hat layer, the ears take its place in the skin).
+  piglin: {
+    bones: {
+      head: {
+        pivot: [0, 24, 0],
+        cubes: [c([-5, 24, -4], [10, 8, 8], [0, 0]), c([-2, 24, -5], [4, 4, 1], [31, 1]), c([2, 24, -5], [1, 2, 1], [2, 4]), c([-3, 24, -5], [1, 2, 1], [2, 0])],
+      },
+      rightEar: { pivot: [5, 30, 0], parent: 'head', cubes: [c([4.5, 25, -2], [1, 5, 4], [51, 6])], rest: [0, 0, 0.52] },
+      leftEar: { pivot: [-5, 30, 0], parent: 'head', cubes: [c([-5.5, 25, -2], [1, 5, 4], [39, 6])], rest: [0, 0, -0.52] },
+      body: HUMANOID.body, rightArm: HUMANOID.rightArm, leftArm: HUMANOID.leftArm, rightLeg: HUMANOID.rightLeg, leftLeg: HUMANOID.leftLeg,
+    },
+    hand: { bone: 'rightArm', at: [6, 13, -1] },
+  },
+  // A ghast: a great pale jellyfish of a thing trailing nine tentacles (drawn four and a half
+  // times over; the tentacles hang below its feet).
+  ghast: {
+    bones: {
+      body: { pivot: [0, 8, 0], cubes: [c([-8, 0, -8], [16, 16, 16], [0, 0])] },
+      ...Object.fromEntries(Array.from({ length: 9 }, (_, j) => {
+        const x = ((j % 3) - (Math.floor(j / 3) % 2) * 0.5 - 0.75) * 5, z = (Math.floor(j / 3) - 1) * 5, len = [10, 13, 9, 12, 14, 8, 11, 9, 13][j];
+        return [`tentacle${j}`, { pivot: [x, 0, z], cubes: [c([x - 1, -len, z - 1], [2, len, 2], [0, 32])] }];
+      })),
+    },
+  },
+  // A blaze: a head of smouldering fire over rods that circle below it in three rings (each rod
+  // is put in its place on the ring as it's drawn).
+  blaze: {
+    bones: {
+      head: { pivot: [0, 20, 0], cubes: [c([-4, 20, -4], [8, 8, 8], [0, 0])] },
+      ...Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`rod${i}`, { pivot: [0, 0, 0], cubes: [c([-1, 0, -1], [2, 8, 2], [0, 16])] }])),
+    },
+  },
+  // A magma cube: eight slabs of crust round a glowing core, which part as it springs.
+  magma_cube: {
+    bones: {
+      ...Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`slice${i}`,
+        { pivot: [0, i, 0], cubes: [c([-4, i, -4], [8, 1, 8], i < 6 ? [0, i * 9] : [32, (i - 6) * 9])] }])),
+      core: { pivot: [0, 2, 0], cubes: [c([-2, 2, -2], [4, 4, 4], [32, 18])] },
+    },
+  },
+  // A hoglin: a great bristling boar, its long head held low and its tusks turned up (Minecraft's
+  // hoglin, drawn a little smaller and scaled up, to fit the skin).
+  hoglin: {
+    bones: {
+      body: { pivot: [0, 14, 0], cubes: [c([-6, 9, -10], [12, 11, 20], [0, 0])] },
+      crest: { pivot: [0, 20, 0], parent: 'body', cubes: [c([-0.5, 20, -9], [1, 3, 12], [26, 49])] },
+      head: {
+        pivot: [0, 17, -10], rest: [-0.6, 0, 0],
+        cubes: [c([-5, 12, -23], [10, 5, 13], [0, 31]), c([4, 13, -22], [1, 5, 1], [14, 49]), c([-5, 13, -22], [1, 5, 1], [14, 49], { mirror: true })],
+      },
+      rightEar: { pivot: [5, 16.5, -12], parent: 'head', cubes: [c([5, 16, -13.5], [4, 1, 3], [0, 49])], rest: [0, 0, -0.6] },
+      leftEar: { pivot: [-5, 16.5, -12], parent: 'head', cubes: [c([-9, 16, -13.5], [4, 1, 3], [0, 49], { mirror: true })], rest: [0, 0, 0.6] },
+      legFR: { pivot: [3.5, 9, -7], cubes: [c([1.5, 0, -9], [4, 9, 4], [46, 31])] },
+      legFL: { pivot: [-3.5, 9, -7], cubes: [c([-5.5, 0, -9], [4, 9, 4], [46, 31], { mirror: true })] },
+      legBR: { pivot: [3.5, 9, 7], cubes: [c([1.5, 0, 5], [4, 9, 4], [46, 31])] },
+      legBL: { pivot: [-3.5, 9, 7], cubes: [c([-5.5, 0, 5], [4, 9, 4], [46, 31], { mirror: true })] },
+    },
+  },
+  // A strider: a warm, bristly body up on two long legs, for wading the lava seas.
+  strider: {
+    bones: {
+      body: { pivot: [0, 16, 0], cubes: [c([-8, 16, -8], [16, 14, 16], [0, 0])] },
+      rightLeg: { pivot: [4, 16, 0], cubes: [c([2, 0, -2], [4, 16, 4], [0, 32])] },
+      leftLeg: { pivot: [-4, 16, 0], cubes: [c([-6, 0, -2], [4, 16, 4], [0, 32], { mirror: true })] },
+      // A saddle on its back, strapped under it (from its own little skin).
+      saddle: {
+        pivot: [0, 16, 0], follows: 'body', saddle: true,
+        cubes: [c([-5, 30, -4], [10, 1, 8], [0, 0], { skin: 'saddle', inflate: 0.05 }), c([7.8, 22, -1], [1, 8, 2], [0, 10], { skin: 'saddle' }),
+          c([-8.8, 22, -1], [1, 8, 2], [0, 10], { skin: 'saddle', mirror: true })],
+      },
+      // Bristles: fans of hair hanging off its upper sides, three a side, that flap as it goes.
+      ...Object.fromEntries([[1, 29, 0.87], [1, 25, 1.13], [1, 20, 1.22], [-1, 30, 0.87], [-1, 26, 1.13], [-1, 21, 1.22]].map(([s, y, a], i) => [`bristle${i}`, {
+        pivot: [8 * s, y, 0], parent: 'body', rest: [0, 0, -s * a],
+        cubes: [c(s > 0 ? [8, y, -8] : [-20, y, -8], [12, 0, 16], [0, 32], s < 0 ? { mirror: true } : {})],
+      }])),
+    },
+  },
 };
+// (A bone with a `parent` rides on it: it turns with its parent, about its own joint too.)
+for (const rig of Object.values(RIGS)) for (const bone of Object.values(rig.bones)) if (bone.parent) bone.parentBone = rig.bones[bone.parent];
 
 // ---------------------------------------------------------------- meshes and poses
 // Meshes for a rig in a skin (`skins`: the skin for each `skin` key a box names, `tint`: colour
@@ -420,8 +502,18 @@ export function rigMeshes(renderer, rigName, skins, tint = null) {
 // `pose[name]` = [rx, ry, rz] added to the rest turn; bones that `follow` another take its pose.
 export function boneMatrix(m, base, bone, pose, name) {
   m.set(base);
-  const p = bone.pivot;
-  translate(m, m, p[0] / 16, p[1] / 16, p[2] / 16);
+  joint(m, bone, pose, name);
+  translate(m, m, -MODEL_OFFSET, -MODEL_OFFSET, -MODEL_OFFSET);
+  return m;
+}
+// Moves `m` to the bone's joint and turns it there (after its parent, if it has one).
+function joint(m, bone, pose, name) {
+  const p = bone.pivot, up = bone.parentBone;
+  if (up) {
+    joint(m, up, pose, bone.parent);
+    const q = up.pivot;
+    translate(m, m, (p[0] - q[0]) / 16, (p[1] - q[1]) / 16, (p[2] - q[2]) / 16);
+  } else translate(m, m, p[0] / 16, p[1] / 16, p[2] / 16);
   const r = pose[bone.follows ?? name], rest = bone.rest;
   const rx = (r?.[0] ?? 0) + (rest?.[0] ?? 0), ry = (r?.[1] ?? 0) + (rest?.[1] ?? 0), rz = (r?.[2] ?? 0) + (rest?.[2] ?? 0);
   if (ry) rotateY(m, m, ry);
@@ -429,7 +521,5 @@ export function boneMatrix(m, base, bone, pose, name) {
   if (rz) rotateZ(m, m, rz);
   const o = pose[`${bone.follows ?? name}@`];
   if (o) translate(m, m, o[0] / 16, o[1] / 16, o[2] / 16);
-  translate(m, m, -MODEL_OFFSET, -MODEL_OFFSET, -MODEL_OFFSET);
-  return m;
 }
 export const identityBase = (m) => identity(m);

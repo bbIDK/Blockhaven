@@ -361,6 +361,8 @@ export class HostSession extends Session {
     g.sleeping = !!(f & 32);
     g.creative = !!(f & 64);
     g.invisible = !!(f & 128);
+    // (Piglins leave anyone in gold alone.)
+    g.gold = Array.isArray(pres.a) && pres.a.some((id) => int(id) && itemDef(id)?.armor?.material === 'golden');
     if (Array.isArray(pres.r)) this.rideMove(g, pres.r);
     this.seePlayer(addr, pres);
   }
@@ -437,6 +439,14 @@ export class HostSession extends Session {
       case 'um':
         if (int(msg.e) && int(msg.i) && typeof msg.f === 'string') this.game.entities.remoteUse(msg.e, msg.i, msg.f, g.uid, cleanTagName(msg.n));
         break;
+      case 'defl': {
+        // A guest punched a ghast's fireball.
+        const e = int(msg.e) ? this.game.entities.list.find((o) => o.nid === msg.e && o.fireball === 'large') : null;
+        const d = Array.isArray(msg.d) && msg.d.length === 3 && msg.d.every(num) ? msg.d : null;
+        const by = this.game.players().find((p) => p.addr === g.addr);
+        if (e && d && by && Math.hypot(e.x - by.x, e.y - by.y, e.z - by.z) < 6) this.game.entities.deflect(e, d.map((v) => clamp(v, -1, 1)), by);
+        break;
+      }
       case 'hang':
         // A guest hangs up an item frame or a painting (the host picks the picture).
         if ((msg.k === 'frame' || msg.k === 'painting') && [msg.x, msg.y, msg.z, msg.f].every(int) && msg.f >= 0 && msg.f < 6 &&
@@ -747,7 +757,7 @@ export class HostSession extends Session {
       // (One object per guest, kept up to date, so creatures chasing them follow where they go.)
       if (g.x === null) continue;
       out.push(Object.assign(g.ref ??= { addr: g.addr, uid: g.uid }, { x: g.x, y: g.y, z: g.z, creative: g.creative, dead: g.dead, name: g.name, look: g.look,
-        held: g.held, sneaking: g.sneaking, invisible: g.invisible }));
+        held: g.held, sneaking: g.sneaking, invisible: g.invisible, gold: g.gold }));
     }
     return out;
   }
@@ -757,6 +767,7 @@ export class HostSession extends Session {
   }
   // A status effect (a cave spider's bite) or a splash potion reaches a guest.
   giveEffect(addr, name, seconds, level) { this.send(addr, { t: 'eff', n: name, s: seconds, l: level }); }
+  setOnFire(addr, seconds) { this.send(addr, { t: 'burn', s: seconds }); }
   potionOn(addr, name, scale) { this.send(addr, { t: 'pot', n: name, k: r2(scale) }); }
 
   attackPlayer(rp, amount, bonus, axe = false) {
@@ -786,6 +797,7 @@ export class HostSession extends Session {
   async leave() {
     this.link.broadcast({ t: 'bye' });
     this.link.flush();
+    for (let i = 0; i < 10 && this.link.busy; i++) { await sleep(100); this.link.flush(); }
     await sleep(300);
     this.game.world?.setKeep([]);
     this.close();
@@ -802,7 +814,8 @@ function entityState(e) {
   if (e.kind === 'tnt') return Object.assign(s, { k: 't', f: e.fuse });
   if (e.kind === 'falling') return Object.assign(s, { k: 'f', b: e.block });
   if (e.kind === 'arrow') {
-    return Object.assign(s, { k: 'a', a: r2(e.ayaw ?? Math.atan2(-e.vx, -e.vz)), p: r2(e.apitch ?? 0), po: e.potion ?? undefined, sb: e.snowball ? 1 : undefined });
+    return Object.assign(s, { k: 'a', a: r2(e.ayaw ?? Math.atan2(-e.vx, -e.vz)), p: r2(e.apitch ?? 0), po: e.potion ?? undefined, sb: e.snowball ? 1 : undefined,
+      fb: e.fireball === 'large' ? 1 : e.fireball === 'small' ? 2 : undefined });
   }
   if (e.kind === 'boat') return Object.assign(s, { k: 'b', w: e.wood, a: r2(e.yaw), f: boatFlags(e) });
   if (e.kind === 'cart') return Object.assign(s, { k: 'c', a: r2(e.yaw), p: r2(e.pitch ?? 0), f: boatFlags(e) });
@@ -967,6 +980,7 @@ export class GuestSession extends Session {
         }
         break;
       case 'msg': if (typeof msg.s === 'string') game.ui.message(msg.s.replace(/\p{C}/gu, '').slice(0, 200), COLORS[msg.c] ?? null); break;
+      case 'burn': if (num(msg.s)) game.setOnFire(null, clamp(msg.s, 0, 30)); break;
       case 'inv': this.chestData(msg); break;
       case 'fur': this.furnaceData(msg); break;
       case 'slots': this.slotData(msg); break;
@@ -1124,6 +1138,7 @@ export class GuestSession extends Session {
 
   primeTNT(x, y, z, fuse) { this.toHost({ t: 'tnt', x, y, z, f: fuse }); }
   bedBlast(x, y, z) { this.toHost({ t: 'bed', x, y, z }); }
+  deflect(e, dir) { if (e.nid) this.toHost({ t: 'defl', e: e.nid, d: dir.map(r2) }); }
   placeBoat(x, y, z, wood, yaw) { this.toHost({ t: 'boat', x: r2(x), y: r2(y), z: r2(z), w: wood, a: r2(yaw) }); }
   placeCart(x, y, z, yaw) { this.toHost({ t: 'cart', x: r2(x), y: r2(y), z: r2(z), a: r2(yaw) }); }
   dropXp(x, y, z, n) { this.toHost({ t: 'orb', x: r2(x), y: r2(y), z: r2(z), n }); }
@@ -1171,6 +1186,8 @@ export class GuestSession extends Session {
   async leave() {
     this.toHost({ t: 'bye' });
     this.link.flush();
+    // (What's still queued - the last save above all - goes out before the line is closed.)
+    for (let i = 0; i < 20 && this.link.busy; i++) { await sleep(100); this.link.flush(); }
     await sleep(300);
     this.close();
   }

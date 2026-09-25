@@ -20,9 +20,10 @@ const MATERIALS = {
 
 // Mob sound fallbacks: hurt reuses the idle sound pitched up, death reuses hurt pitched down.
 const MOB_PITCH = { chicken: 1.1 };
-const BORROW = { goat: ['sheep', 0.78], bear: ['cow', 0.55], husk: ['zombie', 0.8], llama: ['sheep', 0.62] };
+const BORROW = { goat: ['sheep', 0.78], bear: ['cow', 0.55], husk: ['zombie', 0.8], llama: ['sheep', 0.62],
+  zombified_piglin: ['pig', 0.55], piglin: ['pig', 0.78], hoglin: ['pig', 0.42], magma_cube: ['slime', 0.62], wither_skeleton: ['skeleton', 0.7] };
 const SYNTH = new Set(['rabbit', 'fox', 'wolf', 'fish', 'skeleton', 'creeper', 'spider', 'enderman', 'slime', 'horse', 'golem', 'cat', 'bat',
-  'donkey', 'witch', 'phantom', 'parrot', 'dolphin', 'turtle', 'snow_golem']);
+  'donkey', 'witch', 'phantom', 'parrot', 'dolphin', 'turtle', 'snow_golem', 'ghast', 'blaze', 'strider']);
 
 // A low thump layered under breaking and placing, by block material: [start Hz, end Hz, gain].
 const THUMP = {
@@ -517,6 +518,41 @@ export class Audio {
         break;
       case 'fish':
         if (hurt || death) this.hiss(at, { f: 900, q: 1, time: 0.08, volume: 0.25, type: 'lowpass' });
+        break;
+      case 'ghast':
+        // An eerie, high moan; a shriek as it's about to spit fire; the whoosh of the fireball; a
+        // cry when hurt, and a long falling wail as it dies. (Heard from far off: it's big.)
+        if (event === 'warn') {
+          this.tone(at, { type: 'sawtooth', f0: 700, f1: 1500, time: 0.4, volume: 0.1, attack: 0.05, filter: { f: 1800, q: 3 }, vibrato: 40, vibratoRate: 14 });
+          this.hiss(at, { f: 2400, q: 1.5, time: 0.35, volume: 0.1, sweep: 3600 });
+        } else if (event === 'shoot') {
+          this.hiss(at, { f: 900, q: 0.8, time: 0.55, volume: 0.35, sweep: 220 });
+          this.thump(at, 160, 60, 0.3, 0.15);
+        } else {
+          const f = (hurt ? 1100 : death ? 950 : 640) * pitch * r(), time = death ? 1.6 : hurt ? 0.45 : 1.4;
+          this.tone(at, { f0: f, f1: f * (death ? 0.22 : hurt ? 0.65 : 0.82), time, volume: 0.13, attack: 0.12, vibrato: f * 0.03, vibratoRate: 7 });
+          this.tone(at, { f0: f * 2, f1: f * (death ? 0.44 : 1.5), time: time * 0.8, volume: 0.035, attack: 0.15, vibrato: f * 0.05, vibratoRate: 7 });
+        }
+        break;
+      case 'blaze':
+        // Breathing like a bellows, crackling; a whoosh as each fireball goes; a metallic rattle
+        // when struck.
+        if (event === 'shoot') {
+          this.hiss(at, { f: 1500, q: 0.9, time: 0.3, volume: 0.3, sweep: 500 });
+          for (let i = 0; i < 3; i++) this.hiss(at, { f: 3000 + Math.random() * 2000, q: 5, time: 0.02, volume: 0.2, delay: 0.05 + i * 0.05 });
+        } else if (hurt || death) {
+          const n = death ? 6 : 3;
+          for (let i = 0; i < n; i++) this.tone(at, { type: 'square', f0: 340 * r() * pitch, f1: 220, time: 0.08, volume: 0.05, filter: { f: 1200, q: 6 }, delay: i * 0.06 });
+          this.hiss(at, { f: 900, q: 1, time: death ? 0.9 : 0.3, volume: 0.2, sweep: 200, type: 'lowpass' });
+        } else {
+          this.hiss(at, { f: 500, q: 0.6, time: 0.9, volume: 0.22, sweep: 900, type: 'lowpass' });
+          for (let i = 0; i < 4; i++) this.hiss(at, { f: 2500 + Math.random() * 2500, q: 6, time: 0.015, volume: 0.15, delay: 0.2 + Math.random() * 0.6 });
+        }
+        break;
+      case 'strider':
+        // A warbling chirp (a squeal when hurt).
+        if (hurt || death) this.tone(at, { type: 'sawtooth', f0: 950 * r() * pitch, f1: death ? 300 : 520, time: death ? 0.7 : 0.25, volume: 0.07, filter: { f: 1600, q: 3 } });
+        else for (let i = 0; i < 2; i++) this.tone(at, { type: 'triangle', f0: 620 * r() * pitch, f1: 880, time: 0.16, volume: 0.1, vibrato: 60, vibratoRate: 24, delay: i * 0.2 });
         break;
       default:
     }

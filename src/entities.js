@@ -7,11 +7,12 @@ import { Body } from './body.js';
 import { boxMesh, MODEL_OFFSET } from './models.js';
 import { TEX } from './textures.js';
 import { mat4, identity, translate, rotateX, rotateY, rotateZ, scale, hash2 } from './math.js';
-import { B, BLOCKS, BASE, SOLID, WATERLIKE, FILTER, REPLACEABLE, RAIL, RAIL_ID } from './blocks.js';
+import { B, BLOCKS, BASE, SOLID, WATERLIKE, FILTER, REPLACEABLE, RAIL, RAIL_ID, FACE_DIRS } from './blocks.js';
 import { I, itemDef, DISCS } from './items.js';
 import { rayBox } from './world.js';
 import { HEIGHT, TICKS_PER_DAY, inNether } from './config.js';
 import { villageAt } from './villages.js';
+import { netherSpawn } from './nethermobs.js';
 import { MOBS, initMob, mobTick, mobPhysics, renderMob, provoked, mobUseEffect, applyMobUse, applyHeldUse, mobDrops, mobXp, herdFor, monsterFor, HOSTILE_TYPES,
   rallyPets } from './mobs.js';
 import { Civilians } from './civilians.js';
@@ -63,11 +64,12 @@ const extraOpts = (s) => ({ variant: Number.isInteger(s.v) ? s.v : 0, colour: Nu
 export const cleanTagName = (text) => String(text ?? '').replace(/\p{C}/gu, '').trim().slice(0, 50) || null;
 // Flags sent with each creature update: 1 hurt, 2 dying, 4 swinging, 8 burning, 16 shorn, 32 angry,
 // 64 about to explode, 128 drawing a bow, 256 asleep, 512 saddled, 1024 tame, 2048 being ridden,
-// 4096 roosting (a bat hanging upside down), 8192 drinking (a witch), 16384 sitting (a pet).
+// 4096 roosting (a bat hanging upside down), 8192 drinking (a witch), 16384 sitting (a pet), 32768 its
+// other look (a ghast about to fire, a strider gone cold, a piglin admiring gold).
 export function mobFlags(e) {
   return (e.hurt > 0 ? 1 : 0) | (e.dying ? 2 : 0) | (e.swing > 0.3 ? 4 : 0) | (e.burning ? 8 : 0) | (e.sheared ? 16 : 0) | (e.angry > 0 ? 32 : 0) |
     (e.fuse > 0 ? 64 : 0) | (e.aim > 0 ? 128 : 0) | (e.pose === 'sleep' ? 256 : 0) | (e.saddled ? 512 : 0) | (e.tame ? 1024 : 0) | (e.rider ? 2048 : 0) |
-    (e.roost ? 4096 : 0) | (e.drinking > 0 ? 8192 : 0) | (e.sitting ? 16384 : 0);
+    (e.roost ? 4096 : 0) | (e.drinking > 0 ? 8192 : 0) | (e.sitting ? 16384 : 0) | (e.alt ? 32768 : 0);
 }
 
 export class Entities {
@@ -369,6 +371,68 @@ export class Entities {
     return e;
   }
 
+  // A fireball: a ghast's ('large': it bursts in a small explosion, and flames) or a blaze's
+  // ('small': it sets alight whatever it hits). It flies straight; a ghast's can be struck back.
+  spawnFireball(x, y, z, vx, vy, vz, owner, size) {
+    if (this.guest) return null;
+    const big = size === 'large', r = big ? 0.5 : 0.16;
+    const e = new Entity('arrow', r, r * 2, x, y, z);
+    Object.assign(e, { vx, vy, vz, owner, damage: 0, pickup: false, stuck: false, life: 0, fireball: big ? 'large' : 'small', hitbox: [-r, -r, -r, r, r, r],
+      label: 'Fireball' });
+    this.list.push(e);
+    return e;
+  }
+
+  // A ghast's fireball punched (by `by`, looking along `dir`) goes back the way it was hit.
+  deflect(e, dir, by) {
+    if (this.guest) { this.game.net?.deflect?.(e, dir); return; }
+    if (e.fireball !== 'large' || e.dead) return;
+    const sp = Math.max(14, Math.hypot(e.vx, e.vy, e.vz));
+    e.vx = dir[0] * sp; e.vy = dir[1] * sp; e.vz = dir[2] * sp;
+    e.owner = by; e.deflected = true; e.life = 0;
+    this.game.audio.attack('strong', { x: e.x, y: e.y, z: e.z });
+  }
+
+  fireballPhysics(e, dt) {
+    const w = this.world, game = this.game, big = e.fireball === 'large';
+    e.life += dt;
+    if (Math.random() < dt * (big ? 30 : 14)) game.particles.smoke(e.x, e.y, e.z, 1, big ? 0.3 : 0.08);
+    const sp = Math.hypot(e.vx, e.vy, e.vz), step = sp * dt;
+    if (step < 1e-6 || e.life > 10 || e.y < -20) { e.dead = true; return; }
+    const dx = e.vx / sp, dy = e.vy / sp, dz = e.vz / sp, pad = big ? 0.5 : 0.15;
+    const hit = w.raycast(e.x, e.y, e.z, dx, dy, dz, step);
+    let len = hit ? hit.t : step, victim = null;
+    for (const o of this.list) {
+      if (o.kind !== 'mob' || o.dead || o.dying || (o === e.owner && !e.deflected)) continue;
+      const r = rayBox(e.x - o.x, e.y - o.y, e.z - o.z, dx, dy, dz, [-o.hw - pad, -pad, -o.hw - pad, o.hw + pad, o.h + pad, o.hw + pad]);
+      if (r && r.t <= len) { len = r.t; victim = o; }
+    }
+    for (const q of this.players) {
+      if (q.dead || (e.deflected && e.owner?.addr === q.addr && e.life < 0.5)) continue;
+      const r = rayBox(e.x - q.x, e.y - q.y, e.z - q.z, dx, dy, dz, [-0.3 - pad, -pad, -0.3 - pad, 0.3 + pad, 1.8 + pad, 0.3 + pad]);
+      if (r && r.t <= len) { len = r.t; victim = q; }
+    }
+    e.x += dx * len; e.y += dy * len; e.z += dz * len;
+    if (!victim && !hit) return;
+    e.dead = true;
+    game.net?.entityGone?.(e, 'x');
+    const who = e.owner?.label ? `You were fireballed by a ${e.owner.label.toLowerCase()}` : 'You were fireballed';
+    if (big) {
+      // (A ghast's own fireball, knocked back into it, is the end of it.)
+      if (victim?.kind === 'mob') this.hurtMob(victim, victim.type === 'ghast' && e.deflected ? 1000 : 6, e.deflected ? e.owner : null);
+      else if (victim) game.hurtPlayer(victim, 6, who, [dx * 3, 3, dz * 3], true);
+      this.explode(e.x - dx * 0.3, e.y - dy * 0.3, e.z - dz * 0.3, 1.2, { fire: true });
+      return;
+    }
+    if (victim?.kind === 'mob') { if (!victim.def.fireproof) this.hurtMob(victim, 5, e.owner ?? null, 0, { fire: 5 }); }
+    else if (victim) { game.hurtPlayer(victim, 5, who, [dx * 1.5, 1.5, dz * 1.5], true); game.setOnFire(victim, 5); }
+    else {
+      const f = FACE_DIRS[hit.face] ?? [0, 1, 0];
+      w.ignite(hit.x + f[0], hit.y + f[1], hit.z + f[2]);
+    }
+    game.particles.bits(e.x, e.y, e.z, TEX.flame, 8, 1.4, 0.4);
+  }
+
   chunkLoaded(chunk) {
     const game = this.game;
     if (!game.meta || this.guest) return;
@@ -385,7 +449,7 @@ export class Entities {
     const targets = this.players.filter((t) => !t.creative && !t.dead);
     if (!targets.length) return;
     const p = targets[Math.floor(Math.random() * targets.length)];
-    if (inNether(p.x)) return;
+    if (inNether(p.x)) { netherSpawn(this, p); return; }
     const hostiles = this.list.filter((e) => e.kind === 'mob' && e.def.hostile && !e.dead).length;
     if (hostiles >= 8 + targets.length * 4) return;
     const day = game.env.daylight;
@@ -551,6 +615,7 @@ export class Entities {
 
   // Arrows fly under gravity and drag, stick in what they hit, and hurt whoever they strike.
   arrowPhysics(e, dt, fluid) {
+    if (e.fireball) { this.fireballPhysics(e, dt); return; }
     const w = this.world, game = this.game;
     if (e.stuck) {
       e.life += dt;
@@ -678,7 +743,7 @@ export class Entities {
     if (e.dying || e.dead) return;
     // Hurt by a player lately: it gives experience when it dies (and more drops with Looting).
     if (from && (from === this.game.player || 'addr' in from)) { e.playerHurt = 100; e.looting = opts?.looting ?? 0; }
-    if (opts?.fire) e.onFire = Math.max(e.onFire ?? 0, opts.fire * 20);
+    if (opts?.fire && !e.def?.fireproof) e.onFire = Math.max(e.onFire ?? 0, opts.fire * 20);
     // Like the original, a creature that was just hurt only takes the part of a new hit that's
     // stronger than the last one, so spam-clicking doesn't help.
     if (e.hurt > 0) {
@@ -720,7 +785,7 @@ export class Entities {
     if (e.def.sized && e.size > 1) {
       const n = 2 + Math.floor(Math.random() * 3);
       for (let k = 0; k < n; k++) {
-        const s = this.spawnMob('slime', e.x + (Math.random() - 0.5) * e.hw, e.y + 0.3, e.z + (Math.random() - 0.5) * e.hw, { size: e.size / 2 });
+        const s = this.spawnMob(e.type, e.x + (Math.random() - 0.5) * e.hw, e.y + 0.3, e.z + (Math.random() - 0.5) * e.hw, { size: e.size / 2 });
         s.vy = 4; s.vx = (Math.random() - 0.5) * 3; s.vz = (Math.random() - 0.5) * 3;
       }
     }
@@ -748,6 +813,7 @@ export class Entities {
   // Right-click on a creature: feeding, shearing, milking; talking to villagers; getting into a
   // boat or onto a horse.
   interact(e, held) {
+    if (e.fireball) return;
     if (isHanging(e)) { if (this.useHanging(e, held) === 'put' && !this.game.creative) { this.game.inv.consumeHeld(); this.game.invChanged(); } this.game.swingArm(); return; }
     if (e.kind === 'boat' || e.kind === 'cart') { this.game.mount(e); return; }
     if (e.def.kind === 'civilian') { this.civilians.talk(e); return; }
@@ -776,7 +842,8 @@ export class Entities {
   rallyPets(uid, foe) { rallyPets(this, uid, foe); }
 
   // Explosion: carve a rough sphere, hurt anything nearby, set off other TNT.
-  explode(x, y, z, power) {
+  // `opts.fire`: it sets fire to what's round about (a ghast's fireball, a bed in the Nether).
+  explode(x, y, z, power, opts = null) {
     const game = this.game, w = this.world;
     // Items already lying in the blast are destroyed; the blast's own drops are spawned after.
     for (const e of this.list) {
@@ -798,6 +865,13 @@ export class Entities {
       }
     }
     w.setBlocksBulk(changes);
+    if (opts?.fire) {
+      const r2 = Math.ceil(power) + 1;
+      for (let k = 0; k < 12 * r2; k++) {
+        const fx = Math.floor(x + (Math.random() - 0.5) * 2 * r2), fy = Math.floor(y + (Math.random() - 0.5) * 2 * r2), fz = Math.floor(z + (Math.random() - 0.5) * 2 * r2);
+        if (Math.random() < 0.33) w.ignite(fx, fy, fz);
+      }
+    }
     game.explosionFx(x, y, z, power);
     game.net?.effect('boom', x, y, z);
     const p = game.player;
@@ -844,7 +918,8 @@ export class Entities {
       } else if (s.k === 'a') {
         e = new Entity('arrow', 0.05, 0.1, s.x, s.y, s.z);
         Object.assign(e, { stuck: false, life: 0, ayaw: Number.isFinite(s.a) ? s.a : 0, apitch: Number.isFinite(s.p) ? s.p : 0,
-          potion: POTIONS[s.po] ? s.po : null, snowball: !!s.sb });
+          potion: POTIONS[s.po] ? s.po : null, snowball: !!s.sb, fireball: s.fb === 1 ? 'large' : s.fb === 2 ? 'small' : null, label: 'Fireball' });
+        if (e.fireball === 'large') e.hitbox = [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5];
       } else if (s.k === 'x') {
         e = new Entity('xp', 0.125, 0.25, s.x, s.y, s.z);
         e.value = Number.isInteger(s.v) && s.v > 0 ? s.v : 1;
@@ -934,6 +1009,7 @@ export class Entities {
     e.roost = !!(f & 4096);
     e.drinking = f & 8192 ? 1 : 0;
     e.sitting = !!(f & 16384);
+    e.alt = !!(f & 32768);
     e.flags = f;
   }
 
@@ -1023,7 +1099,7 @@ export class Entities {
   raycast(ox, oy, oz, dx, dy, dz, maxDist) {
     let best = null;
     for (const e of this.list) {
-      if ((e.kind !== 'mob' && e.kind !== 'boat' && e.kind !== 'cart' && !isHanging(e)) || e.dead || e.dying || e.rider === 'me') continue;
+      if ((e.kind !== 'mob' && e.kind !== 'boat' && e.kind !== 'cart' && !isHanging(e) && e.fireball !== 'large') || e.dead || e.dying || e.rider === 'me') continue;
       const b = e.hitbox ?? [-e.hw, 0, -e.hw, e.hw, e.h, e.hw];
       const hit = rayBox(ox - e.x, oy - e.y, oz - e.z, dx, dy, dz, b);
       if (hit && hit.t <= maxDist && (!best || hit.t < best.t)) best = { entity: e, t: hit.t };
@@ -1114,6 +1190,17 @@ export class Entities {
         scale(m, m, s, s, s);
         translate(m, m, -MODEL_OFFSET, -MODEL_OFFSET, -MODEL_OFFSET);
         out.push({ parts: [{ mesh: this.orbModel(), model: m }], light: [15, 15], tint: [0.75 + k * 0.5, 1.25, 0.35 + k * 0.15] });
+      } else if (e.kind === 'arrow' && e.fireball) {
+        // A fireball: a ball of flame turned to face you, the size of a block (a blaze's smaller).
+        const mesh = r.itemMesh(I.fire_charge);
+        if (!mesh) continue;
+        const m = identity(this.mat()), s = e.fireball === 'large' ? 1 : 0.35;
+        translate(m, m, rx, ry, rz);
+        rotateY(m, m, cam.yaw);
+        rotateZ(m, m, e.age * 3);
+        scale(m, m, s, s, s);
+        translate(m, m, -0.5 - MODEL_OFFSET, -0.5 - MODEL_OFFSET, -MODEL_OFFSET);
+        out.push({ parts: [{ mesh, model: m }], light: [15, 15], tint: null });
       } else if (e.kind === 'arrow' && (e.potion || e.snowball)) {
         // A thrown potion (or snowball) tumbles as it flies.
         const mesh = r.itemMesh(e.potion ? I[`splash_potion_${e.potion}`] : I.snowball);

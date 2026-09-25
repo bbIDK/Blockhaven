@@ -35,7 +35,7 @@ import { seatY, startRide, driveFrom, dismountSpot } from './riding.js';
 import { addXp, xpToNext, enchLevel, SMELT_XP, ORE_XP, shiny } from './enchanting.js';
 import { Fishing, bobberMesh, bobberModel, linePoints } from './fishing.js';
 import { tableBook } from './tablebook.js';
-import { POTIONS, EFFECTS } from './potions.js';
+import { POTIONS, EFFECTS, UNDEAD } from './potions.js';
 import { Signs, SignEditor } from './signs.js';
 import { drawLeads, isFence, LEAD_SNAP } from './leads.js';
 import { Jukeboxes, instrumentFor, noteColour, noteClear, nextNote } from './jukebox.js';
@@ -83,7 +83,6 @@ const CLOUD_HEIGHT = 216.5; // above all but the highest peaks
 const REACH = { creative: 5.5, survival: 4.6 };
 
 // Extra damage from a weapon's enchantments against creature `type`.
-const UNDEAD = new Set(['zombie', 'husk', 'skeleton', 'stray', 'drowned', 'zombie_villager', 'phantom']);
 const ARTHROPODS = new Set(['spider', 'cave_spider', 'silverfish', 'bee']);
 function enchantDamage(ench, type) {
   if (!ench) return 0;
@@ -622,7 +621,8 @@ export class Game {
     const p = this.player;
     const me = (this.me ??= { addr: null, uid: this.uid });
     Object.assign(me, { x: p.x, y: p.y, z: p.z, creative: this.creative, dead: this.state === 'dead', held: this.inv.heldId,
-      look: p.lookDir(), sneaking: p.sneaking, invisible: this.effects.has('invisibility') });
+      look: p.lookDir(), sneaking: p.sneaking, invisible: this.effects.has('invisibility'),
+      gold: this.inv.armor.some((a) => a && itemDef(a.id)?.armor?.material === 'golden') });
     return this.net ? [me, ...this.net.others()] : [me];
   }
 
@@ -1318,6 +1318,13 @@ export class Game {
     else if (!this.creative || !EFFECTS[p.effect].bad) this.addEffect(p.effect, Math.round(p.seconds * (splash ? 0.75 : 1) * scale), 1);
   }
   // A creature (or a splash) gives player `t` an effect: this one, or a guest over the network.
+  // Sets a player alight (this one, or another in multiplayer) for `seconds`.
+  setOnFire(t, seconds) {
+    if (t?.addr) { this.net?.setOnFire?.(t.addr, seconds); return; }
+    if (this.creative || this.effects.has('fire_resistance')) return;
+    this.fire = Math.max(this.fire, Math.round(seconds * 20));
+  }
+
   giveEffect(t, name, seconds, level = 1) {
     if (t?.addr) this.net?.giveEffect?.(t.addr, name, seconds, level);
     else if (!this.creative) this.addEffect(name, seconds, level);
@@ -1331,6 +1338,7 @@ export class Game {
       const every = Math.max(1, Math.floor((name === 'regeneration' ? 50 : 25) / 2 ** (e.level - 1)));
       if (name === 'regeneration' && e.ticks % every === 0 && this.health < 20) this.health = Math.min(20, this.health + 1);
       else if (name === 'poison' && e.ticks % every === 0 && this.health > 1) this.damage(1, 'You were poisoned', true);
+      else if (name === 'wither' && e.ticks % Math.max(1, Math.floor(40 / 2 ** (e.level - 1))) === 0) this.damage(1, 'You withered away', true);
       else if (name === 'hunger') this.exhaust(0.005 * e.level);
       if (--e.ticks <= 0) this.effects.delete(name);
     }
@@ -1640,7 +1648,7 @@ export class Game {
   mount(e) {
     const p = this.player;
     if (this.riding || this.state !== 'play' || !e || e.dead || e.dying || (e.rider && e.rider !== 'me') || e.ridden) return false;
-    if (e.kind === 'mob' && (!e.def.rideable || e.baby)) return false;
+    if (e.kind === 'mob' && (!e.def.rideable || e.baby || (e.def.needsSaddle && !e.saddled))) return false;
     startRide(e, 'me');
     this.riding = e;
     Object.assign(p, { vx: 0, vy: 0, vz: 0, flying: false, sneaking: false, sprinting: false, bob: 0, stepSmooth: 0, eyeOffset: 1.62, fallDistance: 0 });
@@ -1651,7 +1659,7 @@ export class Game {
     this.ui.showItemName(`Press ${this.touch.enabled ? 'Sneak' : 'Shift'} to ${e.kind === 'mob' ? 'dismount' : 'get out'}`, 3000);
     if (e.kind === 'boat') this.audio.place('wood', { x: e.x, y: e.y, z: e.z });
     else if (e.kind === 'cart') this.audio.place('metal', { x: e.x, y: e.y, z: e.z });
-    else this.audio.mob('horse', e.tame ? 'say' : 'angry', { x: e.x, y: e.y + e.h, z: e.z });
+    else this.audio.mob(e.def.rideable && e.def.sound !== 'donkey' ? e.def.sound : 'horse', e.tame ? 'say' : 'angry', { x: e.x, y: e.y + e.h, z: e.z });
     this.net?.ride?.(e, true);
     return true;
   }
@@ -2059,8 +2067,10 @@ export class Game {
   }
 
   attackEntity(e) {
-    // (A punch knocks down what's hung up, whatever it's done with.)
+    // (A punch knocks down what's hung up, whatever it's done with; it sends a ghast's fireball
+    // back where it came from.)
     if (isHanging(e)) { this.swingArm(); this.entities.hitHanging(e, this.creative); return; }
+    if (e.fireball) { this.swingArm(); this.entities.deflect(e, this.player.lookDir(), this.players()[0]); return; }
     const p = this.player, held = this.inv.heldId, def = itemDef(held), ench = this.inv.held?.ench ?? null;
     const f = this.attackStrength(this.tickAcc);
     const strong = f > 0.9;
@@ -2187,6 +2197,16 @@ export class Game {
   useItem(repeat = false) {
     const held = this.inv.held, t = this.target, p = this.player, w = this.world;
     const def = held ? itemDef(held.id) : null;
+    // Riding a strider, a warped fungus on a stick spurs it on (and it nibbles the fungus).
+    if (held?.id === I.warped_fungus_on_a_stick && this.riding?.def?.lavaWalker) {
+      if (repeat || (this.riding.boost ?? 0) > 0) return;
+      this.riding.boost = 60;
+      this.swingArm();
+      this.audio.mob('strider', 'say', { x: p.x, y: p.y, z: p.z });
+      if (!this.creative && this.inv.damageHeld(7)) { this.audio.toolBreak(); this.inv.slots[this.inv.selected] = { id: I.fishing_rod, count: 1, dmg: 0 }; }
+      this.invChanged();
+      return;
+    }
     // An item frame takes what you're holding, whatever it is (or turns what's in it).
     if (t?.entity && isHanging(t.entity)) { if (!repeat) this.entities.interact(t.entity, held); return; }
     // Doors, chests, beds, crafting tables and furnaces are used rather than built on (sneak to
@@ -2282,8 +2302,10 @@ export class Game {
       }
       return;
     }
-    if (held?.id === I.flint_and_steel) {
+    // Flint and steel strikes a fire (a fire charge does it once, with a whoosh).
+    if (held?.id === I.flint_and_steel || held?.id === I.fire_charge) {
       if (repeat) return;
+      const charge = held.id === I.fire_charge;
       if (t.id === B.tnt) {
         w.setBlock(t.x, t.y, t.z, 0);
         this.entities.primeTNT(t.x, t.y, t.z, 80);
@@ -2293,8 +2315,9 @@ export class Game {
         const fx = t.x + d[0], fy = t.y + d[1], fz = t.z + d[2];
         if (!w.ignite(fx, fy, fz)) return;
       }
-      this.audio.ignite({ x: t.x + 0.5, y: t.y + 0.5, z: t.z + 0.5 });
-      if (!this.creative && this.inv.damageHeld(1)) this.audio.toolBreak();
+      const at = { x: t.x + 0.5, y: t.y + 0.5, z: t.z + 0.5 };
+      if (charge) { this.audio.mob('blaze', 'shoot', at); if (!this.creative) this.inv.consumeHeld(); }
+      else { this.audio.ignite(at); if (!this.creative && this.inv.damageHeld(1)) this.audio.toolBreak(); }
       this.invChanged();
       this.swingArm();
       return;
@@ -2969,7 +2992,8 @@ export class Game {
       if (this.menu) this.gui.render();
     }
     if (this.menu) this.gui.frame();
-    ui.renderStats(!this.creative, Math.ceil(this.health), this.air, p.headInWater, this.food, this.inv.armorPoints, this.effects.has('poison'), this.effects.has('hunger'));
+    ui.renderStats(!this.creative, Math.ceil(this.health), this.air, p.headInWater, this.food, this.inv.armorPoints,
+      this.effects.has('wither') ? 'wither' : this.effects.has('poison') ? 'poison' : null, this.effects.has('hunger'));
     ui.renderEffects(this.state === 'dead' ? [] : [...this.effects].map(([name, e]) => ({ name, ...e })).sort((a, b) => (EFFECTS[a.name].bad ? 1 : 0) - (EFFECTS[b.name].bad ? 1 : 0)));
     ui.renderXp(!this.creative, this.xp.level, this.xp.points / xpToNext(this.xp.level));
     const wind = this.attackStrength(this.tickAcc);
