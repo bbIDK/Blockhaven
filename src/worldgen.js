@@ -129,9 +129,11 @@ const STONEY = new Set([B.stone, B.deepslate]);
 const CARVED = new Set([BIOME.JAGGED_PEAKS, BIOME.FROZEN_PEAKS, BIOME.STONY_PEAKS, BIOME.SNOWY_SLOPES]);
 
 export class WorldGen {
-  constructor(seed, type = 'default') {
+  // `version`: 2 for worlds made before villages were spread further apart, 3 since.
+  constructor(seed, type = 'default', version = 3) {
     this.seed = seed >>> 0;
     this.type = type;
+    this.version = version;
     this.villages = type !== 'flat'; // (worlds from the first generator have none)
     const n = (k) => new Noise((this.seed ^ hashString(k)) >>> 0);
     this.nCont = n('continent2'); this.nEros = n('erosion2'); this.nPeaks = n('peaks2'); this.nHills = n('hills2');
@@ -688,8 +690,8 @@ export class WorldGen {
             for (let k = 3; k < 7; k++) { set(bx + k, y0 + 1, bz, 0); set(bx + k, y0 + 2, bz, 0); }
           }
         }
-        // Desert well.
-        if (col.biome === BIOME.DESERT && roll > 0.965 && h > SEA_LEVEL) {
+        // Desert well (rare: one in a few hundred desert chunks).
+        if (col.biome === BIOME.DESERT && roll > 0.9975 && h > SEA_LEVEL) {
           for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
             set(bx + dx, h, bz + dz, B.sandstone);
             if (Math.abs(dx) === 2 || Math.abs(dz) === 2) set(bx + dx, h + 1, bz + dz, B.sandstone_slab);
@@ -756,5 +758,5 @@ function LOG_AXES_OF(log, alongX) {
 
 // The generator a world was made with: worlds from before the release update keep the first one.
 export function makeGenerator(seed, type = 'default', version = 2) {
-  return version >= 2 ? new WorldGen(seed, type) : new WorldGenV1(seed, type);
+  return version >= 2 ? new WorldGen(seed, type, version) : new WorldGenV1(seed, type);
 }

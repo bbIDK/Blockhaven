@@ -9,13 +9,21 @@ import { B, STAIRS, FACING_VARIANTS, LADDER, LOG_AXES, doorId, bedId, lootChestI
 import { BIOME } from './biomes.js';
 import { hash2, mulberry32 } from './math.js';
 
-export const REGION = 24;  // chunks per side of the region that may hold one village
 export const RADIUS = 34;  // from the centre to the outer face of the wall
 const LANE = RADIUS - 5;   // the lane inside the wall runs LANE..LANE+2 from the centre
 const FRONT = LANE - 2;    // lots on the lane have their fronts on this line (their steps on the next)
 const PLAZA = 7;
 const BLEND = 7;           // columns outside the wall over which the ground eases back to nature
 const REACH = RADIUS + BLEND;
+// The world is divided into square regions that may hold one village each, somewhere away from
+// their edges. Worlds made since villages were spread out (generator 3) have larger regions, fewer
+// of them with a village, and villages kept well inside them, so neighbours are at least 320 blocks
+// apart; older worlds keep their layout (so no village they've found is cut in half).
+const SPREAD = {
+  2: { size: 24 * 16, margin: REACH + 16, chance: 0.8 },
+  3: { size: 40 * 16, margin: 160, chance: 0.7 },
+};
+const spread = (gen) => SPREAD[gen.version >= 3 ? 3 : 2];
 
 const STYLE_OF = {
   [BIOME.PLAINS]: 'plains', [BIOME.SUNFLOWER_PLAINS]: 'plains', [BIOME.MEADOW]: 'plains', [BIOME.FLOWER_FOREST]: 'plains',
@@ -65,11 +73,12 @@ export function regionVillage(gen, rx, rz) {
     const rnd = mulberry32(Math.floor(hash2(rx, rz, gen.seed ^ 0x7111a9e) * 4294967296));
     // The regions around the origin try hard, so every world has a village near spawn.
     const home = (rx === 0 || rx === -1) && (rz === 0 || rz === -1);
-    const tries = home ? 40 : (rnd() < 0.8 ? 3 : 0);
+    const { size, margin, chance } = spread(gen);
+    const tries = home ? 40 : (rnd() < chance ? 3 : 0);
     for (let t = 0; t < tries && !plan; t++) {
-      const span = REGION * 16 - REACH * 2 - 32;
-      const cx = rx * REGION * 16 + REACH + 16 + Math.floor(rnd() * span);
-      const cz = rz * REGION * 16 + REACH + 16 + Math.floor(rnd() * span);
+      const span = size - margin * 2;
+      const cx = rx * size + margin + Math.floor(rnd() * span);
+      const cz = rz * size + margin + Math.floor(rnd() * span);
       plan = site(gen, cx, cz, rnd);
     }
     if (plan) plan.key = key;
@@ -101,7 +110,7 @@ function site(gen, cx, cz, rnd) {
 // Villages whose grounds reach into chunk (cx, cz).
 export function villagesNear(gen, cx, cz) {
   const out = [];
-  const x = cx * 16 + 8, z = cz * 16 + 8, span = REGION * 16;
+  const x = cx * 16 + 8, z = cz * 16 + 8, span = spread(gen).size;
   for (let rz = Math.floor((z - REACH - 16) / span); rz <= Math.floor((z + REACH + 16) / span); rz++) {
     for (let rx = Math.floor((x - REACH - 16) / span); rx <= Math.floor((x + REACH + 16) / span); rx++) {
       const p = regionVillage(gen, rx, rz);
@@ -113,7 +122,7 @@ export function villagesNear(gen, cx, cz) {
 
 // The nearest village to (x, z) within `regions` regions, or null (for /locate).
 export function nearestVillage(gen, x, z, regions = 3) {
-  const span = REGION * 16, rx0 = Math.floor(x / span), rz0 = Math.floor(z / span);
+  const span = spread(gen).size, rx0 = Math.floor(x / span), rz0 = Math.floor(z / span);
   let best = null, bd = Infinity;
   for (let rz = rz0 - regions; rz <= rz0 + regions; rz++) for (let rx = rx0 - regions; rx <= rx0 + regions; rx++) {
     const p = regionVillage(gen, rx, rz);
@@ -127,7 +136,7 @@ export function nearestVillage(gen, x, z, regions = 3) {
 // The village whose walls (x, z) is inside, if any.
 export function villageAt(gen, x, z, margin = 0) {
   if (!gen?.villages) return null;
-  const span = REGION * 16, rx = Math.floor(x / span), rz = Math.floor(z / span);
+  const span = spread(gen).size, rx = Math.floor(x / span), rz = Math.floor(z / span);
   for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
     const p = regionVillage(gen, rx + dx, rz + dz);
     if (p && Math.max(Math.abs(x - p.x), Math.abs(z - p.z)) <= RADIUS + margin) return p;

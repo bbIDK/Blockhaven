@@ -68,6 +68,14 @@ export class Input {
       this.buttons &= ~bit;
     });
     target.addEventListener('contextmenu', (e) => e.preventDefault());
+    // Right-click is a game button, so the browser's own menu never opens over the game (say on a
+    // villager's window, which opens under the mouse as the click lands). Text boxes and links keep
+    // theirs, for copying and pasting.
+    document.addEventListener('contextmenu', (e) => {
+      const t = e.target;
+      if (typing(e) || t?.closest?.('a')) return;
+      e.preventDefault();
+    });
     target.addEventListener('wheel', (e) => {
       if (!this.capture) return;
       e.preventDefault();
