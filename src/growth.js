@@ -16,6 +16,7 @@ export function randomTick(w, x, y, z, id) {
   else if (SAPLING[id]) { if (Math.random() < 1 / 7 && light(w, x, y + 1, z) >= 9) growSapling(w, x, y, z, id); }
   else if (id === B.farmland || id === B.farmland_moist) hydrate(w, x, y, z, id);
   else if (id === B.sugar_cane || id === B.cactus) growTall(w, x, y, z, id);
+  else if (id === B.bamboo) growTall(w, x, y, z, id, 8 + (((x * 73856093) ^ (z * 19349663)) >>> 0) % 7);
   else if (id === B.dirt) spreadGrass(w, x, y, z);
   else if (id === B.kelp) growKelp(w, x, y, z);
 }
@@ -51,11 +52,11 @@ function hydrate(w, x, y, z, id) {
   if (id === B.farmland_moist) w.setBlock(x, y, z, B.farmland);
   else if (!CROP[w.getBlock(x, y + 1, z)] && Math.random() < 0.15) w.setBlock(x, y, z, B.dirt);
 }
-function growTall(w, x, y, z, id) {
+function growTall(w, x, y, z, id, most = 3) {
   if (w.getBlock(x, y + 1, z) !== 0 || Math.random() > 0.3) return;
   let h = 1;
-  while (h < 3 && w.getBlock(x, y - h, z) === id) h++;
-  if (h < 3) w.setBlock(x, y + 1, z, id);
+  while (h < most && w.getBlock(x, y - h, z) === id) h++;
+  if (h < most) w.setBlock(x, y + 1, z, id);
 }
 // Grass creeps onto dirt beside it wherever the dirt sees daylight.
 function spreadGrass(w, x, y, z) {

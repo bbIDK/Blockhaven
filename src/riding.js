@@ -125,7 +125,7 @@ export function horseDrive(e, drive, dt) {
   e.moving = drive.forward !== 0;
   e.rideDir = drive.forward < 0 ? Math.PI : 0;
   e.speedMul = (drive.forward < 0 ? 0.25 : 1) * (e.def.rideSpeed / e.def.speed);
-  if (drive.jump && e.onGround && e.rideJump <= 0) { e.vy = 10.5; e.rideJump = 0.6; }
+  if (drive.jump && e.onGround && e.rideJump <= 0) { e.vy = e.def.rideJump ?? 10.5; e.rideJump = 0.6; }
   return true;
 }
 

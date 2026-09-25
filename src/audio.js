@@ -20,9 +20,12 @@ const MATERIALS = {
 
 // Mob sound fallbacks: hurt reuses the idle sound pitched up, death reuses hurt pitched down.
 const MOB_PITCH = { chicken: 1.1 };
-const BORROW = { goat: ['sheep', 0.78], bear: ['cow', 0.55], husk: ['zombie', 0.8], llama: ['sheep', 0.62] };
+const BORROW = { goat: ['sheep', 0.78], husk: ['zombie', 0.8], llama: ['sheep', 0.62], boar: ['pig', 0.7] };
 const SYNTH = new Set(['rabbit', 'fox', 'wolf', 'fish', 'skeleton', 'creeper', 'spider', 'enderman', 'slime', 'horse', 'golem', 'cat', 'bat',
-  'donkey', 'witch', 'phantom', 'parrot', 'dolphin', 'turtle', 'snow_golem']);
+  'donkey', 'witch', 'phantom', 'parrot', 'dolphin', 'turtle', 'snow_golem',
+  // (The wildlife update's.)
+  'bear', 'deer', 'moose', 'bigcat', 'panda', 'elephant', 'hippo', 'giraffe', 'crocodile', 'camel', 'penguin', 'songbird', 'crow', 'seagull',
+  'eagle', 'vulture', 'bee']);
 
 // A low thump layered under breaking and placing, by block material: [start Hz, end Hz, gain].
 const THUMP = {
@@ -529,6 +532,111 @@ export class Audio {
         break;
       case 'fish':
         if (hurt || death) this.hiss(at, { f: 900, q: 1, time: 0.08, volume: 0.25, type: 'lowpass' });
+        break;
+      // ---- the wildlife update's voices
+      case 'bear': {
+        // A deep growl (a roar when it comes for you): a buzzy low voice through two formants, over
+        // a rumble of breath.
+        const roar = event === 'angry', f = (hurt ? 170 : roar ? 105 : 85) * pitch * r(), time = death ? 1.3 : hurt ? 0.4 : roar ? 1.1 : 0.7;
+        for (const [ff, q] of [[420, 2], [950, 3]]) this.tone(at, { type: 'sawtooth', f0: f, f1: f * (death ? 0.5 : 0.8), time, volume: roar ? 0.14 : 0.1, attack: 0.06, filter: { f: ff, q }, vibrato: f * 0.08, vibratoRate: 23 });
+        this.hiss(at, { f: 380, q: 0.8, time: time * 0.8, volume: roar ? 0.3 : 0.18, type: 'lowpass' });
+        break;
+      }
+      case 'bigcat': {
+        // A chuffing growl; a full-throated roar when it springs; a yowl when hurt.
+        const roar = event === 'angry', f = (hurt || death ? 330 : roar ? 150 : 95) * pitch * r(), time = death ? 1.1 : hurt ? 0.35 : roar ? 1.3 : 0.5;
+        for (const [ff, q] of [[600, 2], [1500, 4]]) this.tone(at, { type: 'sawtooth', f0: f * (roar ? 1.3 : 1), f1: f * (roar ? 0.7 : 0.85), time, volume: roar ? 0.16 : 0.09, attack: roar ? 0.12 : 0.04, filter: { f: ff, q }, vibrato: f * 0.05, vibratoRate: 18 });
+        this.hiss(at, { f: 700, q: 0.7, time: time * 0.7, volume: roar ? 0.35 : 0.15, type: 'lowpass' });
+        break;
+      }
+      case 'deer': {
+        // A short, nasal bleat (a bark of alarm when startled).
+        const f = (hurt || death ? 900 : 620) * pitch * r();
+        this.tone(at, { type: 'sawtooth', f0: f, f1: f * 0.78, time: death ? 0.5 : 0.18, volume: 0.07, attack: 0.02, filter: { f: 1300, q: 4 } });
+        break;
+      }
+      case 'moose': {
+        // A long, low bellow.
+        const f = (hurt || death ? 240 : 150) * pitch * r(), time = death ? 1.2 : hurt ? 0.4 : 1.0;
+        for (const [ff, q] of [[500, 3], [1100, 4]]) this.tone(at, { type: 'sawtooth', f0: f, f1: f * 0.75, time, volume: 0.08, attack: 0.1, filter: { f: ff, q }, vibrato: 4, vibratoRate: 5 });
+        break;
+      }
+      case 'panda': {
+        // A soft bleating sneeze of a sound.
+        const f = (hurt || death ? 820 : 600) * pitch * r();
+        for (const [ff, q] of [[1000, 3], [2300, 5]]) this.tone(at, { type: 'sawtooth', f0: f, f1: f * 0.85, time: death ? 0.6 : 0.22, volume: 0.06, attack: 0.03, filter: { f: ff, q }, vibrato: f * 0.03, vibratoRate: 12 });
+        break;
+      }
+      case 'elephant': {
+        // The trumpet: a brassy blare rising and falling, with a rumble under it (louder when it
+        // charges).
+        const angry = event === 'angry', f = (hurt || death ? 560 : 440) * pitch * r(), time = death ? 1.4 : hurt ? 0.5 : angry ? 1.2 : 0.9;
+        for (const [ff, q] of [[900, 2], [2200, 4]]) {
+          this.tone(at, { type: 'sawtooth', f0: f * 0.9, f1: f * 1.25, time: time * 0.45, volume: angry ? 0.12 : 0.09, attack: 0.05, filter: { f: ff, q }, vibrato: 14, vibratoRate: 7 });
+          this.tone(at, { type: 'sawtooth', f0: f * 1.25, f1: f * 0.8, time: time * 0.55, volume: angry ? 0.12 : 0.09, filter: { f: ff, q }, vibrato: 18, vibratoRate: 7, delay: time * 0.45 });
+        }
+        this.tone(at, { type: 'triangle', f0: 60, f1: 45, time: time, volume: 0.12 });
+        break;
+      }
+      case 'hippo': {
+        // Deep, wheezing honks.
+        const f = (hurt || death ? 190 : 120) * pitch * r();
+        for (let i = 0; i < (hurt ? 1 : 3); i++) this.tone(at, { type: 'sawtooth', f0: f, f1: f * 0.8, time: 0.22, volume: 0.1, attack: 0.03, filter: { f: 500, q: 3 }, delay: i * 0.28 });
+        this.hiss(at, { f: 600, q: 0.8, time: 0.6, volume: 0.12, type: 'lowpass' });
+        break;
+      }
+      case 'giraffe':
+        this.hiss(at, { f: 450, q: 1, time: hurt || death ? 0.3 : 0.18, volume: 0.25, type: 'lowpass', sweep: 200 });
+        break;
+      case 'crocodile':
+        // A long hiss, with a low growl under it when it's roused.
+        this.hiss(at, { f: 2600 * r(), q: 0.9, time: hurt ? 0.25 : 0.7, volume: 0.28, type: 'highpass' });
+        if (event === 'angry' || hurt || death) this.tone(at, { type: 'sawtooth', f0: 90 * pitch, f1: 70, time: 0.6, volume: 0.1, filter: { f: 350, q: 2 }, vibrato: 6, vibratoRate: 20 });
+        break;
+      case 'camel': {
+        // A long, grumbling groan.
+        const f = (hurt || death ? 320 : 210) * pitch * r();
+        for (const [ff, q] of [[700, 3], [1600, 5]]) this.tone(at, { type: 'sawtooth', f0: f, f1: f * 0.7, time: death ? 1.1 : hurt ? 0.35 : 0.8, volume: 0.07, attack: 0.08, filter: { f: ff, q }, vibrato: f * 0.1, vibratoRate: 16 });
+        break;
+      }
+      case 'penguin': {
+        // Braying squawks.
+        const f = (hurt || death ? 760 : 520) * pitch * r();
+        for (let i = 0; i < (hurt ? 1 : 3); i++) this.tone(at, { type: 'square', f0: f, f1: f * 1.15, time: 0.14, volume: 0.05, filter: { f: 1400, q: 3 }, delay: i * 0.18 });
+        break;
+      }
+      case 'songbird':
+        // A little run of chirps.
+        for (let i = 0; i < (hurt || death ? 1 : 3 + Math.floor(Math.random() * 3)); i++) {
+          const f = (2800 + Math.random() * 1400) * pitch;
+          this.tone(at, { type: 'sine', f0: f, f1: f * (Math.random() < 0.5 ? 1.35 : 0.75), time: 0.06 + Math.random() * 0.04, volume: 0.07, delay: i * (0.09 + Math.random() * 0.05) });
+        }
+        break;
+      case 'crow':
+        // Harsh caws.
+        for (let i = 0; i < (hurt || death ? 1 : 2 + Math.floor(Math.random() * 2)); i++) {
+          this.tone(at, { type: 'sawtooth', f0: 760 * pitch * r(), f1: 600, time: 0.22, volume: 0.08, attack: 0.02, filter: { f: 1400, q: 2 }, delay: i * 0.32 });
+          this.hiss(at, { f: 1800, q: 1.2, time: 0.2, volume: 0.1, delay: i * 0.32 });
+        }
+        break;
+      case 'seagull':
+        // The gull's cry: a thin rising and falling "kyow", over and over.
+        for (let i = 0; i < (hurt || death ? 1 : 2 + Math.floor(Math.random() * 3)); i++) {
+          this.tone(at, { type: 'sawtooth', f0: 1100 * pitch * r(), f1: 1700, time: 0.12, volume: 0.05, filter: { f: 2200, q: 4 }, delay: i * 0.3 });
+          this.tone(at, { type: 'sawtooth', f0: 1700 * pitch, f1: 950, time: 0.18, volume: 0.05, filter: { f: 2200, q: 4 }, delay: i * 0.3 + 0.12 });
+        }
+        break;
+      case 'eagle':
+        // A high, thin, descending scream.
+        this.tone(at, { type: 'sawtooth', f0: 2600 * pitch * r(), f1: 1700, time: hurt ? 0.25 : 0.6, volume: 0.05, filter: { f: 3000, q: 5 }, vibrato: 60, vibratoRate: 25 });
+        this.hiss(at, { f: 4000, q: 2, time: 0.4, volume: 0.06 });
+        break;
+      case 'vulture':
+        this.hiss(at, { f: 1400, q: 1, time: hurt ? 0.2 : 0.5, volume: 0.18 });
+        break;
+      case 'bee':
+        // A buzz (an angry one higher).
+        this.tone(at, { type: 'sawtooth', f0: (event === 'angry' || hurt ? 320 : 240) * pitch * r(), f1: 230, time: 0.5, volume: 0.035, filter: { f: 900, q: 1 }, vibrato: 12, vibratoRate: 30 });
         break;
       default:
     }

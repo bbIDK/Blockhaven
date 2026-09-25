@@ -43,11 +43,14 @@ import { Jukeboxes, instrumentFor, noteColour, noteClear, nextNote } from './juk
 import { isHanging } from './hangings.js';
 import { layRail } from './rails.js';
 import { ITEMS, I, itemDef, itemLabel, breakTime, dropsFor, attackDamage, attackSpeed, canHarvest } from './items.js';
-import { BIOME_NAMES } from './biomes.js';
+import { BIOME_NAMES, BIOME } from './biomes.js';
 import { CHUNK_VOLUME, HEIGHT, TICKS_PER_DAY, SAVE_VERSION } from './config.js';
 import { seedFromText, clamp, hashString, mat4, identity, translate, rotateX, rotateZ } from './math.js';
 
 const SETTINGS_KEY = 'blockhaven.settings';
+// Where fireflies come out on fine nights.
+const FIREFLY_BIOMES = new Set([BIOME.SWAMP, BIOME.FOREST, BIOME.FLOWER_FOREST, BIOME.DARK_FOREST, BIOME.BIRCH_FOREST, BIOME.MEADOW, BIOME.JUNGLE,
+  BIOME.SPARSE_JUNGLE, BIOME.CHERRY_GROVE, BIOME.PLAINS, BIOME.SUNFLOWER_PLAINS, BIOME.FLAT]);
 const DEG = Math.PI / 180;
 const COARSE = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 const REDUCED_MOTION = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -1489,6 +1492,7 @@ export class Game {
       while (this.tickAcc >= 1 && n++ < most) { this.tickAcc -= 1; this.gameTick(); }
       if (this.tickAcc > most) this.tickAcc = 0;
       this.particles.update(dt, w);
+      if (draw) this.fireflies(dt);
       this.entities.update(dt);
       this.fishing.update(dt);
       this.weather.update(dt);
@@ -1523,6 +1527,24 @@ export class Game {
 
   // Going into water at `speed` (blocks a second): a splash as big as the plunge was hard, with
   // water thrown up where you went in and bubbles going down with you.
+  // Fireflies over swamps, woods and meadows on fine nights, drifting and blinking near the ground.
+  fireflies(dt) {
+    const w = this.world, p = this.player;
+    if (!w || this.env.daylight > 0.3 || this.weather.rain > 0.4) return;
+    this.fireflyAcc = (this.fireflyAcc ?? 0) + dt * 5;
+    while (this.fireflyAcc >= 1) {
+      this.fireflyAcc -= 1;
+      const x = p.x + (Math.random() - 0.5) * 30, z = p.z + (Math.random() - 0.5) * 30;
+      if (!FIREFLY_BIOMES.has(w.biomeAt(Math.floor(x), Math.floor(z)))) continue;
+      for (let y = Math.floor(p.y) + 6; y > Math.floor(p.y) - 10; y--) {
+        const id = w.getBlock(Math.floor(x), y, Math.floor(z));
+        if (!id || !SOLID[id]) continue;
+        if (!w.getBlock(Math.floor(x), y + 1, Math.floor(z))) this.particles.firefly(x, y + 1.3 + Math.random() * 2.2, z);
+        break;
+      }
+    }
+  }
+
   splashInto(x, y, z, speed) {
     const w = this.world, bx = Math.floor(x), bz = Math.floor(z);
     let sy = Math.floor(y);

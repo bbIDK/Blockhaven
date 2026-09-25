@@ -177,6 +177,7 @@ console.log(missing.join(' '));
 
 // ---------------------------------------------------------------- creature skins
 await import('../src/tex/mobskins.js');
+await import('../src/tex/wildskins.js');
 const { SKIN_INDEX } = await import('../src/skins.js');
 const skinDir = join(root, 'assets', 'skins');
 if (existsSync(skinDir)) for (const f of readdirSync(skinDir)) if (f.endsWith('.png')) rmSync(join(skinDir, f));

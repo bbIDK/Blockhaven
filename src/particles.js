@@ -144,6 +144,15 @@ export class Particles {
   // newborn): they float up about half a block.
   hearts(x, y, z, n = 1, w = 0.4) { this.icons(TEX.heart, x, y, z, n, w, 0.5, 0.1); }
 
+  // A firefly: a tiny green-gold light that wanders slowly and blinks (lit by itself).
+  firefly(x, y, z) {
+    if (this.list.length >= MAX) this.list.shift();
+    this.list.push({
+      x, y, z, vx: 0, vy: 0, vz: 0, life: 4 + Math.random() * 5, age: 0, size: 0.035, layer: TEX.spark, flags: 1,
+      tint: [214, 255, 110], u: 0, v: 0, whole: true, firefly: Math.random() * 10, glow: true,
+    });
+  }
+
   // A musical note popping up over a note block, in the colour of its pitch.
   note(x, y, z, colour) {
     if (this.list.length >= MAX) this.list.shift();
@@ -186,6 +195,12 @@ export class Particles {
         continue;
       }
       if (p.drift) { p.vy *= Math.exp(-4 * dt); p.y += p.vy * dt; continue; }
+      if (p.firefly !== undefined) {
+        const k = p.firefly + p.age;
+        p.vx += (Math.sin(k * 1.3) * 0.7 - p.vx) * dt; p.vy += (Math.sin(k * 0.9) * 0.35 - p.vy) * dt; p.vz += (Math.cos(k * 1.1) * 0.7 - p.vz) * dt;
+        p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+        continue;
+      }
       if (p.bubble !== undefined) {
         // Bubbles rise, wobbling, and pop at the surface.
         p.vy = Math.min(1.4, p.vy + 2 * dt);
@@ -225,7 +240,9 @@ export class Particles {
       const px = p.x - this.base[0], py = p.y - this.base[1], pz = p.z - this.base[2];
       if (px < 1 || py < 1 || pz < 1 || px > 250 || py > 250 || pz > 250) continue;
       const l = world.getLight(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z));
-      const s = p.smoke ? p.size * (1 - 0.7 * (p.age / p.life)) : p.spark ? p.size * (1 - 0.6 * (p.age / p.life)) : p.size;
+      const s = p.smoke ? p.size * (1 - 0.7 * (p.age / p.life)) : p.spark ? p.size * (1 - 0.6 * (p.age / p.life))
+        : p.firefly !== undefined ? p.size * Math.max(0, Math.sin((p.age + p.firefly) * 2.3)) * Math.min(1, p.age, p.life - p.age) : p.size;
+      if (s <= 0.002) continue;
       const full = p.smoke || p.whole ? 16 : 3;
       for (let k = 0; k < 4; k++) {
         const a = k === 0 || k === 3 ? -1 : 1, b = k < 2 ? -1 : 1;
@@ -236,7 +253,7 @@ export class Particles {
         u8[o + 6] = p.u + (a > 0 ? full : 0);
         u8[o + 7] = p.v + (b > 0 ? 0 : full);
         u8[o + 8] = p.layer & 255; u8[o + 9] = 6; u8[o + 10] = p.flags; u8[o + 11] = p.layer >> 8;
-        u8[o + 12] = (l >> 4) * 17; u8[o + 13] = (l & 15) * 17; u8[o + 14] = 255; u8[o + 15] = 0;
+        u8[o + 12] = p.glow ? 255 : (l >> 4) * 17; u8[o + 13] = p.glow ? 255 : (l & 15) * 17; u8[o + 14] = 255; u8[o + 15] = 0;
         u8[o + 16] = p.tint[0]; u8[o + 17] = p.tint[1]; u8[o + 18] = p.tint[2]; u8[o + 19] = 255;
         n++;
       }

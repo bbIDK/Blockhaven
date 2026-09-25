@@ -205,6 +205,7 @@ shapeless('rabbit_stew', 1, ['bowl', 'cooked_rabbit', 'carrot', 'baked_potato', 
 shapeless('sugar', 1, ['sugar_cane'], 'misc');
 shapeless('bone_meal', 3, ['bone'], 'misc');
 shapeless('bone_meal', 2, ['shark_tooth'], 'misc');
+shaped('stick', 1, ['#', '#'], { '#': 'bamboo' }, 'misc');
 for (const [mat, x] of [['leather', 'leather'], ['iron', 'iron_ingot'], ['golden', 'gold_ingot'], ['diamond', 'diamond']]) {
   shaped(`${mat}_helmet`, 1, ['XXX', 'X X'], { X: x }, 'equipment');
   shaped(`${mat}_chestplate`, 1, ['X X', 'XXX', 'XXX'], { X: x }, 'equipment');
@@ -345,6 +346,7 @@ const SMELT = [
   ['raw_mutton', 'cooked_mutton', 'food'], ['raw_rabbit', 'cooked_rabbit', 'food'], ['cod', 'cooked_cod', 'food'],
   ['salmon', 'cooked_salmon', 'food'], ['potato', 'baked_potato', 'food'], ['kelp', 'dried_kelp', 'food'],
   ['raw_shark', 'cooked_shark', 'food'],
+  ['raw_venison', 'cooked_venison', 'food'], ['raw_bear', 'cooked_bear', 'food'],
   ...GROUPS.logs.map((l) => [l, 'charcoal']),
 ];
 const SMELTING = new Map(SMELT.map(([a, b]) => [I[a], I[b]]));
@@ -366,6 +368,7 @@ const FUELS = [
   ...GROUPS.wool.map((w) => [w, 100]),
   ...DYES.map((d) => [`${d.name}_carpet`, 67]),
   ['dried_kelp_block', 4000],
+  ['bamboo', 50],
 ];
 const FUEL = new Map(FUELS.map(([name, t]) => [I[name], t]));
 if ([...FUEL.keys()].some((id) => id === undefined)) throw new Error('Unknown fuel item');

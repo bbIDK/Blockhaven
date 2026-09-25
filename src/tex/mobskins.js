@@ -161,7 +161,7 @@ skin('collar', (sk) => {
 skin('wolf_angry', (sk) => wolfSkin(sk, true));
 
 const FOX = ramp(0xd8702c, 5, 0.12, 8), FOX_WHITE = ramp(0xece4da, 3, 0.05, 4), FOX_DARK = [0x221a16, 0x2e241e, 0x3a2e26];
-skin('fox', (sk) => {
+function foxSkin(sk, FOX, FOX_WHITE, FOX_DARK) {
   fur(sk, 'fox', ['body', 'head', 'tail'], FOX, { cell: 2, grain: 0.3 });
   each(sk, 'fox', ['body'], (face, r) => { if (face === 'bottom') sk.fill(r, FOX_WHITE, { cell: 1 }); });
   const [head, earR, earL, nose] = cubesOf('fox', 'head');
@@ -180,7 +180,8 @@ skin('fox', (sk) => {
     const tip = face === 'back' ? r : face === 'right' ? [r[0], r[1], 2, r[3]] : [r[0] + r[2] - 2, r[1], 2, r[3]];
     sk.fill(tip, FOX_WHITE, { cell: 1 });
   });
-});
+}
+skin('fox', (sk) => foxSkin(sk, FOX, FOX_WHITE, FOX_DARK));
 
 function rabbitSkin(sk, pal, eyeC, belly) {
   fur(sk, 'rabbit', ['body', 'head', 'hindR', 'hindL', 'frontR', 'frontL', 'tail'], pal, { cell: 1, grain: 0.35 });
@@ -939,3 +940,6 @@ skin('snow_golem', (sk) => {
   for (const x of [2, 4, 6]) at(sk, f, x, 6, lit);
   for (const x of [1, 3, 5]) at(sk, f, x, 6, dark);
 });
+
+// (The painting helpers, for the wildlife update's skins in tex/wildskins.js.)
+export { reg, cubesOf, each, fur, at, row, tone, feet, eye, fore, horseSkin, wolfSkin, foxSkin };

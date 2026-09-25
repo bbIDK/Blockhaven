@@ -13,7 +13,7 @@ import { rayBox } from './world.js';
 import { HEIGHT, TICKS_PER_DAY, SEA_LEVEL } from './config.js';
 import { villageAt } from './villages.js';
 import { BIOME } from './biomes.js';
-import { MOBS, initMob, mobTick, mobPhysics, renderMob, provoked, mobUseEffect, applyMobUse, applyHeldUse, mobDrops, mobXp, herdFor, monsterFor, HOSTILE_TYPES, seaLifeFor,
+import { MOBS, initMob, mobTick, mobPhysics, renderMob, provoked, mobUseEffect, applyMobUse, applyHeldUse, mobDrops, mobXp, herdFor, monsterFor, HOSTILE_TYPES, seaLifeFor, ambientFor,
   rallyPets } from './mobs.js';
 import { Civilians } from './civilians.js';
 import { extras, cleanExtras } from './inventory.js';
@@ -55,6 +55,8 @@ export function mobExtra(e) {
   if (e.def.kind === 'civilian') { o.r = e.rid; o.sk = e.skin; o.n = e.name; o.ro = e.role; }
   return o;
 }
+// The birds and insects that come and go about the land (see trySpawnAmbient).
+const AMBIENT_TYPES = new Set(['robin', 'blue_jay', 'cardinal', 'sparrow', 'goldfinch', 'crow', 'seagull', 'eagle', 'vulture', 'butterfly', 'bee']);
 // The seas deep enough for whales.
 const DEEP_SEAS = new Set([BIOME.DEEP_OCEAN, BIOME.DEEP_LUKEWARM_OCEAN, BIOME.DEEP_COLD_OCEAN, BIOME.DEEP_FROZEN_OCEAN]);
 const extraOpts = (s) => ({ variant: Number.isInteger(s.v) ? s.v : 0, colour: Number.isInteger(s.c) ? s.c : 0, size: [1, 2, 4].includes(s.s) ? s.s : 1,
@@ -377,8 +379,9 @@ export class Entities {
     const game = this.game;
     if (!game.meta || this.guest) return;
     this.civilians.chunkLoaded(chunk);
-    const passive = this.list.filter((e) => e.kind === 'mob' && !e.def.hostile && e.def.kind !== 'civilian').length;
-    if (passive >= 40) return;
+    // (Sea life and the birds and insects about keep counts of their own.)
+    const passive = this.list.filter((e) => e.kind === 'mob' && !e.def.hostile && e.def.kind !== 'civilian' && e.def.kind !== 'water' && !e.def.flies).length;
+    if (passive >= 48) return;
     for (const h of herdFor(chunk, game.meta.seed)) this.spawnMob(h.type, h.x, h.y, h.z, h.o);
   }
 
@@ -458,6 +461,35 @@ export class Entities {
     }
   }
 
+  // Birds and insects about the land by day, a little way off (see mobs.js AMBIENT): songbirds and
+  // crows in the woods and fields, gulls along the shore and out at sea, eagles over the mountains,
+  // vultures over the dry lands, butterflies and bees among the flowers.
+  trySpawnAmbient() {
+    const w = this.world, game = this.game;
+    if (!this.players.length || game.env.daylight < 0.35 || game.weather.rain > 0.6) return;
+    const about = this.list.filter((e) => e.kind === 'mob' && !e.dead && AMBIENT_TYPES.has(e.type));
+    if (about.length >= 16) return;
+    const p = this.players[Math.floor(Math.random() * this.players.length)];
+    const a = Math.random() * Math.PI * 2, d = 14 + Math.random() * 26;
+    const x = Math.floor(p.x + Math.cos(a) * d), z = Math.floor(p.z + Math.sin(a) * d);
+    if (!w.isLoaded(x, z)) return;
+    const pick = ambientFor(w.biomeAt(x, z));
+    if (!pick) return;
+    const [type, n] = pick, t = MOBS[type];
+    const soar = t.flies === 'soar', low = t.flies === 'insect' || t.flies === 'bee';
+    // (Only a few of the big birds overhead at once.)
+    if (about.filter((e) => e.type === type).length >= (soar ? 3 : 8)) return;
+    const top = w.topAt(x, z);
+    if (top < 1) return;
+    if (!soar && WATERLIKE[w.getBlock(x, top, z)]) return;
+    const y = soar ? Math.max(top, SEA_LEVEL) + t.soarHeight * (0.6 + Math.random() * 0.4) : top + (low ? 1.2 : 1.5 + Math.random() * 3);
+    for (let i = 0; i < n; i++) {
+      const sx = x + 0.5 + (Math.random() - 0.5) * 3, sz = z + 0.5 + (Math.random() - 0.5) * 3, sy = y + Math.random() * 0.8;
+      if (SOLID[w.getBlock(Math.floor(sx), Math.floor(sy), Math.floor(sz))]) continue;
+      this.spawnMob(type, sx, sy, sz, { variant: t.variants ? Math.floor(Math.random() * t.skins.length) : 0 });
+    }
+  }
+
   // Whales, well out over deep water: a humpback or two, or (in the deepest seas) a blue whale.
   trySpawnWhale(p) {
     const w = this.world;
@@ -514,7 +546,12 @@ export class Entities {
     if (this.guest) { this.remoteTick(); return; }
     // Everyone creatures can see: this player and, in multiplayer, the others.
     this.players = game.players();
-    if (++this.spawnTimer >= 40) { this.spawnTimer = 0; this.trySpawnHostile(); if (Math.random() < 0.5) this.trySpawnBat(); if (Math.random() < 0.6) this.trySpawnSea(); }
+    if (++this.spawnTimer >= 40) {
+      this.spawnTimer = 0; this.trySpawnHostile();
+      if (Math.random() < 0.5) this.trySpawnBat();
+      if (Math.random() < 0.6) this.trySpawnSea();
+      if (Math.random() < 0.7) this.trySpawnAmbient();
+    }
     if ((this.phantomTimer = (this.phantomTimer ?? 0) + 1) >= 600) { this.phantomTimer = 0; this.trySpawnPhantoms(); }
     this.civilians.tick();
     this.detectorTick();

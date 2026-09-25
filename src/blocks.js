@@ -1107,6 +1107,10 @@ for (let n = 1; n <= 4; n++) {
 block(2472, 'dried_kelp_block', { tex: { side: 'dried_kelp_side', top: 'dried_kelp_top', bottom: 'dried_kelp_bottom' }, hardness: 0.5, tool: 'hoe',
   sound: 'grass' });
 
+// The wildlife update's: bamboo, which pandas eat. It grows in tall canes like sugar cane (on soil
+// or sand, but it needs no water).
+block(2473, 'bamboo', plant({ tex: 'bamboo', support: 'bamboo', hardness: 1, tool: 'axe', sound: 'wood', ticks: true, ...natural }));
+
 // Blocks shown in the inventory and in the hand as a flat picture rather than a little model
 // (-1 for the rest). Tall flowers show their flowering top.
 export function spriteOf(block) {
@@ -1115,6 +1119,7 @@ export function spriteOf(block) {
   if (VINE_SIDE[block] !== undefined) return TEX.vine;
   if (LICHEN_SIDE[block] !== undefined) return TEX.glow_lichen;
   if (block === B.kelp) return TEX.kelp_item;
+  if (block === B.bamboo) return TEX.bamboo_item;
   if (PICKLES[block]) return TEX.sea_pickle_item;
   if (block === B.big_dripleaf) return TEX.big_dripleaf_top;
   if (CLIMB[block]) return TEX.ladder;

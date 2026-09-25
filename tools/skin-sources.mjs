@@ -83,6 +83,51 @@ function armour(mat, layer) {
   };
 }
 
+// A wolf's skin cut from the pack's (Minecraft lays its body upright; the game's lies along it).
+function wolfFrom(H, n) {
+  const src = H.load(E(`wolf/${n}`)), out = skin64(H);
+  box(H, out, src, [0, 0], [6, 6, 4]); box(H, out, src, [16, 14], [2, 2, 1]); box(H, out, src, [0, 10], [3, 3, 4]);
+  box(H, out, src, [0, 18], [2, 8, 2]); box(H, out, src, [9, 18], [2, 8, 2]);
+  rotBox(H, out, src, [18, 14], [6, 6, 9], [18, 14]);
+  rotBox(H, out, src, [21, 0], [8, 7, 6], [21, 0]);
+  return out;
+}
+// The same coats as tex/wildskins.js WOLF_COATS: how much each colour channel is scaled.
+const WOLF_COATS = { snowy: [1.08, 1.08, 1.1], woods: [0.72, 0.56, 0.42], black: [0.3, 0.3, 0.32], rusty: [0.95, 0.62, 0.4], ashen: [0.8, 0.8, 0.84] };
+// Scales a skin's colours (leaving eyes and noses, the darkest and the reddest pixels, alone).
+function recolour(img, [r, g, b]) {
+  for (let y = 0; y < img.h; y++) for (let x = 0; x < img.w; x++) {
+    const p = img.px(x, y);
+    if (!p[3] || p[0] + p[1] + p[2] < 120 || p[0] > p[1] + 60) continue;
+    img.put(x, y, [Math.min(255, Math.round(p[0] * r)), Math.min(255, Math.round(p[1] * g)), Math.min(255, Math.round(p[2] * b)), p[3]]);
+  }
+  return img;
+}
+// Stripes across a zebra: down the body's flanks and over its back, round the legs, the neck and
+// the head, ragged at the edges; the mane and tail stay as they are.
+function zebra(H, img) {
+  const BLACK = [22, 22, 22, 255];
+  const band = (rect, vertical, gap = 3) => {
+    const [x0, y0, w, h] = rect;
+    for (let k = 1; k < (vertical ? w : h); k += gap) for (let t = 0; t < (vertical ? h : w); t++) {
+      if ((t * 7 + k * 3) % 5 === 0) continue;
+      const wob = (t + k) % 4 === 0 ? 1 : 0;
+      const x = vertical ? Math.min(w - 1, k + wob) : t, y = vertical ? t : Math.min(h - 1, k + wob);
+      if (img.px(x0 + x, y0 + y)[3]) img.put(x0 + x, y0 + y, BLACK);
+    }
+  };
+  const B = faces(0, 32, [10, 10, 22]);
+  for (const f of ['right', 'left']) band(B[f], true);
+  band(B.top, false); band(B.back, true); band(B.front, true);
+  const L = faces(48, 21, [4, 11, 4]);
+  for (const f of ['right', 'left', 'front', 'back']) band([L[f][0], L[f][1], L[f][2], L[f][3] - 2], false, 2);
+  const N = faces(0, 35, [4, 12, 7]);
+  for (const f of ['right', 'left', 'front', 'back']) band(N[f], false);
+  const Hd = faces(0, 13, [6, 5, 7]);
+  for (const f of ['right', 'left', 'top']) band(Hd[f], f === 'top');
+  return img;
+}
+
 export const SKIN_SOURCES = {
   zombie: person(E('zombie/zombie')),
   husk: person(E('zombie/husk')),
@@ -134,14 +179,17 @@ export const SKIN_SOURCES = {
     rotBox(H, out, src, [0, 9], [6, 6, 8], [0, 9]);
     return out;
   },
-  ...Object.fromEntries(['wolf', 'wolf_angry'].map((n) => [n, (H) => {
-    const src = H.load(E(`wolf/${n}`)), out = skin64(H);
-    box(H, out, src, [0, 0], [6, 6, 4]); box(H, out, src, [16, 14], [2, 2, 1]); box(H, out, src, [0, 10], [3, 3, 4]);
-    box(H, out, src, [0, 18], [2, 8, 2]); box(H, out, src, [9, 18], [2, 8, 2]);
-    rotBox(H, out, src, [18, 14], [6, 6, 9], [18, 14]);
-    rotBox(H, out, src, [21, 0], [8, 7, 6], [21, 0]);
-    return out;
-  }])),
+  ...Object.fromEntries(['wolf', 'wolf_angry'].map((n) => [n, (H) => wolfFrom(H, n)])),
+  // Wolves of other woods and wilds: the pack's grey wolf, its coat recoloured.
+  ...Object.fromEntries(Object.entries(WOLF_COATS).flatMap(([coat, mul]) => [
+    [`wolf_${coat}`, (H) => recolour(wolfFrom(H, 'wolf'), mul)], [`wolf_${coat}_angry`, (H) => recolour(wolfFrom(H, 'wolf_angry'), mul)]])),
+  // Pandas and bees are Minecraft's models (wildrigs.js), so their skins fit as they are.
+  ...Object.fromEntries([['panda', 'panda'], ['panda_lazy', 'lazy_panda'], ['panda_worried', 'worried_panda'], ['panda_playful', 'playful_panda'],
+    ['panda_weak', 'weak_panda'], ['panda_aggressive', 'aggressive_panda'], ['panda_brown', 'brown_panda']].map(([n, f]) => [n, whole(E(`panda/${f}`))])),
+  bee: whole(E('bee/bee')),
+  bee_angry: whole(E('bee/bee_angry')),
+  // Zebras: the white horse with black stripes painted across it.
+  zebra: (H) => zebra(H, whole(E('horse/horse_white'))(H)),
   // Horses, donkeys and mules: the model is Minecraft's (rigs.js horseBones), so the skins fit as
   // they are; markings are a second skin drawn over the coat.
   ...Object.fromEntries(['white', 'creamy', 'chestnut', 'brown', 'black', 'gray', 'dark_brown'].map((n) => [`horse_${n}`, whole(E(`horse/horse_${n.replace('_', '')}`))])),

@@ -255,6 +255,15 @@ export const SOURCES = {
   // Shark steaks: the beef steak in a shark's pale flesh (grey skin round the edge), and cooked.
   raw_shark: (H) => H.remap(H.load('item/beef'), () => true, [0x4a525c, 0x66707a, 0xb07c80, 0xc8969a, 0xdcb0ae, 0xecc8c2, 0xf6dcd4]),
   cooked_shark: (H) => H.remap(H.load('item/cooked_beef'), () => true, [0x3c2a1e, 0x5c3e28, 0x7e5634, 0x9c7042, 0xb88c56, 0xd0a86c]),
+  // Venison and bear meat: the mutton and beef in the pack, darker and redder (and cooked browner).
+  raw_venison: (H) => H.remap(H.load('item/mutton'), () => true, [0x3a1414, 0x5a1c1e, 0x7a2628, 0x96343a, 0xae4a4c, 0xc86a64, 0xe0968a]),
+  cooked_venison: (H) => H.remap(H.load('item/cooked_mutton'), () => true, [0x2a1810, 0x44261a, 0x5e3624, 0x74462e, 0x8c5a3a, 0xa87250]),
+  raw_bear: (H) => H.remap(H.load('item/beef'), () => true, [0x2e1216, 0x48181e, 0x642228, 0x7c2c34, 0x983e44, 0xb45a5c, 0xcc8078]),
+  cooked_bear: (H) => H.remap(H.load('item/cooked_beef'), () => true, [0x241410, 0x3a2016, 0x52301e, 0x684028, 0x805236, 0x9a6a48]),
+  // Bamboo: its cane (the three-pixel stalk in the pack's model texture) standing up the middle
+  // of the block, with its leaves over it, like sugar cane.
+  bamboo: (H) => H.paste(H.paste(H.blank(), H.crop(H.frame(H.load('block/bamboo_stalk')), 0, 0, 3, 16), 7, 0), H.load('block/bamboo_small_leaves')),
+  bamboo_item: 'item/bamboo',
   amethyst_shard: mcl(`${MCL.amethyst}_amethyst_shard`),
   dye: grayOf('item/white_dye', 0.67),
   minecart_item: 'item/minecart',

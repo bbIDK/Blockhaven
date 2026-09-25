@@ -33,11 +33,12 @@ export const MOBS = {
   rabbit: { label: 'Rabbit', rig: 'rabbit', skins: ['rabbit_brown', 'rabbit_white', 'rabbit_black', 'rabbit_gold'], hw: 0.2, h: 0.5, health: 3,
     speed: 2.2, kind: 'animal', anim: 'rabbit', food: ['carrot', 'golden_carrot'], drops: [d('raw_rabbit', 0, 1), d('rabbit_hide', 0, 1)],
     sound: 'rabbit', shy: 6, hops: true },
-  fox: { label: 'Fox', rig: 'fox', skins: ['fox'], hw: 0.3, h: 0.7, health: 10, speed: 1.6, kind: 'animal', anim: 'quad', drops: [],
+  fox: { label: 'Fox', rig: 'fox', skins: ['fox', 'fox_snow'], hw: 0.3, h: 0.7, health: 10, speed: 1.6, kind: 'animal', anim: 'quad', drops: [],
     sound: 'fox', shy: 5 },
   goat: { label: 'Goat', rig: 'goat', skins: ['goat'], hw: 0.45, h: 1.3, health: 10, speed: 1.2, kind: 'animal', anim: 'quad', food: ['wheat'],
     drops: [], sound: 'goat', leaps: true },
-  wolf: { label: 'Wolf', rig: 'wolf', skins: ['wolf', 'wolf_angry'], extraSkins: { collar: 'collar' }, hw: 0.3, h: 0.85, health: 8, speed: 1.5,
+  // (A wolf's coat suits where it lives: see WOLF_OF.)
+  wolf: { label: 'Wolf', rig: 'wolf', skins: ['wolf', 'wolf_snowy', 'wolf_woods', 'wolf_black', 'wolf_rusty', 'wolf_ashen'], extraSkins: { collar: 'collar' }, hw: 0.3, h: 0.85, health: 8, speed: 1.5,
     kind: 'neutral', anim: 'quad', damage: 4, drops: [], sound: 'wolf', pack: true, tameWith: ['bone'], tameHealth: 20, defends: true,
     petFood: ['raw_beef', 'cooked_beef', 'raw_porkchop', 'cooked_porkchop', 'raw_chicken', 'cooked_chicken', 'raw_mutton', 'cooked_mutton',
       'raw_rabbit', 'cooked_rabbit', 'raw_shark', 'cooked_shark', 'rotten_flesh'] },
@@ -46,8 +47,9 @@ export const MOBS = {
     variants: true, variantCount: HORSE_COATS.length * (HORSE_MARKINGS.length + 1), hw: 0.65, h: 1.6, health: 22,
     speed: 1.2, rideSpeed: 9, kind: 'animal', anim: 'horse', food: ['wheat', 'apple', 'sugar', 'carrot', 'hay_block', 'golden_apple', 'golden_carrot'],
     breedFood: ['golden_apple', 'golden_carrot'], drops: [d('leather', 0, 2)], sound: 'horse', rideable: true },
+  // (Since the wildlife update, polar bears come for anyone who comes too near, as brown bears do.)
   polar_bear: { label: 'Polar Bear', rig: 'polar_bear', skins: ['polar_bear'], hw: 0.7, h: 1.4, health: 30, speed: 1.3, kind: 'neutral',
-    anim: 'quad', damage: 6, drops: [d('cod', 0, 2), d('salmon', 0, 2)], sound: 'bear' },
+    anim: 'quad', damage: 6, predator: 10, pack: true, giveUp: 24, drops: [d('cod', 0, 2), d('salmon', 0, 2), d('raw_bear', 0, 1)], sound: 'bear' },
   squid: { label: 'Squid', rig: 'squid', skins: ['squid'], hw: 0.4, h: 0.8, health: 10, speed: 1.2, kind: 'water', anim: 'squid',
     drops: [d('black_dye', 1, 3)], sound: null, scale: 0.8 },
   cod: { label: 'Cod', rig: 'cod', skins: ['cod'], hw: 0.25, h: 0.3, health: 3, speed: 1.4, kind: 'water', anim: 'fish', drops: [d('cod', 1, 1),
@@ -116,6 +118,83 @@ export const MOBS = {
     scale: 5.2, knockback: 0 },
   blue_whale: { label: 'Blue Whale', rig: 'whale_blue', skins: ['whale_blue'], hw: 3.6, h: 3.6, health: 160, speed: 1.5, kind: 'water', anim: 'whale',
     damage: 10, retaliates: true, deep: 18, breathes: true, drops: [d('bone', 4, 10), d('cod', 2, 6)], sound: null, scale: 9, knockback: 0 },
+  // ---- the wildlife update's creatures (models in wildrigs.js, skins in tex/wildskins.js)
+  // Bears come for anyone who wanders too near (their cubs don't, and a mother defends hers).
+  brown_bear: { label: 'Brown Bear', rig: 'polar_bear', skins: ['brown_bear'], hw: 0.7, h: 1.4, health: 30, speed: 1.3, kind: 'neutral', anim: 'quad',
+    damage: 6, predator: 9, pack: true, giveUp: 24, drops: [d('raw_bear', 1, 3), d('leather', 0, 2)], sound: 'bear' },
+  black_bear: { label: 'Black Bear', rig: 'polar_bear', skins: ['black_bear'], hw: 0.6, h: 1.2, health: 24, speed: 1.3, kind: 'neutral', anim: 'quad',
+    damage: 5, predator: 7, pack: true, giveUp: 22, drops: [d('raw_bear', 1, 2), d('leather', 0, 2)], sound: 'bear', pitch: 1.15, scale: 0.85 },
+  // Deer: shy, quick to bolt, and browsing as they go; stags carry antlers.
+  deer: { label: 'Deer', rig: 'deer', skins: ['deer'], sexes: true, hw: 0.4, h: 1.5, health: 10, speed: 1.4, kind: 'animal', anim: 'deer',
+    food: ['wheat', 'apple', 'carrot'], drops: [d('raw_venison', 1, 3), d('leather', 0, 2)], sound: 'deer', shy: 12, bolts: true, browses: true },
+  // Moose: a great slow deer of the northern woods, which charges if it's hurt.
+  moose: { label: 'Moose', rig: 'moose', skins: ['moose'], sexes: true, hw: 0.8, h: 2.2, health: 36, speed: 1.2, kind: 'neutral', anim: 'deer',
+    damage: 7, drops: [d('raw_venison', 2, 4), d('leather', 1, 3)], sound: 'moose', scale: 1.3, browses: true, knockback: 0.4 },
+  // Wild boar: they root about in the woods in family groups, and turn on anyone who hurts one.
+  boar: { label: 'Boar', rig: 'boar', skins: ['boar'], hw: 0.45, h: 0.95, health: 14, speed: 1.3, kind: 'neutral', anim: 'quad', damage: 4,
+    pack: true, food: ['carrot', 'potato', 'beetroot'], drops: [d('raw_porkchop', 1, 3), d('leather', 0, 1)], sound: 'boar' },
+  // Tigers stalk anyone who comes near, low and slow, then spring; lions hunt in prides.
+  tiger: { label: 'Tiger', rig: 'tiger', skins: ['tiger'], hw: 0.55, h: 1.2, health: 30, speed: 1.6, kind: 'neutral', anim: 'bigcat', damage: 7,
+    predator: 12, stalks: true, giveUp: 24, drops: [d('leather', 1, 3)], sound: 'bigcat', scale: 1.25 },
+  lion: { label: 'Lion', rig: 'lion', skins: ['lion'], sexes: true, hw: 0.55, h: 1.2, health: 28, speed: 1.6, kind: 'neutral', anim: 'bigcat',
+    damage: 6, predator: 10, stalks: true, pack: true, giveUp: 24, drops: [d('leather', 1, 3)], sound: 'bigcat', pitch: 0.9, scale: 1.25 },
+  // Pandas munch bamboo, and hit back when they're hurt (Minecraft's model and temperaments).
+  panda: { label: 'Panda', rig: 'panda', skins: ['panda', 'panda_lazy', 'panda_worried', 'panda_playful', 'panda_weak', 'panda_aggressive', 'panda_brown'],
+    variants: true, hw: 0.65, h: 1.25, health: 20, speed: 0.8, kind: 'neutral', anim: 'panda', damage: 6, food: ['bamboo', 'sugar_cane'],
+    drops: [d('bamboo', 0, 2)], sound: 'panda' },
+  // Elephants roam in herds, peaceful unless one of them is hurt; tame one (ride it until it
+  // takes to you), saddle it, and ride it high above the ground.
+  elephant: { label: 'Elephant', rig: 'elephant', skins: ['elephant'], extraSkins: { saddle: 'elephant_saddle' }, hw: 1.3, h: 3.0, health: 60,
+    speed: 1.0, rideSpeed: 5.5, kind: 'neutral', anim: 'elephant', damage: 10, heavy: true, knockback: 0, pack: true, scale: 2,
+    food: ['wheat', 'hay_block', 'apple', 'melon_slice', 'sugar_cane', 'bamboo'], breedFood: ['golden_apple', 'hay_block'], rideable: true, seat: 3.05,
+    rideJump: 6, drops: [d('leather', 2, 5)], sound: 'elephant' },
+  // Hippos wallow in rivers and lakes, peaceful unless crossed, and dangerous when they are.
+  hippo: { label: 'Hippo', rig: 'hippo', skins: ['hippo'], hw: 1.0, h: 1.4, health: 40, speed: 1.0, kind: 'neutral', anim: 'hippo', damage: 8,
+    heavy: true, knockback: 0.2, scale: 1.5, food: ['melon_slice', 'wheat'], drops: [d('leather', 1, 3)], sound: 'hippo' },
+  // Zebras: wild horses of the savanna, broken in and ridden the same way (and faster).
+  zebra: { label: 'Zebra', rig: 'horse', skins: ['zebra'], hw: 0.65, h: 1.6, health: 22, speed: 1.4, rideSpeed: 10, kind: 'animal', anim: 'horse',
+    food: ['wheat', 'apple', 'sugar', 'carrot', 'hay_block', 'golden_apple', 'golden_carrot'], breedFood: ['golden_apple', 'golden_carrot'],
+    drops: [d('leather', 0, 2)], sound: 'horse', pitch: 1.25, rideable: true, shy: 5 },
+  // Giraffes: five blocks tall, browsing the treetops.
+  giraffe: { label: 'Giraffe', rig: 'giraffe', skins: ['giraffe'], hw: 0.7, h: 3.2, health: 30, speed: 1.2, kind: 'animal', anim: 'giraffe',
+    food: ['apple', 'wheat', 'acacia_leaves'], drops: [d('leather', 1, 3)], sound: 'giraffe', scale: 1.6, browses: true, shy: 6 },
+  // Crocodiles lie in wait at the water's edge for whatever comes too close.
+  crocodile: { label: 'Crocodile', rig: 'crocodile', skins: ['crocodile'], hw: 0.7, h: 0.6, health: 30, speed: 1.1, kind: 'neutral',
+    anim: 'crocodile', damage: 7, predator: 6, giveUp: 16, swimmer: true, scale: 1.2, drops: [d('leather', 1, 3)], sound: 'crocodile' },
+  // Camels: tame one as you would a horse, saddle it, and ride across the desert.
+  camel: { label: 'Camel', rig: 'camel', skins: ['camel'], extraSkins: { saddle: 'camel_saddle' }, hw: 0.85, h: 2.3, health: 32, speed: 1.1,
+    rideSpeed: 8, kind: 'animal', anim: 'camel', food: ['wheat', 'hay_block', 'cactus'], breedFood: ['cactus'], rideable: true, seat: 2.15,
+    rideJump: 8.5, drops: [d('leather', 1, 2)], sound: 'camel' },
+  // Penguins waddle about the snowy shores and dart through the water after fish.
+  penguin: { label: 'Penguin', rig: 'penguin', skins: ['penguin'], hw: 0.3, h: 1.1, health: 8, speed: 0.8, kind: 'animal', anim: 'penguin',
+    swimmer: true, food: ['cod', 'salmon'], drops: [d('feather', 0, 2)], sound: 'penguin' },
+  // Birds: songbirds flit between the trees and the ground, and fly off when anyone comes near;
+  // crows the same in the open; gulls, eagles and vultures soar in great circles overhead.
+  robin: { label: 'Robin', rig: 'parrot', skins: ['bird_robin'], hw: 0.2, h: 0.4, health: 3, speed: 3, kind: 'animal', anim: 'parrot', flies: 'parrot',
+    shy: 5, flutter: true, drops: [d('feather', 0, 1)], sound: 'songbird', scale: 0.55, xp: 0 },
+  blue_jay: { label: 'Blue Jay', rig: 'parrot', skins: ['bird_bluejay'], hw: 0.2, h: 0.45, health: 3, speed: 3, kind: 'animal', anim: 'parrot', flies: 'parrot',
+    shy: 5, flutter: true, drops: [d('feather', 0, 1)], sound: 'songbird', pitch: 0.8, scale: 0.6, xp: 0 },
+  cardinal: { label: 'Cardinal', rig: 'parrot', skins: ['bird_cardinal'], hw: 0.2, h: 0.4, health: 3, speed: 3, kind: 'animal', anim: 'parrot', flies: 'parrot',
+    shy: 5, flutter: true, drops: [d('feather', 0, 1)], sound: 'songbird', pitch: 1.1, scale: 0.55, xp: 0 },
+  sparrow: { label: 'Sparrow', rig: 'parrot', skins: ['bird_sparrow'], hw: 0.18, h: 0.35, health: 2, speed: 3.2, kind: 'animal', anim: 'parrot', flies: 'parrot',
+    shy: 4, flutter: true, drops: [d('feather', 0, 1)], sound: 'songbird', pitch: 1.3, scale: 0.45, xp: 0 },
+  goldfinch: { label: 'Goldfinch', rig: 'parrot', skins: ['bird_goldfinch'], hw: 0.18, h: 0.35, health: 2, speed: 3.2, kind: 'animal', anim: 'parrot',
+    flies: 'parrot', shy: 4, flutter: true, drops: [d('feather', 0, 1)], sound: 'songbird', pitch: 1.4, scale: 0.45, xp: 0 },
+  crow: { label: 'Crow', rig: 'parrot', skins: ['crow'], hw: 0.25, h: 0.55, health: 4, speed: 3, kind: 'animal', anim: 'parrot', flies: 'parrot', shy: 7,
+    flutter: true, drops: [d('feather', 0, 2)], sound: 'crow', scale: 0.7, xp: 0 },
+  seagull: { label: 'Seagull', rig: 'parrot', skins: ['seagull'], hw: 0.3, h: 0.6, health: 4, speed: 4, kind: 'animal', anim: 'soar', flies: 'soar',
+    soarHeight: 10, shy: 5, drops: [d('feather', 0, 2)], sound: 'seagull', scale: 0.8, xp: 0 },
+  eagle: { label: 'Eagle', rig: 'parrot', skins: ['eagle'], hw: 0.4, h: 0.9, health: 10, speed: 5, kind: 'animal', anim: 'soar', flies: 'soar',
+    soarHeight: 24, shy: 6, drops: [d('feather', 1, 3)], sound: 'eagle', scale: 1.5 },
+  vulture: { label: 'Vulture', rig: 'parrot', skins: ['vulture'], hw: 0.4, h: 0.9, health: 10, speed: 4.5, kind: 'animal', anim: 'soar', flies: 'soar',
+    soarHeight: 20, shy: 5, drops: [d('feather', 1, 3)], sound: 'vulture', scale: 1.4 },
+  // Butterflies flutter over the flowers by day; bees drift from flower to flower, and the whole
+  // swarm stings anyone who swats one (a bee dies after it stings).
+  butterfly: { label: 'Butterfly', rig: 'butterfly', skins: ['butterfly_monarch', 'butterfly_morpho', 'butterfly_cabbage', 'butterfly_brimstone', 'butterfly_pink'],
+    variants: true, hw: 0.15, h: 0.2, health: 1, speed: 1.4, kind: 'animal', anim: 'butterfly', flies: 'insect', drops: [], sound: null, xp: 0,
+    noBlood: true },
+  bee: { label: 'Bee', rig: 'bee', skins: ['bee'], hw: 0.25, h: 0.35, health: 10, speed: 2, kind: 'neutral', anim: 'bee', flies: 'bee', damage: 2,
+    poison: [10, 1], pack: true, drops: [], sound: 'bee', scale: 0.8, xp: 1, noBlood: true },
   drowned: { label: 'Drowned', rig: 'humanoid', skins: ['drowned'], hw: 0.3, h: 1.95, health: 20, speed: 1.9, kind: 'hostile', anim: 'zombie',
     damage: 3, burns: true, swims: true, drops: [d('rotten_flesh', 0, 2), d('copper_ingot', 1, 1, 0.11)], sound: 'zombie', pitch: 0.75, hunts: true },
   witch: { label: 'Witch', rig: 'witch', skins: ['witch'], hw: 0.3, h: 1.95, health: 26, speed: 1.9, kind: 'hostile', anim: 'witch', throws: true,
@@ -260,6 +339,9 @@ export function mobTick(ents, e) {
   if (e.leash && leashTick(ents, e)) { lookTick(ents, e); return; }
   if (e.owner && petTick(ents, e)) { lookTick(ents, e); return; }
   if (t.flies === 'phantom') phantomTick(ents, e);
+  else if (t.flies === 'soar') soarTick(ents, e);
+  else if (t.flies === 'insect') insectTick(ents, e);
+  else if (t.flies === 'bee') beeTick(ents, e);
   else if (t.flies) flyTick(ents, e);
   else switch (t.kind) {
     case 'hostile': hostileTick(ents, e); break;
@@ -335,6 +417,12 @@ function wander(e, chance = 0.4) {
 const faceTowards = (e, x, z) => { e.yaw = Math.atan2(-(x - e.x), -(z - e.z)); };
 const faceAway = (e, x, z) => { e.yaw = Math.atan2(x - e.x, z - e.z); };
 const dist2 = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+// (Where a kind has males and females that look different, the variant's lowest bit says which.)
+export const isMale = (e) => (e.variant & 1) === 1;
+// What butterflies and bees visit.
+const FLOWERS = new Set(['dandelion', 'poppy', 'cornflower', 'oxeye_daisy', 'azure_bluet', 'allium', 'blue_orchid', 'red_tulip', 'orange_tulip',
+  'white_tulip', 'pink_tulip', 'lily_of_the_valley', 'sunflower', 'lilac', 'rose_bush', 'peony', 'flowering_azalea', 'pink_petals', 'spore_blossom']
+  .map((n) => B[n]).filter((id) => id !== undefined));
 
 function animalTick(ents, e) {
   const t = e.def, game = ents.game, w = ents.world;
@@ -353,14 +441,20 @@ function animalTick(ents, e) {
   }
   if (e.panic > 0) {
     e.panic--;
-    if (e.panic % 20 === 0) e.yaw = Math.random() * TAU;
-    e.moving = true; e.speedMul = 1.8;
+    if (e.panic % 20 === 0 && !t.bolts) e.yaw = Math.random() * TAU;
+    e.moving = true; e.speedMul = t.bolts ? 2.6 : 1.8;
+    // (Deer bound away in great leaps.)
+    if (t.bolts && e.onGround && Math.random() < 0.08) e.vy = 6.5;
     return;
   }
-  // Shy creatures keep away from players (not from their owner, once tamed).
+  // Shy creatures keep away from players (not from their owner, once tamed); deer bolt.
   if (t.shy && !e.tame) {
-    const p = ents.players.find((q) => !q.dead && dist2(q, e) < t.shy && !(q.sneaking));
-    if (p) { faceAway(e, p.x, p.z); e.moving = true; e.speedMul = 1.6; return; }
+    const p = ents.players.find((q) => !q.dead && dist2(q, e) < t.shy && !(q.sneaking && dist2(q, e) > t.shy * 0.4));
+    if (p) {
+      faceAway(e, p.x, p.z); e.moving = true; e.speedMul = 1.6;
+      if (t.bolts) { e.panic = 60; e.graze = 0; }
+      return;
+    }
   }
   // Animals follow someone holding their food, and look for a partner when in love.
   if (e.love > 0 && seekMate(ents, e)) return;
@@ -374,6 +468,9 @@ function animalTick(ents, e) {
   }
   // Sheep crop the grass to grow their wool back.
   if (t.grazes && e.graze > 0) { e.moving = false; if (--e.graze === 0) grazeDone(ents, e); return; }
+  // Deer and giraffes stop now and then to browse (heads down, or up in the trees).
+  if (t.browses && e.graze > 0) { e.moving = false; e.graze--; return; }
+  if (t.browses && e.onGround && Math.random() < 0.004) { e.graze = 40 + Math.floor(Math.random() * 60); e.moving = false; return; }
   if (t.grazes && Math.random() < (e.sheared ? 0.01 : 0.001) && e.onGround) {
     const below = w.getBlock(Math.floor(e.x), Math.floor(e.y - 0.5), Math.floor(e.z));
     if (below === B.grass_block) { e.graze = 40; e.moving = false; return; }
@@ -837,6 +934,16 @@ function witchTick(ents, e, tg, dist) {
 function flyTick(ents, e) {
   const w = ents.world, t = e.def;
   if (e.panic > 0) e.panic--;
+  // Wild birds fly off when anyone comes near (unless they creep up).
+  if (t.shy && !e.tame && !(e.panic > 0)) {
+    const p = ents.players.find((q) => !q.dead && !q.sneaking && Math.hypot(q.x - e.x, q.y - e.y, q.z - e.z) < t.shy);
+    if (p) {
+      const dx = e.x - p.x, dz = e.z - p.z, l = Math.hypot(dx, dz) || 1;
+      e.panic = 50; e.perch = 0; e.landing = false;
+      e.flyTarget = { x: e.x + (dx / l) * 10, y: e.y + 4 + Math.random() * 3, z: e.z + (dz / l) * 10 };
+      if (t.sound && Math.random() < 0.5) ents.game.audio.mob(t.sound, 'say', { x: e.x, y: e.y, z: e.z }, t.pitch);
+    }
+  }
   if (t.flies === 'bat') {
     const ceiling = () => SOLID[w.getBlock(Math.floor(e.x), Math.floor(e.y + e.h + 0.3), Math.floor(e.z))];
     if (e.roost) {
@@ -896,6 +1003,111 @@ function flyTick(ents, e) {
   if (!f) { e.flyVel = [0, t.flies === 'bat' ? 0.2 : -1, 0]; return; }
   steer(e, f, t.speed * (e.panic > 0 ? 1.8 : 1));
 }
+// Gulls, eagles and vultures circle high over the land (or the sea), drifting slowly across the
+// sky; now and then one comes down to perch a while, and flies off if anyone comes near.
+function soarTick(ents, e) {
+  const w = ents.world, t = e.def;
+  if (e.panic > 0) e.panic--;
+  const near = ents.players.find((q) => !q.dead && !q.sneaking && Math.hypot(q.x - e.x, q.y - e.y, q.z - e.z) < t.shy);
+  if (e.perched) {
+    e.flyVel = [0, -0.5, 0]; e.moving = false;
+    if (near || --e.perched <= 0) { e.perched = 0; e.flyVel = [0, 4, 0]; e.anchor = null; }
+    return;
+  }
+  if (e.landing) {
+    e.flyVel = [e.vx * 0.6, -2.5, e.vz * 0.6];
+    if (e.onGround) { e.landing = false; e.perched = 200 + Math.floor(Math.random() * 400); }
+    else if (near || WATERLIKE[w.getBlock(Math.floor(e.x), Math.floor(e.y - 0.5), Math.floor(e.z))]) e.landing = false;
+    return;
+  }
+  // (The ground below, looked up now and then: the circle keeps its height above it.)
+  if ((e.groundCd = (e.groundCd ?? 0) - 1) <= 0) { e.groundCd = 20; e.ground = w.topAt(Math.floor(e.x), Math.floor(e.z)); }
+  const c = e.anchor ?? (e.anchor = { x: e.x, z: e.z, r: 8 + Math.random() * 12, dir: Math.random() < 0.5 ? 1 : -1 });
+  if (Math.random() < 0.004) { c.x += (Math.random() - 0.5) * 40; c.z += (Math.random() - 0.5) * 40; }
+  e.circle = (e.circle ?? Math.random() * TAU) + c.dir * (t.speed / c.r) * 0.05;
+  const want = (e.ground ?? e.y) + t.soarHeight + Math.sin(e.age * 0.02) * 4;
+  steer(e, { x: c.x + Math.cos(e.circle) * c.r, y: e.y, z: c.z + Math.sin(e.circle) * c.r }, t.speed * (e.panic > 0 ? 1.5 : 1));
+  // (It climbs and sinks gently, circling all the while.)
+  e.flyVel[1] = clamp((want - e.y) * 0.3, -1.2, 1.2);
+  if (!near && Math.random() < 0.0012) e.landing = true;
+}
+
+// Butterflies flit about near the ground among the flowers, settling on one for a while; at night
+// they rest where they are until morning.
+function insectTick(ents, e) {
+  const w = ents.world, t = e.def, game = ents.game;
+  if (game.env.daylight < 0.25) {
+    if (e.onGround || e.roost) { e.roost = true; e.flyVel = null; return; }
+    e.flyVel = [0, -0.8, 0];
+    return;
+  }
+  e.roost = false;
+  if (e.rest > 0) { e.rest--; e.flyVel = [0, 0, 0]; e.moving = false; return; }
+  const f = e.flyTarget;
+  if (!f || Math.hypot(f.x - e.x, f.y - e.y, f.z - e.z) < 0.5 || e.hitWall || Math.random() < 0.02) {
+    if (f && Math.hypot(f.x - e.x, f.y - e.y, f.z - e.z) < 0.5 && f.flower) { e.rest = 40 + Math.floor(Math.random() * 120); e.flyTarget = null; return; }
+    e.flyTarget = null;
+    for (let k = 0; k < 8 && !e.flyTarget; k++) {
+      const x = Math.floor(e.x + (Math.random() - 0.5) * 12), z = Math.floor(e.z + (Math.random() - 0.5) * 12);
+      for (let y = Math.floor(e.y) + 3; y > Math.floor(e.y) - 5; y--) {
+        const id = w.getBlock(x, y, z);
+        if (!id) continue;
+        if (FLOWERS.has(id)) e.flyTarget = { x: x + 0.5, y: y + 0.55, z: z + 0.5, flower: true };
+        else if (SOLID[id] && !WATERLIKE[id]) e.flyTarget = { x: x + 0.5, y: y + 1.5 + Math.random() * 2, z: z + 0.5 };
+        break;
+      }
+    }
+  }
+  const tg = e.flyTarget;
+  if (!tg) { e.flyVel = [0, 0.3, 0]; return; }
+  steer(e, tg, t.speed);
+  // (A butterfly's flight bobs and wanders.)
+  e.flyVel[0] += Math.sin(e.age * 1.7) * 0.6; e.flyVel[1] += Math.sin(e.age * 2.9) * 0.8; e.flyVel[2] += Math.cos(e.age * 1.3) * 0.6;
+}
+
+// Bees drift from flower to flower, hovering at each; one that's swatted, and every bee near it,
+// goes for whoever did it, and stings (poisoning them); a bee that has stung dies soon after.
+function beeTick(ents, e) {
+  const w = ents.world, t = e.def;
+  if (e.stung > 0 && --e.stung === 0) { ents.hurtMob(e, 99, null); return; }
+  // (At night, and in the rain, they settle and wait.)
+  if (!(e.angry > 0) && (ents.game.env.daylight < 0.25 || ents.game.weather.rain > 0.5)) {
+    if (e.onGround || e.roost) { e.roost = true; e.flyVel = null; return; }
+    e.flyVel = [0, -0.8, 0];
+    return;
+  }
+  e.roost = false;
+  if (e.angry > 0 && !e.stung) {
+    e.angry--;
+    const tg = e.target;
+    if (targetGone(tg) || Math.hypot(tg.x - e.x, tg.z - e.z) > 24) { e.target = null; e.angry = 0; }
+    else {
+      steer(e, { x: tg.x, y: tg.y + 1.1, z: tg.z }, t.speed * 1.9);
+      const dist = Math.hypot(tg.x - e.x, tg.z - e.z);
+      meleeTick(ents, e, tg, dist, tg.y + 1 - e.y);
+      if (e.attackCd === 20) { e.stung = 300 + Math.floor(Math.random() * 300); e.angry = 0; e.target = null; }
+      return;
+    }
+  }
+  if (e.hover > 0) { e.hover--; e.flyVel = [Math.sin(e.age * 3) * 0.3, Math.sin(e.age * 5) * 0.2, Math.cos(e.age * 3) * 0.3]; return; }
+  const f = e.flyTarget;
+  if (!f || Math.hypot(f.x - e.x, f.y - e.y, f.z - e.z) < 0.6 || e.hitWall) {
+    if (f && f.flower && !e.hitWall) { e.hover = 40 + Math.floor(Math.random() * 100); e.flyTarget = null; return; }
+    e.flyTarget = null;
+    for (let k = 0; k < 10 && !e.flyTarget; k++) {
+      const x = Math.floor(e.x + (Math.random() - 0.5) * 16), z = Math.floor(e.z + (Math.random() - 0.5) * 16);
+      for (let y = Math.floor(e.y) + 4; y > Math.floor(e.y) - 6; y--) {
+        const id = w.getBlock(x, y, z);
+        if (!id) continue;
+        if (FLOWERS.has(id)) e.flyTarget = { x: x + 0.5, y: y + 0.8, z: z + 0.5, flower: true };
+        break;
+      }
+    }
+    if (!e.flyTarget) e.flyTarget = { x: e.x + (Math.random() - 0.5) * 8, y: e.y + (Math.random() - 0.4) * 2, z: e.z + (Math.random() - 0.5) * 8 };
+  }
+  steer(e, e.flyTarget, t.speed);
+}
+
 function steer(e, f, sp) {
   const dx = f.x - e.x, dy = f.y - e.y, dz = f.z - e.z, len = Math.hypot(dx, dy, dz) || 1;
   e.flyVel = [(dx / len) * sp, (dy / len) * sp, (dz / len) * sp];
@@ -971,18 +1183,42 @@ function neutralTick(ents, e) {
     }
     if ((e.inWater || (game.weather.rain > 0.5 && (ents.world.getLight(Math.floor(e.x), Math.floor(e.y + 2), Math.floor(e.z)) >> 4) >= 15)) && e.teleportCd === 0) teleport(ents, e);
   }
+  // Predators (bears, big cats, crocodiles) come for anyone who strays near and they can see, and
+  // give up once they've been left far enough behind. (Not their young, nor one that's tame.)
+  if (t.predator && !e.baby && !e.tame && !(e.angry > 0) && (e.lookCd = (e.lookCd ?? 0) - 1) <= 0) {
+    e.lookCd = 10;
+    const p = preyFor(ents, e, t.predator, 5);
+    if (p && clearLine(ents.world, e.x, e.y + e.h * 0.8, e.z, p.x, p.y + 1.5, p.z)) {
+      e.angry = 400; e.target = p;
+      game.audio.mob(t.sound, 'angry', { x: e.x, y: e.y + e.h * 0.8, z: e.z }, t.pitch);
+    }
+  }
+  e.stalking = false;
   if (e.angry > 0) {
     e.angry--;
     const tg = e.target;
-    if (targetGone(tg) || dist2(tg, e) > 32) { e.target = null; e.angry = 0; return; }
+    if (targetGone(tg) || dist2(tg, e) > (t.giveUp ?? 32)) { e.target = null; e.angry = 0; return; }
     faceTowards(e, tg.x, tg.z);
     const dist = dist2(tg, e);
     e.moving = dist > 0.8;
     e.speedMul = t.teleports ? 1.5 : 1.35;
+    // Big cats creep up low and slow, then spring.
+    if (t.stalks && !e.sprung) {
+      if (dist > 5) { e.stalking = true; e.speedMul = 0.55; }
+      else if (e.onGround && dist > 1.8) {
+        e.sprung = true;
+        const k = 7 / Math.max(0.1, dist);
+        e.vy = 7.5; e.vx = (tg.x - e.x) * k; e.vz = (tg.z - e.z) * k;
+        game.audio.mob(t.sound, 'angry', { x: e.x, y: e.y + e.h * 0.8, z: e.z }, t.pitch);
+      }
+    }
+    if (e.sprung) e.speedMul = 1.7;
     if (t.teleports && dist > 8 && e.teleportCd === 0 && Math.random() < 0.05) teleport(ents, e, tg);
     meleeTick(ents, e, tg, dist, tg.y - e.y);
     return;
   }
+  e.sprung = false;
+  if (e.love > 0 && seekMate(ents, e)) return;
   // Iron golems keep the peace: they go for any monster close by.
   if (t.guards) {
     const foe = ents.list.find((o) => o.kind === 'mob' && o.def.hostile && !o.def.explodes && !o.dead && !o.dying && dist2(o, e) < 16 && Math.abs(o.y - e.y) < 6);
@@ -991,6 +1227,8 @@ function neutralTick(ents, e) {
   }
   e.target = null;
   e.speedMul = t.guards ? 0.6 : 1;
+  if (t.browses && e.graze > 0) { e.moving = false; e.graze--; return; }
+  if (t.browses && e.onGround && Math.random() < 0.004) { e.graze = 40 + Math.floor(Math.random() * 60); e.moving = false; return; }
   wander(e, t.guards ? 0.7 : 0.4);
 }
 
@@ -1253,7 +1491,7 @@ export function mobPhysics(ents, e, dt, fluid) {
 // to face the way it's going, pitching up or down with it. Roosting bats hang still.
 function flyPhysics(ents, e, dt) {
   const t = e.def;
-  e.flap += dt * (t.flies === 'bat' ? 32 : t.flies === 'parrot' ? 26 : 5);
+  e.flap += dt * (t.flies === 'bat' ? 32 : t.flies === 'parrot' ? 26 : t.flies === 'insect' ? 22 : t.flies === 'bee' ? 60 : t.flies === 'soar' ? 7 : 5);
   e.swing = Math.max(0, e.swing - dt * 3);
   if (e.roost) { e.vx = e.vy = e.vz = 0; e.walk = 0; e.tilt = 0; return; }
   // (A phantom turns slowly as it circles, but homes in hard once it dives.)
@@ -1384,6 +1622,142 @@ export function poseMob(e, pose) {
       }
       break;
     }
+    case 'deer': {
+      // Long strides; the neck carries the head up and forward, dipping it to browse; the ears
+      // flick now and then. (Moose too.)
+      const st = Math.sin(e.walkPhase * 0.8) * 0.7 * e.walk;
+      pose.legFR = [st, 0, 0]; pose.legBL = [st, 0, 0]; pose.legFL = [-st, 0, 0]; pose.legBR = [-st, 0, 0];
+      pose.neck = [e.headPitch * 0.5 + Math.sin(e.walkPhase * 1.6) * 0.05 * e.walk, e.headYaw * 0.5, 0];
+      pose.head = [e.headPitch * 0.5, e.headYaw * 0.5, 0];
+      if (e.graze > 0) { pose.neck = [-1.05, 0, 0]; pose.head = [-0.35, 0, 0]; }
+      const flick = Math.sin(age * 2.3 + (e.seq ?? 0)) > 0.96 ? 0.45 : 0;
+      pose.earR = [0, 0, -flick]; pose.earL = [0, 0, flick];
+      break;
+    }
+    case 'bigcat': {
+      // A long rolling stride; crouched low while stalking; the tail swings; a bite.
+      const st = Math.sin(e.walkPhase * 0.9) * 0.8 * e.walk;
+      pose.legFR = [st, 0, 0]; pose.legBL = [st, 0, 0]; pose.legFL = [-st, 0, 0]; pose.legBR = [-st, 0, 0];
+      pose.head = head;
+      pose.tail = [Math.sin(age * 1.5) * 0.15 - (e.stalking ? 0.5 : 0), Math.sin(age * 2.1) * 0.35, 0];
+      if (e.stalking) { pose['body@'] = [0, -1.5, 0]; pose['head@'] = [0, -1.8, 0]; pose['mane@'] = [0, -1.8, 0]; }
+      if (e.swing > 0) pose.head = [head[0] - Math.sin(e.swing * Math.PI) * 0.35, head[1], 0];
+      break;
+    }
+    case 'panda': {
+      const st = Math.sin(e.walkPhase * 0.7) * 0.6 * e.walk;
+      pose.legFR = [st, 0, 0]; pose.legBL = [st, 0, 0]; pose.legFL = [-st, 0, 0]; pose.legBR = [-st, 0, 0];
+      pose.head = [head[0] * 0.6, head[1] * 0.6, Math.sin(e.walkPhase * 0.7) * 0.05 * e.walk];
+      break;
+    }
+    case 'elephant': {
+      // Slow, heavy strides; the trunk swings and curls (up when it trumpets or strikes); the ears
+      // fan (spread wide when angry); the tail swishes.
+      const st = Math.sin(e.walkPhase * 0.5) * 0.45 * e.walk;
+      pose.legFR = [st, 0, 0]; pose.legBL = [st, 0, 0]; pose.legFL = [-st, 0, 0]; pose.legBR = [-st, 0, 0];
+      pose.head = [e.headPitch * 0.4, e.headYaw * 0.5, 0];
+      const sway = Math.sin(age * 0.9) * 0.25, up = (e.angry > 0 ? 0.7 : 0) + (e.swing > 0 ? Math.sin(e.swing * Math.PI) * 1.2 : 0);
+      pose.trunk1 = [Math.sin(age * 0.7) * 0.1 + up, sway * 0.4, 0];
+      pose.trunk2 = [Math.sin(age * 0.7 + 0.8) * 0.16 + up * 0.8, sway * 0.5, 0];
+      pose.trunk3 = [Math.sin(age * 0.7 + 1.6) * 0.2 + up * 0.6, sway * 0.6, 0];
+      const flap = Math.sin(age * 1.3) * 0.18 + (e.angry > 0 ? 0.55 : 0);
+      pose.earR = [0, flap, 0]; pose.earL = [0, -flap, 0];
+      pose.tail = [0, Math.sin(age * 2.5) * 0.3, 0];
+      break;
+    }
+    case 'hippo': {
+      // Short, rolling steps; now and then a great yawn; the jaw snaps in a fight.
+      const st = Math.sin(e.walkPhase * 0.8) * 0.5 * e.walk;
+      pose.legFR = [st, 0, 0]; pose.legBL = [st, 0, 0]; pose.legFL = [-st, 0, 0]; pose.legBR = [-st, 0, 0];
+      const yawn = Math.max(0, Math.sin(age * 0.3 + (e.seq ?? 0)) - 0.92) * 12.5, bite = e.swing > 0 ? Math.sin(e.swing * Math.PI) : 0;
+      const open = Math.min(1, Math.max(yawn, bite, e.angry > 0 ? 0.3 : 0));
+      pose.head = [e.headPitch * 0.4 + open * 0.35, e.headYaw * 0.4, 0];
+      pose.jaw = [-open * 1.0, 0, 0];
+      const flick = Math.sin(age * 3.1) > 0.95 ? 0.5 : 0;
+      pose.earR = [0, 0, -flick]; pose.earL = [0, 0, flick];
+      break;
+    }
+    case 'giraffe': {
+      // A pacing gait (both legs on a side together), the long neck swaying, and browsing up high.
+      const st = Math.sin(e.walkPhase * 0.6) * 0.5 * e.walk;
+      pose.legFR = [st, 0, 0]; pose.legBR = [st, 0, 0]; pose.legFL = [-st, 0, 0]; pose.legBL = [-st, 0, 0];
+      pose.neck = [Math.sin(e.walkPhase * 1.2) * 0.05 * e.walk + e.headPitch * 0.2 + (e.graze > 0 ? 0.25 : 0), e.headYaw * 0.3, 0];
+      pose.head = [e.headPitch * 0.3 + (e.graze > 0 ? 0.35 + Math.sin(age * 6) * 0.05 : 0), e.headYaw * 0.4, 0];
+      pose.tail = [0, Math.sin(age * 2) * 0.3, 0];
+      const flick = Math.sin(age * 2.7) > 0.95 ? 0.4 : 0;
+      pose.earR = [0, 0, -flick]; pose.earL = [0, 0, flick];
+      break;
+    }
+    case 'crocodile': {
+      // Legs paddle along (tucked back in the water); the tail sweeps, each joint further; the jaw
+      // gapes as it lies basking, and snaps shut on a bite.
+      const st = Math.sin(e.walkPhase * 1.2) * 0.55 * e.walk, swim = e.inWater && !e.onGround;
+      if (swim) { pose.legFR = pose.legFL = [0, 0.9, 0.2]; pose.legBR = pose.legBL = [0, -0.9, 0.2]; }
+      else { pose.legFR = [0, st, 0]; pose.legBL = [0, -st, 0]; pose.legFL = [0, st, 0]; pose.legBR = [0, -st, 0]; }
+      const sw = (0.12 + e.walk * 0.25 + (swim ? 0.2 : 0));
+      pose.tail1 = [0, Math.sin(e.walkPhase * 1.2 + age) * sw, 0];
+      pose.tail2 = [0, Math.sin(e.walkPhase * 1.2 + age - 0.7) * sw * 1.3, 0];
+      pose.tail3 = [0, Math.sin(e.walkPhase * 1.2 + age - 1.4) * sw * 1.6, 0];
+      pose.head = [0, e.headYaw * 0.3, 0];
+      const bask = !e.moving && !swim && !(e.angry > 0) ? Math.max(0, Math.sin(age * 0.2 + (e.seq ?? 0))) * 0.6 : 0;
+      const bite = e.swing > 0 ? Math.sin(e.swing * Math.PI) : 0;
+      pose.jaw = [-Math.max(bask, bite * 0.9, e.angry > 0 && !bite ? 0.25 : 0), 0, 0];
+      break;
+    }
+    case 'camel': {
+      // A rolling, pacing gait; the neck bobs with it.
+      const st = Math.sin(e.walkPhase * 0.6) * 0.55 * e.walk;
+      pose.legFR = [st, 0, 0]; pose.legBR = [st, 0, 0]; pose.legFL = [-st, 0, 0]; pose.legBL = [-st, 0, 0];
+      pose.neck = [Math.sin(e.walkPhase * 1.2) * 0.08 * e.walk + e.headPitch * 0.2, e.headYaw * 0.4, 0];
+      pose.head = [e.headPitch * 0.3, e.headYaw * 0.3, 0];
+      const flick = Math.sin(age * 2.2) > 0.96 ? 0.4 : 0;
+      pose.earR = [0, 0, -flick]; pose.earL = [0, 0, flick];
+      break;
+    }
+    case 'penguin': {
+      if (e.inWater && !e.onGround) {
+        // Swimming: laid out flat, flippers beating.
+        pose.body = [-1.35, 0, 0];
+        const f = Math.sin(age * 14) * 0.7;
+        pose.finR = [0, 0, 0.6 + f]; pose.finL = [0, 0, -0.6 - f];
+        pose.head = [0.9, 0, 0];
+      } else {
+        // Waddling: rocking side to side over short steps, flippers a little out.
+        pose.body = [0, 0, Math.sin(e.walkPhase * 1.5) * 0.14 * e.walk];
+        pose.footR = [a * 0.6, 0, 0]; pose.footL = [-a * 0.6, 0, 0];
+        pose.finR = [0, 0, 0.15 + e.walk * 0.25]; pose.finL = [0, 0, -0.15 - e.walk * 0.25];
+        pose.head = head;
+      }
+      break;
+    }
+    case 'soar': {
+      pose.head = head;
+      if (!e.onGround && !e.perched) {
+        // Gliding with wings spread wide, beating only to climb. (The body lies flat, so the wings
+        // and head are turned back up level with the ground.)
+        const beat = e.vy > 0.6 ? 1 : 0.12, f = 1.4 + Math.sin(e.flap) * 0.35 * beat;
+        pose.wingR = [1.25, 0, f]; pose.wingL = [1.25, 0, -f];
+        pose.legR = [-0.3, 0, 0]; pose.legL = [-0.3, 0, 0];
+        pose.tail = [0.2, 0, 0];
+        pose.head = [head[0] + 1.1, head[1], 0];
+      } else {
+        pose.legR = [a, 0, 0]; pose.legL = [-a, 0, 0];
+        pose.tail = [Math.sin(age * 2) * 0.05, 0, 0];
+      }
+      break;
+    }
+    case 'butterfly': {
+      // Wings clapping up and down (slowly opening and closing when settled).
+      const f = e.rest > 0 || e.roost ? (Math.sin(age * 1.5) * 0.5 + 0.5) * 0.9 : Math.sin(e.flap) * 0.5 + 0.5;
+      pose.wingR = [0, 0, 0.1 + f * 1.25]; pose.wingL = [0, 0, -0.1 - f * 1.25];
+      break;
+    }
+    case 'bee': {
+      const f = Math.sin(e.flap) * 0.4;
+      pose.wingR = [0, 0, f]; pose.wingL = [0, 0, -f];
+      pose.legs = [0.3 + Math.sin(age * 4) * 0.1, 0, 0];
+      break;
+    }
     case 'bat': {
       if (e.roost) {
         // Hanging: wings wrapped round.
@@ -1500,7 +1874,7 @@ export function renderMob(ents, e, rx, ry, rz, light, out) {
   const marks = t.markings?.[Math.floor(v / n) - 1];
   if (marks) skins.markings = marks;
   if (t.wool) skins.wool = t.wool;
-  if (t.type === 'wolf' && e.angry > 0) skins.main = 'wolf_angry';
+  if ((t.type === 'wolf' || t.type === 'bee') && e.angry > 0) skins.main = `${skins.main}_angry`;
   if (t.kind === 'civilian') skins.main = e.skin;
   const pet = !!e.owner || (e.tame && t.tameIds.size > 0);
   const tint = t.wool ? woolTint(e.colour) : pet && t.rigDef.bones.collar ? woolTint(e.collar ?? RED) : null;
@@ -1520,7 +1894,9 @@ export function renderMob(ents, e, rx, ry, rz, light, out) {
   // forwards and roost hanging upside down.
   if (e.roost) { translate(base, base, 0, e.h, 0); rotateZ(base, base, Math.PI); }
   else if (t.flies || t.anim === 'dolphin' || t.anim === 'shark' || t.anim === 'whale') {
-    const pitch = (e.tilt ?? 0) - (t.anim === 'bat' ? 0.7 : t.anim === 'parrot' && !e.onGround ? 0.35 : 0);
+    // (Soaring birds lie out flat as they glide.)
+    const soaring = t.anim === 'soar' && !e.onGround && !e.perched;
+    const pitch = (e.tilt ?? 0) * (soaring ? 0.4 : 1) - (t.anim === 'bat' ? 0.7 : t.anim === 'parrot' && !e.onGround ? 0.35 : soaring ? 1.25 : 0);
     if (pitch) { translate(base, base, 0, e.h * 0.5, 0); rotateX(base, base, pitch); translate(base, base, 0, -e.h * 0.5, 0); }
   }
   if (t.anim === 'squid') { translate(base, base, 0, e.h * 0.5, 0); rotateX(base, base, Math.min(0.6, Math.hypot(e.vx, e.vz) * 0.3)); translate(base, base, 0, -e.h * 0.5, 0); }
@@ -1542,7 +1918,7 @@ export function renderMob(ents, e, rx, ry, rz, light, out) {
   const parts = [];
   for (const m of meshes) {
     if ((m.bone.wool && e.sheared) || (m.bone.saddle && !e.saddled) || (m.bone.collar && !pet) || (m.bone.markings && !marks) ||
-      (m.bone.ridden && !(e.rider || e.ridden))) continue;
+      (m.bone.ridden && !(e.rider || e.ridden)) || (m.bone.adult && e.baby) || (m.bone.male && (e.baby || !isMale(e)))) continue;
     parts.push({ mesh: m.mesh, model: boneMatrix(ents.mat(), base, m.bone, pose, m.name, t.rigDef.bones) });
   }
   // What it holds: attached to the hand of the arm bone.
@@ -1604,17 +1980,22 @@ function woolTint(colour) {
 // ---------------------------------------------------------------- where they live
 // Animals that turn up with a newly generated chunk, by biome: [type, weight, group size].
 const HERDS = {
-  plains: [['pig', 10, 3], ['cow', 8, 3], ['sheep', 12, 4], ['chicken', 10, 3], ['rabbit', 3, 2], ['horse', 5, 3], ['donkey', 2, 1]],
-  forest: [['pig', 8, 3], ['cow', 6, 3], ['sheep', 8, 4], ['chicken', 8, 3], ['wolf', 3, 3], ['fox', 3, 2], ['rabbit', 3, 2]],
-  taiga: [['wolf', 6, 4], ['rabbit', 6, 3], ['fox', 6, 2], ['sheep', 6, 3], ['pig', 3, 3]],
-  snowy: [['rabbit', 10, 3], ['polar_bear', 3, 2], ['fox', 4, 2]],
-  desert: [['rabbit', 8, 2]],
-  savanna: [['cow', 8, 3], ['sheep', 8, 3], ['chicken', 6, 3], ['horse', 6, 3], ['donkey', 2, 1], ['llama', 4, 3]],
-  jungle: [['chicken', 10, 3], ['pig', 6, 3], ['parrot', 10, 2]],
+  plains: [['pig', 10, 3], ['cow', 8, 3], ['sheep', 12, 4], ['chicken', 10, 3], ['rabbit', 3, 2], ['horse', 5, 3], ['donkey', 2, 1], ['deer', 3, 3]],
+  forest: [['pig', 6, 3], ['cow', 5, 3], ['sheep', 6, 4], ['chicken', 6, 3], ['wolf', 3, 3], ['fox', 3, 2], ['rabbit', 3, 2], ['deer', 8, 3],
+    ['boar', 4, 3], ['brown_bear', 2, 1], ['black_bear', 2, 1]],
+  taiga: [['wolf', 6, 4], ['rabbit', 6, 3], ['fox', 6, 2], ['sheep', 4, 3], ['pig', 2, 3], ['deer', 6, 3], ['moose', 3, 1], ['brown_bear', 3, 1],
+    ['boar', 2, 3]],
+  snowy: [['rabbit', 10, 3], ['polar_bear', 3, 2], ['fox', 4, 2], ['moose', 2, 1], ['wolf', 3, 3]],
+  snowy_shore: [['penguin', 10, 5], ['polar_bear', 2, 1]],
+  desert: [['rabbit', 8, 2], ['camel', 4, 2]],
+  savanna: [['cow', 4, 3], ['sheep', 4, 3], ['chicken', 4, 3], ['horse', 4, 3], ['donkey', 2, 1], ['llama', 3, 3], ['elephant', 5, 4], ['zebra', 6, 4],
+    ['giraffe', 5, 3], ['lion', 2, 3], ['hippo', 2, 2]],
+  jungle: [['chicken', 6, 3], ['pig', 4, 3], ['parrot', 8, 2], ['panda', 5, 2], ['tiger', 2, 1], ['elephant', 3, 3], ['crocodile', 2, 1]],
+  swamp: [['crocodile', 4, 1], ['boar', 3, 3], ['chicken', 3, 2], ['hippo', 2, 2]],
   peaks: [['goat', 10, 3], ['rabbit', 2, 2], ['llama', 4, 3]],
   beach: [['turtle', 10, 3]],
-  meadow: [['sheep', 10, 4], ['rabbit', 6, 3], ['goat', 3, 2], ['cow', 4, 3]],
-  cherry: [['pig', 6, 3], ['rabbit', 6, 2], ['sheep', 6, 3]],
+  meadow: [['sheep', 10, 4], ['rabbit', 6, 3], ['goat', 3, 2], ['cow', 4, 3], ['deer', 5, 3]],
+  cherry: [['pig', 6, 3], ['rabbit', 6, 2], ['sheep', 6, 3], ['deer', 3, 2]],
   // (Seas: schools of fish, and now and then something bigger.)
   sea: [['cod', 12, 6], ['squid', 7, 3], ['dolphin', 4, 3], ['shark', 1, 1], ['humpback_whale', 1, 1]],
   deep_sea: [['cod', 10, 6], ['squid', 7, 3], ['dolphin', 4, 3], ['shark', 2, 1], ['humpback_whale', 3, 1], ['blue_whale', 1, 1]],
@@ -1632,11 +2013,15 @@ const HERD_OF = {
   [BIOME.SNOWY_SLOPES]: 'snowy', [BIOME.DESERT]: 'desert', [BIOME.BADLANDS]: 'desert', [BIOME.SAVANNA]: 'savanna', [BIOME.JUNGLE]: 'jungle',
   [BIOME.SPARSE_JUNGLE]: 'jungle', [BIOME.MOUNTAINS]: 'peaks', [BIOME.STONY_PEAKS]: 'peaks', [BIOME.JAGGED_PEAKS]: 'peaks', [BIOME.FROZEN_PEAKS]: 'peaks',
   [BIOME.MEADOW]: 'meadow', [BIOME.CHERRY_GROVE]: 'cherry', [BIOME.OCEAN]: 'sea', [BIOME.DEEP_OCEAN]: 'deep_sea', [BIOME.WARM_OCEAN]: 'warm_sea',
-  [BIOME.BEACH]: 'beach',
+  [BIOME.BEACH]: 'beach', [BIOME.SNOWY_BEACH]: 'snowy_shore', [BIOME.SWAMP]: 'swamp',
   [BIOME.FROZEN_OCEAN]: 'frozen_sea', [BIOME.RIVER]: 'river', [BIOME.FROZEN_RIVER]: 'frozen_sea',
   [BIOME.LUKEWARM_OCEAN]: 'lukewarm_sea', [BIOME.DEEP_LUKEWARM_OCEAN]: 'lukewarm_sea', [BIOME.COLD_OCEAN]: 'cold_sea',
   [BIOME.DEEP_COLD_OCEAN]: 'deep_cold_sea', [BIOME.DEEP_FROZEN_OCEAN]: 'frozen_sea',
 };
+// A wolf's coat by where it lives: grey (0) in the taiga, snowy in the snow, dark brown in the
+// woods, black in old-growth taiga, rusty in the jungle, ashen on snowy slopes.
+const WOLF_OF = (biome) => (biome === BIOME.SNOWY_SLOPES ? 5 : HERD_OF[biome] === 'snowy' ? 1
+  : biome === BIOME.OLD_GROWTH_TAIGA ? 3 : HERD_OF[biome] === 'forest' ? 2 : HERD_OF[biome] === 'jungle' || HERD_OF[biome] === 'savanna' ? 4 : 0);
 const RABBIT_OF = (biome) => (HERD_OF[biome] === 'snowy' ? 1 : biome === BIOME.DESERT || biome === BIOME.BADLANDS ? 3 : Math.random() < 0.15 ? 2 : 0);
 
 // A herd for a fresh chunk: [{ type, x, y, z, o }] or none.
@@ -1650,7 +2035,7 @@ export function herdFor(chunk, seed) {
   for (const r of table) { if ((pick -= r[1]) <= 0) { row = r; break; } }
   const [type, , n] = row, water = MOBS[type].kind === 'water', flier = !!MOBS[type].flies;
   const out = [];
-  const variant = type === 'rabbit' ? RABBIT_OF(biome) : 0;
+  const variant = type === 'rabbit' ? RABBIT_OF(biome) : type === 'wolf' ? WOLF_OF(biome) : type === 'fox' ? (HERD_OF[biome] === 'snowy' ? 1 : 0) : 0;
   // (A school of fish keeps together; its members share a pattern, mostly.)
   const school = MOBS[type].schools ? 1 + Math.floor(Math.random() * 1e9) : 0, look = Math.floor(Math.random() * (MOBS[type].skins.length));
   for (let i = 0; i < n + Math.floor(hash2(chunk.cx * 7, chunk.cz, 5) * 2); i++) {
@@ -1671,13 +2056,41 @@ export function herdFor(chunk, seed) {
         }
         out.push({ type, x: chunk.cx * 16 + lx + 0.5, y: yy, z: chunk.cz * 16 + lz + 0.5,
           o: { variant: school ? (Math.random() < 0.85 ? look : Math.floor(Math.random() * MOBS[type].skins.length))
-            : MOBS[type].variants ? Math.floor(Math.random() * (MOBS[type].variantCount ?? MOBS[type].skins.length)) : variant,
+            : MOBS[type].variants ? Math.floor(Math.random() * (MOBS[type].variantCount ?? MOBS[type].skins.length))
+              : MOBS[type].sexes ? (Math.random() < 0.5 ? 1 : 0) : variant,
             colour: type === 'sheep' ? sheepColour(Math.random()) : 0, baby: Math.random() < 0.1 && !MOBS[type].deep && type !== 'shark', school } });
       }
       break;
     }
   }
   return out;
+}
+
+// Birds and insects about the land by day, by biome: [type, weight, group size]. (Flower forests
+// and sunflower plains have the meadows' butterflies and bees.)
+const AMBIENT = {
+  plains: [['sparrow', 5, 3], ['robin', 4, 2], ['crow', 3, 3], ['butterfly', 3, 2], ['bee', 2, 3]],
+  forest: [['robin', 4, 2], ['blue_jay', 4, 2], ['cardinal', 3, 2], ['sparrow', 2, 3], ['butterfly', 1, 1]],
+  taiga: [['crow', 4, 3], ['blue_jay', 3, 2], ['eagle', 1, 1]],
+  snowy: [['crow', 2, 2], ['cardinal', 2, 2]],
+  snowy_shore: [['seagull', 3, 2]],
+  desert: [['vulture', 3, 1]],
+  savanna: [['vulture', 3, 2], ['crow', 2, 2], ['butterfly', 1, 1]],
+  jungle: [['butterfly', 4, 2], ['cardinal', 1, 1]],
+  swamp: [['crow', 3, 2], ['butterfly', 1, 1]],
+  peaks: [['eagle', 3, 1]],
+  beach: [['seagull', 6, 3]],
+  meadow: [['butterfly', 6, 3], ['bee', 4, 3], ['goldfinch', 4, 3], ['sparrow', 2, 2]],
+  cherry: [['butterfly', 5, 3], ['bee', 4, 3], ['goldfinch', 3, 2]],
+  sea: [['seagull', 3, 2]], warm_sea: [['seagull', 2, 2]], lukewarm_sea: [['seagull', 2, 2]], cold_sea: [['seagull', 2, 2]], river: [['crow', 1, 1]],
+};
+export function ambientFor(biome) {
+  const key = biome === BIOME.FLOWER_FOREST || biome === BIOME.SUNFLOWER_PLAINS ? 'meadow' : HERD_OF[biome];
+  const table = AMBIENT[key];
+  if (!table) return null;
+  let pick = Math.random() * table.reduce((a, x) => a + x[1], 0);
+  for (const r of table) { if ((pick -= r[1]) <= 0) return [r[0], r[2]]; }
+  return null;
 }
 
 // The sea life to add near a swimmer in biome `biome`: [type, count] or null.

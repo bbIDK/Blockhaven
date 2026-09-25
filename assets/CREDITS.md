@@ -693,6 +693,12 @@ doubled in size (the particles). Anything not listed is drawn by the game's own 
 | `textures/dried_kelp_bottom.png` | Pixel Perfection CE block/dried_kelp_bottom.png |  |
 | `textures/raw_shark.png` | Pixel Perfection CE item/beef.png | changed |
 | `textures/cooked_shark.png` | Pixel Perfection CE item/cooked_beef.png | changed |
+| `textures/raw_venison.png` | Pixel Perfection CE item/mutton.png | changed |
+| `textures/cooked_venison.png` | Pixel Perfection CE item/cooked_mutton.png | changed |
+| `textures/raw_bear.png` | Pixel Perfection CE item/beef.png | changed |
+| `textures/cooked_bear.png` | Pixel Perfection CE item/cooked_beef.png | changed |
+| `textures/bamboo.png` | Pixel Perfection CE block/bamboo_stalk.png; Pixel Perfection CE block/bamboo_small_leaves.png | changed |
+| `textures/bamboo_item.png` | Pixel Perfection CE item/bamboo.png |  |
 | `skins/zombie.png` | Pixel Perfection CE entity/zombie/zombie.png | changed |
 | `skins/husk.png` | Pixel Perfection CE entity/zombie/husk.png | changed |
 | `skins/drowned.png` | Pixel Perfection CE entity/zombie/drowned.png; Pixel Perfection CE entity/zombie/drowned_outer_layer.png | changed |
@@ -729,6 +735,26 @@ doubled in size (the particles). Anything not listed is drawn by the game's own 
 | `skins/chicken.png` | Pixel Perfection CE entity/chicken.png | changed |
 | `skins/wolf.png` | Pixel Perfection CE entity/wolf/wolf.png | changed |
 | `skins/wolf_angry.png` | Pixel Perfection CE entity/wolf/wolf_angry.png | changed |
+| `skins/wolf_snowy.png` | Pixel Perfection CE entity/wolf/wolf.png | changed |
+| `skins/wolf_snowy_angry.png` | Pixel Perfection CE entity/wolf/wolf_angry.png | changed |
+| `skins/wolf_woods.png` | Pixel Perfection CE entity/wolf/wolf.png | changed |
+| `skins/wolf_woods_angry.png` | Pixel Perfection CE entity/wolf/wolf_angry.png | changed |
+| `skins/wolf_black.png` | Pixel Perfection CE entity/wolf/wolf.png | changed |
+| `skins/wolf_black_angry.png` | Pixel Perfection CE entity/wolf/wolf_angry.png | changed |
+| `skins/wolf_rusty.png` | Pixel Perfection CE entity/wolf/wolf.png | changed |
+| `skins/wolf_rusty_angry.png` | Pixel Perfection CE entity/wolf/wolf_angry.png | changed |
+| `skins/wolf_ashen.png` | Pixel Perfection CE entity/wolf/wolf.png | changed |
+| `skins/wolf_ashen_angry.png` | Pixel Perfection CE entity/wolf/wolf_angry.png | changed |
+| `skins/panda.png` | Pixel Perfection CE entity/panda/panda.png | changed |
+| `skins/panda_lazy.png` | Pixel Perfection CE entity/panda/lazy_panda.png | changed |
+| `skins/panda_worried.png` | Pixel Perfection CE entity/panda/worried_panda.png | changed |
+| `skins/panda_playful.png` | Pixel Perfection CE entity/panda/playful_panda.png | changed |
+| `skins/panda_weak.png` | Pixel Perfection CE entity/panda/weak_panda.png | changed |
+| `skins/panda_aggressive.png` | Pixel Perfection CE entity/panda/aggressive_panda.png | changed |
+| `skins/panda_brown.png` | Pixel Perfection CE entity/panda/brown_panda.png | changed |
+| `skins/bee.png` | Pixel Perfection CE entity/bee/bee.png | changed |
+| `skins/bee_angry.png` | Pixel Perfection CE entity/bee/bee_angry.png | changed |
+| `skins/zebra.png` | Pixel Perfection CE entity/horse/horse_white.png | changed |
 | `skins/horse_white.png` | Pixel Perfection CE entity/horse/horse_white.png | changed |
 | `skins/horse_creamy.png` | Pixel Perfection CE entity/horse/horse_creamy.png | changed |
 | `skins/horse_chestnut.png` | Pixel Perfection CE entity/horse/horse_chestnut.png | changed |

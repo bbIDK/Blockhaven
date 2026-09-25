@@ -6,6 +6,7 @@
 import { skinMesh, MODEL_OFFSET } from './models.js';
 import { skinLayer } from './skins.js';
 import { identity, translate, rotateX, rotateY, rotateZ } from './math.js';
+import { WILD_RIGS } from './wildrigs.js';
 
 const c = (from, size, uv, o = {}) => ({ from, size, uv, ...o });
 
@@ -481,6 +482,8 @@ export const RIGS = {
   },
   whale_humpback: { bones: WHALES.humpback },
   whale_blue: { bones: WHALES.blue },
+  // (The wildlife update's: see wildrigs.js.)
+  ...WILD_RIGS,
 };
 
 // ---------------------------------------------------------------- meshes and poses

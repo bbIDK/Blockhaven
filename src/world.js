@@ -801,6 +801,7 @@ export class World {
         return !!SOLID[this.getBlock(x + d[0], y + d[1], z + d[2])];
       }
       case 'cane': return below === B.sugar_cane || below === B.sand || SOIL.has(below);
+      case 'bamboo': return below === B.bamboo || below === B.sand || below === B.red_sand || below === B.gravel || SOIL.has(below);
       case 'cactus': return below === B.sand || below === B.cactus;
       case 'bed': {
         const b = BED[id], d = FACE_DIRS[b.dir], s = b.head ? -1 : 1;
