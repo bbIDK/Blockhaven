@@ -3,7 +3,7 @@
 // their physics; everything particular to a kind of creature lives here.
 import { RIGS, rigMeshes, boneMatrix } from './rigs.js';
 import { B, SOLID, WATERLIKE, CLIMB, LEAVES_WOOD, SHAPE_KIND } from './blocks.js';
-import { I } from './items.js';
+import { I, ITEMS } from './items.js';
 import { BIOME } from './biomes.js';
 import { DYES } from './colors.js';
 import { HEIGHT } from './config.js';
@@ -35,7 +35,7 @@ export const MOBS = {
   fox: { label: 'Fox', rig: 'fox', skins: ['fox'], hw: 0.3, h: 0.7, health: 10, speed: 1.6, kind: 'animal', anim: 'quad', drops: [],
     sound: 'fox', shy: 5 },
   goat: { label: 'Goat', rig: 'goat', skins: ['goat'], hw: 0.45, h: 1.3, health: 10, speed: 1.2, kind: 'animal', anim: 'quad', food: ['wheat'],
-    drops: [d('raw_mutton', 0, 1)], sound: 'goat', leaps: true },
+    drops: [], sound: 'goat', leaps: true },
   wolf: { label: 'Wolf', rig: 'wolf', skins: ['wolf', 'wolf_angry'], extraSkins: { collar: 'collar' }, hw: 0.3, h: 0.85, health: 8, speed: 1.5,
     kind: 'neutral', anim: 'quad', damage: 4, drops: [], sound: 'wolf', pack: true, tameWith: ['bone'], tameHealth: 20, defends: true,
     petFood: ['raw_beef', 'cooked_beef', 'raw_porkchop', 'cooked_porkchop', 'raw_chicken', 'cooked_chicken', 'raw_mutton', 'cooked_mutton',
@@ -1148,6 +1148,8 @@ export function poseMob(e, pose) {
         pose.rightArm = [2.1, 0.5, 0];
         pose.head = [0.35, 0, 0];
       }
+      // Holding something, the arm comes forward a little and swings half as far (as in Minecraft).
+      else if ((e.held ?? t.held) && t.rigDef.hand) pose.rightArm = [pose.rightArm[0] * 0.5 + 0.31, 0, 0.05];
       if (e.swing > 0 && t.anim !== 'zombie') pose.rightArm = [1.8 * Math.sin(e.swing * Math.PI), 0, 0.2];
       break;
     }
@@ -1324,15 +1326,43 @@ export function renderMob(ents, e, rx, ry, rz, light, out) {
     if (mesh && armBone) {
       const m = boneMatrix(ents.mat(), base, armBone, pose, hand.bone);
       translate(m, m, 8 + (hand.at[0] - armBone.pivot[0]) / 16, 8 + (hand.at[1] - armBone.pivot[1]) / 16, 8 + (hand.at[2] - armBone.pivot[2]) / 16);
-      rotateX(m, m, -Math.PI / 2);
-      if (held === I.bow) rotateY(m, m, -0.3);
-      scale(m, m, 0.6, 0.6, 0.6);
-      translate(m, m, -0.5 - 8, -0.15 - 8, -0.5 - 8);
+      holdItem(m, held, mesh.kind);
       parts.push({ mesh, model: m });
     }
   }
   const flash = t.explodes && e.fuse > 0 && Math.floor(e.fuse / 3) % 2 === 0;
   out.push({ parts, light, tint: flash ? [2, 2, 2] : null, hurt: e.hurt > 0 || e.dying > 0 });
+}
+// Places an item in a fist. `m` is at the hand, in the arm's frame (y up the arm, -z forward, +x
+// the creature's right); an item's sprite spans 0-1 in x and y (plus MODEL_OFFSET). A tool's
+// sprite runs from its handle (bottom left) to its head (top right): it's held by the handle,
+// standing in the arm's plane of swing with that diagonal pointing forward and up (Minecraft's
+// third-person hold). A bow stands upright across the hand with its string towards the holder;
+// anything else is held small and upright in front of the fist.
+const HANDHELD = /_(sword|pickaxe|axe|shovel|hoe)$|^(stick|bone|fishing_rod|fishing_rod_cast)$/;
+const HOLD_TILT = 0.45; // how far above straight ahead the tool points (before the arm's own lift)
+function holdItem(m, id, kind) {
+  const name = ITEMS.get(id)?.name ?? '';
+  if (kind === 'sprite' && name === 'bow') {
+    rotateX(m, m, (5 * Math.PI) / 4);
+    rotateY(m, m, -Math.PI / 2);
+    scale(m, m, 0.8, 0.8, 0.8);
+    translate(m, m, -0.34 - 8, -0.66 - 8, -0.5 - 8);
+  } else if (kind === 'sprite' && HANDHELD.test(name)) {
+    rotateX(m, m, HOLD_TILT - Math.PI / 4);
+    rotateY(m, m, Math.PI / 2);
+    scale(m, m, 0.8, 0.8, 0.8);
+    translate(m, m, -0.16 - 8, -0.16 - 8, -0.5 - 8);
+  } else if (kind === 'sprite') {
+    translate(m, m, 0, 0, -2 / 16);
+    rotateY(m, m, Math.PI / 2);
+    scale(m, m, 0.55, 0.55, 0.55);
+    translate(m, m, -0.5 - 8, -0.3 - 8, -0.5 - 8);
+  } else {
+    translate(m, m, 0, 0, -2 / 16);
+    scale(m, m, 0.3, 0.3, 0.3);
+    translate(m, m, -0.5 - 8, -0.5 - 8, -0.5 - 8);
+  }
 }
 const woolTints = new Map();
 function woolTint(colour) {
