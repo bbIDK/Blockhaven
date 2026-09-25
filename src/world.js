@@ -4,7 +4,7 @@ import { CHUNK, HEIGHT, SECTIONS, chunkKey } from './config.js';
 import {
   B, BLOCKS, OPAQUE, SOLID, FILTER, EMIT, RENDER, R, SELECTABLE, REPLACEABLE, TORCH_LEAN, FACE_DIRS,
   WATERLIKE, isWater, waterLevel, lavaLevel, WATER_FLOW_BASE, LAVA_FLOW_BASE, SHAPE, shapeBoxes, DOOR, doorId, LADDER_SIDE, BED,
-  SPREAD, BURN, CLIMB, VINE_SIDE, DOUBLE, GATE, gateId, TICKS, LOG, NATURAL_LEAVES, SWITCH,
+  SPREAD, BURN, CLIMB, VINE_SIDE, DOUBLE, GATE, gateId, TICKS, LOG, NATURAL_LEAVES, SWITCH, SIGN,
 } from './blocks.js';
 import { powerChanged, powerMatters } from './power.js';
 import { randomTick, logRemoved, leafTick } from './growth.js';
@@ -735,6 +735,11 @@ export class World {
       case 'ladder': {
         const d = FACE_DIRS[LADDER_SIDE[id]];
         return !!OPAQUE[this.getBlock(x + d[0], y, z + d[2])];
+      }
+      // (A wall sign hangs on the block behind its writing.)
+      case 'sign_wall': {
+        const d = FACE_DIRS[SIGN[id].face];
+        return !!SOLID[this.getBlock(x - d[0], y, z - d[2])];
       }
       case 'torch': {
         const lean = TORCH_LEAN[id];

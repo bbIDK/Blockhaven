@@ -595,3 +595,11 @@ def('phantom_membrane', (t) => {
 // A snowball: a lumpy white ball, blue in its shadows.
 def('snowball', (t) => shaded(t, ['', '', '', '', '', '......xxx.......', '.....xxxxx......', '....xxxxxxx.....', '....xxxxxxx.....', '....xxxxxxx.....',
   '.....xxxxx......', '......xxx.......'], [0x5a7898, 0xb4c8dc, 0xe0ecf6, 0xf6fbff, 0xffffff], {}, { outline: 'all' }));
+
+// A sign: a planked board on a post.
+def('sign_item', (t) => {
+  t.clear();
+  paint(t, ['', '', '.##############.', '#pPppPppPppPppP#', '#pppPppppPppppp#', '#pPppppPpppPppP#', '#ppppPppppppPpp#', '#pPpppPpppPpppP#',
+    '#ppPppppPppppPp#', '.######ll######.', '.......ll.......', '.......ll.......', '.......ll.......', '.......ll.......', '.......LL.......'],
+  { '#': 0x4a3418, p: 0xb8945a, P: 0x9c7a44, l: 0x6e5230, L: 0x4a3418 });
+});

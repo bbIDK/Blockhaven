@@ -902,6 +902,33 @@ shaped(2302, 'enchanting_table', [tb([0, 0, 0, 16, 12, 16], { side: 'enchanting_
 shaped(2303, 'snow', [[0, 0, 0, 16, 2, 16]], { label: 'Snow', tex: 'snow', hardness: 0.1, tool: 'shovel', sound: 'snow', support: 'carpet',
   replaceable: true, cat: 'nature' });
 
+// Signs: a board on a post, or on a wall, with its writing on the side it faces (`face`; the
+// writing itself is in signs.js). Nothing to bump into.
+export const SIGN = {};
+function signBoxes(face, wall) {
+  // (Given facing south, +z; turned for the other ways.)
+  const boxes = wall ? [[0, 4, 0, 16, 12, 1.5]] : [[0, 8, 7.25, 16, 16, 8.75], [7, 0, 7.25, 9, 8, 8.75, TEX.oak_log]];
+  const turn = ([x0, y0, z0, x1, y1, z1, ...rest]) => {
+    switch (face) {
+      case 5: return [16 - x1, y0, 16 - z1, 16 - x0, y1, 16 - z0, ...rest];
+      case 0: return [z0, y0, 16 - x1, z1, y1, 16 - x0, ...rest];
+      case 1: return [16 - z1, y0, x0, 16 - z0, y1, x1, ...rest];
+      default: return [x0, y0, z0, x1, y1, z1, ...rest];
+    }
+  };
+  return boxes.map(turn);
+}
+[4, 5, 0, 1].forEach((face, i) => {
+  const common = { label: 'Sign', tex: 'oak_planks', solid: false, hardness: 1, tool: 'axe', sound: 'wood', base: 2304, drop: 'sign' };
+  shaped(2304 + i, i === 0 ? 'sign' : `sign_${face}`, signBoxes(face, false), { ...common, item: i === 0, support: 'solid', cat: 'functional' });
+  shaped(2308 + i, `wall_sign_${face}`, signBoxes(face, true), { ...common, item: false, support: 'sign_wall' });
+  SIGN[2304 + i] = { face, wall: false };
+  SIGN[2308 + i] = { face, wall: true };
+});
+// (Standing signs face whoever puts them up; see Game.placeBlock.)
+FACING_VARIANTS[2304] = { 4: 2304, 5: 2305, 0: 2306, 1: 2307 };
+export const WALL_SIGN = { 4: 2308, 5: 2309, 0: 2310, 1: 2311 };
+
 // Blocks shown in the inventory and in the hand as a flat picture rather than a little model
 // (-1 for the rest). Tall flowers show their flowering top.
 export function spriteOf(block) {
@@ -915,6 +942,7 @@ export function spriteOf(block) {
   if (block === B.campfire) return TEX.campfire_item;
   if (block === B.lily_pad) return TEX.lily_pad;
   if (SWITCH[block]?.kind === 'lever') return TEX.lever_item;
+  if (SIGN[block]) return TEX.sign_item;
   if (DOUBLE[block] && !DOUBLE[block].upper) return TEXL[DOUBLE[block].other * 6];
   return -1;
 }
@@ -1021,6 +1049,7 @@ flammable([...WOOD_NAMES.flatMap((w) => [`${w}_planks`, `${w}_slab`, `${w}_stair
 flammable(WOOD_NAMES.map((w) => `${w}_log`), 5, 5);
 flammable(WOOD_NAMES.flatMap((w) => [`${w}_leaves`, `${w}_leaves_placed`]), 30, 60);
 flammable([...DYES.flatMap((d) => [`${d.name}_wool`, `${d.name}_carpet`]), 'bed'], 30, 60);
+flammable(['sign', 'sign_5', 'sign_0', 'sign_1', 'wall_sign_4', 'wall_sign_5', 'wall_sign_0', 'wall_sign_1'], 5, 20);
 flammable(['tall_grass', 'fern', 'tall_grass_double', 'large_fern', 'dandelion', 'poppy', 'cornflower', 'allium', 'azure_bluet',
   'blue_orchid', 'oxeye_daisy', 'red_tulip', 'orange_tulip', 'white_tulip', 'pink_tulip', 'lily_of_the_valley', 'sunflower', 'lilac',
   'rose_bush', 'peony', 'dead_bush', 'vine'], 60, 100);
@@ -1059,7 +1088,7 @@ const CREATIVE_ORDER = [
   // functional
   'crafting_table', 'furnace', 'smoker', 'blast_furnace', 'chest', 'barrel', 'smithing_table', 'fletching_table', 'bed', 'bookshelf',
   'enchanting_table', 'anvil', 'grindstone', 'stonecutter', 'loom', 'lectern', 'cartography_table', 'composter', 'cauldron', 'bell', 'flower_pot',
-  'torch', 'lantern', 'campfire', 'glowstone', 'jack_o_lantern', 'ladder', 'iron_bars', 'tnt',
+  'torch', 'lantern', 'campfire', 'glowstone', 'jack_o_lantern', 'ladder', 'sign', 'iron_bars', 'tnt',
   ...WOOD_NAMES.flatMap((w) => [`${w}_door`, `${w}_trapdoor`, `${w}_fence`, `${w}_fence_gate`]), 'iron_door', 'iron_trapdoor',
   'lever', 'stone_button', 'oak_button', 'stone_pressure_plate', 'oak_pressure_plate', 'redstone_lamp', 'redstone_block',
 ];

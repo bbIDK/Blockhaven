@@ -11,7 +11,7 @@ import { Link, RoomTransport, PeerTransport, PROTOCOL, cleanCode } from './net.j
 import { RemotePlayer } from './avatars.js';
 import { mobFlags, mobExtra } from './entities.js';
 import { encodeRLE16, decodeRLE16 } from './storage.js';
-import { B, BLOCKS, REPLACEABLE, CHEST, FURNACE_IDS } from './blocks.js';
+import { B, BLOCKS, REPLACEABLE, CHEST, FURNACE_IDS, SIGN } from './blocks.js';
 import { itemDef, maxStack } from './items.js';
 import { extras, cleanExtras } from './inventory.js';
 import { shiny } from './enchanting.js';
@@ -423,6 +423,7 @@ export class HostSession extends Session {
         break;
       case 'um': if (int(msg.e) && int(msg.i) && typeof msg.f === 'string') this.game.entities.remoteUse(msg.e, msg.i, msg.f, g.uid); break;
       case 'arw': this.arrow(g, msg); break;
+      case 'sign': this.sign(msg); break;
       case 'pvp': this.pvpHit(g, msg); break;
       case 'tnt': if ([msg.x, msg.y, msg.z].every(int) && int(msg.f)) this.game.entities.primeTNT(msg.x, msg.y, msg.z, clamp(msg.f, 1, 200)); break;
       case 'chat': {
@@ -473,6 +474,7 @@ export class HostSession extends Session {
       you: meta.players?.[g.uid] ?? null,
       keys: [...w.store.keys],
       ents: game.entities.list.filter((e) => !e.dead).map((e) => { if (!e.nid) e.nid = this.nextNid++; return entityState(e); }),
+      signs: game.signs.serialize(),
     });
     this.link.flush();
   }
@@ -558,6 +560,15 @@ export class HostSession extends Session {
       { fire: num(m.f) ? clamp(m.f, 0, 8) : 0, looting: int(m.l) ? clamp(m.l, 0, 3) : 0 });
     E.rallyPets(g.uid, e);
   }
+
+  // A guest wrote on a sign: if it's still there, everyone sees it.
+  sign(m) {
+    if (typeof m.k !== 'string' || !/^-?\d+,-?\d+,-?\d+$/.test(m.k) || !Array.isArray(m.l)) return;
+    const [x, y, z] = m.k.split(',').map(Number);
+    if (!SIGN[this.game.world.getBlock(x, y, z)]) return;
+    this.game.writeSign(x, y, z, m.l.slice(0, 4).map((l) => String(l ?? '')));
+  }
+  writeSign(x, y, z, lines) { this.link.broadcast({ t: 'sign', k: `${x},${y},${z}`, l: lines }); }
 
   // A guest's arrow: shot from where they stand.
   arrow(g, m) {
@@ -914,6 +925,12 @@ export class GuestSession extends Session {
       case 'pot': if (POTIONS[msg.n] && num(msg.k)) game.applyPotion(msg.n, clamp(msg.k, 0, 1), true); break;
       case 'pvp': this.pvp = !!msg.on; break;
       case 'fx': this.effect(msg); break;
+      case 'sign':
+        if (typeof msg.k === 'string' && /^-?\d+,-?\d+,-?\d+$/.test(msg.k) && Array.isArray(msg.l)) {
+          const [x, y, z] = msg.k.split(',').map(Number);
+          game.signs.set(x, y, z, msg.l.slice(0, 4).map((l) => String(l ?? '')));
+        }
+        break;
       case 'bye': game.disconnected('The host closed the game.'); break;
       default: break;
     }
@@ -1055,6 +1072,7 @@ export class GuestSession extends Session {
   dropXp(x, y, z, n) { this.toHost({ t: 'orb', x: r2(x), y: r2(y), z: r2(z), n }); }
   ride(e, on) { if (e.nid) this.toHost({ t: 'ride', e: e.nid, on: on ? 1 : 0 }); }
   useMob(e, id, effect) { this.toHost({ t: 'um', e: e.nid, i: id, f: effect }); }
+  writeSign(x, y, z, lines) { this.toHost({ t: 'sign', k: `${x},${y},${z}`, l: lines }); }
   shootArrow(x, y, z, vx, vy, vz, damage, pickup, fx) {
     this.toHost({ t: 'arw', x: r2(x), y: r2(y), z: r2(z), vx: r2(vx), vy: r2(vy), vz: r2(vz), d: damage, p: pickup ? 1 : 0,
       pu: fx?.punch || undefined, fl: fx?.flame ? 1 : undefined, po: fx?.potion || undefined, sb: fx?.snowball ? 1 : undefined });

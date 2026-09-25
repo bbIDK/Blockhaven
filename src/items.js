@@ -185,6 +185,9 @@ ARMOR.forEach(([mat, points, durability, toughness, labels], m) => {
   });
 });
 
+// (Signs stack to sixteen.)
+ITEMS.get(B.sign).stack = 16;
+
 export const itemDef = (id) => ITEMS.get(id);
 export const itemLabel = (id) => ITEMS.get(id)?.label ?? 'Unknown';
 export const maxStack = (id) => ITEMS.get(id)?.stack ?? 64;

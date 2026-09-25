@@ -172,6 +172,7 @@ shaped('bucket', 1, ['I I', ' I '], { I: 'iron_ingot' }, 'equipment');
 shaped('glass_bottle', 3, ['G G', ' G '], { G: 'glass' }, 'misc');
 shaped('snow_block', 1, ['SS', 'SS'], { S: 'snowball' }, 'building');
 shaped('snow', 6, ['###'], { '#': 'snow_block' }, 'building');
+shaped('sign', 3, ['###', '###', ' S '], { '#': '#planks', S: 'stick' }, 'misc');
 shaped('compass', 1, [' I ', 'IRI', ' I '], { I: 'iron_ingot', R: 'redstone' }, 'equipment');
 shaped('clock', 1, [' G ', 'GRG', ' G '], { G: 'gold_ingot', R: 'redstone' }, 'equipment');
 shaped('fishing_rod', 1, ['  #', ' #S', '# S'], { '#': 'stick', S: 'string' }, 'equipment');

@@ -8,7 +8,8 @@ import {
 import { generateTextures, TEXTURE_NAMES, TEX, ARRAY_LAYERS } from './textures.js';
 import { STRIDE, meshBlockItem, SECTION_OFFSET, FACE_PAIR, ALL_OPEN } from './mesher.js';
 import { boxMesh, spriteMesh, skinMesh, MODEL_OFFSET } from './models.js';
-import { generateSkins, SKINS, SKIN_SIZE, skinLayer } from './skins.js';
+import { generateSkins, SKINS, SKIN_SIZE, SKIN_LAYER, skinLayer } from './skins.js';
+import { SIGN_SLOTS } from './signs.js';
 import { RIGS } from './rigs.js';
 import './tex/mobskins.js';
 import { RENDER, R, TEXL, FFLAGS, TINT, TINT_RGB, SHAPE, ICON_SHAPE, boxFaceUV, boxLayer, spriteOf } from './blocks.js';
@@ -84,11 +85,13 @@ export class Renderer {
       this.textures.push(tex);
     }
 
-    // Creature skins.
-    this.skinPixels = generateSkins();
+    // Creature skins (and after them, spare layers for the writing on signs: see signs.js).
+    const skins = generateSkins(), layerBytes = SKIN_SIZE * SKIN_SIZE * 4;
+    this.skinPixels = new Uint8Array(layerBytes * (SKINS.length + SIGN_SLOTS));
+    this.skinPixels.set(skins);
     this.skinTex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.skinTex);
-    gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA8, SKIN_SIZE, SKIN_SIZE, Math.max(1, SKINS.length), 0, gl.RGBA, gl.UNSIGNED_BYTE, this.skinPixels);
+    gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA8, SKIN_SIZE, SKIN_SIZE, SKINS.length + SIGN_SLOTS, 0, gl.RGBA, gl.UNSIGNED_BYTE, this.skinPixels);
     gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST_MIPMAP_LINEAR);
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
@@ -300,6 +303,16 @@ export class Renderer {
     }
     this.itemMeshes.set(id, mesh);
     return mesh;
+  }
+
+  // Letters a sign's writing into its spare skin layer (`slot`), and gives the layer number to
+  // draw it with.
+  signLayer(slot, pixels) {
+    const gl = this.gl, i = SKINS.length + slot;
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.skinTex);
+    gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, i, SKIN_SIZE, SKIN_SIZE, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
+    return SKIN_LAYER + i;
   }
 
   setCommon(f) {

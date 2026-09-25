@@ -490,6 +490,38 @@ kbd {
 /* ------------------------------------------------------------------ containers (Minecraft style) */
 /* Sizes are in GUI pixels: --u CSS pixels each, set by gui.js to fit the screen. */
 .mc-screen { background: rgba(16, 16, 16, 0.7); touch-action: none; }
+/* Writing on a sign: the board drawn big, its four lines typed straight onto it. */
+.sign-screen { background: rgba(16, 16, 16, 0.6); gap: 0; }
+.sign-screen h2 { font: 400 calc(var(--u) * 10)/1.2 var(--font-ui); color: #fff; text-shadow: var(--u) var(--u) 0 #3f3f3f; margin: 0 0 calc(var(--u) * 10); }
+.sign-board {
+  width: calc(var(--u) * 192);
+  height: calc(var(--u) * 96);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: calc(var(--u) * 2);
+  padding: calc(var(--u) * 6) calc(var(--u) * 8);
+  box-sizing: border-box;
+  background:
+    repeating-linear-gradient(180deg, transparent 0 calc(var(--u) * 23), rgba(60, 38, 14, 0.35) calc(var(--u) * 23) calc(var(--u) * 24)),
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.04) 0 calc(var(--u) * 3), transparent calc(var(--u) * 3) calc(var(--u) * 7)),
+    #b8945a;
+  border: calc(var(--u) * 3) solid #4a3418;
+  box-shadow: inset 0 0 0 var(--u) #d6b47a;
+}
+.sign-board input {
+  background: transparent;
+  border: 0;
+  outline: 0;
+  text-align: center;
+  font: 400 calc(var(--u) * 12)/1 var(--font-display);
+  color: #1c140c;
+  text-transform: uppercase;
+  height: calc(var(--u) * 17);
+  caret-color: #1c140c;
+}
+.sign-board input:focus { background: rgba(255, 255, 255, 0.12); }
+.sign-post { width: calc(var(--u) * 12); height: calc(var(--u) * 40); background: #6e5230; border: calc(var(--u) * 2) solid #4a3418; border-top: 0; margin-bottom: calc(var(--u) * 12); }
 .mc-wrap { display: flex; align-items: flex-start; gap: calc(var(--u) * 4); margin: auto; }
 .mc-wrap.stacked { flex-direction: column-reverse; align-items: center; }
 .mc-panel { position: relative; flex: none; }

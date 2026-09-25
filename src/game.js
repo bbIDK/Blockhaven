@@ -24,7 +24,7 @@ import {
   B, BLOCKS, BASE, SOLID, REPLACEABLE, WATERLIKE, FACING_VARIANTS, WALL_TORCH, FACE_DIRS,
   RENDER, R, SLAB, STAIRS, DOOR, doorId, CLIMB, LADDER, oppositeFace, CHEST, CHEST_PAIR, CHEST_RIGHT, chestId, chestHalf, BED, bedId,
   FURNACE_IDS, furnaceVariant, isLitFurnace, FURNACE_KIND, FURNACE_FRONT, LOG_AXES, GATE, gateId, VINE, DOUBLE, LEAVES_WOOD,
-  TRAPDOOR, trapdoorId, SWITCH,
+  TRAPDOOR, trapdoorId, SWITCH, SIGN, WALL_SIGN,
   NATURAL_LEAVES, WOOD, LOOT_KIND, LOOT_FRONT,
 } from './blocks.js';
 import { rollLoot } from './loot.js';
@@ -36,6 +36,7 @@ import { addXp, xpToNext, enchLevel, SMELT_XP, ORE_XP, shiny } from './enchantin
 import { Fishing, bobberMesh, bobberModel, linePoints } from './fishing.js';
 import { tableBook } from './tablebook.js';
 import { POTIONS, EFFECTS } from './potions.js';
+import { Signs, SignEditor } from './signs.js';
 import { ITEMS, I, itemDef, itemLabel, breakTime, dropsFor, attackDamage, attackSpeed, canHarvest } from './items.js';
 import { BIOME_NAMES } from './biomes.js';
 import { CHUNK_VOLUME, HEIGHT, TICKS_PER_DAY, SAVE_VERSION } from './config.js';
@@ -209,6 +210,8 @@ export class Game {
     this.fastTime = 0;
     this.gui = new ContainerGUI(this);
     this.talk = new TalkScreen(this);
+    this.signs = new Signs(this);
+    this.signEditor = new SignEditor(this);
     this.applySettings();
     this.bindUI();
     this.bindInput();
@@ -486,6 +489,7 @@ export class Game {
     if (remote) this.weather.timer = Infinity;
     this.containers = new Map((meta.containers ?? []).map((c) => [c.k, c.slots.map((x) => (x && itemDef(x.id) ? x : null))]));
     this.furnaces = new Map((meta.furnaces ?? []).map((f) => [f.k, new Furnace(f)]));
+    this.signs.load(meta.signs);
     this.attackTicks = 100;
     this.fire = 0;
     this.loadStart = performance.now();
@@ -524,10 +528,10 @@ export class Game {
       time: Number.isFinite(world.time) ? world.time : 1000, weather: { raining: !!world.rain },
       bed: you?.bed ?? null, player: you?.player ?? null, inventory: you?.inventory ?? null, remote: true,
     };
-    const container = this.containers, furnaces = this.furnaces;
+    const container = this.containers, furnaces = this.furnaces, signs = this.signs.serialize();
     await this.enterWorld(meta, { store: session.store });
-    if (again) { this.containers = container; this.furnaces = furnaces; }
-    else { this.containers = new Map(); this.furnaces = new Map(); }
+    if (again) { this.containers = container; this.furnaces = furnaces; this.signs.load(signs); }
+    else { this.containers = new Map(); this.furnaces = new Map(); this.signs.load(w.signs); }
   }
 
   // The player's own progress, which a guest's host keeps for them.
@@ -805,6 +809,7 @@ export class Game {
       inventory: this.inv.serialize(),
       entities: this.entities.serialize(),
       containers: [...this.containers].map(([k, slots]) => ({ k, slots: slots.map((x) => (x ? { ...x } : null)) })),
+      signs: this.signs.serialize(),
       furnaces: [...this.furnaces].filter(([, f]) => !f.empty).map(([k, f]) => ({ k, ...f.serialize() })),
       weather: this.weather.serialize(),
     });
@@ -1189,6 +1194,12 @@ export class Game {
       if (CHEST_PAIR[other] !== undefined && CHEST[other] === CHEST[old]) this.world.setBlock(ox, y, oz, chestId(CHEST[old]), { updates: false });
     }
     else if (old === B.crafting_table && id !== old && this.openBlock?.key === this.containerKey(x, y, z)) this.closeMenu();
+    // A sign taken down loses its writing (and anyone writing on it stops).
+    if (SIGN[old] && !SIGN[id]) {
+      this.signs.remove(x, y, z);
+      const at = this.signEditor.at;
+      if (at && at.x === x && at.y === y && at.z === z) this.closeSign();
+    }
     this.net?.blockChanged(x, y, z, old, id);
     // (After this change has gone through.)
     if ((BASE[id] === B.pumpkin || BASE[id] === B.jack_o_lantern) && !this.net?.guest) queueMicrotask(() => this.checkGolem(x, y, z));
@@ -2003,7 +2014,7 @@ export class Game {
     return (!!DOOR[id] && !DOOR[id].iron) || CHEST[id] !== undefined || !!BED[id] || id === B.crafting_table || FURNACE_IDS.has(id) || !!GATE[id] ||
       id === B.barrel || LOOT_KIND[id] !== undefined || id === B.bell || id === B.bell_z || id === B.composter_ready ||
       (!!TRAPDOOR[id] && !TRAPDOOR[id].iron) || SWITCH[id]?.kind === 'lever' || SWITCH[id]?.kind === 'button' ||
-      id === B.enchanting_table || id === B.anvil || id === B.anvil_z || id === B.grindstone || id === B.grindstone_z;
+      id === B.enchanting_table || id === B.anvil || id === B.anvil_z || id === B.grindstone || id === B.grindstone_z || !!SIGN[id];
   }
 
   breakTarget() {
@@ -2109,6 +2120,7 @@ export class Game {
       else if (CHEST[t.id] !== undefined) this.openChestAt(t.x, t.y, t.z);
       else if (t.id === B.crafting_table) this.openCraftingTable(t.x, t.y, t.z);
       else if (t.id === B.enchanting_table) this.openEnchanting(t.x, t.y, t.z);
+      else if (SIGN[t.id]) this.editSign(t.x, t.y, t.z);
       else if (t.id === B.anvil || t.id === B.anvil_z) this.openAnvil(t.x, t.y, t.z);
       else if (t.id === B.grindstone || t.id === B.grindstone_z) this.openGrindstone(t.x, t.y, t.z);
       else if (FURNACE_IDS.has(t.id)) this.openFurnaceAt(t.x, t.y, t.z);
@@ -2190,6 +2202,10 @@ export class Game {
     if (blockId === B.torch) {
       if (face === 3) return;
       if (face !== 2) id = WALL_TORCH[face];
+    } else if (SIGN[blockId]) {
+      // A sign: on a post, facing you, when put on the ground; flat on the wall when put against one.
+      if (face === 3) return;
+      id = face === 2 ? FACING_VARIANTS[blockId][oppositeFace(this.lookFace())] : WALL_SIGN[face];
     } else if (FACING_VARIANTS[blockId]) {
       id = FACING_VARIANTS[blockId][oppositeFace(this.lookFace())];
     } else if (LOG_AXES[blockId]) {
@@ -2279,6 +2295,33 @@ export class Game {
     this.audio.place(BLOCKS[id].sound, { x: x + 0.5, y: y + 0.5, z: z + 0.5 });
     this.swingArm();
     if (!this.creative) { this.inv.consumeHeld(); this.invChanged(); }
+    if (SIGN[id]) this.editSign(x, y, z);
+  }
+
+  // Writing on a sign (just put up, or right-clicked): the world carries on meanwhile.
+  editSign(x, y, z) {
+    if (this.state !== 'play') return;
+    this.state = 'sign';
+    this.releasePointer();
+    this.mining = null;
+    this.eating = null;
+    this.signEditor.show(x, y, z, this.signs.get(x, y, z));
+  }
+  closeSign() {
+    const at = this.signEditor.at;
+    if (!at) return;
+    const lines = this.signEditor.lines();
+    this.signEditor.hide();
+    if (SIGN[this.world?.getBlock(at.x, at.y, at.z)]) this.writeSign(at.x, at.y, at.z, lines);
+    if (this.state === 'sign') {
+      this.state = 'play';
+      this.input.capture = true;
+      if (!this.touch.enabled) this.input.lock();
+    }
+  }
+  writeSign(x, y, z, lines) {
+    const clean = this.signs.set(x, y, z, lines);
+    this.net?.writeSign?.(x, y, z, clean);
   }
 
   pickBlock() {
@@ -2641,6 +2684,10 @@ export class Game {
         tableBook(this.renderer, mats, t.x, t.y, t.z, cam, now, near, t, list);
       }
     }
+    // What's written on signs.
+    this.signMats ??= [];
+    let sk = 0;
+    this.signs.draw(cam, 40, list, () => this.signMats[sk++] ??= mat4());
     // Fishing floats: this player's, and anyone else's.
     const floats = [];
     if (this.fishing.bobber) floats.push(this.fishing.bobber);
