@@ -115,6 +115,15 @@ item(436, 'snowball', { stack: 16, throws: 'snowball' });
 // A name tag (named at an anvil) gives a creature a name; a lead leads it about.
 item(437, 'name_tag', { label: 'Name Tag' });
 item(438, 'lead', { label: 'Lead' });
+// Music discs, each with its own song to play in a jukebox (see jukebox.js).
+export const DISCS = ['meadow', 'hollow', 'ember', 'drift', 'lantern', 'tide', 'circuit', 'frost'];
+DISCS.forEach((name, k) => item(439 + k, `music_disc_${name}`, { label: 'Music Disc', stack: 1, disc: k, tex: TEX[`music_disc_${k}`] }));
+export const discTitle = (k) => `Blockhaven - ${DISCS[k][0].toUpperCase()}${DISCS[k].slice(1)}`;
+// Things to hang on a wall (see hangings.js).
+item(447, 'item_frame', { label: 'Item Frame', hangs: 'frame', tex: TEX.item_frame_item });
+item(448, 'painting', { hangs: 'painting', tex: TEX.painting_item });
+// A shield: held up (right click), it takes hits from in front.
+item(449, 'shield', { stack: 1, durability: 336, shield: true });
 // Potions (see potions.js): drunk from the bottle, or thrown to break over everyone nearby.
 POTION_NAMES.forEach((name, i) => {
   const label = POTIONS[name].label;

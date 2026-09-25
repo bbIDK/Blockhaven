@@ -939,6 +939,23 @@ for (let n = 0; n < 7; n++) {
   CAKE[2312 + n] = n;
 }
 
+// Note blocks: one for each of 25 pitches (the id says which), sounding when used (which tunes
+// them up a semitone) or powered; what they stand on says which instrument. NOTE: id -> pitch.
+export const NOTE = {};
+for (let p = 0; p < 25; p++) {
+  block(2319 + p, p ? `note_block_${p}` : 'note_block', { label: 'Note Block', tex: 'note_block', hardness: 0.8, tool: 'axe', sound: 'wood',
+    base: 2319, item: p === 0, drop: 'note_block', cat: 'functional' });
+  NOTE[2319 + p] = p;
+}
+// Jukeboxes: empty, or playing one of the discs (the id says which; see jukebox.js).
+// JUKEBOX: id -> the disc in it (-1: none).
+export const JUKEBOX = {};
+for (let k = -1; k < 8; k++) {
+  block(2345 + k, k < 0 ? 'jukebox' : `jukebox_${k}`, { label: 'Jukebox', tex: { side: 'jukebox_side', top: 'jukebox_top', bottom: 'jukebox_side' },
+    hardness: 2, tool: 'axe', sound: 'wood', base: 2344, item: k < 0, drop: 'jukebox', cat: 'functional' });
+  JUKEBOX[2345 + k] = k;
+}
+
 // Blocks shown in the inventory and in the hand as a flat picture rather than a little model
 // (-1 for the rest). Tall flowers show their flowering top.
 export function spriteOf(block) {
@@ -1101,7 +1118,7 @@ const CREATIVE_ORDER = [
   'enchanting_table', 'anvil', 'grindstone', 'stonecutter', 'loom', 'lectern', 'cartography_table', 'composter', 'cauldron', 'bell', 'flower_pot',
   'torch', 'lantern', 'campfire', 'glowstone', 'jack_o_lantern', 'ladder', 'sign', 'iron_bars', 'tnt',
   ...WOOD_NAMES.flatMap((w) => [`${w}_door`, `${w}_trapdoor`, `${w}_fence`, `${w}_fence_gate`]), 'iron_door', 'iron_trapdoor',
-  'lever', 'stone_button', 'oak_button', 'stone_pressure_plate', 'oak_pressure_plate', 'redstone_lamp', 'redstone_block',
+  'lever', 'stone_button', 'oak_button', 'stone_pressure_plate', 'oak_pressure_plate', 'redstone_lamp', 'redstone_block', 'note_block', 'jukebox',
 ];
 export const CREATIVE_BLOCKS = (() => {
   const out = [], seen = new Set();

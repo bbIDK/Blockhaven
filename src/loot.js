@@ -9,7 +9,8 @@ const TABLES = {
     ['bread', 1, 3, 6], ['wheat', 1, 4, 6], ['iron_ingot', 1, 4, 6], ['gold_ingot', 1, 3, 4], ['gold_coin', 2, 12, 8], ['redstone', 1, 4, 5],
     ['coal', 2, 8, 6], ['saddle', 1, 1, 3], ['golden_apple', 1, 1, 2], ['diamond', 1, 2, 1], ['iron_nugget', 2, 9, 4], ['bucket', 1, 1, 3],
     ['apple', 1, 3, 5], ['beetroot_seeds', 2, 4, 4], ['melon_slice', 1, 4, 3], ['potion_healing', 1, 1, 2], ['potion_night_vision', 1, 1, 1],
-    ['splash_potion_harming', 1, 1, 1], ['potion_regeneration', 1, 1, 1], ['glass_bottle', 1, 3, 2], ['name_tag', 1, 1, 4]] },
+    ['splash_potion_harming', 1, 1, 1], ['potion_regeneration', 1, 1, 1], ['glass_bottle', 1, 3, 2], ['name_tag', 1, 1, 4],
+    ['music_disc_meadow', 1, 1, 1], ['music_disc_hollow', 1, 1, 1], ['music_disc_ember', 1, 1, 1], ['music_disc_drift', 1, 1, 1]] },
   village: { rolls: [3, 7], items: [['bread', 1, 4, 10], ['apple', 1, 5, 10], ['wheat', 2, 7, 8], ['carrot', 1, 5, 6], ['potato', 1, 5, 6],
     ['wheat_seeds', 2, 8, 6], ['gold_coin', 3, 15, 10], ['emerald', 1, 2, 2], ['feather', 1, 3, 4], ['leather', 1, 3, 4], ['torch', 2, 8, 5],
     ['paper', 1, 5, 3], ['book', 1, 2, 2], ['oak_sapling', 1, 3, 3], ['string', 1, 3, 3], ['cookie', 2, 6, 3], ['saddle', 1, 1, 2],
@@ -28,7 +29,7 @@ const TABLES = {
     ['apple', 1, 4, 5], ['oak_sapling', 1, 3, 3]] },
   desert: { rolls: [2, 6], items: [['bone', 2, 7, 8], ['rotten_flesh', 1, 5, 8], ['gold_coin', 3, 14, 10], ['gold_ingot', 1, 4, 5],
     ['emerald', 1, 3, 4], ['diamond', 1, 2, 2], ['sand', 3, 8, 6], ['gunpowder', 1, 5, 6], ['string', 1, 4, 5], ['saddle', 1, 1, 3],
-    ['potion_fire_resistance', 1, 1, 2], ['potion_swiftness', 1, 1, 2]] },
+    ['potion_fire_resistance', 1, 1, 2], ['potion_swiftness', 1, 1, 2], ['music_disc_tide', 1, 1, 1], ['music_disc_lantern', 1, 1, 1]] },
 };
 
 // 27 slots of loot for a chest at (x, y, z).

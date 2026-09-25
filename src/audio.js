@@ -2,6 +2,7 @@
 // Minecraft-like volume and pitch rules, panned and faded by where they happen. Music: music.js.
 import { SOUNDS } from './sounddata.js';
 import { Music } from './music.js';
+import { playNote } from './jukebox.js';
 
 // Which recordings each block sound type uses. Glass places like stone but shatters when broken.
 const MATERIALS = {
@@ -602,7 +603,20 @@ export class Audio {
   }
 
   // mood: 'title', 'day', 'night', 'cave', or null for silence.
-  update(mood) {
-    this.music?.update(this.musicVolume > 0 ? mood : null);
+  // `hush`: something else is playing (a jukebox): the music makes way.
+  update(mood, hush = false) {
+    if (hush && this.music?.piece) this.music.fadeOut();
+    this.music?.update(this.musicVolume > 0 && !hush ? mood : null);
+  }
+
+  // A note block's note (`instrument` and `pitch` 0-24; see jukebox.js), heard 48 blocks away.
+  noteBlock(instrument, pitch, at) {
+    if (!this.ready) return;
+    const sp = this.spatial(at, 3);
+    if (!sp) return;
+    const ctx = this.ctx, inp = ctx.createGain(), g = ctx.createGain();
+    g.gain.value = sp.gain;
+    this.output(inp, g, sp.pan);
+    playNote(ctx, inp, instrument, pitch, ctx.currentTime);
   }
 }

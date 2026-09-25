@@ -189,7 +189,7 @@ export function randomBook(treasure = false, rnd = Math.random) {
 // ---------------------------------------------------------------- the anvil
 // Repairs and combines: `a` in the first slot, `b` in the second. Returns { out, cost, used } (how
 // many of `b` it takes) or null when they don't go together.
-const REPAIR = { wooden: '#planks', stone: 'cobblestone', iron: 'iron_ingot', golden: 'gold_ingot', diamond: 'diamond', leather: 'leather', chainmail: 'iron_ingot' };
+const REPAIR = { wooden: '#planks', shield: '#planks', stone: 'cobblestone', iron: 'iron_ingot', golden: 'gold_ingot', diamond: 'diamond', leather: 'leather', chainmail: 'iron_ingot' };
 export function repairMaterial(def) {
   if (!def?.durability) return null;
   const m = def.armor?.material ?? def.name.split('_')[0];

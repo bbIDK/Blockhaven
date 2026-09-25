@@ -8,7 +8,7 @@ import { boxMesh, MODEL_OFFSET } from './models.js';
 import { TEX } from './textures.js';
 import { mat4, identity, translate, rotateX, rotateY, rotateZ, scale, hash2 } from './math.js';
 import { B, BLOCKS, BASE, SOLID, WATERLIKE, FILTER, REPLACEABLE } from './blocks.js';
-import { I, itemDef } from './items.js';
+import { I, itemDef, DISCS } from './items.js';
 import { rayBox } from './world.js';
 import { HEIGHT, TICKS_PER_DAY } from './config.js';
 import { villageAt } from './villages.js';
@@ -20,6 +20,8 @@ import { boatPhysics, boatMesh, boatModel, BOAT_WOODS } from './riding.js';
 import { splitXp, orbSize } from './enchanting.js';
 import { POTIONS, UNDEAD } from './potions.js';
 import { holdsLead, useFence } from './leads.js';
+import { isHanging, placement, place, holds, drops, frameUse, drawHanging } from './hangings.js';
+import { PAINTINGS } from './tex/paintings.js';
 
 class Entity extends Body {
   constructor(kind, hw, h, x, y, z) {
@@ -76,6 +78,7 @@ export class Entities {
     this.mats = [];
     this.matIndex = 0;
     this.spawnTimer = 0;
+    this.hungTimer = 0;
     this.arrowMesh = null;
     this.civilians = new Civilians(this);
   }
@@ -96,16 +99,70 @@ export class Entities {
         if (Number.isFinite(s.mh)) m.maxHealth = s.mh;
       } else if (s.k === 'boat') this.spawnBoat(s.x, s.y, s.z, BOAT_WOODS.includes(s.w) ? s.w : 'oak', s.yaw ?? 0);
       else if (s.k === 'xp' && Number.isInteger(s.v) && s.v > 0) this.spawnXp(s.x, s.y, s.z, Math.min(s.v, 2477));
+      else if ((s.k === 'frame' || s.k === 'painting') && [s.bx, s.by, s.bz, s.f].every(Number.isInteger) && s.f >= 0 && s.f < 6) {
+        this.spawnHanging(s.k, s.bx, s.by, s.bz, s.f, { art: s.a, item: s.it, rot: s.r });
+      }
     }
   }
 
   serialize() {
-    return this.list.filter((e) => !e.dead && (e.kind === 'item' || e.kind === 'boat' || e.kind === 'xp' || (e.kind === 'mob' && e.def.kind !== 'civilian' && !e.pinned)))
+    // (Things hung up are kept however many there are; the rest, up to 300.)
+    const hung = this.list.filter((e) => !e.dead && isHanging(e)).map((e) => ({ k: e.kind, bx: e.bx, by: e.by, bz: e.bz, f: e.face, a: e.art ?? undefined,
+      it: e.item ? { id: e.item.id, count: 1, dmg: e.item.dmg ?? 0, ex: extras(e.item) ?? undefined } : undefined, r: e.rot || undefined }));
+    return hung.concat(this.list.filter((e) => !e.dead && (e.kind === 'item' || e.kind === 'boat' || e.kind === 'xp' || (e.kind === 'mob' && e.def.kind !== 'civilian' && !e.pinned)))
       .slice(0, 300)
       .map((e) => (e.kind === 'item' ? { k: 'item', x: e.x, y: e.y, z: e.z, id: e.id, count: e.count, dmg: e.dmg, ex: e.extra ?? undefined }
         : e.kind === 'boat' ? { k: 'boat', x: e.x, y: e.y, z: e.z, yaw: e.yaw, w: e.wood }
           : e.kind === 'xp' ? { k: 'xp', x: e.x, y: e.y, z: e.z, v: e.value }
-          : { k: 'mob', t: e.type, x: e.x, y: e.y, z: e.z, yaw: e.yaw, hp: e.health, mh: e.maxHealth, ...mobExtra(e) }));
+          : { k: 'mob', t: e.type, x: e.x, y: e.y, z: e.z, yaw: e.yaw, hp: e.health, mh: e.maxHealth, ...mobExtra(e) })));
+  }
+
+  // ---------------------------------------------------------------- things hung up
+  // An item frame or a painting on `face` of the block at bx, by, bz (see hangings.js). `o`: its
+  // art, and for a frame the item in it (as saved) and how it's turned.
+  spawnHanging(kind, bx, by, bz, face, o = {}) {
+    const e = new Entity(kind, 0.5, 1, 0, 0, 0);
+    const item = o.item && itemDef(o.item.id) ? { id: o.item.id, count: 1, dmg: Number.isInteger(o.item.dmg) ? o.item.dmg : 0, ...(cleanExtras(o.item.ex) ?? {}) } : null;
+    Object.assign(e, { bx, by, bz, face, art: kind === 'painting' ? (Number.isInteger(o.art) && PAINTINGS[o.art] ? o.art : 0) : null,
+      item: kind === 'frame' ? item : null, rot: Number.isInteger(o.rot) ? o.rot & 7 : 0 });
+    place(e);
+    this.list.push(e);
+    return e;
+  }
+  // Hang one up on `face` of the block at x, y, z, if it goes there. (A guest asks the host.)
+  hang(kind, x, y, z, face) {
+    const at = placement(this, kind, x, y, z, face);
+    if (!at) return null;
+    if (this.guest) { this.game.net.hang(kind, x, y, z, face); return at; }
+    const e = this.spawnHanging(kind, at.bx, at.by, at.bz, at.face, { art: at.art });
+    this.game.audio.place('wood', { x: e.x, y: e.y, z: e.z });
+    return e;
+  }
+  // A frame used with `held` (a whole stack; one of it goes in): see frameUse.
+  useHanging(e, held) {
+    const what = frameUse(e, held);
+    if (!what) return null;
+    if (e.remote) { this.game.net.useHanging(e, held); return what; }
+    if (what === 'put') e.item = { ...held, count: 1 };
+    else e.rot = (e.rot + 1) & 7;
+    this.game.audio.place(what === 'put' ? 'wood' : 'cloth', { x: e.x, y: e.y, z: e.z });
+    this.game.net?.resend?.(e);
+    return what;
+  }
+  // A punch: a frame with something in it lets go of that; otherwise down it comes.
+  hitHanging(e, creative) {
+    if (e.remote) { this.game.net.hitMob(e, 1, 0); return; }
+    if (e.kind === 'frame' && e.item) {
+      if (!creative) this.spawnItem(e.x, e.y, e.z, e.item.id, 1, e.item.dmg ?? 0, 0.5, null, extras(e.item));
+      e.item = null; e.rot = 0;
+      this.game.net?.resend?.(e);
+    } else this.dropHanging(e, !creative);
+    this.game.audio.dig('wood', { x: e.x, y: e.y, z: e.z });
+  }
+  dropHanging(e, drop = true) {
+    e.dead = true;
+    if (!drop) return;
+    for (const st of drops(e)) this.spawnItem(e.x, e.y, e.z, st.id, 1, st.dmg ?? 0, 0.5, null, extras(st));
   }
 
   // ---------------------------------------------------------------- spawning
@@ -349,9 +406,13 @@ export class Entities {
     if (++this.spawnTimer >= 40) { this.spawnTimer = 0; this.trySpawnHostile(); if (Math.random() < 0.5) this.trySpawnBat(); }
     if ((this.phantomTimer = (this.phantomTimer ?? 0) + 1) >= 600) { this.phantomTimer = 0; this.trySpawnPhantoms(); }
     this.civilians.tick();
+    const checkHung = ++this.hungTimer % 10 === 0;
     for (const e of this.list) {
       if (e.dead) continue;
-      if (e.kind === 'tnt') {
+      if (isHanging(e)) {
+        // (Knocked down when what holds it up goes, or something's built in front of it.)
+        if (checkHung && this.world.isLoaded(e.x, e.z) && !holds(this, e)) this.dropHanging(e);
+      } else if (e.kind === 'tnt') {
         if (--e.fuse <= 0) { e.dead = true; this.explode(e.x, e.y + 0.5, e.z, 4); }
       } else if (e.kind === 'mob') {
         const loaded = this.world.isLoaded(e.x, e.z);
@@ -578,7 +639,12 @@ export class Entities {
     }
     provoked(this, e, from && (from.addr !== undefined || from.kind === 'mob') ? from : from === this.game.player ? this.players[0] : null);
     if (t.kind === 'civilian') this.civilians.hurt(e, from);
-    if (e.health <= 0) { e.dying = 0.001; if (e.rider) this.throwRider(e); }
+    if (e.health <= 0) {
+      e.dying = 0.001;
+      // (What killed it: a creeper shot by a skeleton leaves a music disc.)
+      e.killer = from?.kind === 'mob' ? from.type : null;
+      if (e.rider) this.throwRider(e);
+    }
   }
 
   finishDeath(e) {
@@ -599,11 +665,13 @@ export class Entities {
     if (e.playerHurt > 0) this.spawnXp(e.x, e.y + 0.4, e.z, mobXp(e));
     if (game.creative) return;
     for (const [id, n] of mobDrops(e)) this.spawnItem(e.x, e.y + 0.4, e.z, id, n);
+    if (e.type === 'creeper' && (e.killer === 'skeleton' || e.killer === 'stray')) this.spawnItem(e.x, e.y + 0.4, e.z, I.music_disc_meadow + Math.floor(Math.random() * DISCS.length), 1);
   }
 
   // The player hits a creature. `bonus` adds knockback (a sprinting, full-strength hit).
   // `opts`: what the weapon's enchantments add ({ fire: seconds alight, looting: level }).
   attack(e, amount, bonus = 0, opts = null) {
+    if (isHanging(e)) { this.hitHanging(e, this.game.creative); return; }
     const n = this.game.creative ? 100 : amount;
     if (e.kind === 'boat') {
       if (e.remote) this.game.net.hitMob(e, n, bonus);
@@ -617,6 +685,7 @@ export class Entities {
   // Right-click on a creature: feeding, shearing, milking; talking to villagers; getting into a
   // boat or onto a horse.
   interact(e, held) {
+    if (isHanging(e)) { if (this.useHanging(e, held) === 'put' && !this.game.creative) { this.game.inv.consumeHeld(); this.game.invChanged(); } this.game.swingArm(); return; }
     if (e.kind === 'boat') { this.game.mount(e); return; }
     if (e.def.kind === 'civilian') { this.civilians.talk(e); return; }
     // (A guest's copies of creatures know players by their keys; see playerKey.)
@@ -683,8 +752,10 @@ export class Entities {
       game.hurtPlayer(t, Math.ceil(f * f * 22), 'You were blown up', [(t.x - x) * k, f * 9, (t.z - z) * k], true);
     }
     for (const e of this.list) {
-      if (e.kind !== 'mob' || e.dead) continue;
+      if (e.dead || (e.kind !== 'mob' && !isHanging(e))) continue;
       const d = Math.hypot(e.x - x, e.y - y, e.z - z);
+      // (Frames and paintings close by are blown off the wall.)
+      if (isHanging(e)) { if (d < power * 1.5) this.dropHanging(e); continue; }
       if (d < power * 2) this.hurtMob(e, Math.ceil((1 - d / (power * 2)) * 20), { x, z });
     }
   }
@@ -717,6 +788,10 @@ export class Entities {
       } else if (s.k === 'b') {
         e = new Entity('boat', 0.65, 0.55, s.x, s.y, s.z);
         Object.assign(e, { wood: BOAT_WOODS.includes(s.w) ? s.w : 'oak', yaw: Number.isFinite(s.a) ? s.a : 0, hits: 0, hurt: 0, def: { label: 'Boat' } });
+      } else if (s.k === 'h' && (s.t === 'frame' || s.t === 'painting') && Array.isArray(s.b) && s.b.every(Number.isInteger) && [0, 1, 2, 3, 4, 5].includes(s.f)) {
+        e = new Entity(s.t, 0.5, 1, 0, 0, 0);
+        Object.assign(e, { bx: s.b[0], by: s.b[1], bz: s.b[2], face: s.f, art: s.t === 'painting' && PAINTINGS[s.a] ? s.a : s.t === 'painting' ? 0 : null, item: null, rot: 0 });
+        place(e);
       } else if (s.k === 'm' && MOBS[s.ty]) {
         const t = MOBS[s.ty];
         e = new Entity('mob', t.hw, t.h, s.x, s.y, s.z);
@@ -730,7 +805,11 @@ export class Entities {
       this.byNid.set(s.i, e);
     }
     e.tx = s.x; e.ty = s.y; e.tz = s.z;
-    if (s.k === 'i') {
+    if (s.k === 'h') {
+      const it = s.it && itemDef(s.it.id) ? s.it : null;
+      e.item = it ? { id: it.id, count: 1, dmg: Number.isInteger(it.d) ? it.d : 0, ...(cleanExtras(it.ex) ?? {}) } : null;
+      e.rot = Number.isInteger(s.r) ? s.r & 7 : 0;
+    } else if (s.k === 'i') {
       e.extra = cleanExtras(s.ex);
       e.count = Number.isInteger(s.n) && s.n > 0 ? s.n : 1;
       e.dmg = Number.isInteger(s.d) ? s.d : 0;
@@ -876,8 +955,8 @@ export class Entities {
   raycast(ox, oy, oz, dx, dy, dz, maxDist) {
     let best = null;
     for (const e of this.list) {
-      if ((e.kind !== 'mob' && e.kind !== 'boat') || e.dead || e.dying || e.rider === 'me') continue;
-      const b = [-e.hw, 0, -e.hw, e.hw, e.h, e.hw];
+      if ((e.kind !== 'mob' && e.kind !== 'boat' && !isHanging(e)) || e.dead || e.dying || e.rider === 'me') continue;
+      const b = e.box ?? [-e.hw, 0, -e.hw, e.hw, e.h, e.hw];
       const hit = rayBox(ox - e.x, oy - e.y, oz - e.z, dx, dy, dz, b);
       if (hit && hit.t <= maxDist && (!best || hit.t < best.t)) best = { entity: e, t: hit.t };
     }
@@ -991,6 +1070,8 @@ export class Entities {
         out.push({ parts: [{ mesh: boatMesh(r, e.wood), model: boatModel(this.mat(), rx, ry, rz, e.yaw) }], light, tint: null, hurt: e.hurt > 0 });
       } else if (e.kind === 'mob') {
         renderMob(this, e, rx, ry, rz, light, out);
+      } else if (isHanging(e)) {
+        drawHanging(this, e, cam, () => this.mat(), out);
       }
     }
     return out;

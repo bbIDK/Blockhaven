@@ -92,6 +92,15 @@ export class Particles {
     }
   }
 
+  // A musical note popping up over a note block, in the colour of its pitch.
+  note(x, y, z, colour) {
+    if (this.list.length >= MAX) this.list.shift();
+    this.list.push({
+      x, y, z, vx: 0, vy: 1.4, vz: 0, life: 0.9, age: 0, size: 0.17, layer: TEX.note, flags: 1,
+      tint: [(colour >> 16) & 255, (colour >> 8) & 255, colour & 255], u: 0, v: 0, whole: true, drift: true,
+    });
+  }
+
   // A glyph of the enchanting table's writing drifting from a bookshelf to the table, in an arc.
   glyph(x, y, z, tx, ty, tz) {
     if (this.list.length >= MAX) this.list.shift();
@@ -124,6 +133,7 @@ export class Particles {
         p.x = sx + (tx - sx) * e; p.z = sz + (tz - sz) * e; p.y = sy + (ty - sy) * e + Math.sin(k * Math.PI) * 0.8;
         continue;
       }
+      if (p.drift) { p.vy *= Math.exp(-4 * dt); p.y += p.vy * dt; continue; }
       if (p.smoke) {
         const k = Math.exp(-1.5 * dt);
         p.vx *= k; p.vz *= k; p.vy = p.vy * k + 0.6 * dt;
@@ -153,7 +163,7 @@ export class Particles {
       if (px < 1 || py < 1 || pz < 1 || px > 250 || py > 250 || pz > 250) continue;
       const l = world.getLight(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z));
       const s = p.smoke ? p.size * (1 - 0.7 * (p.age / p.life)) : p.size;
-      const full = p.smoke ? 16 : 3;
+      const full = p.smoke || p.whole ? 16 : 3;
       for (let k = 0; k < 4; k++) {
         const a = k === 0 || k === 3 ? -1 : 1, b = k < 2 ? -1 : 1;
         const o = n * STRIDE, h = n * 10;

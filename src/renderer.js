@@ -844,6 +844,17 @@ export class Renderer {
       translate(m, m, -MODEL_OFFSET, -MODEL_OFFSET, -MODEL_OFFSET);
       return null;
     }
+    if (hand.shield) {
+      // A shield: held at the side, facing forward, or (right click) raised in front, a little
+      // to the right of the middle of the view.
+      const k = hand.guard * hand.guard * (3 - 2 * hand.guard);
+      translate(m, m, 0.58 - k * 0.28 - 0.3 * Math.sin(sq * Math.PI) * (1 - k), -0.6 + k * 0.25 - eq * 0.6, -0.9 + k * 0.1);
+      rotateY(m, m, (-22 + k * 16) * deg);
+      rotateX(m, m, Math.sin(sq * Math.PI) * -30 * deg * (1 - k));
+      scale(m, m, 0.55 + k * 0.05, 0.55 + k * 0.05, 0.55 + k * 0.05);
+      translate(m, m, -0.5 - MODEL_OFFSET, -0.5 - MODEL_OFFSET, -0.5 - MODEL_OFFSET);
+      return mesh;
+    }
     if (hand.eat !== undefined) {
       // Bringing food to the mouth and chewing.
       const left = hand.eat, frac = left / 32;

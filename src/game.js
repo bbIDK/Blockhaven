@@ -24,7 +24,7 @@ import {
   B, BLOCKS, BASE, SOLID, REPLACEABLE, WATERLIKE, FACING_VARIANTS, WALL_TORCH, FACE_DIRS,
   RENDER, R, SLAB, STAIRS, DOOR, doorId, CLIMB, LADDER, oppositeFace, CHEST, CHEST_PAIR, CHEST_RIGHT, chestId, chestHalf, BED, bedId,
   FURNACE_IDS, furnaceVariant, isLitFurnace, FURNACE_KIND, FURNACE_FRONT, LOG_AXES, GATE, gateId, VINE, DOUBLE, LEAVES_WOOD,
-  TRAPDOOR, trapdoorId, SWITCH, SIGN, WALL_SIGN, CAKE,
+  TRAPDOOR, trapdoorId, SWITCH, SIGN, WALL_SIGN, CAKE, NOTE, JUKEBOX,
   NATURAL_LEAVES, WOOD, LOOT_KIND, LOOT_FRONT,
 } from './blocks.js';
 import { rollLoot } from './loot.js';
@@ -38,6 +38,8 @@ import { tableBook } from './tablebook.js';
 import { POTIONS, EFFECTS } from './potions.js';
 import { Signs, SignEditor } from './signs.js';
 import { drawLeads, isFence, LEAD_SNAP } from './leads.js';
+import { Jukeboxes, instrumentFor, noteColour, noteClear, nextNote } from './jukebox.js';
+import { isHanging } from './hangings.js';
 import { ITEMS, I, itemDef, itemLabel, breakTime, dropsFor, attackDamage, attackSpeed, canHarvest } from './items.js';
 import { BIOME_NAMES } from './biomes.js';
 import { CHUNK_VOLUME, HEIGHT, TICKS_PER_DAY, SAVE_VERSION } from './config.js';
@@ -213,6 +215,7 @@ export class Game {
     this.talk = new TalkScreen(this);
     this.signs = new Signs(this);
     this.signEditor = new SignEditor(this);
+    this.jukeboxes = new Jukeboxes(this);
     this.applySettings();
     this.bindUI();
     this.bindInput();
@@ -781,6 +784,7 @@ export class Game {
     await this.save();
     if (this.net) { const net = this.net; this.net = null; await net.leave(); }
     this.avatars.clearTags();
+    this.jukeboxes.clear();
     this.releasePointer();
     this.touch.setActive(false);
     if (this.world) { await this.world.store?.drain(); this.world.dispose(); this.world = null; }
@@ -1201,6 +1205,16 @@ export class Game {
       const at = this.signEditor.at;
       if (at && at.x === x && at.y === y && at.z === z) this.closeSign();
     }
+    // A note block tuned plays its new note; a jukebox with a disc put in plays it, and a disc
+    // taken out (or left in a jukebox that's broken) pops out. (These run for changes made by
+    // anyone, so everyone hears them.)
+    if (NOTE[old] !== undefined && NOTE[id] !== undefined && old !== id) this.playNote(x, y, z);
+    if (JUKEBOX[old] !== undefined || JUKEBOX[id] !== undefined) {
+      this.jukeboxes.changed(x, y, z, id, JUKEBOX[id] >= 0 && JUKEBOX[old] === -1);
+      if (JUKEBOX[old] >= 0 && JUKEBOX[id] !== JUKEBOX[old] && !this.net?.guest) {
+        this.entities.spawnItem(x + 0.5, y + 1.05, z + 0.5, I.music_disc_meadow + JUKEBOX[old], 1, 0, 0.5, [(Math.random() - 0.5) * 1.5, 3, (Math.random() - 0.5) * 1.5]);
+      }
+    }
     this.net?.blockChanged(x, y, z, old, id);
     // (After this change has gone through.)
     if ((BASE[id] === B.pumpkin || BASE[id] === B.jack_o_lantern) && !this.net?.guest) queueMicrotask(() => this.checkGolem(x, y, z));
@@ -1455,7 +1469,9 @@ export class Game {
       if (this.riding) this.steer(move);
       else {
         p.depthStrider = enchLevel(this.inv.armor[3], 'depth_strider');
-        p.speedMul = (1 + 0.2 * this.effectLevel('speed')) * Math.max(0.1, 1 - 0.15 * this.effectLevel('slowness'));
+        // (Eating, drawing a bow or holding up a shield, you walk slowly.)
+        p.speedMul = (1 + 0.2 * this.effectLevel('speed')) * Math.max(0.1, 1 - 0.15 * this.effectLevel('slowness')) * (this.eating || this.drawing || this.guarding ? 0.35 : 1);
+        this.shieldDown = Math.max(0, (this.shieldDown ?? 0) - dt);
         p.jumpBoost = this.effectLevel('jump_boost');
         const prevInWater = p.inWater;
         p.update(dt, move, w);
@@ -1488,7 +1504,9 @@ export class Game {
     this.updateHUD();
     this.adaptResolution(dt);
     this.audio.setListener(p.x, p.eyeY, p.z, p.yaw, p.headInWater);
-    this.audio.update(this.musicMood());
+    // (A jukebox playing close by hushes the background music.)
+    this.jukeboxes.update();
+    this.audio.update(this.musicMood(), this.jukeboxes.audible);
   }
 
   // Music follows the time of day, and turns darker deep underground.
@@ -1791,13 +1809,15 @@ export class Game {
     // Look around for campfires to send smoke up from, and enchanting tables (with the bookshelves
     // around them) to draw books over (see updateGame and drawList).
     this.campfires = [];
-    const tables = [];
+    const tables = [], jukes = [];
     const px = Math.floor(p.x), py = Math.floor(p.y), pz = Math.floor(p.z);
     for (let y = py - 6; y <= py + 6; y++) for (let z = pz - 16; z <= pz + 16; z++) for (let x = px - 16; x <= px + 16; x++) {
       const id = w.getBlock(x, y, z);
       if (id === B.campfire) this.campfires.push([x, y, z]);
       else if (id === B.enchanting_table) tables.push([x, y, z]);
+      else if (JUKEBOX[id] >= 0) jukes.push([x, y, z, JUKEBOX[id]]);
     }
+    this.jukeboxes.found(jukes);
     const old = new Map((this.tables ?? []).map((t) => [`${t.x},${t.y},${t.z}`, t]));
     this.tables = tables.map(([x, y, z]) => {
       const t = old.get(`${x},${y},${z}`) ?? { x, y, z, yaw: Math.random() * 6.28, open: 0 };
@@ -1831,8 +1851,15 @@ export class Game {
   }
 
   // `armored`: the hit is one that armor protects against (mobs, explosions, lava, cactus).
-  damage(amount, cause, ignoreInvuln = false, knock = null, armored = false) {
+  // `opts.axe`: the hit was with an axe (which knocks a shield down).
+  damage(amount, cause, ignoreInvuln = false, knock = null, armored = false, opts = null) {
     if (this.creative || this.state === 'dead' || amount <= 0) return false;
+    // A shield held up takes hits from in front: blows, arrows, blasts.
+    if (knock && this.shieldUp && this.fromFront(knock)) {
+      this.blockHit(amount, !!opts?.axe);
+      this.player.vx += knock[0] * 0.2; this.player.vz += knock[2] * 0.2;
+      return false;
+    }
     if (this.effects.has('fire_resistance') && /flames|lava|burned/.test(cause)) return false;
     if (this.invuln > 0 && !ignoreInvuln) return false;
     const points = armored ? this.inv.armorPoints : 0;
@@ -1920,6 +1947,15 @@ export class Game {
       return;
     }
     this.drawing = null;
+    // Holding right click with a shield holds it up (a tap on touch screens raises or lowers it).
+    // It's up once it's been raised a quarter of a second (see damage); an axe knocks it down.
+    if (held?.id === I.shield && !usable) {
+      const holding = touchTap ? !this.guarding : use || (this.guarding?.touch && !useClick);
+      if (holding && this.shieldDown <= 0) { this.guarding ??= { t: 0, touch: touchTap }; this.guarding.t += dt; } else this.guarding = null;
+      this.useCooldown -= dt;
+      return;
+    }
+    this.guarding = null;
     if ((hdef?.food || hdef?.drink || hdef?.potion) && (!this.creative || hdef.potion) && (this.food < 20 || hdef.always || hdef.drink || hdef.potion) && eatInput && !usable) {
       if (!this.eating || this.eating.id !== held.id || this.eating.slot !== this.inv.selected) {
         this.eating = { id: held.id, slot: this.inv.selected, left: 32, touch: touchTap };
@@ -1932,6 +1968,23 @@ export class Game {
   }
 
   swingArm() { this.swing = 0; this.swingCount++; this.swinging = true; }
+
+  // Is a shield up (held up long enough to take a hit)?
+  get shieldUp() { return !!this.guarding && this.guarding.t >= 0.25 && this.inv.heldId === I.shield && this.state === 'play'; }
+  // Does a hit that pushes this way (`knock`) come from in front?
+  fromFront(knock) {
+    const d = this.player.lookDir(), kx = -knock[0], kz = -knock[2], l = Math.hypot(kx, kz);
+    return l < 1e-3 || (d[0] * kx + d[2] * kz) / (l * (Math.hypot(d[0], d[2]) || 1)) > 0;
+  }
+  // A hit taken on the shield: it wears (for the big ones), and an axe knocks it down for a while.
+  blockHit(amount, axe) {
+    const p = this.player;
+    this.audio.thump({ x: p.x, y: p.eyeY, z: p.z }, 160, 70, 0.8, 0.12);
+    this.audio.dig('wood', { x: p.x, y: p.eyeY, z: p.z });
+    if (amount >= 3 && !this.creative && this.inv.damageHeld(1 + Math.floor(amount))) this.audio.toolBreak();
+    if (axe) { this.guarding = null; this.shieldDown = 5; this.audio.toolBreak(); }
+    this.invChanged();
+  }
 
   // Lets an arrow fly: the longer the draw (up to a second), the faster and harder it hits.
   shootBow(t) {
@@ -1979,6 +2032,8 @@ export class Game {
   }
 
   attackEntity(e) {
+    // (A punch knocks down what's hung up, whatever it's done with.)
+    if (isHanging(e)) { this.swingArm(); this.entities.hitHanging(e, this.creative); return; }
     const p = this.player, held = this.inv.heldId, def = itemDef(held), ench = this.inv.held?.ench ?? null;
     const f = this.attackStrength(this.tickAcc);
     const strong = f > 0.9;
@@ -2016,7 +2071,7 @@ export class Game {
     if (!this.net.pvp || rp.creative) return;
     this.audio.attack(crit ? 'crit' : strong ? 'strong' : 'weak', { x: rp.x, y: rp.y + 1.2, z: rp.z }, def?.weapon || def?.tool?.type === 'axe');
     if (crit) this.particles.bits(rp.x, rp.y + 1.3, rp.z, TEX.crit, 10, 2.4, 0.5);
-    this.net.attackPlayer(rp, amount, strong && p.sprinting ? 1 : 0);
+    this.net.attackPlayer(rp, amount, strong && p.sprinting ? 1 : 0, def?.tool?.type === 'axe');
     this.exhaust(0.1);
     if (!this.creative && def?.durability && this.inv.damageHeld(def.tool ? 2 : 1)) this.audio.toolBreak();
     this.invChanged();
@@ -2027,7 +2082,8 @@ export class Game {
     return (!!DOOR[id] && !DOOR[id].iron) || CHEST[id] !== undefined || !!BED[id] || id === B.crafting_table || FURNACE_IDS.has(id) || !!GATE[id] ||
       id === B.barrel || LOOT_KIND[id] !== undefined || id === B.bell || id === B.bell_z || id === B.composter_ready ||
       (!!TRAPDOOR[id] && !TRAPDOOR[id].iron) || SWITCH[id]?.kind === 'lever' || SWITCH[id]?.kind === 'button' ||
-      id === B.enchanting_table || id === B.anvil || id === B.anvil_z || id === B.grindstone || id === B.grindstone_z || !!SIGN[id] || CAKE[id] !== undefined;
+      id === B.enchanting_table || id === B.anvil || id === B.anvil_z || id === B.grindstone || id === B.grindstone_z || !!SIGN[id] || CAKE[id] !== undefined ||
+      NOTE[id] !== undefined || JUKEBOX[id] >= 0;
   }
 
   breakTarget() {
@@ -2104,9 +2160,18 @@ export class Game {
   useItem(repeat = false) {
     const held = this.inv.held, t = this.target, p = this.player, w = this.world;
     const def = held ? itemDef(held.id) : null;
+    // An item frame takes what you're holding, whatever it is (or turns what's in it).
+    if (t?.entity && isHanging(t.entity)) { if (!repeat) this.entities.interact(t.entity, held); return; }
     // Doors, chests, beds, crafting tables and furnaces are used rather than built on (sneak to
     // place blocks against them).
     if (t && !t.entity && !t.player && !p.sneaking && !repeat && useWorkstation(this, held, t)) return;
+    // A disc into an empty jukebox.
+    if (t && !t.entity && !t.player && !p.sneaking && !repeat && JUKEBOX[t.id] === -1 && def?.disc !== undefined) {
+      this.swingArm();
+      w.setBlock(t.x, t.y, t.z, B.jukebox + 1 + def.disc);
+      if (!this.creative) { this.inv.consumeHeld(); this.invChanged(); }
+      return;
+    }
     // A fence post: somewhere to tie up the creatures you're leading.
     if (t && !t.entity && !t.player && !repeat && isFence(t.id) && this.useFence(t.x, t.y, t.z)) { this.swingArm(); return; }
     if (t && !t.entity && !t.player && !p.sneaking && this.interactive(t.id)) {
@@ -2137,6 +2202,9 @@ export class Game {
       else if (t.id === B.enchanting_table) this.openEnchanting(t.x, t.y, t.z);
       else if (SIGN[t.id]) this.editSign(t.x, t.y, t.z);
       else if (CAKE[t.id] !== undefined) this.eatCake(t.x, t.y, t.z);
+      // A note block goes up a semitone (and plays it; see blockChanged). A jukebox gives its disc back.
+      else if (NOTE[t.id] !== undefined) w.setBlock(t.x, t.y, t.z, nextNote(t.id));
+      else if (JUKEBOX[t.id] >= 0) w.setBlock(t.x, t.y, t.z, B.jukebox);
       else if (t.id === B.anvil || t.id === B.anvil_z) this.openAnvil(t.x, t.y, t.z);
       else if (t.id === B.grindstone || t.id === B.grindstone_z) this.openGrindstone(t.x, t.y, t.z);
       else if (FURNACE_IDS.has(t.id)) this.openFurnaceAt(t.x, t.y, t.z);
@@ -2167,6 +2235,15 @@ export class Game {
     }
     if (!t || t.entity || t.player) {
       if (t?.entity && !repeat) this.entities.interact(t.entity, held);
+      return;
+    }
+    // An item frame or a painting goes up on the face pointed at.
+    if (def?.hangs) {
+      if (repeat) return;
+      if (this.entities.hang(def.hangs, t.x, t.y, t.z, t.face)) {
+        this.swingArm();
+        if (!this.creative) { this.inv.consumeHeld(); this.invChanged(); }
+      }
       return;
     }
     if (held?.id === I.flint_and_steel) {
@@ -2450,6 +2527,19 @@ export class Game {
     return w.raining && w.rain > 0.3 && this.world.rainTop(x, z) < y && w.kind(this.world, x, z, y) === 1;
   }
 
+  // A note block sounds its note, with a note popping out of its top, unless something's on it.
+  playNote(x, y, z) {
+    const w = this.world, pitch = NOTE[w.getBlock(x, y, z)];
+    if (pitch === undefined || !noteClear(w, x, y, z)) return;
+    this.audio.noteBlock(instrumentFor(w.getBlock(x, y - 1, z)), pitch, { x: x + 0.5, y: y + 0.5, z: z + 0.5 });
+    this.particles.note(x + 0.5, y + 1.2, z + 0.5, noteColour(pitch));
+  }
+  // World listener: a note block was just powered. (The host tells everyone.)
+  noteBlock(x, y, z) {
+    this.playNote(x, y, z);
+    if (this.net?.host) this.net.effect('note', x + 0.5, y + 0.5, z + 0.5);
+  }
+
   // World listener: fire reached some TNT.
   igniteTNT(x, y, z) { this.entities.primeTNT(x, y, z, 50 + Math.floor(Math.random() * 30)); }
 
@@ -2579,6 +2669,8 @@ export class Game {
     // item also sinks and rises again as the weapon winds back up, like the original.
     const goal = held === this.handItem ? this.attackStrength(this.tickAcc) ** 3 : 0;
     this.handHeight += clamp(goal - this.handHeight, -dt * 8, dt * 8);
+    // A shield comes up in front, and goes back down.
+    this.guardLift = clamp((this.guardLift ?? 0) + (this.guarding ? dt : -dt) * 7, 0, 1);
     if (held !== this.handItem && this.handHeight < 0.1) this.handItem = held;
     if (this.swinging) {
       this.swing += dt * 3.4;
@@ -2678,6 +2770,7 @@ export class Game {
         equip: 1 - this.handHeight,
         bob, walk, roll, lag: [(this.lagPitch - p.pitch) * 0.1, (this.lagYaw - p.yaw) * 0.1],
         eat: this.eating ? this.eating.left : undefined,
+        shield: this.handItem === I.shield, guard: this.guardLift ?? 0,
         glint: shiny(this.inv.held),
         light: [Math.max(heldLight >> 4, 0), heldLight & 15],
       },

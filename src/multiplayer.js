@@ -10,6 +10,7 @@
 import { Link, RoomTransport, PeerTransport, PROTOCOL, cleanCode } from './net.js';
 import { RemotePlayer } from './avatars.js';
 import { mobFlags, mobExtra, cleanTagName } from './entities.js';
+import { isHanging } from './hangings.js';
 import { encodeRLE16, decodeRLE16 } from './storage.js';
 import { B, BLOCKS, REPLACEABLE, CHEST, FURNACE_IDS, SIGN } from './blocks.js';
 import { itemDef, maxStack } from './items.js';
@@ -186,7 +187,8 @@ class Session {
     if (g.world && g.meta && g.state !== 'loading') {
       pres.p = [r2(p.x), r2(p.y), r2(p.z), r2(p.yaw), r2(p.pitch)];
       pres.f = (p.sneaking ? 1 : 0) | (p.sprinting ? 2 : 0) | (p.flying ? 4 : 0) | (p.onGround ? 8 : 0) |
-        (g.state === 'dead' ? 16 : 0) | (g.state === 'sleeping' ? 32 : 0) | (g.creative ? 64 : 0) | (g.effects?.has('invisibility') ? 128 : 0);
+        (g.state === 'dead' ? 16 : 0) | (g.state === 'sleeping' ? 32 : 0) | (g.creative ? 64 : 0) | (g.effects?.has('invisibility') ? 128 : 0) |
+        (g.guarding ? 256 : 0);
       pres.i = g.handLook;
       if (shiny(g.inv.held)) pres.ih = 1;
       pres.a = g.inv.armor.map((s) => s?.id ?? 0);
@@ -430,6 +432,18 @@ export class HostSession extends Session {
       case 'um':
         if (int(msg.e) && int(msg.i) && typeof msg.f === 'string') this.game.entities.remoteUse(msg.e, msg.i, msg.f, g.uid, cleanTagName(msg.n));
         break;
+      case 'hang':
+        // A guest hangs up an item frame or a painting (the host picks the picture).
+        if ((msg.k === 'frame' || msg.k === 'painting') && [msg.x, msg.y, msg.z, msg.f].every(int) && msg.f >= 0 && msg.f < 6 &&
+          g.x !== null && Math.hypot(msg.x + 0.5 - g.x, msg.y - g.y, msg.z + 0.5 - g.z) < 8) this.game.entities.hang(msg.k, msg.x, msg.y, msg.z, msg.f);
+        break;
+      case 'hu': {
+        // A guest used an item frame, holding `st`.
+        const e = this.game.entities.list.find((x) => x.nid === msg.e && isHanging(x) && !x.dead), st = msg.st;
+        const held = st && int(st.id) && itemDef(st.id) ? { id: st.id, count: 1, dmg: int(st.d) ? st.d : 0, ...(cleanExtras(st.ex) ?? {}) } : null;
+        if (e) this.game.entities.useHanging(e, held);
+        break;
+      }
       case 'lead':
         // A guest used a fence post (tying up what they lead there, or taking what's tied there).
         if ([msg.x, msg.y, msg.z].every(int) && g.x !== null && Math.hypot(msg.x + 0.5 - g.x, msg.y - g.y, msg.z + 0.5 - g.z) < 8) {
@@ -565,7 +579,8 @@ export class HostSession extends Session {
   }
 
   hit(g, m) {
-    const E = this.game.entities, e = E.list.find((x) => x.nid === m.e && (x.kind === 'mob' || x.kind === 'boat') && !x.dead);
+    const E = this.game.entities, e = E.list.find((x) => x.nid === m.e && (x.kind === 'mob' || x.kind === 'boat' || isHanging(x)) && !x.dead);
+    if (e && isHanging(e)) { E.hitHanging(e, g.creative); return; }
     if (!e || e.dying || !num(m.a) || !num(m.x) || !num(m.z)) return;
     if (e.kind === 'boat') { E.hitBoat(e, g.creative); return; }
     // (The guest's own entry, not a copy, so anything that goes after them follows where they go.)
@@ -597,17 +612,18 @@ export class HostSession extends Session {
   // One player hits another.
   pvpHit(g, m) {
     if (!this.pvp || !num(m.a) || !num(m.x) || !num(m.z)) return;
-    this.strike(m.p, clamp(m.a, 0, 30), m.x, m.z, num(m.b) ? clamp(m.b, 0, 1) : 0, g.name);
+    this.strike(m.p, clamp(m.a, 0, 30), m.x, m.z, num(m.b) ? clamp(m.b, 0, 1) : 0, g.name, m.ax === 1);
   }
 
-  strike(target, amount, fx, fz, bonus, by) {
+  // (`axe`: the blow was with an axe, which knocks a shield down.)
+  strike(target, amount, fx, fz, bonus, by, axe = false) {
     const why = `You were slain by ${by}`;
     const t = target === this.transport.self ? this.game.player : this.guests.get(target);
     if (!t || t.x === null) return;
     const dx = t.x - fx, dz = t.z - fz, d = Math.hypot(dx, dz) || 1;
     const k = [(dx / d) * (1.5 + bonus * 2.5), 4.5, (dz / d) * (1.5 + bonus * 2.5)].map(r2);
-    if (target === this.transport.self) this.game.damage(amount, why, false, k, true);
-    else this.send(target, { t: 'hurt', a: r2(amount), why, k, arm: 1 });
+    if (target === this.transport.self) this.game.damage(amount, why, false, k, true, { axe });
+    else this.send(target, { t: 'hurt', a: r2(amount), why, k, arm: 1, ax: axe ? 1 : undefined });
   }
 
   remoteCommand(g, line) {
@@ -730,10 +746,10 @@ export class HostSession extends Session {
   giveEffect(addr, name, seconds, level) { this.send(addr, { t: 'eff', n: name, s: seconds, l: level }); }
   potionOn(addr, name, scale) { this.send(addr, { t: 'pot', n: name, k: r2(scale) }); }
 
-  attackPlayer(rp, amount, bonus) {
+  attackPlayer(rp, amount, bonus, axe = false) {
     if (!this.pvp) return;
     const p = this.game.player;
-    this.strike(rp.addr, amount, p.x, p.z, bonus, this.name);
+    this.strike(rp.addr, amount, p.x, p.z, bonus, this.name, axe);
   }
 
   entityGone(e, how) { if (e.nid) this.gone.set(e.nid, how); }
@@ -777,6 +793,10 @@ function entityState(e) {
   }
   if (e.kind === 'boat') return Object.assign(s, { k: 'b', w: e.wood, a: r2(e.yaw), f: boatFlags(e) });
   if (e.kind === 'xp') return Object.assign(s, { k: 'x', v: e.value });
+  if (isHanging(e)) {
+    return Object.assign(s, { k: 'h', t: e.kind, b: [e.bx, e.by, e.bz], f: e.face, a: e.art ?? undefined, r: e.rot || undefined,
+      it: e.item ? { id: e.item.id, d: e.item.dmg ?? 0, ex: extras(e.item) ?? undefined } : undefined });
+  }
   // (Whose pet it is, and who holds its lead, go as keys.)
   const x = mobExtra(e);
   if (x.ow) x.ow = playerKey(x.ow);
@@ -929,7 +949,7 @@ export class GuestSession extends Session {
       case 'hurt':
         if (num(msg.a) && game.world && game.state !== 'loading') {
           const k = Array.isArray(msg.k) && msg.k.length === 3 && msg.k.every(num) ? msg.k.map((v) => clamp(v, -20, 20)) : null;
-          game.damage(clamp(msg.a, 0, 100), String(msg.why ?? 'You died').replace(/\p{C}/gu, '').slice(0, 80), false, k, !!msg.arm);
+          game.damage(clamp(msg.a, 0, 100), String(msg.why ?? 'You died').replace(/\p{C}/gu, '').slice(0, 80), false, k, !!msg.arm, { axe: msg.ax === 1 });
         }
         break;
       case 'msg': if (typeof msg.s === 'string') game.ui.message(msg.s.replace(/\p{C}/gu, '').slice(0, 200), COLORS[msg.c] ?? null); break;
@@ -1068,6 +1088,7 @@ export class GuestSession extends Session {
     else if (msg.k === 'fizz') game.fizz(Math.floor(at.x), Math.floor(at.y), Math.floor(at.z));
     else if (msg.k === 'splash' && POTIONS[msg.n]) game.entities.splashFx(at.x, at.y, at.z, msg.n);
     else if (msg.k === 'snow') game.entities.snowFx(at.x, at.y, at.z);
+    else if (msg.k === 'note') game.playNote(Math.floor(at.x), Math.floor(at.y), Math.floor(at.z));
   }
 
   // Game hooks.
@@ -1093,6 +1114,8 @@ export class GuestSession extends Session {
   ride(e, on) { if (e.nid) this.toHost({ t: 'ride', e: e.nid, on: on ? 1 : 0 }); }
   useMob(e, id, effect, name) { this.toHost({ t: 'um', e: e.nid, i: id, f: effect, n: name ?? undefined }); }
   useFence(x, y, z) { this.toHost({ t: 'lead', x, y, z }); }
+  hang(kind, x, y, z, face) { this.toHost({ t: 'hang', k: kind, x, y, z, f: face }); }
+  useHanging(e, held) { this.toHost({ t: 'hu', e: e.nid, st: held ? { id: held.id, d: held.dmg ?? 0, ex: extras(held) ?? undefined } : undefined }); }
   writeSign(x, y, z, lines) { this.toHost({ t: 'sign', k: `${x},${y},${z}`, l: lines }); }
   shootArrow(x, y, z, vx, vy, vz, damage, pickup, fx) {
     this.toHost({ t: 'arw', x: r2(x), y: r2(y), z: r2(z), vx: r2(vx), vy: r2(vy), vz: r2(vz), d: damage, p: pickup ? 1 : 0,
@@ -1104,10 +1127,10 @@ export class GuestSession extends Session {
     this.toHost({ t: 'hit', e: e.nid, a: r2(amount), b: bonus, x: r2(p.x), z: r2(p.z), f: opts?.fire || undefined, l: opts?.looting || undefined });
   }
 
-  attackPlayer(rp, amount, bonus) {
+  attackPlayer(rp, amount, bonus, axe = false) {
     if (!this.pvp) return;
     const p = this.game.player;
-    this.toHost({ t: 'pvp', p: rp.addr, a: r2(amount), b: bonus, x: r2(p.x), z: r2(p.z) });
+    this.toHost({ t: 'pvp', p: rp.addr, a: r2(amount), b: bonus, x: r2(p.x), z: r2(p.z), ax: axe ? 1 : undefined });
   }
 
   // Walking over an item: ask the host for as much of it as fits.

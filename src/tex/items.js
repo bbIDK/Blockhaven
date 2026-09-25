@@ -380,6 +380,16 @@ def('lead_rope', (t) => {
   for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, ROPE[(x + y) % 4 < 2 ? 3 : 2]);
 });
 
+// A shield: oak boards in an iron rim, with an iron boss in the middle.
+def('shield', (t) => {
+  paint(t, ['', '..rRRRRRRRRRRr..', '..Rwwbwwwbwwwk..', '..Rwwbwwwbwwwk..', '..Rwwbwwwbwwwk..', '..Rwwbwwwbwwwk..', '..RwwbwIIbwwwk..',
+    '..RwwbwIiiwwwk..', '..RwwbwIiiwwwk..', '..RwwbwwiiwwWk..', '..RwwbwwwbwwWk..', '..RwwbwwwbwwWk..', '..rwwbwwwbwWWr..', '...rWbWWWbWWr...',
+    '....rkkkkkkr....'],
+  { r: 0x3a3a40, R: 0x9a9aa4, k: 0x4a4a52, w: 0xb88a58, W: 0x9a7040, b: 0x7a5630, I: 0xe8e8f0, i: 0x8a8a94 });
+  // (Grain in the boards.)
+  for (let y = 2; y < 13; y++) for (let x = 3; x < 13; x++) if (t.get(x, y) === 0xb88a58 && t.r() < 0.22) t.set(x, y, y % 3 ? 0xa87a48 : 0xc89a64);
+});
+
 // ---------------------------------------------------------------- food
 def('apple', (t) => {
   shaded(t, ['', '', '', '', '....xxx..xxx....', '...xxxxxxxxxx...', '..xxxxxxxxxxxx..', '..xxxxxxxxxxxx..', '..xxxxxxxxxxxx..',

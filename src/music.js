@@ -110,7 +110,7 @@ async function renderPianoNote(OAC, rate, midi, dur) {
 }
 
 // Stereo hall reverb: decaying noise that gets darker as it fades, after a short pre-delay.
-function makeImpulse(ctx, seconds) {
+export function makeImpulse(ctx, seconds) {
   const rate = ctx.sampleRate, len = Math.floor(rate * seconds), pre = Math.floor(rate * 0.018);
   const buf = ctx.createBuffer(2, len, rate);
   for (let ch = 0; ch < 2; ch++) {
@@ -312,24 +312,26 @@ export class Music {
 
 // ---------------------------------------------------------------- the composer
 
-function compose(seed, mood) {
+// `style` (the songs on music discs) can set the mode, beats to the bar, tempo and pad, and how
+// long the piece should be (seconds).
+export function compose(seed, mood, style = {}) {
   const r = rng(seed);
   const pick = (list) => list[Math.floor(r() * list.length)];
   const dark = mood === 'night' || mood === 'cave';
-  const modeName = dark ? (r() < 0.6 ? 'aeolian' : 'dorian') : (r() < 0.72 ? 'major' : 'lydian');
+  const modeName = style.mode ?? (dark ? (r() < 0.6 ? 'aeolian' : 'dorian') : (r() < 0.72 ? 'major' : 'lydian'));
   const mode = MODES[modeName];
   const scale = mode.scale;
-  const beats = r() < 0.7 ? 4 : 3;
+  const beats = style.beats ?? (r() < 0.7 ? 4 : 3);
   const eighths = beats * 2;
   const cave = mood === 'cave';
-  const bpm = cave ? 46 + r() * 10 : dark ? 54 + r() * 12 : 60 + r() * 18;
+  const bpm = style.bpm ?? (cave ? 46 + r() * 10 : dark ? 54 + r() * 12 : 60 + r() * 18);
   const e8 = 30 / bpm; // seconds per eighth note
   const key = 48 + Math.floor(r() * 8) - (cave ? 5 : 0); // tonic in octave 3
   const prog = pick(mode.progs);
   const chordBars = r() < 0.55 ? 1 : 2;
   const figure = pick(FIGURES[beats]);
   const figureB = pick(cave ? SPARSE[beats] : FIGURES[beats]);
-  const withPad = r() < (dark ? 0.6 : 0.4);
+  const withPad = style.pad ?? r() < (dark ? 0.6 : 0.4);
   const events = [];
   let group = 0;
 
@@ -352,7 +354,12 @@ function compose(seed, mood) {
   };
 
   // Loop the progression through the sections of the piece.
-  const loops = chordBars === 1 ? [1, 2, 2, 2, 1] : [1, 1, 1, 1, 1];
+  let loops = chordBars === 1 ? [1, 2, 2, 2, 1] : [1, 1, 1, 1, 1];
+  if (style.seconds) {
+    // (As long as the style asks: the middle sections go round as often as that takes.)
+    const each = prog.length * chordBars * beats * 60 / bpm, m = Math.max(1, Math.round((style.seconds / each - 2) / 3));
+    loops = [1, m, m, m, 1];
+  }
   const sections = ['intro', 'a', 'b', 'a2', 'outro'];
   const chords = [];
   sections.forEach((section, si) => {
@@ -400,7 +407,7 @@ function compose(seed, mood) {
     const fig = section === 'b' ? figureB : figure;
     const dyn = section === 'b' ? 0.85 : section === 'a2' ? 1.05 : quiet ? 0.8 : 1;
     // Bass on the downbeat, held.
-    events.push({ t: t + jitter(), midi: c.ladder[0] - (r() < 0.5 ? 12 : 0), vel: 0.5 * dyn, group });
+    events.push({ t: t + jitter(), midi: c.ladder[0] - (r() < 0.5 ? 12 : 0), vel: 0.5 * dyn, group, bass: true });
     if (withPad) for (const m of [c.ladder[0] + 12, c.ladder[1] + 12, c.ladder[3]]) events.push({ kind: 'pad', t, midi: m, vel: 1, group });
     for (let b = 0; b < c.bars; b++) {
       // Arpeggio.
@@ -452,7 +459,7 @@ function compose(seed, mood) {
   // A final rolled tonic chord that rings out.
   group++;
   const final = ladderOf(chordOf(0));
-  events.push({ t, midi: final[0] - 12, vel: 0.45, group });
+  events.push({ t, midi: final[0] - 12, vel: 0.45, group, bass: true });
   final.slice(1, 6).forEach((m, k) => events.push({ t: t + 0.07 * (k + 1), midi: m, vel: 0.32, group }));
   events.sort((a, b) => a.t - b.t);
   return { events, length: t + 7, mood };

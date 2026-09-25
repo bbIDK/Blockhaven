@@ -5,7 +5,7 @@
 import { skinMesh, MODEL_OFFSET } from './models.js';
 import { RIGS } from './rigs.js';
 import { skinLayer, SKIN_INDEX } from './skins.js';
-import { itemDef } from './items.js';
+import { itemDef, I } from './items.js';
 import { hashString, mat4, identity, translate, rotateX, rotateY, rotateZ, scale, clamp } from './math.js';
 
 const PX = 1 / 16;
@@ -47,6 +47,7 @@ export class RemotePlayer {
   get sleeping() { return !!(this.flags & 32); }
   get creative() { return !!(this.flags & 64); }
   get invisible() { return !!(this.flags & 128); }
+  get guarding() { return !!(this.flags & 256); }
 
   // Presence: { n: name, p: [x, y, z, yaw, pitch], f: flags, i: held item, a: armour, k: look,
   // s: swings, u: hurts }.
@@ -228,10 +229,12 @@ export class Avatars {
       const leftA = walkA * 0.7 + (sneak ? 0.35 : 0) + (sit ? 0.63 : 0);
       add(m.leftArm, joint(torso(this.mat()), m.leftArm.pivot, leftA, 0, -0.05));
       // The right arm swings forward and up to hit or use something, and holds the item.
-      const rightA = -walkA * 0.7 + (sneak ? 0.35 : 0) + (rp.held ? 0.3 : 0) + attack * 1.3 + (sit ? 0.63 : 0);
-      const arm = joint(torso(this.mat()), m.rightArm.pivot, rightA, -attack * 0.4, 0.05);
+      // (A shield held up: the arm across in front, the shield facing out.)
+      const shield = rp.held === I.shield, guard = shield && rp.guarding;
+      const rightA = guard ? 0.95 : -walkA * 0.7 + (sneak ? 0.35 : 0) + (rp.held ? 0.3 : 0) + attack * 1.3 + (sit ? 0.63 : 0);
+      const arm = joint(torso(this.mat()), m.rightArm.pivot, rightA, guard ? -0.5 : -attack * 0.4, 0.05);
       const held = rp.held ? this.renderer.itemMesh(rp.held) : null;
-      if (held) parts.push({ mesh: held, model: this.heldItem(arm, held), glint: rp.heldShiny ? 1 : 0 });
+      if (held) parts.push({ mesh: held, model: shield ? this.heldShield(arm, rightA) : this.heldItem(arm, held), glint: rp.heldShiny ? 1 : 0 });
       add(m.rightArm, arm);
       out.push({ parts, light: [l >> 4, l & 15], tint: null, hurt: rp.hurt > 0 });
     }
@@ -256,6 +259,18 @@ export class Avatars {
       scale(m, m, 0.62, 0.62, 0.62);
       translate(m, m, -0.12 - MODEL_OFFSET, -0.12 - MODEL_OFFSET, -0.5 - MODEL_OFFSET);
     }
+    return m;
+  }
+
+  // A shield on the forearm, upright (whatever the arm's doing) and facing out in front.
+  heldShield(arm, armA) {
+    const m = this.mat();
+    m.set(arm);
+    translate(m, m, 6 * PX, 8 * PX, -1 * PX);
+    rotateX(m, m, -armA);
+    rotateY(m, m, Math.PI);
+    scale(m, m, 0.8, 0.8, 0.8);
+    translate(m, m, -0.5 - MODEL_OFFSET, -0.5 - MODEL_OFFSET, -0.5 - MODEL_OFFSET);
     return m;
   }
 

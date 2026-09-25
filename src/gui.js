@@ -7,7 +7,7 @@ import { $ } from './ui.js';
 import { iconFor, setGlint } from './icons.js';
 import { shiny, enchantLabel } from './enchanting.js';
 import { POTIONS, EFFECTS, potionLine } from './potions.js';
-import { ITEMS, I, itemDef, itemLabel, ARMOR_PIECES, attackDamage, attackSpeed } from './items.js';
+import { ITEMS, I, itemDef, itemLabel, ARMOR_PIECES, attackDamage, attackSpeed, discTitle } from './items.js';
 import { RECIPES, recipeFits, countItems, planRecipe, layout, COOK_TIME } from './crafting.js';
 import { CREATIVE_BLOCKS, BLOCKS } from './blocks.js';
 import { PlayerPreview } from './preview.js';
@@ -142,14 +142,14 @@ const BOOK_TABS = [
   { id: 'misc', label: 'Miscellaneous', icon: 'torch' },
 ];
 const GEAR = new Set(['flint_and_steel', 'bow', 'arrow', 'shears', 'bucket', 'water_bucket', 'lava_bucket', 'compass', 'clock',
-  'fishing_rod', 'saddle', 'name_tag', 'lead']);
+  'fishing_rod', 'saddle', 'name_tag', 'lead', 'shield']);
 function creativeTab(id) {
   const d = itemDef(id);
   if (d.block !== null) {
     const cat = BLOCKS[d.block].cat;
     return cat === 'functional' ? 'utility' : cat ?? 'building';
   }
-  if (d.tool || d.weapon || d.armor || d.boat || GEAR.has(d.name)) return 'equipment';
+  if (d.tool || d.weapon || d.armor || d.boat || d.disc !== undefined || GEAR.has(d.name)) return 'equipment';
   return 'materials';
 }
 const PALETTE = [...CREATIVE_BLOCKS, ...[...ITEMS.keys()].filter((id) => id >= 256 && !ITEMS.get(id).hidden)];
@@ -240,6 +240,7 @@ export function tooltipLines(stack) {
     const name = d.potion ?? d.splash;
     lines.push(`<span class="${EFFECTS[POTIONS[name].effect].bad ? 't-red' : 't-blue'}">${escape(potionLine(name, !!d.splash))}</span>`);
   }
+  if (d.disc !== undefined) lines.push(`<span class="t-gray">${escape(discTitle(d.disc))}</span>`);
   if (d.durability && stack.dmg) lines.push(`<span class="t-gray">Durability: ${d.durability - stack.dmg} / ${d.durability}</span>`);
   return lines;
 }

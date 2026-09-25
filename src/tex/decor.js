@@ -1,5 +1,5 @@
 // Things made to be looked at or enjoyed: the cake (with the slice cut out of it).
-import { def } from './core.js';
+import { def, mix } from './core.js';
 
 // ---------------------------------------------------------------- cake
 // The cake stands 8 pixels high on a 14 by 14 footprint, so its sides show rows 8-15 and its top
@@ -75,4 +75,63 @@ def('cake_item', (t) => {
   for (let y = 9; y < 14; y++) { t.set(0, y, CRUST); t.set(15, y, CRUST); }
   for (const [x, y] of [[4, 5], [8, 4], [11, 5], [2, 7], [6, 6], [12, 7], [9, 7]]) { t.set(x, y, CHERRY[2]); t.set(x + 1, y, CHERRY[1]); }
   for (const [x, y] of [[4, 5], [8, 4], [11, 5]]) t.set(x, y, CHERRY[3]);
+});
+
+// ---------------------------------------------------------------- music
+// The note block: a walnut box with a grille in its face. The jukebox: the same wood banded in
+// darker boards, with the slot for a disc in its top.
+const WALNUT = [0x2e180e, 0x4a2a1a, 0x5e3624, 0x72442e, 0x88553a];
+function walnut(t, grain = [16, 2]) {
+  const f = t.field([[grain[0], grain[1], 0.55], [4, 1, 0.3]], 0.2);
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, WALNUT[1 + Math.min(3, Math.floor(f[y * 16 + x] * 3.4))]);
+}
+function bevel(t, a, b) {
+  for (let i = a; i <= b; i++) { t.set(i, a, WALNUT[4]); t.set(a, i, WALNUT[4]); t.set(i, b, WALNUT[1]); t.set(b, i, WALNUT[1]); }
+}
+def('note_block', (t) => {
+  walnut(t);
+  for (let i = 0; i < 16; i++) { t.set(i, 0, WALNUT[0]); t.set(i, 15, WALNUT[0]); t.set(0, i, WALNUT[0]); t.set(15, i, WALNUT[0]); }
+  bevel(t, 1, 14);
+  // The grille: rows of holes, lit on their lower edge.
+  for (let y = 4; y <= 11; y += 2) for (let x = 4; x <= 11; x += 2) { t.set(x, y, 0x1c0e08); t.set(x, y + 1, WALNUT[3]); }
+});
+def('jukebox_side', (t) => {
+  walnut(t, [2, 16]);
+  for (const x of [0, 5, 10, 15]) for (let y = 0; y < 16; y++) t.set(x, y, WALNUT[0]);
+  for (let x = 0; x < 16; x++) { t.set(x, 0, WALNUT[0]); t.set(x, 1, WALNUT[4]); t.set(x, 14, WALNUT[1]); t.set(x, 15, WALNUT[0]); }
+});
+def('jukebox_top', (t) => {
+  walnut(t);
+  for (let i = 0; i < 16; i++) { t.set(i, 0, WALNUT[0]); t.set(i, 15, WALNUT[0]); t.set(0, i, WALNUT[0]); t.set(15, i, WALNUT[0]); }
+  bevel(t, 1, 14);
+  // The slot a disc goes into.
+  for (let x = 3; x <= 12; x++) { t.set(x, 7, 0x0c0604); t.set(x, 8, 0x1a0e08); t.set(x, 6, WALNUT[1]); t.set(x, 9, WALNUT[4]); }
+});
+
+// Music discs: black, with grooves that catch the light and a coloured label.
+export const DISC_COLOURS = [0x6cc04a, 0x7a5ac8, 0xe8702a, 0x4ab8d8, 0xf0c840, 0x2a6ae0, 0x40d8a0, 0xd0e8ff];
+DISC_COLOURS.forEach((label, k) => {
+  def(`music_disc_${k}`, (t) => {
+    t.clear();
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+      const d = Math.hypot(x - 7.5, y - 7.5);
+      if (d > 7) continue;
+      let c = d > 6.3 ? 0x060606 : 0x161616;
+      if (Math.abs(d - 5) < 0.45 || Math.abs(d - 3.6) < 0.4) c = 0x262626;
+      // (Light across the grooves, top left.)
+      if (d > 2.6 && d < 6.3 && x + y < 12 && x + y > 8) c = 0x4a4a4a;
+      // (The label: lit at its top left, shaded at its bottom right.)
+      if (d < 2.6) c = x + y < 14 ? mix(label, 0xffffff, 0.3) : x + y > 16 ? mix(label, 0x000000, 0.25) : label;
+      if (d < 0.8) c = 0x101010;
+      t.set(x, y, c);
+    }
+  });
+});
+
+// The note that pops up over a note block (tinted by its pitch).
+def('note', (t) => {
+  t.clear();
+  const rows = ['', '', '.......##.......', '.......###......', '.......#.##.....', '.......#..##....', '.......#...#....', '.......#........',
+    '.......#........', '.......#........', '....####........', '...#####........', '...#####........', '....###.........'];
+  rows.forEach((row, y) => { for (let x = 0; x < 16; x++) if (row[x] === '#') t.set(x, y, 0xffffff); });
 });

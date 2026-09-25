@@ -1,15 +1,15 @@
 // Switches and what they work, a simple kind of redstone. Levers, buttons, pressure plates and
 // blocks of redstone power the blocks beside them, and a switch also powers through the block
 // it's fixed to (so a lever on a wall works a door on the other side of it). Powered, doors,
-// trapdoors and fence gates open, redstone lamps light up and TNT goes off; iron doors and iron
+// trapdoors and fence gates open, redstone lamps light up, note blocks play and TNT goes off; iron doors and iron
 // trapdoors open only this way. Only the host (or a single player) works this out; everyone else
 // sees the blocks change.
-import { B, SWITCH, DOOR, TRAPDOOR, trapdoorId, GATE, gateId, SOLID, FACE_DIRS } from './blocks.js';
+import { B, SWITCH, DOOR, TRAPDOOR, trapdoorId, GATE, gateId, SOLID, FACE_DIRS, NOTE } from './blocks.js';
 
 const isSource = (id) => !!SWITCH[id] || id === B.redstone_block;
 const isOn = (id) => !!SWITCH[id]?.on || id === B.redstone_block;
 const family = (id) => (DOOR[id] ? 'door' : TRAPDOOR[id] ? 'trapdoor' : GATE[id] ? 'gate'
-  : id === B.redstone_lamp || id === B.redstone_lamp_on ? 'lamp' : id === B.tnt ? 'tnt' : null);
+  : id === B.redstone_lamp || id === B.redstone_lamp_on ? 'lamp' : id === B.tnt ? 'tnt' : NOTE[id] !== undefined ? 'note' : null);
 
 // Is anything powering the block at (x, y, z)?
 export function poweredAt(w, x, y, z) {
@@ -45,6 +45,12 @@ export function refresh(w, x, y, z) {
   } else if (kind === 'lamp') {
     const want = poweredAt(w, x, y, z) ? B.redstone_lamp_on : B.redstone_lamp;
     if (id !== want) w.setBlock(x, y, z, want, { updates: false });
+  } else if (kind === 'note') {
+    // A note block plays as the power comes on (remembering it's powered, until it goes off).
+    const key = `${x},${y},${z}`, on = poweredAt(w, x, y, z);
+    w.notesOn ??= new Set();
+    if (on && !w.notesOn.has(key)) { w.notesOn.add(key); w.listener?.noteBlock?.(x, y, z); }
+    else if (!on) w.notesOn.delete(key);
   } else if (kind === 'tnt' && poweredAt(w, x, y, z)) {
     w.setBlock(x, y, z, 0);
     w.listener?.igniteTNT?.(x, y, z);

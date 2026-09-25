@@ -459,9 +459,11 @@ export class UI {
     this.titleTimer = setTimeout(() => el.classList.remove('show'), 3500);
   }
 
-  showItemName(text, ms = 1500) {
+  // (`cls`: a look for the text, such as 'now-playing'.)
+  showItemName(text, ms = 1500, cls = '') {
     const el = $('item-name');
     el.textContent = text;
+    el.className = cls;
     el.classList.add('show');
     clearTimeout(this.nameTimer);
     this.nameTimer = setTimeout(() => el.classList.remove('show'), ms);
