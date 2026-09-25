@@ -17,7 +17,7 @@ def('stone', (t) => drawStone(t));
 
 // A bevelled frame (polished and smooth blocks): lit on the top and left, shaded on the
 // bottom and right.
-function frame(t, light, dark, inset = 0) {
+export function frame(t, light, dark, inset = 0) {
   const a = inset, b = 15 - inset;
   for (let i = a; i <= b; i++) {
     t.set(i, a, light); t.set(a, i, light);
@@ -37,7 +37,7 @@ def('smooth_stone_side', (t) => {
 });
 
 // Cobblestone: rounded stones set in dark mortar, each lit on its top-left side.
-function drawCobble(t, pal, mortar, count = 10) {
+export function drawCobble(t, pal, mortar, count = 10) {
   const c = cells(t, count, 3.6);
   const tone = c.pts.map(() => 1 + t.ri(pal.length - 2));
   for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
@@ -385,7 +385,7 @@ export function drawPlanks(t, pal, cuts = [4, 12, 1, 9]) {
     else if (y % 4 === 0 && k[i] < 3 && t.r() < 0.5) t.set(x, y, pal[k[i] + 2]);
   }
 }
-function drawBark(t, pal, grooveColor) {
+export function drawBark(t, pal, grooveColor) {
   quantize(t, t.field([[1, 8, 0.5], [2, 16, 0.3], [4, 4, 0.1]], 0.2), pal, [0.1, 0.22, 0.34, 0.22, 0.12]);
   // Dark cracks running up the bark.
   for (let x = t.ri(3); x < 16; x += 3 + t.ri(2)) {

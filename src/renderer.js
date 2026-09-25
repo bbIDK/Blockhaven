@@ -6,7 +6,7 @@ import {
 import { generateTextures, TEXTURE_NAMES, TEX, ARRAY_LAYERS } from './textures.js';
 import { STRIDE, meshBlockItem, SECTION_OFFSET, FACE_PAIR, ALL_OPEN } from './mesher.js';
 import { boxMesh, spriteMesh, MODEL_OFFSET } from './models.js';
-import { RENDER, R, TEXL, FFLAGS, TINT, TINT_RGB, SHAPE, ICON_SHAPE, boxFaceUV, spriteOf } from './blocks.js';
+import { RENDER, R, TEXL, FFLAGS, TINT, TINT_RGB, SHAPE, ICON_SHAPE, boxFaceUV, boxLayer, spriteOf } from './blocks.js';
 import { ITEMS } from './items.js';
 import { SECTIONS } from './config.js';
 
@@ -463,8 +463,9 @@ export class Renderer {
     if (def && def.block !== null && RENDER[def.block] === R.MODEL && flat < 0) {
       const id = def.block, tint = TINT[id] ? blockTint(id) : null;
       const parts = (ICON_SHAPE[id] ?? SHAPE[id]).map((b) => ({
-        from: [b[0] / 16, b[1] / 16, b[2] / 16], to: [b[3] / 16, b[4] / 16, b[5] / 16], tint, flags: tint ? 1 : 0,
-        faces: [0, 1, 2, 3, 4, 5].map((f) => ({ layer: TEXL[id * 6 + f], uv: boxFaceUV(b, f) })),
+        from: [b[0] / 16, b[1] / 16, b[2] / 16], to: [b[3] / 16, b[4] / 16, b[5] / 16], tint: b.length > 6 ? null : tint,
+        flags: tint && b.length <= 6 ? 1 : 0,
+        faces: [0, 1, 2, 3, 4, 5].map((f) => ({ layer: boxLayer(id, b, f), uv: boxFaceUV(b, f) })),
       }));
       mesh = { ...this.createMesh(boxMesh(parts)), kind: 'block' };
     } else if (flat >= 0) {

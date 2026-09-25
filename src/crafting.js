@@ -140,6 +140,16 @@ shaped('smoker', 1, [' L ', 'LFL', ' L '], { L: '#logs', F: 'furnace' }, 'misc')
 shaped('blast_furnace', 1, ['III', 'IFI', 'SSS'], { I: 'iron_ingot', F: 'furnace', S: 'smooth_stone' }, 'misc');
 shaped('smithing_table', 1, ['II', 'PP', 'PP'], { I: 'iron_ingot', P: '#planks' }, 'misc');
 shaped('fletching_table', 1, ['FF', 'PP', 'PP'], { F: 'flint', P: '#planks' }, 'misc');
+shaped('anvil', 1, ['BBB', ' I ', 'III'], { B: 'iron_block', I: 'iron_ingot' }, 'misc');
+shaped('cauldron', 1, ['I I', 'I I', 'III'], { I: 'iron_ingot' }, 'misc');
+shaped('composter', 1, ['S S', 'S S', 'SSS'], { S: '#wooden_slabs' }, 'misc');
+shaped('bell', 1, [' S ', 'GGG', 'G G'], { S: 'stick', G: 'gold_ingot' }, 'misc');
+shaped('grindstone', 1, ['SXS', 'P P'], { S: 'stick', X: 'stone_slab', P: '#planks' }, 'misc');
+shaped('stonecutter', 1, [' I ', 'SSS'], { I: 'iron_ingot', S: 'stone' }, 'misc');
+shaped('loom', 1, ['SS', 'PP'], { S: 'string', P: '#planks' }, 'misc');
+shaped('lectern', 1, ['SSS', ' B ', ' S '], { S: '#wooden_slabs', B: 'bookshelf' }, 'misc');
+shaped('cartography_table', 1, ['pp', 'PP', 'PP'], { p: 'paper', P: '#planks' }, 'misc');
+shaped('flower_pot', 1, ['B B', ' B '], { B: 'brick' }, 'misc');
 shaped('iron_bars', 16, ['###', '###'], { '#': 'iron_ingot' }, 'building');
 // Gear.
 shaped('bow', 1, [' #S', '# S', ' #S'], { '#': 'stick', S: 'string' }, 'equipment');
@@ -313,7 +323,7 @@ const FUELS = [
   ['coal', 1600], ['charcoal', 1600], ['coal_block', 16000], ['lava_bucket', 20000], ['stick', 100], ['wooden_pickaxe', 200],
   ['wooden_axe', 200], ['wooden_shovel', 200], ['wooden_sword', 200], ['wooden_hoe', 200], ['crafting_table', 300], ['chest', 300],
   ['bookshelf', 300], ['ladder', 300], ['bowl', 100], ['barrel', 300], ['bow', 300], ['fishing_rod', 300], ['fletching_table', 300],
-  ['smithing_table', 300],
+  ['smithing_table', 300], ['composter', 300], ['loom', 300], ['lectern', 300], ['cartography_table', 300],
   ...WOOD_NAMES.flatMap((w) => [[`${w}_log`, 300], [`${w}_planks`, 300], [`${w}_slab`, 150], [`${w}_fence`, 300], [`${w}_fence_gate`, 300],
     [`${w}_door`, 200], [`${w}_sapling`, 100], ...(I[`${w}_stairs`] !== undefined ? [[`${w}_stairs`, 300]] : [])]),
   ...GROUPS.wool.map((w) => [w, 100]),

@@ -4,7 +4,7 @@
 // 0 still, 1..254 the direction the surface flows, 255 falling down the sides.
 import {
   R, RENDER, OPAQUE, AO, TEXL, FFLAGS, TINT, TINT_RGB, CULL_SELF, TRANSLUCENT, B, ANIM,
-  F_TINT, F_OVERLAY, F_UVROT, F_ANIM, liquidHeight, liquidLevel, sameCullGroup, TORCH_LEAN, shapeBoxes, boxFaceUV,
+  F_TINT, F_OVERLAY, F_UVROT, F_ANIM, liquidHeight, liquidLevel, sameCullGroup, TORCH_LEAN, shapeBoxes, boxFaceUV, boxLayer,
 } from './blocks.js';
 import { columnColors, fromByte } from './biomes.js';
 import { hash2 } from './math.js';
@@ -293,6 +293,9 @@ function model(bufs, blocks, light, x, y, z, p, id) {
   const flags = FFLAGS[id * 6] & FLAG_MASK;
   if (TINT[id] && flags & F_TINT) tintFor(id, (z << 4) | x, tint); else tint[0] = tint[1] = tint[2] = 255;
   for (const b of boxes) {
+    // A box with its own textures (another material) isn't tinted.
+    const own6 = b.length > 6, bflags = own6 ? flags & ~F_TINT : flags;
+    const tr = own6 ? 255 : tint[0], tg = own6 ? 255 : tint[1], tbl = own6 ? 255 : tint[2];
     for (let f = 0; f < 6; f++) {
       const edge = boundary(b, f);
       const nid = blocks[p + NOFF[f]];
@@ -300,12 +303,12 @@ function model(bufs, blocks, light, x, y, z, p, id) {
       const l = edge ? light[p + NOFF[f]] : own;
       const sky = Math.max(l >> 4, own >> 4) * 17, blk = Math.max(l & 15, own & 15) * 17;
       const uv = boxFaceUV(b, f);
-      const layer = TEXL[id * 6 + f];
+      const layer = boxLayer(id, b, f);
       const buf = bufs[f];
       buf.reserve(4);
       FACE_CORNERS[f].forEach((c, k) => {
         buf.vertex(x * U + (c[0] ? b[3] : b[0]) * 16, y * U + (c[1] ? b[4] : b[1]) * 16, z * U + (c[2] ? b[5] : b[2]) * 16,
-          UV[k][0] ? uv[2] : uv[0], UV[k][1] ? uv[3] : uv[1], layer, f, flags, sky, blk, 255, tint[0], tint[1], tint[2]);
+          UV[k][0] ? uv[2] : uv[0], UV[k][1] ? uv[3] : uv[1], layer, f, bflags, sky, blk, 255, tr, tg, tbl);
       });
     }
   }

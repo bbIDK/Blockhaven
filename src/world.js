@@ -757,6 +757,7 @@ export class World {
       else if (id === B.fire) this.fireTick(t.x, t.y, t.z);
       else if (NATURAL_LEAVES[id]) leafTick(this, t.x, t.y, t.z, id);
       else if (BLOCKS[id]?.falls) this.fall(t.x, t.y, t.z, id);
+      else if (id === B.composter_7) { this.setBlock(t.x, t.y, t.z, B.composter_ready); this.listener?.blockSound?.(t.x, t.y, t.z, 'composter'); }
     }
   }
 

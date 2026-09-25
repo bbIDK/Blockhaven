@@ -536,6 +536,88 @@ STAIR_FACES.forEach((side, i) => {
   CLIMB[id] = 1;
 });
 export const VINE_SIDE = { 1077: 5, 1078: 4, 1079: 0, 1080: 1 };
+
+// ---------------------------------------------------------------- workstations and furniture
+// Models made of several materials give each box its own textures (see boxLayer).
+function tb(box, spec) {
+  const layers = faceTextures(spec).map((n) => {
+    if (!(n in TEX)) throw new Error(`Missing texture ${n}`);
+    return TEX[n];
+  });
+  return [...box, layers.every((l) => l === layers[0]) ? layers[0] : layers];
+}
+// The same model turned a quarter (x and z swapped), textures and all.
+function swapXZ(b) {
+  const out = [b[2], b[1], b[0], b[5], b[4], b[3]];
+  if (b.length > 6) out.push(typeof b[6] === 'number' ? b[6] : [b[6][4], b[6][5], b[6][2], b[6][3], b[6][0], b[6][1]]);
+  return out;
+}
+const workstation = { hardness: 2.5, tool: 'axe', sound: 'wood', cat: 'functional' };
+// Anvils fall like sand, and lie across the way the player faces.
+const anvilBoxes = (z) => [...[[2, 0, 2, 14, 4, 14], [3, 4, 4, 13, 5, 12], [4, 5, 6, 12, 10, 10]].map((b) => (z ? swapXZ(b) : b)),
+  tb(z ? [3, 10, 0, 13, 16, 16] : [0, 10, 3, 16, 16, 13], { side: 'anvil', top: z ? 'anvil_top_z' : 'anvil_top' })];
+const anvil = { tex: 'anvil', hardness: 5, tool: 'pickaxe', tier: 1, sound: 'metal', falls: true, cat: 'functional' };
+shaped(1168, 'anvil', anvilBoxes(false), anvil);
+shaped(1169, 'anvil_z', anvilBoxes(true), { ...anvil, label: 'Anvil', base: 1168, item: false, drop: 'anvil' });
+FACING_VARIANTS[1168] = { 4: 1168, 5: 1168, 0: 1169, 1: 1169 };
+// Cauldrons hold a bucket of water.
+function cauldronBoxes(water) {
+  const leg = { side: 'cauldron_side', top: 'cauldron_top', bottom: 'cauldron_bottom' };
+  const wall = (b, inner) => {
+    const f = ['cauldron_side', 'cauldron_side', 'cauldron_top', 'cauldron_bottom', 'cauldron_side', 'cauldron_side'];
+    f[inner] = 'cauldron_inner';
+    return tb(b, f);
+  };
+  const out = [tb([0, 0, 0, 4, 3, 4], leg), tb([12, 0, 0, 16, 3, 4], leg), tb([0, 0, 12, 4, 3, 16], leg), tb([12, 0, 12, 16, 3, 16], leg),
+    tb([2, 3, 2, 14, 4, 14], { side: 'cauldron_inner', top: 'cauldron_inner', bottom: 'cauldron_bottom' }),
+    wall([0, 3, 0, 16, 16, 2], 4), wall([0, 3, 14, 16, 16, 16], 5), wall([0, 3, 2, 2, 16, 14], 0), wall([14, 3, 2, 16, 16, 14], 1)];
+  if (water) out.push(tb([2, 4, 2, 14, 14, 14], 'cauldron_water'));
+  return out;
+}
+const cauldron = { tex: 'cauldron_side', hardness: 2, tool: 'pickaxe', sound: 'metal', cat: 'functional' };
+shaped(1170, 'cauldron', cauldronBoxes(false), cauldron);
+shaped(1171, 'water_cauldron', cauldronBoxes(true), { ...cauldron, label: 'Cauldron', base: 1170, item: false, drop: 'cauldron' });
+// Composters fill up a level at a time with plant matter and give bone meal when full.
+export const COMPOSTER = {}; // id -> level (0..7, 8 = ready)
+for (let level = 0; level <= 8; level++) {
+  const id = 1172 + level;
+  const walls = { side: 'composter_side', top: 'composter_top', bottom: 'composter_bottom' };
+  const boxes = [tb([2, 0, 2, 14, 2, 14], { side: 'composter_side', top: 'composter_bottom', bottom: 'composter_bottom' }),
+    tb([0, 0, 0, 16, 16, 2], walls), tb([0, 0, 14, 16, 16, 16], walls), tb([0, 0, 2, 2, 16, 14], walls), tb([14, 0, 2, 16, 16, 14], walls)];
+  if (level) boxes.push(tb([2, 2, 2, 14, Math.min(15, 1 + level * 2), 14], level === 8 ? 'composter_ready' : 'compost'));
+  shaped(id, level === 0 ? 'composter' : level === 8 ? 'composter_ready' : `composter_${level}`, boxes, { ...workstation, hardness: 0.6,
+    tex: 'composter_side', label: 'Composter', ...(level ? { base: 1172, item: false, drop: 'composter' } : {}) });
+  COMPOSTER[id] = level;
+}
+// A bell hung between two posts; it rings when used.
+const bellBoxes = (z) => [tb([2, 0, 6, 4, 16, 10], 'stone'), tb([12, 0, 6, 14, 16, 10], 'stone'), tb([4, 13, 7, 12, 15, 9], 'dark_oak_planks'),
+  tb([6, 12, 6, 10, 13, 10], { side: 'bell_body', top: 'bell_top' }), tb([5, 5, 5, 11, 12, 11], { side: 'bell_body', top: 'bell_top' }),
+  tb([4, 3, 4, 12, 5, 12], { side: 'bell_body', top: 'bell_top' })].map((b) => (z ? swapXZ(b) : b));
+const bell = { tex: 'bell_body', hardness: 5, tool: 'pickaxe', sound: 'metal', support: 'solid', cat: 'functional' };
+shaped(1181, 'bell', bellBoxes(false), bell);
+shaped(1182, 'bell_z', bellBoxes(true), { ...bell, label: 'Bell', base: 1181, item: false, drop: 'bell' });
+FACING_VARIANTS[1181] = { 4: 1181, 5: 1181, 0: 1182, 1: 1182 };
+// Grindstone: a stone wheel on a wooden frame.
+const grindBoxes = (z) => [tb([2, 0, 6, 4, 7, 10], 'dark_oak_log'), tb([12, 0, 6, 14, 7, 10], 'dark_oak_log'),
+  tb([2, 7, 5, 4, 13, 11], 'dark_oak_planks'), tb([12, 7, 5, 14, 13, 11], 'dark_oak_planks'),
+  tb([4, 4, 2, 12, 16, 14], ['grindstone_round', 'grindstone_round', 'grindstone_side', 'grindstone_side', 'grindstone_side', 'grindstone_side'])]
+  .map((b) => (z ? swapXZ(b) : b));
+const grindstone = { tex: 'grindstone_side', hardness: 2, tool: 'pickaxe', sound: 'stone', cat: 'functional' };
+shaped(1183, 'grindstone', grindBoxes(false), grindstone);
+shaped(1184, 'grindstone_z', grindBoxes(true), { ...grindstone, label: 'Grindstone', base: 1183, item: false, drop: 'grindstone' });
+FACING_VARIANTS[1183] = { 4: 1183, 5: 1183, 0: 1184, 1: 1184 };
+// Stonecutter: a stone bench with a saw blade standing in a slot.
+const cutterBoxes = (z) => [tb([0, 0, 0, 16, 9, 16], { side: 'stonecutter_side', top: 'stonecutter_top', bottom: 'smooth_stone' }),
+  tb(z ? [8, 9, 1, 8, 16, 15] : [1, 9, 8, 15, 16, 8], 'stonecutter_saw')];
+const cutter = { tex: 'stonecutter_side', cutout: true, hardness: 3.5, tool: 'pickaxe', sound: 'stone', cat: 'functional' };
+shaped(1185, 'stonecutter', cutterBoxes(false), cutter);
+shaped(1186, 'stonecutter_z', cutterBoxes(true), { ...cutter, label: 'Stonecutter', base: 1185, item: false, drop: 'stonecutter' });
+FACING_VARIANTS[1185] = { 4: 1185, 5: 1185, 0: 1186, 1: 1186 };
+facing([1187, 1188, 1189, 1190], 'loom', { front: 'loom_front', side: 'loom_side', top: 'loom_top', bottom: 'loom_bottom', ...workstation });
+shaped(1191, 'lectern', [tb([0, 0, 0, 16, 2, 16], 'lectern_base'), tb([4, 2, 4, 12, 13, 12], 'lectern_sides'),
+  tb([0, 13, 0, 16, 15, 16], { side: 'lectern_base', top: 'lectern_top', bottom: 'lectern_base' })], { tex: 'lectern_sides', ...workstation });
+block(1192, 'cartography_table', { tex: ['cartography_table_side2', 'cartography_table_side2', 'cartography_table_top', 'dark_oak_planks',
+  'cartography_table_side1', 'cartography_table_side1'], ...workstation });
 // Smokers cook food and blast furnaces smelt ores and metal, both twice as fast as a furnace.
 facing([1900, 1901, 1902, 1903], 'smoker', { front: 'smoker_front', side: 'smoker_side', top: 'smoker_top', bottom: 'smoker_bottom',
   hardness: 3.5, tool: 'pickaxe', tier: 1, cat: 'functional' });
@@ -608,6 +690,7 @@ function turnBox(b, f) {
   return [Math.min(ax, bx), b[1], Math.min(az, bz), Math.max(ax, bx), b[4], Math.max(az, bz)];
 }
 export const COLLISION = new Array(N).fill(null);
+COLLISION[1185] = COLLISION[1186] = [[0, 0, 0, 16, 9, 16]];
 WOOD_NAMES.forEach((w, i) => {
   const first = 1500 + i * 8;
   STAIR_FACES.forEach((facing, fi) => {
@@ -697,6 +780,22 @@ export const CROP = {}; // id -> { name, stage, max, first }
   }
 });
 for (const id of [B.sugar_cane, B.cactus, B.dirt]) TICKS[id] = 1;
+// Flower pots, and the plants that can go in them (id -> the plant).
+export const POTTED = {};
+const POT = tb([5, 0, 5, 11, 6, 11], { side: 'flower_pot', top: 'flower_pot_top', bottom: 'flower_pot' });
+const pot = { tex: 'flower_pot', cutout: true, hardness: 0, sound: 'stone', support: 'solid' };
+shaped(1193, 'flower_pot', [POT], { ...pot, cat: 'functional' });
+[['poppy', 1081], ['dandelion', 1082], ['cornflower', 1083], ['allium', 1084], ['blue_orchid', 1085], ['oak_sapling', 1086],
+  ['cactus', 1087], ['dead_bush', 1088], ['red_mushroom', 1089], ['brown_mushroom', 1090], ['cherry_sapling', 1091], ['spruce_sapling', 1092],
+  ['azure_bluet', 1093], ['oxeye_daisy', 1094], ['red_tulip', 1095], ['lily_of_the_valley', 1096]].forEach(([plant, id]) => {
+  const tex = BLOCKS[B[plant]].faces;
+  const parts = plant === 'cactus' ? [tb([6, 6, 6, 10, 16, 10], { side: 'cactus_side', top: 'cactus_top' })]
+    : [tb([8, 4, 1, 8, 16, 15], tex[0]), tb([1, 4, 8, 15, 16, 8], tex[0])];
+  shaped(id, `potted_${plant}`, [POT, ...parts], { ...pot, label: 'Flower Pot', base: 1193, item: false, drop: 'flower_pot' });
+  COLLISION[id] = [[5, 0, 5, 11, 6, 11]];
+  POTTED[id] = B[plant];
+});
+export const POT_FOR = Object.fromEntries(Object.entries(POTTED).map(([pid, plant]) => [plant, Number(pid)]));
 // Logs of every wood (all three ways up), for leaves checking whether their tree still stands.
 export const LOG = new Uint8Array(N);
 for (const w of WOOD_NAMES) { LOG[WOOD[w].log] = 1; for (const a of LOG_AXES[WOOD[w].log]) LOG[a] = 1; }
@@ -718,17 +817,23 @@ export function spriteOf(block) {
 }
 
 // Chests placed by the world generator, full of loot the first time they're opened (see
-// loot.js). They look like chests facing south.
+// loot.js), facing any way. They look like chests; LOOT_CHEST[kind] is the one facing south.
 export const LOOT_CHEST = {};
-export const LOOT_KIND = {}; // id -> table
-['dungeon', 'village', 'smith', 'desert', 'house'].forEach((kind, i) => {
-  const id = 1990 + i;
-  const tex = ['chest_side', 'chest_side', 'chest_top', 'chest_top', 'chest_front', 'chest_side'];
-  shaped(id, `loot_chest_${kind}`, [[1, 0, 1, 15, 14, 15]], { label: 'Chest', tex, hardness: 2.5, tool: 'axe', sound: 'wood',
-    base: 206, item: false, drop: 'chest' });
-  LOOT_CHEST[kind] = id;
-  LOOT_KIND[id] = kind;
+export const LOOT_KIND = {};  // id -> table
+export const LOOT_FRONT = {}; // id -> the face its front is on
+['dungeon', 'village', 'smith', 'desert', 'house', 'mine', 'farm'].forEach((kind, i) => {
+  [4, 5, 0, 1].forEach((front, j) => {
+    const id = 1990 + i * 4 + j;
+    const tex = ['chest_side', 'chest_side', 'chest_top', 'chest_top', 'chest_side', 'chest_side'];
+    tex[front] = 'chest_front';
+    shaped(id, j === 0 ? `loot_chest_${kind}` : `loot_chest_${kind}_${front}`, [[1, 0, 1, 15, 14, 15]], { label: 'Chest', tex, hardness: 2.5,
+      tool: 'axe', sound: 'wood', base: 206, item: false, drop: 'chest' });
+    if (j === 0) LOOT_CHEST[kind] = id;
+    LOOT_KIND[id] = kind;
+    LOOT_FRONT[id] = front;
+  });
 });
+export const lootChestId = (kind, front) => LOOT_CHEST[kind] + [4, 5, 0, 1].indexOf(front);
 
 // A ladder's panel against the wall on `side` (shared with vines).
 function LADDER_PANEL_FOR(side) {
@@ -756,6 +861,10 @@ const WALL_ARMS = { 0: [8, 0, 5, 16, 14, 11], 1: [0, 0, 5, 8, 14, 11], 4: [5, 0,
 
 // Texture rectangle [u0, v0, u1, v1] (1/16 units) for face f of a box, so shaped blocks line up
 // with the full block textures next to them.
+// The texture layer of face f of a model box: its own, when it has one (a seventh entry, one layer
+// or six), else the block's.
+export const boxLayer = (id, b, f) => (b.length > 6 ? (typeof b[6] === 'number' ? b[6] : b[6][f]) : TEXL[id * 6 + f]);
+
 export function boxFaceUV(b, f) {
   switch (f) {
     case 0: return [16 - b[5], 16 - b[4], 16 - b[2], 16 - b[1]];
@@ -846,6 +955,7 @@ const CREATIVE_ORDER = [
   'red_mushroom', 'brown_mushroom', 'pumpkin', 'melon', 'hay_block',
   // functional
   'crafting_table', 'furnace', 'smoker', 'blast_furnace', 'chest', 'barrel', 'smithing_table', 'fletching_table', 'bed', 'bookshelf',
+  'anvil', 'grindstone', 'stonecutter', 'loom', 'lectern', 'cartography_table', 'composter', 'cauldron', 'bell', 'flower_pot',
   'torch', 'lantern', 'campfire', 'glowstone', 'jack_o_lantern', 'ladder', 'iron_bars', 'tnt',
   ...WOOD_NAMES.flatMap((w) => [`${w}_door`, `${w}_fence`, `${w}_fence_gate`]),
 ];

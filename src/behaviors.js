@@ -1,7 +1,9 @@
 // What the release's new items do when used on a block: hoes till soil, shovels flatten paths,
-// seeds and root crops are planted, bone meal makes things grow, and buckets scoop up and pour
-// out water and lava. Each returns true when it handled the click (see Game.useItem).
-import { B, CROP, SAPLING, FACE_DIRS, WATERLIKE, REPLACEABLE, waterLevel, lavaLevel, DOUBLE } from './blocks.js';
+// seeds and root crops are planted, bone meal makes things grow, buckets scoop up and pour out
+// water and lava, and workstations do their jobs. Each returns true when it handled the click
+// (see Game.useItem).
+import { B, CROP, SAPLING, FACE_DIRS, WATERLIKE, REPLACEABLE, waterLevel, lavaLevel, DOUBLE, COMPOSTER, POTTED, POT_FOR,
+  WOOD_NAMES } from './blocks.js';
 import { I } from './items.js';
 import { TEX } from './textures.js';
 import { growCrop, growSapling } from './growth.js';
@@ -64,6 +66,73 @@ function boneMeal(game, t) {
   return consumed(game);
 }
 
+// Plant matter a composter takes, and the chance each item adds a layer (Minecraft's numbers).
+const COMPOST = new Map();
+const compost = (names, chance) => { for (const n of names) { const id = I[n] ?? B[n]; if (id !== undefined) COMPOST.set(id, chance); } };
+compost(['wheat_seeds', 'beetroot_seeds', 'tall_grass', ...WOOD_NAMES.flatMap((w) => [`${w}_leaves`, `${w}_sapling`])], 0.3);
+compost(['melon_slice', 'cactus', 'sugar_cane', 'vine', 'tall_grass_double', 'dead_bush'], 0.5);
+compost(['apple', 'beetroot', 'carrot', 'potato', 'wheat', 'fern', 'large_fern', 'lily_pad', 'pumpkin', 'melon', 'red_mushroom',
+  'brown_mushroom', 'dandelion', 'poppy', 'cornflower', 'allium', 'azure_bluet', 'blue_orchid', 'oxeye_daisy', 'red_tulip', 'orange_tulip',
+  'white_tulip', 'pink_tulip', 'lily_of_the_valley', 'sunflower', 'lilac', 'rose_bush', 'peony'], 0.65);
+compost(['baked_potato', 'bread', 'cookie', 'hay_block'], 0.85);
+compost(['pumpkin_pie'], 1);
+export const compostChance = (id) => COMPOST.get(id);
+
+// Cauldrons hold a bucket of water, composters turn plant matter into bone meal, bells ring and
+// flower pots take a flower or sapling (and give it back).
+export function useWorkstation(game, held, t) {
+  const w = game.world, id = t.id, at = { x: t.x + 0.5, y: t.y + 0.5, z: t.z + 0.5 };
+  if (id === B.cauldron && held?.id === I.water_bucket) {
+    w.setBlock(t.x, t.y, t.z, B.water_cauldron);
+    game.audio.bucket('empty', at);
+    return swapHeld(game, I.bucket);
+  }
+  if (id === B.water_cauldron && held?.id === I.bucket) {
+    w.setBlock(t.x, t.y, t.z, B.cauldron);
+    game.audio.bucket('fill', at);
+    return swapHeld(game, I.water_bucket);
+  }
+  const level = COMPOSTER[id];
+  if (level !== undefined) {
+    if (level === 8) {
+      w.setBlock(t.x, t.y, t.z, B.composter);
+      game.entities.spawnItem(t.x + 0.5, t.y + 1.05, t.z + 0.5, I.bone_meal, 1);
+      game.audio.place('grass', at);
+      game.swingArm();
+      return true;
+    }
+    const chance = held ? COMPOST.get(held.id) : undefined;
+    if (level === 7) return chance !== undefined;
+    if (chance === undefined) return false;
+    if (level === 0 || Math.random() < chance) {
+      w.setBlock(t.x, t.y, t.z, id + 1);
+      if (level + 1 === 7) w.scheduleTick(t.x, t.y, t.z, 20);
+      game.particles.bits(t.x + 0.5, t.y + 0.4 + level * 0.12, t.z + 0.5, TEX.happy, 6, 0.6, 0.4);
+    }
+    game.audio.place('grass', at);
+    return consumed(game);
+  }
+  if (id === B.bell || id === B.bell_z) {
+    game.audio.bell(at);
+    game.swingArm();
+    return true;
+  }
+  if (id === B.flower_pot && held && POT_FOR[held.id] !== undefined) {
+    w.setBlock(t.x, t.y, t.z, POT_FOR[held.id]);
+    game.audio.place('grass', at);
+    return consumed(game);
+  }
+  if (POTTED[id] !== undefined && !held) {
+    w.setBlock(t.x, t.y, t.z, B.flower_pot);
+    if (!game.creative && game.inv.add(POTTED[id], 1)) game.entities.spawnItem(t.x + 0.5, t.y + 0.5, t.z + 0.5, POTTED[id], 1);
+    game.audio.place('grass', at);
+    game.swingArm();
+    game.invChanged();
+    return true;
+  }
+  return false;
+}
+
 // Buckets act on the first liquid or block along the line of sight.
 export function useBucket(game, held) {
   const w = game.world, p = game.player, d = p.lookDir();
@@ -73,7 +142,7 @@ export function useBucket(game, held) {
     const water = waterLevel(hit.id) === 0, lava = lavaLevel(hit.id) === 0;
     if (!water && !lava) return false;
     w.setBlock(hit.x, hit.y, hit.z, 0);
-    game.audio.bucket?.(lava ? 'fill_lava' : 'fill', { x: hit.x + 0.5, y: hit.y + 0.5, z: hit.z + 0.5 });
+    game.audio.bucket(lava ? 'fill_lava' : 'fill', { x: hit.x + 0.5, y: hit.y + 0.5, z: hit.z + 0.5 });
     return swapHeld(game, lava ? I.lava_bucket : I.water_bucket);
   }
   const liquid = held.id === I.water_bucket ? B.water : B.lava;
@@ -85,7 +154,7 @@ export function useBucket(game, held) {
   if (cur && !REPLACEABLE[cur] && !WATERLIKE[cur]) return false;
   if (DOUBLE[cur]) return false;
   w.setBlock(x, y, z, liquid);
-  game.audio.bucket?.(liquid === B.lava ? 'empty_lava' : 'empty', { x: x + 0.5, y: y + 0.5, z: z + 0.5 });
+  game.audio.bucket(liquid === B.lava ? 'empty_lava' : 'empty', { x: x + 0.5, y: y + 0.5, z: z + 0.5 });
   if (!game.creative) swapHeld(game, I.bucket);
   game.swingArm();
   return true;

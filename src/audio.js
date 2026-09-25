@@ -294,6 +294,31 @@ export class Audio {
   toolBreak() { this.play('item.break', { volume: 0.8, pitch: 0.9, vary: 0.2 }); }
   door(open, at) { this.play(open ? 'door.open' : 'door.close', { volume: 0.85, at }); }
   chest(open, at) { this.play(open ? 'chest.open' : 'door.close', { volume: open ? 0.7 : 0.4, pitch: open ? 1 : 1.2, at }); }
+  bucket(kind, at) {
+    if (kind.endsWith('lava')) this.play('lava.pop', { volume: 0.6, pitch: kind.startsWith('fill') ? 0.8 : 0.6, at });
+    else this.play('water.splash', { volume: 0.35, pitch: kind === 'fill' ? 1.3 : 1.1, at });
+  }
+  // A struck bell: inharmonic partials ringing down at their own rates (hum, prime, tierce, quint,
+  // nominal and a few bright ones).
+  bell(at) {
+    if (!this.ready) return;
+    const sp = this.spatial(at, 3);
+    if (!sp) return;
+    const ctx = this.ctx, t = ctx.currentTime, f0 = 698;
+    for (const [ratio, amp, decay] of [[0.5, 0.3, 3.2], [1, 0.45, 2.6], [1.19, 0.3, 2], [1.5, 0.16, 1.5], [2, 0.26, 1.3], [2.52, 0.1, 0.8],
+      [3.01, 0.08, 0.6], [4.1, 0.05, 0.3]]) {
+      const osc = ctx.createOscillator();
+      osc.frequency.value = f0 * ratio * (1 + (Math.random() - 0.5) * 0.004);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(amp * 0.45 * sp.gain, t + 0.003);
+      g.gain.exponentialRampToValueAtTime(0.0004, t + decay);
+      this.output(osc, g, sp.pan);
+      osc.start(t);
+      osc.stop(t + decay + 0.05);
+    }
+    this.thump(at, 180, 90, 0.25, 0.08);
+  }
   lavaPop(at) { this.play('lava.pop', { volume: 0.35, at }); }
 
   // The steady sound of rain, faded towards `volume` (0 lets it die away).

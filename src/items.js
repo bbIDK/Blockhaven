@@ -1,6 +1,6 @@
 // Item registry: every placeable block is also an item (same id); tools and materials use ids 256+.
 // Recipes live in crafting.js.
-import { BLOCKS, B, BASE, CROP, LEAVES_WOOD, DOUBLE } from './blocks.js';
+import { BLOCKS, B, BASE, CROP, LEAVES_WOOD, DOUBLE, POTTED } from './blocks.js';
 import { TEX } from './textures.js';
 import { DYES, rgb } from './colors.js';
 import { leafDrops } from './growth.js';
@@ -214,6 +214,7 @@ export function dropsFor(blockId, tool, rand = Math.random) {
       default: return ripe ? [...one('beetroot'), ...one('beetroot_seeds', n(1, 3))] : one('beetroot_seeds');
     }
   }
+  if (POTTED[blockId] !== undefined) return [{ id: B.flower_pot, count: 1 }, { id: POTTED[blockId], count: 1 }];
   switch (base.name) {
     case 'tall_grass': case 'fern': return rand() < 0.125 ? one('wheat_seeds') : [];
     case 'tall_grass_double': case 'large_fern': return DOUBLE[blockId]?.upper ? [] : rand() < 0.125 ? one('wheat_seeds') : [];

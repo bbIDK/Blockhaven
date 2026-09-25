@@ -1,7 +1,7 @@
 // Inventory icons, drawn once from the texture pixels: isometric cubes for blocks, flat sprites
 // for plants and items. Returned as data URLs for <img> tags.
 import { ITEMS } from './items.js';
-import { RENDER, R, TEXL, FFLAGS, TINT, TINT_RGB, F_TINT, F_OVERLAY, SHAPE, ICON_SHAPE, spriteOf } from './blocks.js';
+import { RENDER, R, TEXL, FFLAGS, TINT, TINT_RGB, F_TINT, F_OVERLAY, SHAPE, ICON_SHAPE, spriteOf, boxLayer } from './blocks.js';
 
 const S = 64;
 const DEFAULT_GRASS = [124, 189, 84];
@@ -68,9 +68,16 @@ function drawCube(ctx, block) {
 function drawBoxes(ctx, block, boxes) {
   const k = S / 48;
   const sorted = [...boxes].sort((a, b) => a[1] - b[1] || (a[0] + a[2]) - (b[0] + b[2]));
-  const faces = [0, 2, 4].map((f) => faceImage(block, f, f === 2 ? 1 : f === 4 ? 0.78 : 0.6));
+  const blockFaces = [0, 2, 4].map((f) => faceImage(block, f, f === 2 ? 1 : f === 4 ? 0.78 : 0.6));
+  const own = new Map();
+  const boxFace = (b, f, shade) => {
+    const layer = boxLayer(block, b, f), key = layer * 8 + f;
+    if (!own.has(key)) own.set(key, layerImage(layer, null, null, shade));
+    return own.get(key);
+  };
   for (const b of sorted) {
-    const [x0, y0, z0, x1, y1, z1] = b.map((v) => v / 16);
+    const faces = b.length > 6 ? [boxFace(b, 0, 0.6), boxFace(b, 2, 1), boxFace(b, 4, 0.78)] : blockFaces;
+    const [x0, y0, z0, x1, y1, z1] = b.slice(0, 6).map((v) => v / 16);
     // top (+Y): u = x, v = z
     ctx.setTransform(21 / 16 * k, 11 / 16 * k, -21 / 16 * k, 11 / 16 * k, 24 * k, (2 + 22 * (1 - y1)) * k);
     ctx.drawImage(faces[1], x0 * 16, z0 * 16, (x1 - x0) * 16, (z1 - z0) * 16, x0 * 16, z0 * 16, (x1 - x0) * 16 + 0.2, (z1 - z0) * 16 + 0.2);

@@ -10,7 +10,7 @@ import { BIOME, toByte } from './biomes.js';
 import { hash2, hash3, hashString, mulberry32, smoothstep, lerp, clamp } from './math.js';
 import { TREES, WIDE_TREES, TREE_REACH } from './trees.js';
 import { WorldGenV1 } from './worldgen1.js';
-import { villagePieces } from './villages.js';
+import { villagePieces, villagesNear, groundLevel, insideVillage } from './villages.js';
 
 const PAD = 1; // neighbour columns kept for slopes
 const GW = CHUNK + PAD * 2;
@@ -132,6 +132,7 @@ export class WorldGen {
   constructor(seed, type = 'default') {
     this.seed = seed >>> 0;
     this.type = type;
+    this.villages = type !== 'flat'; // (worlds from the first generator have none)
     const n = (k) => new Noise((this.seed ^ hashString(k)) >>> 0);
     this.nCont = n('continent2'); this.nEros = n('erosion2'); this.nPeaks = n('peaks2'); this.nHills = n('hills2');
     this.nWarp = n('warp2'); this.nTemp = n('temperature2'); this.nHum = n('humidity2'); this.nRiver = n('river2');
@@ -315,6 +316,17 @@ export class WorldGen {
         if (gx >= PAD && gx < GW - PAD && gz >= PAD && gz < GW - PAD) this.columns.set(`${x0 + gx - PAD},${z0 + gz - PAD}`, { h: H[i], biome: BIO[i], mount: MOUNT[i] });
       }
     }
+    // Villages level their ground (and it eases back to the land around them).
+    const vplans = villagesNear(this, cx, cz);
+    const VIN = new Uint8Array(256); // 1 inside a village's wall
+    if (vplans.length) {
+      for (let gz = 0; gz < GW; gz++) for (let gx = 0; gx < GW; gx++) {
+        const i = gz * GW + gx, wx = x0 + gx - PAD, wz = z0 + gz - PAD;
+        const lv = groundLevel(vplans, wx, wz, H[i]);
+        if (lv >= 0) { H[i] = lv; MOUNT[i] = Math.min(MOUNT[i], 0.2); }
+        if (gx >= PAD && gx < GW - PAD && gz >= PAD && gz < GW - PAD && insideVillage(vplans, wx, wz, 1)) VIN[(gz - PAD) * 16 + gx - PAD] = 1;
+      }
+    }
     const slopeAt = (i) => Math.max(Math.abs(H[i + 1] - H[i]), Math.abs(H[i - 1] - H[i]), Math.abs(H[i + GW] - H[i]), Math.abs(H[i - GW] - H[i]));
 
     // 2. Rock: the height map, with overhanging cliffs worn into the mountains by 3D noise.
@@ -451,6 +463,7 @@ export class WorldGen {
         let maxY = h;
         // Keep caves from breaking out under the sea and rivers.
         if (h <= SEA_LEVEL + 1 || minN < SEA_LEVEL) maxY = Math.min(h, minN) - 5;
+        if (VIN[z * 16 + x]) maxY = Math.min(maxY, h - 8);
         if (maxY < 6) continue;
         const ix = x >> 2, iz = z >> 2, fx = (x & 3) / 4, fz = (z & 3) / 4;
         const k00 = (iz * 5 + ix) * GY, k10 = (iz * 5 + ix + 1) * GY, k01 = ((iz + 1) * 5 + ix) * GY, k11 = ((iz + 1) * 5 + ix + 1) * GY;
@@ -550,7 +563,7 @@ export class WorldGen {
       for (let x = 0; x < 16; x++) {
         const gi = (z + PAD) * GW + x + PAD, biome = BIO[gi], wx = x0 + x, wz = z0 + z;
         const h = TOP[z * 16 + x];
-        if (h + 2 < HEIGHT) {
+        if (h + 2 < HEIGHT && !VIN[z * 16 + x]) {
           const ground = blocks[idx(x, h, z)], above = idx(x, h + 1, z);
           if (blocks[above] === 0) {
             const r = hash2(wx, wz, seed ^ 0x9a55), r2 = hash2(wz, wx, seed ^ 0xf10);
@@ -620,6 +633,7 @@ export class WorldGen {
         const col = inside ? this.columns.get(`${wx},${wz}`) : this.rootColumn(wx, wz);
         const table = TREE_TABLE[col.biome];
         if (!table || roll >= table[0]) continue;
+        if (vplans.length && insideVillage(vplans, wx, wz, 4)) continue;
         let h = col.h;
         if (inside) h = TOP[(wz - z0) * 16 + wx - x0];
         if (h <= SEA_LEVEL - (col.biome === BIOME.SWAMP ? 2 : 0) || h > HEIGHT - 40) continue;
@@ -645,7 +659,7 @@ export class WorldGen {
     }
 
     // 10. Villages.
-    for (const p of villagePieces(this, cx, cz)) p(set, get, put);
+    for (const p of villagePieces(this, cx, cz, vplans)) p(set);
     return { blocks, climate, biomes };
   }
 

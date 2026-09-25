@@ -3,6 +3,7 @@
 // WebGL texture arrays of up to 256 layers each (the most every WebGL 2 device supports).
 import { defs, Tex } from './tex/core.js';
 import './tex/terrain.js';
+import './tex/village.js';
 import './tex/items.js';
 import './tex/entities.js';
 

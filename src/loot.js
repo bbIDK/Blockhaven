@@ -18,6 +18,12 @@ const TABLES = {
     ['iron_helmet', 1, 1, 2], ['iron_chestplate', 1, 1, 2], ['iron_leggings', 1, 1, 2], ['iron_boots', 1, 1, 2], ['chainmail_chestplate', 1, 1, 2],
     ['coal', 2, 9, 8], ['bread', 1, 3, 6], ['gold_coin', 4, 18, 8], ['diamond', 1, 3, 2], ['obsidian', 1, 5, 3], ['oak_sapling', 1, 4, 3],
     ['bucket', 1, 1, 3], ['iron_nugget', 2, 9, 4]] },
+  mine: { rolls: [3, 7], items: [['coal', 3, 12, 10], ['raw_iron', 1, 5, 8], ['raw_copper', 2, 7, 6], ['raw_gold', 1, 3, 3], ['torch', 4, 16, 8],
+    ['iron_pickaxe', 1, 1, 2], ['stone_pickaxe', 1, 1, 4], ['bread', 1, 3, 6], ['redstone', 2, 6, 3], ['lapis_lazuli', 2, 6, 3],
+    ['diamond', 1, 1, 1], ['gold_coin', 2, 10, 6], ['iron_ingot', 1, 3, 4], ['ladder', 2, 6, 3]] },
+  farm: { rolls: [3, 6], items: [['wheat_seeds', 3, 10, 10], ['beetroot_seeds', 2, 8, 6], ['carrot', 2, 6, 8], ['potato', 2, 6, 8],
+    ['wheat', 2, 8, 8], ['bone_meal', 2, 8, 6], ['bread', 1, 3, 6], ['wooden_hoe', 1, 1, 3], ['iron_hoe', 1, 1, 1], ['gold_coin', 1, 6, 6],
+    ['apple', 1, 4, 5], ['oak_sapling', 1, 3, 3]] },
   desert: { rolls: [2, 6], items: [['bone', 2, 7, 8], ['rotten_flesh', 1, 5, 8], ['gold_coin', 3, 14, 10], ['gold_ingot', 1, 4, 5],
     ['emerald', 1, 3, 4], ['diamond', 1, 2, 2], ['sand', 3, 8, 6], ['gunpowder', 1, 5, 6], ['string', 1, 4, 5]] },
 };

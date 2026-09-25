@@ -6,11 +6,12 @@ import { Body } from './body.js';
 import { boxMesh, MODEL_OFFSET } from './models.js';
 import { TEX } from './textures.js';
 import { mat4, identity, translate, rotateX, rotateY, rotateZ, scale, hash2 } from './math.js';
-import { B, BLOCKS, SOLID, WATERLIKE, FILTER, REPLACEABLE } from './blocks.js';
+import { B, BLOCKS, BASE, SOLID, WATERLIKE, FILTER, REPLACEABLE } from './blocks.js';
 import { I, itemDef } from './items.js';
 import { rayBox } from './world.js';
 import { BIOME } from './biomes.js';
 import { HEIGHT } from './config.js';
+import { villageAt } from './villages.js';
 
 const faces = (all, front) => [all, all, all, all, all, front ?? all].map((layer) => ({ layer }));
 const box = (from, to, f, pivot = null, anim = null) => ({ from, to, faces: f, pivot, anim });
@@ -200,7 +201,7 @@ export class Entities {
     for (let attempt = 0; attempt < 6; attempt++) {
       const a = Math.random() * Math.PI * 2, d = 18 + Math.random() * 22;
       const x = Math.floor(p.x + Math.cos(a) * d), z = Math.floor(p.z + Math.sin(a) * d);
-      if (!w.isLoaded(x, z)) continue;
+      if (!w.isLoaded(x, z) || villageAt(w.gen, x, z, 6)) continue;
       for (let y = Math.min(HEIGHT - 3, Math.floor(p.y) + 14); y > Math.max(1, Math.floor(p.y) - 20); y--) {
         const below = w.getBlock(x, y - 1, z);
         if (!SOLID[below] || BLOCKS[below].name.endsWith('leaves') || SOLID[w.getBlock(x, y, z)] || SOLID[w.getBlock(x, y + 1, z)]) continue;
@@ -394,7 +395,7 @@ export class Entities {
     if ((cur === 0 || (REPLACEABLE[cur] && WATERLIKE[cur] !== 2) || cur === B.fire) && y >= 0) {
       w.setBlock(x, y, z, e.block);
       game.audio.place(def?.sound ?? 'sand', { x: e.x, y: e.y, z: e.z });
-    } else if (!game.creative) this.spawnItem(e.x, e.y + 0.3, e.z, e.block, 1);
+    } else if (!game.creative) this.spawnItem(e.x, e.y + 0.3, e.z, BASE[e.block], 1);
   }
 
   hurtMob(e, amount, from, bonus = 0) {

@@ -24,10 +24,11 @@ import {
   B, BLOCKS, BASE, SOLID, REPLACEABLE, WATERLIKE, FACING_VARIANTS, WALL_TORCH, FACE_DIRS,
   RENDER, R, SLAB, STAIRS, DOOR, doorId, CLIMB, LADDER, oppositeFace, CHEST, CHEST_PAIR, CHEST_RIGHT, chestId, chestHalf, BED, bedId,
   FURNACE_IDS, furnaceVariant, isLitFurnace, FURNACE_KIND, FURNACE_FRONT, LOG_AXES, GATE, gateId, VINE, DOUBLE, LEAVES_WOOD,
-  NATURAL_LEAVES, WOOD, LOOT_KIND,
+  NATURAL_LEAVES, WOOD, LOOT_KIND, LOOT_FRONT,
 } from './blocks.js';
 import { rollLoot } from './loot.js';
-import { useItemOnBlock, useBucket, placeLilyPad } from './behaviors.js';
+import { useItemOnBlock, useBucket, placeLilyPad, useWorkstation } from './behaviors.js';
+import { nearestVillage } from './villages.js';
 import { ITEMS, I, itemDef, itemLabel, breakTime, dropsFor, attackDamage, attackSpeed } from './items.js';
 import { BIOME_NAMES } from './biomes.js';
 import { CHUNK_VOLUME, HEIGHT, TICKS_PER_DAY, SAVE_VERSION } from './config.js';
@@ -1560,7 +1561,7 @@ export class Game {
   // Blocks you use rather than build against (sneak to build against them).
   interactive(id) {
     return !!DOOR[id] || CHEST[id] !== undefined || !!BED[id] || id === B.crafting_table || FURNACE_IDS.has(id) || !!GATE[id] || id === B.barrel ||
-      LOOT_KIND[id] !== undefined;
+      LOOT_KIND[id] !== undefined || id === B.bell || id === B.bell_z || id === B.composter_ready;
   }
 
   breakTarget() {
@@ -1623,6 +1624,7 @@ export class Game {
     const def = held ? itemDef(held.id) : null;
     // Doors, chests, beds, crafting tables and furnaces are used rather than built on (sneak to
     // place blocks against them).
+    if (t && !t.entity && !t.player && !p.sneaking && !repeat && useWorkstation(this, held, t)) return;
     if (t && !t.entity && !t.player && !p.sneaking && this.interactive(t.id)) {
       if (repeat) return;
       this.swingArm();
@@ -1633,7 +1635,7 @@ export class Game {
       } else if (t.id === B.barrel) this.openChestAt(t.x, t.y, t.z);
       else if (LOOT_KIND[t.id] !== undefined) {
         // A chest the world left here: it becomes an ordinary chest, filled the first time.
-        w.setBlock(t.x, t.y, t.z, chestId(4));
+        w.setBlock(t.x, t.y, t.z, chestId(LOOT_FRONT[t.id] ?? 4));
         this.openChestAt(t.x, t.y, t.z);
       }
       else if (CHEST[t.id] !== undefined) this.openChestAt(t.x, t.y, t.z);
@@ -1852,6 +1854,11 @@ export class Game {
 
   // World listener: sand or gravel came loose.
   spawnFalling(x, y, z, id) { this.entities.spawnFalling(x, y, z, id); }
+  // A block did something audible on its own (a composter finishing).
+  blockSound(x, y, z, kind) {
+    const at = { x: x + 0.5, y: y + 0.5, z: z + 0.5 };
+    if (kind === 'composter') { this.audio.place('grass', at); this.particles.bits(at.x, y + 1, at.z, TEX.happy, 8, 0.6, 0.4); }
+  }
 
   // World listener: is it raining on (x, y, z)? (Rain puts fires out.)
   rainingOn(x, y, z) {
@@ -1902,7 +1909,7 @@ export class Game {
       case 'help':
         say('/time set day|noon|night|midnight|<ticks>, /time add <n>');
         say('/gamemode creative|survival, /tp <x> <y> <z>, /give <item> [count], /weather clear|rain');
-        say('/spawn, /setspawn, /seed, /fly, /kill, /clear');
+        say('/spawn, /setspawn, /seed, /locate village, /fly, /kill, /clear');
         if (this.net) say(`/list${this.net.host ? ', /pvp on|off' : ''}`);
         break;
       case 'list': case 'players':
@@ -1952,6 +1959,14 @@ export class Game {
         break;
       }
       case 'seed': say(`Seed: ${this.meta.seedText || this.meta.seed}`); break;
+      case 'locate': {
+        if ((args[0] ?? 'village').toLowerCase() !== 'village') { say('Usage: /locate village', '#e88a78'); break; }
+        const v = this.world.gen?.villages ? nearestVillage(this.world.gen, p.x, p.z, 4) : null;
+        if (!v) { say('There are no villages nearby', '#e88a78'); break; }
+        const dist = Math.round(Math.hypot(v.x - p.x, v.z - p.z));
+        say(`The nearest village is at ${v.x}, ${v.y + 1}, ${v.z} (${dist} blocks away)`);
+        break;
+      }
       case 'spawn': p.x = this.meta.spawn.x; p.z = this.meta.spawn.z; this.respawnAtBed = false; this.needsRespawnY = true; say('Teleported to spawn'); break;
       case 'setspawn': this.meta.spawn = { x: p.x, y: p.y, z: p.z }; say('Spawn point set here'); break;
       case 'fly': if (this.creative) { p.flying = !p.flying; say(p.flying ? 'Flying' : 'Not flying'); } else say('Flying needs Creative mode', '#e88a78'); break;
