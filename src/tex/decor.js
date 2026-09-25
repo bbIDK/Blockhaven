@@ -3,78 +3,87 @@ import { def, mix } from './core.js';
 
 // ---------------------------------------------------------------- cake
 // The cake stands 8 pixels high on a 14 by 14 footprint, so its sides show rows 8-15 and its top
-// columns and rows 1-14 (see boxFaceUV). White icing over sponge, with a line of jam through it.
-const ICING = [0xcdc3bf, 0xe2dbd8, 0xf1ece9, 0xfbf9f7, 0xffffff];
-const SPONGE = [0x7e4a20, 0x9c6230, 0xb87c40, 0xcf9652, 0xe2ae68];
-const CRUMB = [0xc08a4a, 0xd8a45e, 0xe8bc76, 0xf4d292];
-const JAM = [0x7a1016, 0xa81c24, 0xcc2c32];
-const CHERRY = [0x6a0a10, 0xb8161e, 0xe03a3a, 0xff8a80];
+// columns and rows 1-14 (see boxFaceUV). Cream icing, with red sprinkles on top and running down
+// the sides in drips, over a red-brown sponge.
+const ICING = [0xd6c6a4, 0xe8dcc0, 0xf6ecd6, 0xfdf7ea, 0xffffff];
+const SPONGE = [0x5e2a14, 0x7a361a, 0x8e4222, 0xa64e26, 0xbc5c22, 0xcc6a2a];
+const CRUMB = [0xb06a3a, 0xc27c46, 0xd49254, 0xe2a664];
+const SPRINKLE = [0x8e1622, 0xc81e2c, 0xe83a3a, 0xf47a66];
 
 function sponge(t, pal, y0, y1) {
-  const f = t.field([[4, 2, 0.5], [2, 2, 0.35]], 0.35);
+  const f = t.field([[4, 2, 0.45], [2, 2, 0.35]], 0.4);
   for (let y = y0; y <= y1; y++) for (let x = 0; x < 16; x++) {
     const v = f[y * 16 + x];
-    t.set(x, y, pal[Math.max(0, Math.min(pal.length - 1, Math.floor(v * pal.length * 0.9)))]);
+    t.set(x, y, pal[Math.max(0, Math.min(pal.length - 1, Math.floor(v * pal.length * 0.95)))]);
   }
 }
-function jam(t, y) {
-  for (let x = 0; x < 16; x++) t.set(x, y, JAM[(x * 7 + y) % 5 === 0 ? 0 : (x * 3) % 4 === 1 ? 2 : 1]);
+// Sprinkles: a pair of pixels each (lit and shaded), and a cherry-red blob in the middle.
+function sprinkles(t, list) {
+  for (const [x, y, dx, dy] of list) { t.set(x, y, SPRINKLE[2]); t.set(x + dx, y + dy, SPRINKLE[1]); }
 }
 
 def('cake_top', (t) => {
-  const f = t.field([[4, 4, 0.5], [2, 2, 0.3]], 0.25);
-  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, ICING[2 + Math.min(2, Math.floor(f[y * 16 + x] * 2.6))]);
-  // The rim is piped a little higher, and catches the light on its far edges.
-  for (let i = 1; i < 15; i++) { t.set(i, 1, ICING[4]); t.set(1, i, ICING[4]); t.set(i, 14, ICING[1]); t.set(14, i, ICING[1]); }
-  // Cherries dotted over it.
-  for (const [x, y] of [[4, 3], [9, 3], [12, 6], [6, 7], [3, 10], [10, 10], [7, 12], [12, 12]]) {
-    t.set(x, y, CHERRY[2]); t.set(x + 1, y, CHERRY[1]); t.set(x, y + 1, CHERRY[1]); t.set(x + 1, y + 1, CHERRY[0]);
-    t.set(x, y, CHERRY[3]);
-    t.set(x + 1, y, CHERRY[2]);
-  }
+  const f = t.field([[4, 4, 0.5], [2, 2, 0.3]], 0.3);
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, ICING[f[y * 16 + x] < 0.45 ? 2 : f[y * 16 + x] < 0.75 ? 3 : 4]);
+  // A rim of icing piped round the edge, catching the light on the far sides.
+  for (let i = 1; i < 15; i++) { t.set(i, 1, ICING[1]); t.set(1, i, ICING[1]); t.set(i, 14, ICING[0]); t.set(14, i, ICING[0]); }
+  sprinkles(t, [[4, 3, 1, 0], [10, 2, 0, 1], [12, 5, 1, 1], [3, 7, 0, 1], [6, 11, 1, 0], [11, 10, 1, 1], [2, 11, 1, 1], [8, 13, 1, 0], [13, 8, 0, 1], [5, 5, 1, 1]]);
+  for (const [x, y, c] of [[7, 7, 2], [8, 7, 3], [7, 8, 1], [8, 8, 1], [6, 8, 2], [9, 8, 0], [7, 9, 0], [8, 6, 2]]) t.set(x, y, SPRINKLE[c]);
 });
 def('cake_side', (t) => {
-  t.fill(ICING[3]);
-  sponge(t, SPONGE, 10, 15);
-  // Icing on top, running down in drips.
+  t.clear();
+  sponge(t, SPONGE.slice(2), 8, 15);
   for (let x = 0; x < 16; x++) {
-    t.set(x, 8, ICING[4]);
-    t.set(x, 9, ICING[2]);
-    const drip = [2, 1, 0, 1, 2, 0, 1, 3, 1, 0, 2, 1, 0, 2, 1, 0][x];
-    for (let k = 0; k < drip; k++) t.set(x, 10 + k, k === drip - 1 ? ICING[1] : ICING[2]);
+    // Three rows of icing, then drips of it of different lengths.
+    t.set(x, 8, ICING[4]); t.set(x, 9, ICING[3]); t.set(x, 10, ICING[2]);
+    const drip = [1, 0, 2, 1, 0, 1, 3, 1, 0, 2, 1, 0, 1, 2, 0, 1][x];
+    for (let k = 0; k < drip; k++) t.set(x, 11 + k, k === drip - 1 ? ICING[1] : ICING[2]);
+    t.set(x, 15, SPONGE[1]);
   }
-  jam(t, 13);
-  for (let x = 0; x < 16; x++) t.set(x, 15, SPONGE[0]);
+  for (const [x, y] of [[3, 9], [9, 10], [13, 9]]) t.set(x, y, SPRINKLE[2]);
 });
 def('cake_inner', (t) => {
-  t.fill(ICING[3]);
-  sponge(t, CRUMB, 9, 15);
-  for (let x = 0; x < 16; x++) { t.set(x, 8, ICING[4]); t.set(x, 9, ICING[2]); }
-  jam(t, 12);
+  t.clear();
+  sponge(t, CRUMB, 11, 15);
+  for (let x = 0; x < 16; x++) { t.set(x, 8, ICING[4]); t.set(x, 9, ICING[3]); t.set(x, 10, ICING[1]); t.set(x, 15, CRUMB[0]); }
   // Air in the sponge.
-  for (const [x, y] of [[3, 10], [9, 11], [12, 10], [5, 14], [11, 14], [7, 13], [2, 13]]) t.set(x, y, CRUMB[0]);
-  for (let x = 0; x < 16; x++) t.set(x, 15, SPONGE[2]);
+  for (const [x, y] of [[3, 12], [9, 13], [12, 12], [5, 14], [11, 14], [7, 12], [1, 13]]) t.set(x, y, SPONGE[4]);
 });
-def('cake_bottom', (t) => sponge(t, SPONGE.slice(0, 4), 0, 15));
-// The cake as it's carried: its top (narrowing away from you) over its front.
+def('cake_bottom', (t) => sponge(t, SPONGE.slice(1, 5), 0, 15));
+
+// The cake as it's carried: a round cake seen a little from above, its icing top scattered with
+// sprinkles over the sponge, icing running down its front in drips.
 def('cake_item', (t) => {
   t.clear();
-  const EDGE = 0x6a5e58, CRUST = 0x4a2206, inset = { 4: 3, 5: 2, 6: 1, 7: 1, 8: 1 };
-  const drips = [0, 1, 0, 1, 2, 0, 1, 1, 2, 0, 1, 0, 2, 1, 0, 0];
-  for (let y = 4; y <= 8; y++) {
-    const a = inset[y];
-    for (let x = a; x < 16 - a; x++) t.set(x, y, y === 8 ? ICING[1] : y < 6 ? ICING[2] : (x * 5 + y * 3) % 7 ? ICING[3] : ICING[2]);
-    t.set(a - 1, y, EDGE); t.set(16 - a, y, EDGE);
+  const cx = 8, rx = 6.9, ty = 5.2, by = 10.2, ry = 3.5;
+  const top = (x, y) => ((x + 0.5 - cx) / rx) ** 2 + ((y + 0.5 - ty) / ry) ** 2 <= 1;
+  const body = (x, y) => {
+    const dx = (x + 0.5 - cx) / rx;
+    return Math.abs(dx) <= 1 && y + 0.5 >= ty && (y + 0.5 <= by || dx * dx + ((y + 0.5 - by) / ry) ** 2 <= 1);
+  };
+  const drips = [0, 1, 2, 1, 0, 1, 1, 2, 1, 0, 1, 2, 1, 0, 1, 0];
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    if (top(x, y)) {
+      // Lit towards the back left, shaded towards the front right.
+      const d = (x - 4) * 0.5 + (y - 3);
+      t.set(x, y, ICING[d < -1 ? 4 : d < 3 ? 3 : d < 5.5 ? 2 : 1]);
+    } else if (body(x, y)) {
+      let k = 0; while (k < 6 && !top(x, y - k - 1)) k++;
+      const lit = x < 5 ? 1 : x > 11 ? -1 : 0, bottom = !body(x, y + 1);
+      if (k <= drips[x]) t.set(x, y, k === drips[x] ? ICING[0] : ICING[1 + (lit > 0)]);
+      else t.set(x, y, SPONGE[bottom ? 1 : 3 + lit]);
+    }
   }
-  for (let x = 3; x < 13; x++) t.set(x, 3, EDGE);
-  for (let x = 1; x < 15; x++) {
-    t.set(x, 9, ICING[4]);
-    for (let y = 10; y < 14; y++) t.set(x, y, y - 10 < drips[x] ? ICING[2] : y === 12 ? JAM[1] : y === 13 ? SPONGE[1] : x < 4 ? SPONGE[4] : SPONGE[3]);
-    t.set(x, 14, CRUST);
+  // Sprinkles, and a cherry on top.
+  sprinkles(t, [[4, 3, 1, 0], [10, 3, 0, 1], [12, 5, 0, 1], [2, 5, 1, 0], [5, 7, 1, 0], [10, 7, 1, 0], [7, 2, 1, 0]]);
+  for (const [x, y, c] of [[7, 4, 3], [8, 4, 2], [7, 5, 2], [8, 5, 1], [6, 5, 0]]) t.set(x, y, SPRINKLE[c]);
+  // Outline all round.
+  const edge = [];
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    if (t.alpha(x, y)) continue;
+    if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => t.alpha(x + dx, y + dy))) edge.push([x, y]);
   }
-  for (let y = 9; y < 14; y++) { t.set(0, y, CRUST); t.set(15, y, CRUST); }
-  for (const [x, y] of [[4, 5], [8, 4], [11, 5], [2, 7], [6, 6], [12, 7], [9, 7]]) { t.set(x, y, CHERRY[2]); t.set(x + 1, y, CHERRY[1]); }
-  for (const [x, y] of [[4, 5], [8, 4], [11, 5]]) t.set(x, y, CHERRY[3]);
+  for (const [x, y] of edge) t.set(x, y, 0x3c1a0c);
 });
 
 // ---------------------------------------------------------------- music
@@ -108,23 +117,32 @@ def('jukebox_top', (t) => {
   for (let x = 3; x <= 12; x++) { t.set(x, 7, 0x0c0604); t.set(x, 8, 0x1a0e08); t.set(x, 6, WALNUT[1]); t.set(x, 9, WALNUT[4]); }
 });
 
-// Music discs: black, with grooves that catch the light and a coloured label.
+// Music discs, lying a little tilted as Minecraft shows them: black, with grooves that catch the
+// light, the rim's edge underneath, and a coloured label round the hole.
 export const DISC_COLOURS = [0x6cc04a, 0x7a5ac8, 0xe8702a, 0x4ab8d8, 0xf0c840, 0x2a6ae0, 0x40d8a0, 0xd0e8ff];
 DISC_COLOURS.forEach((label, k) => {
   def(`music_disc_${k}`, (t) => {
     t.clear();
+    const cx = 8, cy = 7.5, rx = 6.9, ry = 4.4;
+    const r = (x, y, dy = 0) => Math.hypot((x + 0.5 - cx) / rx, (y + 0.5 - cy - dy) / ry);
     for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
-      const d = Math.hypot(x - 7.5, y - 7.5);
-      if (d > 7) continue;
-      let c = d > 6.3 ? 0x060606 : 0x161616;
-      if (Math.abs(d - 5) < 0.45 || Math.abs(d - 3.6) < 0.4) c = 0x262626;
-      // (Light across the grooves, top left.)
-      if (d > 2.6 && d < 6.3 && x + y < 12 && x + y > 8) c = 0x4a4a4a;
-      // (The label: lit at its top left, shaded at its bottom right.)
-      if (d < 2.6) c = x + y < 14 ? mix(label, 0xffffff, 0.3) : x + y > 16 ? mix(label, 0x000000, 0.25) : label;
-      if (d < 0.8) c = 0x101010;
+      const d = r(x, y);
+      if (d > 1) { if (r(x, y, 1) <= 1) t.set(x, y, 0x0e0e0e); continue; }
+      // Grooves, lit across the top left.
+      const lit = (x + 0.5 - cx) / rx + (y + 0.5 - cy) / ry < -0.35;
+      let c = (d > 0.62 && d < 0.7) || (d > 0.84 && d < 0.92) ? 0x363636 : 0x222222;
+      if (lit && d > 0.45) c = c === 0x363636 ? 0x5a5a5a : 0x404040;
+      if (d < 0.42) c = (x + 0.5 - cx) / rx + (y + 0.5 - cy) / ry < -0.1 ? mix(label, 0xffffff, 0.3) : (x + 0.5 - cx) / rx + (y + 0.5 - cy) / ry > 0.2 ? mix(label, 0x000000, 0.25) : label;
+      if (d < 0.16) c = 0xf4f4f4;
       t.set(x, y, c);
     }
+    // Outline all round.
+    const edge = [];
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+      if (t.alpha(x, y)) continue;
+      if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => t.alpha(x + dx, y + dy))) edge.push([x, y]);
+    }
+    for (const [x, y] of edge) t.set(x, y, 0x060606);
   });
 });
 

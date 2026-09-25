@@ -223,6 +223,56 @@ export function paint(t, rows, legend, { dx = 0, dy = 0, clear = true } = {}) {
   });
 }
 
+// One part of an item: a tone map (each character looked up in `legend`; '.' and characters it
+// doesn't have are left alone), then an outline of `edge` round it wherever it borders a pixel
+// that's still empty. Parts drawn later go over earlier ones (a tool's head over its handle),
+// and their outlines never cover what's already drawn.
+export function part(t, rows, legend, edge = null) {
+  const mine = new Set();
+  rows.forEach((row, y) => {
+    for (let x = 0; x < row.length; x++) {
+      const v = legend[row[x]];
+      if (v === undefined || v === null) continue;
+      t.set(x, y, typeof v === 'function' ? v(x, y) : v);
+      mine.add(y * 16 + x);
+    }
+  });
+  if (edge === null) return;
+  for (const i of mine) {
+    const x = i & 15, y = i >> 4;
+    for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
+      if (nx >= 0 && ny >= 0 && nx < 16 && ny < 16 && !t.alpha(nx, ny)) t.set(nx, ny, edge);
+    }
+  }
+}
+
+// A shape shaded by where each pixel faces, for tool heads, armour and the like. In `rows`, 'x'
+// is shaded automatically - lit on its top-left edges (5 where both are open), shadowed on its
+// bottom-right ones (1 in the corner), 3 inside; digits 1 to 5 set a pixel's tone by hand, and
+// other characters come from `legend` (drawn over, and counted as part of the shape). `pal` is
+// [outline, 1 darkest .. 5 highlight]; the outline goes all round, but never over what's drawn.
+export function form(t, rows, pal, { legend = {}, grain = 0 } = {}) {
+  const at = (x, y) => (y >= 0 && y < rows.length && x >= 0 && x < 16 ? rows[y][x] ?? '.' : '.');
+  const on = (x, y) => at(x, y) !== '.';
+  for (let y = 0; y < rows.length; y++) for (let x = 0; x < 16; x++) {
+    const ch = at(x, y);
+    if (ch === '.') continue;
+    if (legend[ch] !== undefined) { t.set(x, y, typeof legend[ch] === 'function' ? legend[ch](x, y) : legend[ch]); continue; }
+    let k = Number(ch);
+    if (!(k >= 1 && k <= 5)) {
+      const up = !on(x, y - 1), left = !on(x - 1, y), down = !on(x, y + 1), right = !on(x + 1, y);
+      const lit = up || left, dark = down || right;
+      k = lit && !dark ? (up && left ? 5 : 4) : dark && !lit ? (down && right ? 1 : 2) : 3;
+      if (grain && k > 1 && k < 5 && t.r() < grain) k += t.r() < 0.5 ? -1 : 1;
+    }
+    t.set(x, y, pal[k]);
+  }
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    if (on(x, y) || t.alpha(x, y)) continue;
+    if (on(x - 1, y) || on(x + 1, y) || on(x, y - 1) || on(x, y + 1)) t.set(x, y, pal[0]);
+  }
+}
+
 // Outline: every opaque pixel on the edge of the shape (next to a transparent one) turns `color`.
 // `only`: limits it to pixels whose current colour is in this set.
 export function outline(t, color, only = null) {

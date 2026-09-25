@@ -1,7 +1,7 @@
 // Track and minecarts: iron rails on wooden ties (straight, and round a corner), golden powered
 // rails with a line of redstone between them (dark when off), detector rails with a plate in the
 // middle, and the iron minecart.
-import { def, paint } from './core.js';
+import { def } from './core.js';
 
 const TIE = [0x4a3218, 0x6a4a28, 0x7e5a32];
 const IRON = [0x4a4a4e, 0x8a8a90, 0xc8c8cc, 0xf0f0f4];
@@ -51,10 +51,4 @@ def('minecart', (t) => {
   for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, (x * 7 + y * 3) % 13 === 0 ? IRON[0] : (x + y) % 9 === 0 ? 0x9a9aa0 : IRON[1]);
   for (let i = 0; i < 16; i++) { t.set(i, 0, IRON[2]); t.set(0, i, IRON[2]); t.set(i, 15, IRON[0]); t.set(15, i, IRON[0]); }
   for (const [x, y] of [[2, 2], [13, 2], [2, 13], [13, 13], [7, 2], [7, 13]]) { t.set(x, y, IRON[3]); t.set(x + 1, y + 1, IRON[0]); }
-});
-// The minecart as it's carried: seen from the side, a little from above.
-def('minecart_item', (t) => {
-  paint(t, ['', '', '', '', '..############..', '.#lllllllllllll#', '.#ldddddddddddm#', '.#lmmmmmmmmmmmm#', '.#lmhmmmmmmmhmm#', '.#lmmmmmmmmmmmm#',
-    '.#dddddddddddddd#', '..##############', '...##.......##..', '..#oo#.....#oo#.', '...##.......##..'],
-  { '#': 0x2a2a2e, l: IRON[3], d: IRON[0], m: IRON[1], h: IRON[2], o: 0x5a5a60 });
 });

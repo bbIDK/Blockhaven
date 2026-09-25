@@ -261,6 +261,8 @@ input::placeholder { color: #6a6a6a; text-shadow: none; }
 .keys dt { white-space: nowrap; text-align: right; }
 .keys dd { margin: 0; color: var(--text-dim); text-shadow: var(--u) var(--u) 0 var(--shade-dim); }
 .hint-text { text-align: left; max-width: none; }
+.hint-text.credits { font-size: 0.85em; opacity: 0.85; }
+.hint-text.credits a { color: inherit; }
 kbd {
   display: inline-block;
   min-width: calc(var(--u) * 14);

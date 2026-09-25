@@ -1,7 +1,8 @@
 // The enchanting table and everything around enchanting: the table (red cloth over obsidian, with
 // diamond corners), the book that floats over it, enchanted books, experience orbs and the glyphs
 // that drift from bookshelves to the table.
-import { def, quantize, paint, shaded } from './core.js';
+import { def, quantize, shaded } from './core.js';
+import { sparkStar } from './entities.js';
 
 const OBSIDIAN = [0x0d0916, 0x140e21, 0x1b132c, 0x241a39, 0x2e2247, 0x3c2d5c];
 const CLOTH = [0x5a0a0a, 0x7e1212, 0x9a1c18, 0xb42820, 0xc8382c];
@@ -48,14 +49,6 @@ def('ench_book_pages', (t) => {
   for (let y = 2; y < 14; y += 2) for (let x = 2; x < 14; x++) if (t.r() < 0.55) t.set(x, y, 0x6a5a48);
 });
 
-// An enchanted book: the book in purple with gold clasps (it shimmers like anything enchanted).
-def('enchanted_book', (t) => {
-  t.clear();
-  paint(t, ['', '', '..#########.....', '.#ccccccccc#....', '.#cCCCCCCCcp#...', '.#cCyyyyyCcpp#..', '.#cCCCCCCCcpp#..', '.#cCyyyyCCcpp#..',
-    '.#cCCCCCCCcpp#..', '.#cCCCCCCCcpp#..', '.#cCCCCCCCcpp#..', '.#ccccccccc#p#..', '..#ssssssss#p#..', '...#########...'],
-  { '#': 0x1e0a2a, c: 0x5a2478, C: 0x7a38a0, y: 0xf0c848, p: 0xe6e0cc, s: 0x3a1450 });
-  t.set(5, 4, 0xd8a8ff); t.set(4, 9, 0xd8a8ff);
-});
 
 // Experience orbs: a bright round bead with a glint (tinted greener or yellower as it pulses).
 def('xp_orb', (t) => {
@@ -66,7 +59,7 @@ def('xp_orb', (t) => {
 });
 
 // Sparks from an enchanted weapon's hit: cyan and white.
-def('magic_crit', (t) => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, [0x7ff0ff, 0xffffff, 0x40c8f0][(x * 7 + y * 3 + t.ri(3)) % 3]); });
+def('magic_crit', (t) => sparkStar(t, 0xffffff, 0x9af4ff, 0x40c8f0));
 
 // Glyphs of the enchanting alphabet, drifting to the table.
 def('glyph', (t) => {

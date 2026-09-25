@@ -765,12 +765,6 @@ def('glass', (t) => {
   for (const [x, y] of [[2, 4], [3, 3], [4, 2], [3, 5], [5, 3], [10, 12], [11, 11], [12, 10], [12, 12]]) t.set(x, y, 0xffffff, 210);
 });
 def('glass_pane_top', (t) => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, x === 7 ? 0xe4f3f7 : x === 8 ? 0xa6c8d0 : 0xc4e0e7); });
-def('iron_bars', (t) => {
-  t.clear();
-  for (const x0 of [1, 5, 9, 13]) for (let y = 0; y < 16; y++) { t.set(x0, y, 0x9a9a9a); t.set(x0 + 1, y, 0x5e5e5e); }
-  for (const y of [0, 15]) for (let x = 0; x < 16; x++) t.set(x, y, y ? 0x505050 : 0xb4b4b4);
-  for (let x = 0; x < 16; x++) { t.set(x, 7, 0xa8a8a8); t.set(x, 8, 0x5a5a5a); }
-});
 
 const OAK = WOODS.oak.planks;
 def('bookshelf', (t) => {
@@ -985,52 +979,8 @@ function campfireLog(t, lit) {
 }
 def('campfire_log', (t) => campfireLog(t, false));
 def('campfire_log_lit', (t) => campfireLog(t, true));
-def('ladder', (t) => {
-  t.clear();
-  for (let y = 0; y < 16; y++) {
-    t.set(2, y, OAK[0]); t.set(3, y, OAK[3]); t.set(12, y, OAK[0]); t.set(13, y, OAK[3]);
-  }
-  for (const y of [1, 5, 9, 13]) for (let x = 4; x < 12; x++) { t.set(x, y, OAK[4]); t.set(x, y + 1, OAK[1]); }
-});
-
-// Doors: one design per wood. Windows are cut out of the upper half.
-function door(t, pal, top, style) {
-  const frameC = pal[0];
-  drawPlanks(t, pal, [16, 16, 16, 16]);
-  // Doors have upright boards.
-  const f = t.field([[1, 8, 0.6], [2, 16, 0.3]], 0.2);
-  quantize(t, f, pal.slice(1), [0.12, 0.26, 0.32, 0.21, 0.09]);
-  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
-    if (x === 0 || x === 15 || (top ? y === 0 : y === 15)) t.set(x, y, frameC);
-    else if (x % 5 === 0 && style !== 'panel') t.set(x, y, pal[1]);
-  }
-  const hole = (x0, y0, x1, y1) => {
-    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) t.set(x, y, 0, 0);
-    for (let x = x0 - 1; x <= x1 + 1; x++) { t.set(x, y0 - 1, frameC); t.set(x, y1 + 1, frameC); }
-    for (let y = y0 - 1; y <= y1 + 1; y++) { t.set(x0 - 1, y, frameC); t.set(x1 + 1, y, frameC); }
-  };
-  const panel = (x0, y0, x1, y1) => {
-    for (let x = x0; x <= x1; x++) { t.set(x, y0, pal[5]); t.set(x, y1, pal[1]); }
-    for (let y = y0; y <= y1; y++) { t.set(x0, y, pal[5]); t.set(x1, y, pal[1]); }
-  };
-  if (top) {
-    if (style === 'windows') { hole(3, 3, 6, 7); hole(9, 3, 12, 7); panel(3, 11, 12, 14); }
-    else if (style === 'grid') { for (const [x, y] of [[3, 2], [7, 2], [11, 2], [3, 6], [7, 6], [11, 6], [3, 10], [7, 10], [11, 10]]) hole(x, y, x + 1, y + 1); }
-    else if (style === 'slit') { hole(6, 3, 9, 9); }
-    else if (style === 'diamond') { for (let y = 3; y < 12; y++) { const w = 4 - Math.abs(y - 7); if (w >= 0) hole(8 - w, y, 7 + w, y); } }
-    else if (style === 'round') { for (let y = 3; y < 10; y++) for (let x = 4; x < 12; x++) if (Math.hypot(x - 7.5, y - 6.5) < 3.4) t.set(x, y, 0, 0); }
-    else if (style === 'cross') { hole(3, 3, 6, 6); hole(9, 3, 12, 6); hole(3, 9, 6, 12); hole(9, 9, 12, 12); }
-    else panel(3, 3, 12, 13);
-  } else {
-    panel(3, 2, 12, 7); panel(3, 9, 12, 13);
-    t.set(12, 1, 0x3a3a3a); t.set(13, 1, 0x7a7a7a); t.set(13, 0, 0x5a5a5a);
-  }
-}
+// Which pattern each wood's trapdoor has (its doors are in doors.js).
 export const DOOR_STYLE = { oak: 'windows', spruce: 'slit', birch: 'grid', jungle: 'cross', acacia: 'diamond', dark_oak: 'panel', cherry: 'round' };
-for (const [name, w] of Object.entries(WOODS)) {
-  def(`${name}_door_top`, (t) => door(t, w.planks, true, DOOR_STYLE[name]));
-  def(`${name}_door_bottom`, (t) => door(t, w.planks, false, DOOR_STYLE[name]));
-}
 
 // ---------------------------------------------------------------- farm and garden
 def('cactus_side', (t) => {

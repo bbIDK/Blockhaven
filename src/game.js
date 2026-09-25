@@ -2050,8 +2050,8 @@ export class Game {
     this.swingArm();
     this.resetAttack();
     this.audio.attack(crit ? 'crit' : strong ? 'strong' : 'weak', { x: e.x, y: e.y + e.h * 0.6, z: e.z }, def?.weapon || def?.tool?.type === 'axe');
-    if (crit) this.particles.bits(e.x, e.y + e.h * 0.7, e.z, TEX.crit, 10, 2.4, 0.5);
-    if (extra > 0.5) this.particles.bits(e.x, e.y + e.h * 0.7, e.z, TEX.magic_crit, 10, 2.2, 0.5);
+    if (crit) this.particles.sparks(e.x, e.y + e.h * 0.7, e.z, TEX.crit, 9);
+    if (extra > 0.5) this.particles.sparks(e.x, e.y + e.h * 0.7, e.z, TEX.magic_crit, 9);
     const opts = ench ? { fire: (ench.fire_aspect ?? 0) * 4, looting: ench.looting ?? 0 } : null;
     this.entities.attack(e, amount, (strong && p.sprinting ? 1 : 0) + (ench?.knockback ?? 0), opts);
     if (!this.net?.guest) this.entities.rallyPets(this.uid, e);
@@ -2072,7 +2072,7 @@ export class Game {
     this.resetAttack();
     if (!this.net.pvp || rp.creative) return;
     this.audio.attack(crit ? 'crit' : strong ? 'strong' : 'weak', { x: rp.x, y: rp.y + 1.2, z: rp.z }, def?.weapon || def?.tool?.type === 'axe');
-    if (crit) this.particles.bits(rp.x, rp.y + 1.3, rp.z, TEX.crit, 10, 2.4, 0.5);
+    if (crit) this.particles.sparks(rp.x, rp.y + 1.3, rp.z, TEX.crit, 9);
     this.net.attackPlayer(rp, amount, strong && p.sprinting ? 1 : 0, def?.tool?.type === 'axe');
     this.exhaust(0.1);
     if (!this.creative && def?.durability && this.inv.damageHeld(def.tool ? 2 : 1)) this.audio.toolBreak();

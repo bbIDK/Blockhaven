@@ -280,22 +280,3 @@ def('item_frame', (t) => {
   }
   for (let i = 2; i < 14; i++) { t.set(i, 2, 0x5a3a1e); t.set(2, i, 0x5a3a1e); t.set(i, 13, 0xd0a878); t.set(13, i, 0xd0a878); }
 });
-// The item-frame item: the frame seen flat on, and the painting item, a little landscape.
-def('item_frame_item', (t) => {
-  t.clear();
-  for (let y = 2; y < 14; y++) for (let x = 2; x < 14; x++) {
-    const edge = x < 4 || y < 4 || x > 11 || y > 11;
-    t.set(x, y, edge ? (x < 4 || y < 4 ? 0xb88a58 : 0x8a6238) : (x * 3 + y * 7) % 9 === 0 ? 0x7a4a2e : 0x8e5836);
-  }
-  for (let i = 2; i < 14; i++) { t.set(i, 1, 0x4a2e14); t.set(1, i, 0x4a2e14); t.set(i, 14, 0x4a2e14); t.set(14, i, 0x4a2e14); }
-});
-def('painting_item', (t) => {
-  t.clear();
-  for (let y = 2; y < 14; y++) for (let x = 1; x < 15; x++) {
-    const sky = y < 8 ? (y < 5 ? 0x5a8ae0 : 0x9ac0ec) : y < 10 + Math.sin(x * 0.8) ? 0x5a9a3a : 0x3a7a2a;
-    t.set(x, y, sky);
-  }
-  t.set(11, 4, 0xfff4c0); t.set(12, 4, 0xfff4c0); t.set(11, 5, 0xfff4c0); t.set(12, 5, 0xfad870);
-  for (let x = 0; x < 16; x++) { t.set(x, 1, 0x5a3a1e); t.set(x, 14, 0x3a2410); }
-  for (let y = 1; y < 15; y++) { t.set(0, y, 0x5a3a1e); t.set(15, y, 0x3a2410); }
-});

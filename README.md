@@ -1,6 +1,6 @@
 # Blockhaven
 
-A block-building sandbox game that runs in your web browser. Explore an endless generated world, mine and craft in Survival, or build freely in Creative. It needs no installs and no plugins. It's written from scratch in plain JavaScript and WebGL 2. Every texture is drawn by code, the music is composed live, and the sound effects are public-domain recordings.
+A block-building sandbox game that runs in your web browser. Explore an endless generated world, mine and craft in Survival, or build freely in Creative. It needs no installs and no plugins. It's written from scratch in plain JavaScript and WebGL 2. It looks the part with an openly licensed Minecraft-style texture pack (Pixel Perfection), the music is composed live, and the sound effects are public-domain recordings.
 
 ## Play it
 
@@ -100,7 +100,8 @@ src/renderer.js     WebGL 2 renderer: terrain, sky, clouds, entities, particles,
 src/blocks.js       block registry;  src/items.js items, tools and armor;  src/crafting.js recipes, smelting, fuel
 src/containers.js   inventory, crafting table, furnace and chest screens (slot rules);  src/furnace.js smelting
 src/gui.js          the Minecraft-style container windows and recipe book;  src/preview.js your character in the inventory
-src/textures.js     procedural pixel-art textures
+src/textures.js     the block and item textures (imported ones from src/tex/packdata.js, the rest drawn in src/tex/)
+src/skins.js        creature skins, laid out Minecraft's way (imported, or drawn in src/tex/mobskins.js)
 src/entities.js     mobs, dropped items, TNT;  src/player.js, src/body.js physics
 src/net.js          multiplayer transports (claude.ai room, PeerJS join codes) and reliable message streams
 src/multiplayer.js  hosting and joining: world, entity, chest and player sync;  src/avatars.js other players
@@ -108,8 +109,12 @@ src/audio.js        sound effects;  src/music.js generative piano music;  src/we
 src/sounddata.js    the sound recordings (generated from assets/sounds by tools/pack-sounds.mjs)
 src/ui.js, icons.js, inventory.js, touch.js, input.js, storage.js, sky.js, ...
 assets/sounds/      the sound effects as MP3s, with their sources in CREDITS.md
+assets/textures/    the imported block and item textures (16x16 PNGs named after the game's), assets/skins/ the
+                    creature skins (64x64); where each came from is in assets/CREDITS.md
 tools/build.mjs     bundles everything into dist/blockhaven.html
 tools/prepare_sounds.py  downloads, trims and encodes the sounds (needs Python, numpy, imageio-ffmpeg)
+tools/import-textures.mjs  makes assets/textures and assets/skins from the resource packs (see texture-sources.mjs)
+tools/pack-textures.mjs    packs them into src/tex/packdata.js
 ```
 
 After changing anything in `src/` or `index.html`, rebuild the single-file version:
@@ -120,6 +125,17 @@ node tools/build.mjs
 
 The bundler has no dependencies. It needs Node 18 or newer. After changing the MP3s in `assets/sounds`, run `node tools/pack-sounds.mjs` to regenerate `src/sounddata.js`.
 
+### Textures
+
+The textures come from two openly licensed resource packs: [Pixel Perfection](https://github.com/Athemis/PixelPerfectionCE) (in its Community Edition) and, for the newest blocks (deepslate, copper, cherry wood), [Mineclonia](https://codeberg.org/mineclonia/mineclonia). To import them again, check both out and run
+
+```sh
+node tools/import-textures.mjs <PixelPerfectionCE checkout> <mineclonia checkout>
+node tools/pack-textures.mjs
+```
+
+`tools/texture-sources.mjs` and `tools/skin-sources.mjs` say which picture each of the game's textures and skins comes from (and how it's cut to fit). Anything with no source there is drawn by the game's own code in `src/tex/`, as a fallback. To change a texture by hand, edit its PNG in `assets/textures` (or `assets/skins`) and run `node tools/pack-textures.mjs`.
+
 ---
 
-Blockhaven is a fan-made game inspired by Minecraft. It's not affiliated with or endorsed by Mojang or Microsoft. Its code, textures and music are original, and its sound effects are public-domain (CC0) recordings by Kenney and Freesound contributors, credited in [`assets/sounds/CREDITS.md`](assets/sounds/CREDITS.md).
+Blockhaven is a fan-made game inspired by Minecraft. It's not affiliated with or endorsed by Mojang or Microsoft. Its code and music are original. Its textures are from the Pixel Perfection resource pack by XSSheep and its community (and from Mineclonia for the newest blocks), shared under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) and credited in [`assets/CREDITS.md`](assets/CREDITS.md). Its sound effects are public-domain (CC0) recordings by Kenney and Freesound contributors, credited in [`assets/sounds/CREDITS.md`](assets/sounds/CREDITS.md).

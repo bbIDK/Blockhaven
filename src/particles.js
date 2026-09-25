@@ -53,6 +53,19 @@ export class Particles {
     }
   }
 
+  // Sparks: little stars that burst outward and fade (critical hits).
+  sparks(x, y, z, layer, n, speed = 3) {
+    for (let i = 0; i < n; i++) {
+      if (this.list.length >= MAX) this.list.shift();
+      const a = Math.random() * Math.PI * 2, up = Math.random() * 2 - 0.4;
+      this.list.push({
+        x, y, z, vx: Math.cos(a) * speed * (0.5 + Math.random()), vy: up * speed * 0.6 + 1.5, vz: Math.sin(a) * speed * (0.5 + Math.random()),
+        life: 0.35 + Math.random() * 0.3, age: 0, size: 0.07 + Math.random() * 0.05, layer, flags: 1, tint: [255, 255, 255], u: 0, v: 0,
+        whole: true, spark: true,
+      });
+    }
+  }
+
   // Grey puffs that drift up and shrink away.
   // (`plume`: the tall, slow column of smoke over a campfire.)
   smoke(x, y, z, n = 8, spread = 0.4, plume = false) {
@@ -140,9 +153,9 @@ export class Particles {
         p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
         continue;
       }
-      p.vy -= 18 * dt;
-      p.vx *= Math.exp(-2 * dt);
-      p.vz *= Math.exp(-2 * dt);
+      p.vy -= (p.spark ? 4 : 18) * dt;
+      p.vx *= Math.exp(-(p.spark ? 5 : 2) * dt);
+      p.vz *= Math.exp(-(p.spark ? 5 : 2) * dt);
       const nx = p.x + p.vx * dt, ny = p.y + p.vy * dt, nz = p.z + p.vz * dt;
       if (SOLID[world.getBlock(Math.floor(p.x), Math.floor(ny - p.size), Math.floor(p.z))]) { p.vy = 0; p.vx *= 0.6; p.vz *= 0.6; } else p.y = ny;
       if (!SOLID[world.getBlock(Math.floor(nx), Math.floor(p.y), Math.floor(p.z))]) p.x = nx; else p.vx = 0;
@@ -162,7 +175,7 @@ export class Particles {
       const px = p.x - this.base[0], py = p.y - this.base[1], pz = p.z - this.base[2];
       if (px < 1 || py < 1 || pz < 1 || px > 250 || py > 250 || pz > 250) continue;
       const l = world.getLight(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z));
-      const s = p.smoke ? p.size * (1 - 0.7 * (p.age / p.life)) : p.size;
+      const s = p.smoke ? p.size * (1 - 0.7 * (p.age / p.life)) : p.spark ? p.size * (1 - 0.6 * (p.age / p.life)) : p.size;
       const full = p.smoke || p.whole ? 16 : 3;
       for (let k = 0; k < 4; k++) {
         const a = k === 0 || k === 3 ? -1 : 1, b = k < 2 ? -1 : 1;

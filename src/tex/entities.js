@@ -35,7 +35,18 @@ def('splash', (t) => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++)
 // Blood from hits on animals and monsters.
 def('blood', (t) => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, pick([0x5c0808, 0x760c0c, 0x921212, 0xaa1a1a], t.r())); });
 // Critical-hit sparks.
-def('crit', (t) => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, pick([0xfff3b0, 0xffffff, 0xffd766], t.r())); });
+// A spark: a little four-pointed star, bright in the middle (critical hits; see Particles.sparks).
+export function sparkStar(t, core, arm, tip) {
+  t.clear();
+  for (let i = 0; i < 16; i++) {
+    const d = Math.abs(i - 7.5);
+    const c = d < 1 ? core : d < 3.5 ? arm : d < 6 ? tip : null;
+    if (c === null) continue;
+    t.set(i, 7, c); t.set(i, 8, c); t.set(7, i, c); t.set(8, i, c);
+  }
+  for (const [x, y] of [[6, 6], [9, 6], [6, 9], [9, 9]]) t.set(x, y, arm);
+}
+def('crit', (t) => sparkStar(t, 0xffffff, 0xf0f0f4, 0xb8b8c4));
 // Hearts (animals in love, tamed wolves), green sparks (a good trade) and a storm cloud (an
 // angry villager). Particles show a few pixels of these, so they're drawn as solid colour.
 def('heart', (t) => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, pick([0xd01830, 0xf03048, 0xff6a80], t.r())); });
@@ -46,10 +57,15 @@ def('portal', (t) => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++)
 def('bubble', (t) => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, pick([0xa8d0ff, 0xd8ecff, 0xffffff], t.r()), 200); });
 // A puff of smoke (mob deaths, burning zombies, water on lava).
 def('smoke', (t) => {
+  // A puff of cloud: a few overlapping blobs, lighter where the light catches their tops.
   t.clear();
+  const blobs = [[7.5, 8.5, 4.6], [5, 7, 3.2], [10.5, 7, 3.2], [7.5, 5, 3.4], [4.5, 10, 2.6], [11, 10.5, 2.6]];
   for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
-    const d = Math.hypot(x - 7.5, y - 7.5) + (t.r() - 0.5) * 1.8;
-    if (d < 6.8) t.set(x, y, d < 2.6 ? 0xf6f6f6 : d < 4.8 ? 0xdcdcdc : 0xbababa);
+    let best = -1;
+    for (const [bx, by, r] of blobs) best = Math.max(best, 1 - Math.hypot(x + 0.5 - bx, y + 0.5 - by) / r);
+    if (best <= 0) continue;
+    const top = (8 - y) / 16;
+    t.set(x, y, best > 0.55 + top * 0.3 ? 0xf4f4f4 : best > 0.25 ? 0xd8d8d8 : 0xb4b4b4);
   }
 });
 

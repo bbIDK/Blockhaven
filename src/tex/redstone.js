@@ -1,6 +1,6 @@
 // Trapdoors, the iron door, levers and redstone lamps: drawn in the same palettes as the doors,
 // planks and blocks of metal they go with.
-import { def, pick, quantize, paint } from './core.js';
+import { def, pick, quantize } from './core.js';
 import { WOODS, drawPlanks, frame, DOOR_STYLE } from './terrain.js';
 
 // ---------------------------------------------------------------- trapdoors
@@ -46,7 +46,6 @@ function ironPlate(t) {
   quantize(t, t.field([[8, 8, 0.4], [4, 4, 0.2]], 0.3), IRON.slice(2, 5), [0.25, 0.5, 0.25]);
   frame(t, IRON[5], IRON[0]);
 }
-const rivets = (t, list) => { for (const [x, y] of list) { t.set(x, y, IRON[5]); t.set(x + 1, y + 1, IRON[0]); } };
 def('iron_trapdoor', (t) => {
   ironPlate(t);
   for (const [x0, y0] of [[3, 3], [9, 3], [3, 9], [9, 9]]) {
@@ -54,40 +53,11 @@ def('iron_trapdoor', (t) => {
     for (let i = -1; i < 5; i++) { t.set(x0 + i, y0 - 1, IRON[0]); t.set(x0 - 1, y0 + i, IRON[0]); t.set(x0 + i, y0 + 4, IRON[5]); t.set(x0 + 4, y0 + i, IRON[5]); }
   }
 });
-function ironDoor(t, top) {
-  ironPlate(t);
-  // Upright seams, rivets, and windows (top) or a raised panel (bottom).
-  for (let y = 1; y < 15; y++) { t.set(5, y, IRON[1]); t.set(10, y, IRON[1]); }
-  if (top) {
-    for (const [x0, x1] of [[2, 4], [11, 13]]) for (let y = 3; y < 8; y++) for (let x = x0; x <= x1; x++) t.set(x, y, 0, 0);
-    for (let y = 3; y < 8; y++) for (let x = 6; x <= 9; x++) t.set(x, y, 0, 0);
-    rivets(t, [[1, 1], [13, 1], [1, 11], [13, 11]]);
-  } else {
-    for (let x = 3; x < 13; x++) { t.set(x, 3, IRON[5]); t.set(x, 11, IRON[0]); }
-    for (let y = 3; y < 12; y++) { t.set(3, y, IRON[5]); t.set(12, y, IRON[0]); }
-    rivets(t, [[1, 2], [13, 2], [1, 13], [13, 13]]);
-    t.set(12, 6, 0x3a3a3a); t.set(13, 6, 0x7a7a7a); t.set(13, 7, 0x5a5a5a);
-  }
-}
-def('iron_door_top', (t) => ironDoor(t, true));
-def('iron_door_bottom', (t) => ironDoor(t, false));
-def('iron_door_item', (t) => {
-  t.clear();
-  paint(t, ['....########....', '....#ww.ww#.....', '....#w..w.#.....', '....#w..w.#.....', '....#ww.ww#.....', '....#wwwww#.....', '....#wWWWw#.....',
-    '....#wWWWw#.....', '....#wWWWwk.....', '....#wWWWw#.....', '....#wWWWw#.....', '....#wWWWw#.....', '....#wwwww#.....', '....#wwwww#.....',
-    '....#######.....'].map((r) => r.replace(/\.$/, '')), { '#': IRON[0], w: IRON[3], W: IRON[4], k: 0x3a3a3a });
-});
 
 // ---------------------------------------------------------------- lever
 // The handle is a plain stick (only a sliver of the texture shows on each face).
 const STICK = [0x4e3a1e, 0x684d28, 0x7d5d31, 0x8f6b3a];
 def('lever', (t) => quantize(t, t.field([[1, 6, 0.6], [2, 2, 0.3]], 0.3), STICK, [0.15, 0.35, 0.35, 0.15]));
-def('lever_item', (t) => {
-  t.clear();
-  paint(t, ['', '', '..........kk....', '.........kSk....', '........sSk.....', '.......sSk......', '......sSk.......', '.....sSk........',
-    '....sSk.........', '...ccccccc......', '..cCCcCCCcc.....', '..cCcCCcCCc.....', '..ccccccccc.....', '...kkkkkkk......'],
-  { s: STICK[3], S: STICK[1], k: STICK[0], c: 0x6e6e6e, C: 0x8e8e8e });
-});
 
 // ---------------------------------------------------------------- redstone lamp
 // A frame of dark glass round a lattice; lit, it glows yellow-white.

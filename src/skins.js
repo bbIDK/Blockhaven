@@ -1,10 +1,12 @@
 // Creature skins: 64x64 pictures laid out the way Minecraft lays out its mob skins, where every
 // box of a model unfolds into a strip (its top and bottom above, then its right, front, left and
 // back sides). A model's boxes pick their faces out of the skin at one pixel per sixteenth of a
-// block, so a pig, a zombie and a villager all share the blocks' pixel size. Skins are drawn from
-// code like every other texture (see tex/mobskins.js) and live in their own texture array; the
-// shader samples it for layer numbers from SKIN_LAYER up.
+// block, so a pig, a zombie and a villager all share the blocks' pixel size. Most come from the
+// imported texture pack (tex/packdata.js, see tools/skin-sources.mjs); the rest are drawn from code
+// (tex/mobskins.js, tex/civskins.js). They live in their own texture array; the shader samples it
+// for layer numbers from SKIN_LAYER up.
 import { mulberry32, hashString } from './math.js';
+import { SKIN_PACK } from './tex/packdata.js';
 
 export const SKIN_SIZE = 64;
 export const SKIN_LAYER = 1024;
@@ -92,11 +94,21 @@ export function generateSkins() {
   const out = new Uint8Array(SKINS.length * size);
   SKINS.forEach((s, i) => {
     const sk = new Skin(s.name);
-    s.draw(sk);
+    if (SKIN_PACK[s.name]) unpackSkin(SKIN_PACK[s.name], sk.d);
+    else s.draw(sk);
     let r = 0, g = 0, b = 0, n = 0;
     for (let k = 0; k < size; k += 4) if (sk.d[k + 3]) { r += sk.d[k]; g += sk.d[k + 1]; b += sk.d[k + 2]; n++; }
     if (n) for (let k = 0; k < size; k += 4) if (!sk.d[k + 3]) { sk.d[k] = r / n; sk.d[k + 1] = g / n; sk.d[k + 2] = b / n; }
     out.set(sk.d, i * size);
   });
   return out;
+}
+
+// A packed skin (see tools/pack-textures.mjs): its palette, then an index per pixel.
+function unpackSkin(b64, d) {
+  const bin = atob(b64), n = bin.charCodeAt(0) + 1, at = 1 + n * 4, px = SKIN_SIZE * SKIN_SIZE;
+  for (let i = 0; i < px; i++) {
+    const k = n <= 16 ? (bin.charCodeAt(at + (i >> 1)) >> (i & 1 ? 0 : 4)) & 15 : bin.charCodeAt(at + i);
+    for (let c = 0; c < 4; c++) d[i * 4 + c] = bin.charCodeAt(1 + k * 4 + c);
+  }
 }
