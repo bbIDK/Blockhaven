@@ -3,8 +3,8 @@
 // water and lava, and workstations do their jobs. Each returns true when it handled the click
 // (see Game.useItem).
 import { B, CROP, SAPLING, FACE_DIRS, WATERLIKE, REPLACEABLE, waterLevel, lavaLevel, DOUBLE, COMPOSTER, POTTED, POT_FOR,
-  WOOD_NAMES } from './blocks.js';
-import { I } from './items.js';
+  WOOD_NAMES, liquidHeight } from './blocks.js';
+import { I, itemDef } from './items.js';
 import { TEX } from './textures.js';
 import { growCrop, growSapling } from './growth.js';
 import { HEIGHT } from './config.js';
@@ -167,6 +167,27 @@ export function placeLilyPad(game) {
   if (!hit || hit.id !== B.water || w.getBlock(hit.x, hit.y + 1, hit.z) !== 0) return false;
   w.setBlock(hit.x, hit.y + 1, hit.z, B.lily_pad);
   game.audio.place('grass', { x: hit.x + 0.5, y: hit.y + 1, z: hit.z + 0.5 });
+  return consumed(game);
+}
+
+// A boat is set down where you point, on the water or on the ground, facing the way you look.
+export function placeBoat(game, held) {
+  const w = game.world, p = game.player, d = p.lookDir();
+  const hit = w.raycast(p.x, p.eyeY, p.z, d[0], d[1], d[2], 5, true);
+  if (!hit || game.riding) return false;
+  const at = (k) => [p.x, p.eyeY, p.z][k] + d[k] * hit.t;
+  const x = Math.min(hit.x + 0.95, Math.max(hit.x + 0.05, at(0))), z = Math.min(hit.z + 0.95, Math.max(hit.z + 0.05, at(2)));
+  let y;
+  if (WATERLIKE[hit.id] === 1) {
+    let top = hit.y;
+    while (WATERLIKE[w.getBlock(hit.x, top + 1, hit.z)] === 1 && top < hit.y + 8) top++;
+    y = top + liquidHeight(w.getBlock(hit.x, top, hit.z)) - 0.12;
+  } else if (FACE_DIRS[hit.face]?.[1] === 1 && !WATERLIKE[hit.id]) y = hit.y + 1;
+  else return false;
+  // Room for it?
+  if (w.collides(x - 0.6, y + 0.05, z - 0.6, x + 0.6, y + 0.55, z + 0.6)) return false;
+  game.entities.spawnBoat(x, y, z, itemDef(held.id)?.boat ?? 'oak', p.yaw);
+  game.audio.place('wood', { x, y, z });
   return consumed(game);
 }
 

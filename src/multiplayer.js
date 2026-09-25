@@ -16,6 +16,7 @@ import { itemDef, maxStack } from './items.js';
 import { chunkKey, HEIGHT, CHUNK_VOLUME } from './config.js';
 import { S_READY, rayBox } from './world.js';
 import { clamp } from './math.js';
+import { startRide, seatY, BOAT_WOODS } from './riding.js';
 
 const MAX_GUESTS = 7;
 const KEEP_RADIUS = 4;   // chunks the host keeps loaded (and mobs going) around each guest
@@ -183,14 +184,28 @@ class Session {
       pres.k = g.settings.look;
       pres.s = g.swingCount;
       pres.u = g.hurtCount;
+      // What they ride: [entity, x, y, z, yaw] (a guest moves their own mount; see rideMove).
+      const m = g.riding;
+      if (m) pres.r = [m.nid ?? 0, r2(m.x), r2(m.y), r2(m.z), r2(m.yaw)];
     }
     return pres;
   }
 
   update(dt) {
     const now = performance.now();
-    for (const rp of this.players.values()) rp.step(now, dt);
+    for (const rp of this.players.values()) {
+      rp.step(now, dt);
+      if (rp.mountId !== null) this.seat(rp);
+    }
     this.link.setPresence(this.myPresence());
+  }
+
+  // Someone riding sits on their mount as we see it here (so the two never drift apart).
+  seat(rp) {
+    const E = this.game.entities, e = E.byNid.get(rp.mountId) ?? E.list.find((x) => x.nid === rp.mountId);
+    if (!e || e.dead) return;
+    rp.x = e.x; rp.y = seatY(e); rp.z = e.z;
+    rp.bodyYaw = e.yaw;
   }
 
   // The nearest other player along a ray (to hit them), or null.
@@ -330,13 +345,50 @@ export class HostSession extends Session {
     g.dead = !!(f & 16);
     g.sleeping = !!(f & 32);
     g.creative = !!(f & 64);
+    if (Array.isArray(pres.r)) this.rideMove(g, pres.r);
     this.seePlayer(addr, pres);
+  }
+
+  // A guest's mount goes where they say it is (they steer it; see Game.steer), as long as they're
+  // on it.
+  rideMove(g, r) {
+    if (r.length < 5 || !r.every(num)) return;
+    const e = this.game.entities.list.find((x) => x.nid === r[0] && x.rider === g.addr && !x.dead);
+    if (!e || (g.x !== null && Math.hypot(r[1] - g.x, r[3] - g.z) > 4)) return;
+    e.tx = r[1]; e.ty = clamp(r[2], -64, HEIGHT + 64); e.tz = r[3]; e.tyaw = r[4];
+  }
+
+  // A guest gets into a boat or onto a horse (`on`), or off again. Only one rider at a time: anyone
+  // else is turned away (as if thrown off).
+  rideRequest(g, m) {
+    const e = this.game.entities.list.find((x) => x.nid === m.e && !x.dead && (x.kind === 'boat' || x.def?.rideable));
+    if (m.on) {
+      const near = e && g.x !== null && Math.hypot(e.x - g.x, e.z - g.z) < 8;
+      if (!e || !near || e.dying || (e.rider && e.rider !== g.addr) || (e.kind === 'mob' && e.baby)) { this.send(g.addr, { t: 'buck', e: m.e }); return; }
+      startRide(e, g.addr);
+      e.guestRider = true;
+      e.tx = e.x; e.ty = e.y; e.tz = e.z; e.tyaw = e.yaw;
+    } else if (e && e.rider === g.addr) this.unride(e);
+  }
+
+  unride(e) {
+    e.rider = null;
+    e.guestRider = false;
+    e.drive = null;
+    e.vx = e.vy = e.vz = 0;
+  }
+
+  // A guest's boat, set down where they pointed.
+  placeBoatFor(g, m) {
+    if (![m.x, m.y, m.z, m.a].every(num) || !BOAT_WOODS.includes(m.w) || g.x === null || Math.hypot(m.x - g.x, m.y - g.y, m.z - g.z) > 8) return;
+    this.game.entities.spawnBoat(m.x, m.y, m.z, m.w, m.a);
   }
 
   remove(g, why) {
     if (!this.guests.delete(g.addr)) return;
     this.players.delete(g.addr);
     for (const set of this.viewers.values()) set.delete(g.addr);
+    for (const e of this.game.entities.list) if (e.rider === g.addr) this.unride(e);
     this.link.forget(g.addr);
     if (why) this.say(`${g.name} ${why}`, 'y');
   }
@@ -351,7 +403,9 @@ export class HostSession extends Session {
       case 'e': if (Array.isArray(msg.c)) this.applyEdits(g, msg.c.slice(0, 4096)); break;
       case 'drop': this.drop(msg); break;
       case 'take': this.take(g, msg); break;
-      case 'hit': this.hit(msg); break;
+      case 'hit': this.hit(g, msg); break;
+      case 'ride': if (int(msg.e)) this.rideRequest(g, msg); break;
+      case 'boat': this.placeBoatFor(g, msg); break;
       case 'um': if (int(msg.e) && int(msg.i) && typeof msg.f === 'string') this.game.entities.remoteUse(msg.e, msg.i, msg.f); break;
       case 'arw': this.arrow(g, msg); break;
       case 'pvp': this.pvpHit(g, msg); break;
@@ -479,9 +533,10 @@ export class HostSession extends Session {
     this.send(g.addr, { t: 'give', id: e.id, n, d: e.dmg ?? 0 });
   }
 
-  hit(m) {
-    const e = this.game.entities.list.find((x) => x.nid === m.e && x.kind === 'mob' && !x.dead);
+  hit(g, m) {
+    const e = this.game.entities.list.find((x) => x.nid === m.e && (x.kind === 'mob' || x.kind === 'boat') && !x.dead);
     if (!e || e.dying || !num(m.a) || !num(m.x) || !num(m.z)) return;
+    if (e.kind === 'boat') { this.game.entities.hitBoat(e, g.creative); return; }
     this.game.entities.hurtMob(e, clamp(m.a, 0, 100), { x: m.x, z: m.z }, num(m.b) ? clamp(m.b, 0, 1) : 0);
   }
 
@@ -581,8 +636,9 @@ export class HostSession extends Session {
       seen.add(e.nid);
       const x = r2(e.x), y = r2(e.y), z = r2(e.z);
       const arrow = e.kind === 'arrow';
-      const a = e.kind === 'mob' ? r2(e.yaw) : arrow ? r2(e.ayaw ?? 0) : 0;
-      const f = e.kind === 'mob' ? mobFlags(e) : arrow ? Math.round((e.apitch ?? 0) * 100) : 0, n = e.kind === 'item' ? e.count : 0;
+      const a = e.kind === 'mob' || e.kind === 'boat' ? r2(e.yaw) : arrow ? r2(e.ayaw ?? 0) : 0;
+      const f = e.kind === 'mob' ? mobFlags(e) : arrow ? Math.round((e.apitch ?? 0) * 100) : e.kind === 'boat' ? boatFlags(e) : 0;
+      const n = e.kind === 'item' ? e.count : 0;
       const prev = this.sentEnts.get(e.nid);
       if (!prev) { adds.push(entityState(e)); this.sentEnts.set(e.nid, [x, y, z, a, f, n]); continue; }
       if (prev[0] !== x || prev[1] !== y || prev[2] !== z || prev[3] !== a || prev[4] !== f || prev[5] !== n) {
@@ -630,6 +686,9 @@ export class HostSession extends Session {
   }
 
   entityGone(e, how) { if (e.nid) this.gone.set(e.nid, how); }
+  // An untamed horse (or a broken boat) throws a guest off.
+  buck(addr, e) { this.send(addr, { t: 'buck', e: e.nid ?? 0 }); }
+  ride() {} // (the host's own riding needs no one's say-so)
   effect(k, x, y, z) { this.link.broadcast({ t: 'fx', k, x: r2(x), y: r2(y), z: r2(z) }); }
 
   chat(text) { this.say(`<${this.name}> ${text}`); }
@@ -650,12 +709,16 @@ export class HostSession extends Session {
 }
 
 
+// A boat's flags: 1 knocked about, 2 someone in it.
+const boatFlags = (e) => (e.hurt > 0 ? 1 : 0) | (e.rider ? 2 : 0);
+
 function entityState(e) {
   const s = { i: e.nid, x: r2(e.x), y: r2(e.y), z: r2(e.z) };
   if (e.kind === 'item') return Object.assign(s, { k: 'i', id: e.id, n: e.count, d: e.dmg ?? 0, pd: r2(Math.max(0, e.pickupDelay)) });
   if (e.kind === 'tnt') return Object.assign(s, { k: 't', f: e.fuse });
   if (e.kind === 'falling') return Object.assign(s, { k: 'f', b: e.block });
   if (e.kind === 'arrow') return Object.assign(s, { k: 'a', a: r2(e.ayaw ?? Math.atan2(-e.vx, -e.vz)), p: r2(e.apitch ?? 0) });
+  if (e.kind === 'boat') return Object.assign(s, { k: 'b', w: e.wood, a: r2(e.yaw), f: boatFlags(e) });
   return Object.assign(s, { k: 'm', ty: e.type, a: r2(e.yaw), f: mobFlags(e), ...mobExtra(e) });
 }
 
@@ -812,6 +875,7 @@ export class GuestSession extends Session {
       case 'slots': this.slotData(msg); break;
       case 'shut': if (game.openBlock?.key === msg.k) game.closeMenu(); break;
       case 'wake': game.wake(true); break;
+      case 'buck': if (game.riding && game.riding.nid === msg.e) game.dismount(true); break;
       case 'pvp': this.pvp = !!msg.on; break;
       case 'fx': this.effect(msg); break;
       case 'bye': game.disconnected('The host closed the game.'); break;
@@ -949,6 +1013,8 @@ export class GuestSession extends Session {
   }
 
   primeTNT(x, y, z, fuse) { this.toHost({ t: 'tnt', x, y, z, f: fuse }); }
+  placeBoat(x, y, z, wood, yaw) { this.toHost({ t: 'boat', x: r2(x), y: r2(y), z: r2(z), w: wood, a: r2(yaw) }); }
+  ride(e, on) { if (e.nid) this.toHost({ t: 'ride', e: e.nid, on: on ? 1 : 0 }); }
   useMob(e, id, effect) { this.toHost({ t: 'um', e: e.nid, i: id, f: effect }); }
   shootArrow(x, y, z, vx, vy, vz, damage, pickup) {
     this.toHost({ t: 'arw', x: r2(x), y: r2(y), z: r2(z), vx: r2(vx), vy: r2(vy), vz: r2(vz), d: damage, p: pickup ? 1 : 0 });

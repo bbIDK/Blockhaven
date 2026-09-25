@@ -184,6 +184,28 @@ export const RIGS = {
       legBL: { pivot: [-2.5, 10, 5], cubes: [c([-4, 0, 4], [3, 10, 3], [0, 14], { mirror: true })] },
     },
   },
+  // Horses: long legs, the neck held up and forward (the head, ears and mane go with it), a
+  // tail, and a saddle when there is one (its own skin).
+  horse: {
+    bones: {
+      body: { pivot: [0, 16, 0], cubes: [c([-5, 11, -11], [10, 10, 22], [0, 32])] },
+      head: {
+        pivot: [0, 19, -9], rest: [-0.52, 0, 0],
+        cubes: [c([-2, 17, -12], [4, 12, 7], [0, 0]), c([-3, 24, -19], [6, 5, 8], [22, 0]), c([-2.5, 29, -13], [2, 3, 1], [50, 0]),
+          c([0.5, 29, -13], [2, 3, 1], [50, 0], { mirror: true }), c([-1, 17, -5], [2, 12, 2], [56, 0])],
+      },
+      legFR: { pivot: [3, 11, -8], cubes: [c([1, 0, -10], [4, 11, 4], [22, 13])] },
+      legFL: { pivot: [-3, 11, -8], cubes: [c([-5, 0, -10], [4, 11, 4], [22, 13], { mirror: true })] },
+      legBR: { pivot: [3, 11, 8], cubes: [c([1, 0, 6], [4, 11, 4], [22, 13])] },
+      legBL: { pivot: [-3, 11, 8], cubes: [c([-5, 0, 6], [4, 11, 4], [22, 13], { mirror: true })] },
+      tail: { pivot: [0, 20, 11], cubes: [c([-1.5, 8, 11], [3, 12, 3], [38, 13])], rest: [-0.45, 0, 0] },
+      saddle: {
+        pivot: [0, 16, 0], saddle: true, follows: 'body',
+        cubes: [c([-5, 21, -5], [10, 1, 10], [0, 0], { skin: 'saddle', inflate: 0.3 }), c([-1.5, 22, -5], [3, 2, 2], [40, 0], { skin: 'saddle' }),
+          c([5, 14, -1], [1, 6, 2], [50, 0], { skin: 'saddle' }), c([-6, 14, -1], [1, 6, 2], [50, 0], { skin: 'saddle', mirror: true })],
+      },
+    },
+  },
   polar_bear: {
     bones: {
       body: { pivot: [0, 16, 1], cubes: [c([-7, 10, -8], [14, 12, 18], [0, 34])] },
@@ -233,7 +255,7 @@ export const RIGS = {
 // for bones marked `wool`), one per bone, cached.
 const meshCache = new Map();
 export function rigMeshes(renderer, rigName, skins, tint = null) {
-  const key = `${rigName}|${skins.main}|${skins.wool ?? ''}|${tint ?? ''}`;
+  const key = `${rigName}|${Object.entries(skins).map(([k, v]) => `${k}=${v}`).join(',')}|${tint ?? ''}`;
   let out = meshCache.get(key);
   if (out) return out;
   const rig = RIGS[rigName];

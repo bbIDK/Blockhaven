@@ -28,9 +28,10 @@ import {
   NATURAL_LEAVES, WOOD, LOOT_KIND, LOOT_FRONT,
 } from './blocks.js';
 import { rollLoot } from './loot.js';
-import { useItemOnBlock, useBucket, placeLilyPad, useWorkstation } from './behaviors.js';
+import { useItemOnBlock, useBucket, placeLilyPad, placeBoat, useWorkstation } from './behaviors.js';
 import { nearestVillage } from './villages.js';
 import { TalkScreen } from './tradeui.js';
+import { seatY, startRide, driveFrom, dismountSpot } from './riding.js';
 import { ITEMS, I, itemDef, itemLabel, breakTime, dropsFor, attackDamage, attackSpeed } from './items.js';
 import { BIOME_NAMES } from './biomes.js';
 import { CHUNK_VOLUME, HEIGHT, TICKS_PER_DAY, SAVE_VERSION } from './config.js';
@@ -134,6 +135,7 @@ export class Game {
     this.invuln = 0;
     this.sinceDamage = 0;
     this.lastSpace = 0;
+    this.riding = null;
     this.lastW = 0;
     this.stepAcc = 0;
     this.wasInWater = false;
@@ -401,6 +403,8 @@ export class Game {
       meta.spawn = { x: s.x, y: null, z: s.z };
     }
     const p = this.player = new Player();
+    this.riding = null;
+    this.remount = !!meta.player?.riding;
     if (meta.player && (meta.player.health ?? 20) > 0) {
       Object.assign(p, { x: meta.player.x, y: meta.player.y, z: meta.player.z, yaw: meta.player.yaw, pitch: meta.player.pitch, flying: !!meta.player.flying });
       this.health = meta.player.health ?? 20;
@@ -481,7 +485,7 @@ export class Game {
     const p = this.player;
     return {
       player: { x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, flying: p.flying, health: this.health, air: this.air,
-        food: this.food, saturation: this.saturation, exhaustion: this.exhaustion },
+        food: this.food, saturation: this.saturation, exhaustion: this.exhaustion, riding: this.riding ? 1 : 0 },
       inventory: this.inv.serialize(), mode: this.meta?.mode ?? 'survival', bed: this.meta?.bed ?? null,
     };
   }
@@ -622,6 +626,7 @@ export class Game {
       this.touch.setActive(true);
       this.input.capture = true;
       this.invChanged();
+      if (this.remount) this.remountNear();
       if (this.net?.guest) this.ui.message(`You joined ${this.net.hostName}'s world “${this.meta.name}”. Press T to chat.`, '#f3b73f');
       else this.ui.message(`Welcome to ${this.meta.name}! Press E for your inventory, /help for commands.`, '#f3b73f');
       if (!this.touch.enabled) this.input.lock();
@@ -721,6 +726,7 @@ export class Game {
     this.touch.setActive(false);
     if (this.world) { await this.world.store?.drain(); this.world.dispose(); this.world = null; }
     this.meta = null;
+    this.riding = null;
     this.entities.reset(null);
     this.ui.setHUD(false);
     this.startPanorama();
@@ -740,7 +746,7 @@ export class Game {
       lastPlayed: Date.now(),
       time: Math.floor(this.time),
       player: { x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, flying: p.flying, health: this.health, air: this.air,
-        food: this.food, saturation: this.saturation, exhaustion: this.exhaustion },
+        food: this.food, saturation: this.saturation, exhaustion: this.exhaustion, riding: this.riding ? 1 : 0 },
       inventory: this.inv.serialize(),
       entities: this.entities.serialize(),
       containers: [...this.containers].map(([k, slots]) => ({ k, slots: slots.map((x) => (x ? { ...x } : null)) })),
@@ -1126,6 +1132,7 @@ export class Game {
 
   die(cause) {
     this.closeTalk();
+    this.dismount();
     this.state = 'dead';
     this.closeMenu();
     this.health = 0;
@@ -1292,10 +1299,13 @@ export class Game {
     const move = active ? this.movementInput() : { forward: 0, right: 0, jump: false, sneak: false, sprint: false };
     p.frozen = !w.isLoaded(p.x, p.z) || this.needsRespawnY;
     if (!paused && this.state !== 'dead') {
-      const prevInWater = p.inWater;
-      p.update(dt, move, w);
-      if (p.inWater && !prevInWater && p.vy < -4) this.audio.splash(Math.min(1, -p.vy / 14));
-      this.afterMove(dt);
+      if (this.riding) this.steer(move);
+      else {
+        const prevInWater = p.inWater;
+        p.update(dt, move, w);
+        if (p.inWater && !prevInWater && p.vy < -4) this.audio.splash(Math.min(1, -p.vy / 14));
+        this.afterMove(dt);
+      }
     }
     if (!paused) {
       this.tickAcc += dt * 20;
@@ -1307,6 +1317,7 @@ export class Game {
       this.entities.update(dt);
       this.weather.update(dt);
     }
+    if (this.riding) this.sitOnMount();
     this.net?.update(dt);
     if (!this.world) return; // (the game ended while updating)
     if (!draw) return;
@@ -1370,6 +1381,85 @@ export class Game {
       if (d > 1.2) { const g = p.groundBlock(this.world); if (g) this.audio.land(BLOCKS[g]?.sound ?? 'stone'); }
     }
     if (this.creative && p.y < -64) { p.y = 120; p.vy = 0; p.flying = true; }
+  }
+
+  // ---------------------------------------------------------------- riding (see riding.js)
+  // Gets into a boat or onto a horse.
+  mount(e) {
+    const p = this.player;
+    if (this.riding || this.state !== 'play' || !e || e.dead || e.dying || (e.rider && e.rider !== 'me') || e.ridden) return false;
+    if (e.kind === 'mob' && (!e.def.rideable || e.baby)) return false;
+    startRide(e, 'me');
+    this.riding = e;
+    Object.assign(p, { vx: 0, vy: 0, vz: 0, flying: false, sneaking: false, sprinting: false, bob: 0, stepSmooth: 0, eyeOffset: 1.62, fallDistance: 0 });
+    this.sprintLatch = false;
+    this.mining = null;
+    this.eating = null;
+    this.sitOnMount();
+    this.ui.showItemName(`Press ${this.touch.enabled ? 'Sneak' : 'Shift'} to ${e.kind === 'boat' ? 'get out' : 'dismount'}`, 3000);
+    if (e.kind === 'boat') this.audio.place('wood', { x: e.x, y: e.y, z: e.z });
+    else this.audio.mob('horse', e.tame ? 'say' : 'angry', { x: e.x, y: e.y + e.h, z: e.z });
+    this.net?.ride?.(e, true);
+    return true;
+  }
+
+  // Gets off (or is thrown off: `thrown`), stepping down beside the mount.
+  dismount(thrown = false) {
+    const e = this.riding, p = this.player;
+    if (!e) return;
+    this.riding = null;
+    if (e.rider === 'me') e.rider = null;
+    e.drive = null;
+    if (this.world && !e.dead) {
+      const [x, y, z] = dismountSpot(this.world, e);
+      p.x = x; p.y = y; p.z = z;
+    } else p.y += 0.5;
+    p.vx = p.vz = 0;
+    p.vy = thrown ? 6 : 0;
+    p.fallDistance = 0;
+    p.onGround = false;
+    if (thrown && e.kind === 'mob' && !e.dead && !e.dying) this.ui.showItemName(`The ${e.def.label.toLowerCase()} threw you off`, 2000);
+    this.net?.ride?.(e, false);
+  }
+
+  // Back in the saddle after loading a world saved while riding.
+  remountNear() {
+    const p = this.player;
+    this.remount = false;
+    const e = this.entities.list.find((m) => (m.kind === 'boat' || m.def?.rideable) && !m.dead && !m.rider && !m.ridden &&
+      Math.hypot(m.x - p.x, m.z - p.z) < 1 && Math.abs(seatY(m) - p.y) < 1);
+    if (e) this.mount(e);
+  }
+
+  // While riding, the movement keys drive the mount; sneaking gets off.
+  steer(move) {
+    const e = this.riding, p = this.player;
+    if (move.sneak) { this.dismount(); return; }
+    e.drive = driveFrom(move, p.yaw, e.kind);
+    // A boat turning turns its rider with it (it moves with the entities; see sitOnMount).
+    this.boatYaw = e.kind === 'boat' ? e.yaw : null;
+  }
+
+  // Keeps the rider in the saddle (or on the boat's seat), after the mount has moved.
+  sitOnMount() {
+    const e = this.riding, p = this.player, w = this.world;
+    if (!e || e.dead || e.dying || e.rider !== 'me' || !this.entities.list.includes(e)) { this.dismount(true); return; }
+    if (this.boatYaw != null) {
+      let d = e.yaw - this.boatYaw;
+      d -= Math.round(d / (Math.PI * 2)) * Math.PI * 2;
+      p.yaw = (((p.yaw + d) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+      this.boatYaw = null;
+    }
+    p.x = e.x; p.z = e.z; p.y = seatY(e);
+    p.vx = e.vx; p.vz = e.vz; p.vy = 0;
+    p.onGround = true;
+    p.fallDistance = 0;
+    p.landed = null;
+    p.sprinting = false;
+    p.sneaking = false;
+    p.sampleFluids(w);
+    // Sitting in a boat on the water isn't swimming.
+    if (e.kind === 'boat') p.inWater = false;
   }
 
   gameTick() {
@@ -1757,6 +1847,7 @@ export class Game {
     // Buckets and lily pads look for water along the line of sight themselves.
     if (held && (held.id === I.bucket || held.id === I.water_bucket || held.id === I.lava_bucket)) { if (!repeat) useBucket(this, held); return; }
     if (held?.id === B.lily_pad) { if (!repeat) placeLilyPad(this); return; }
+    if (def?.boat && !t?.entity && !t?.player) { if (!repeat) placeBoat(this, held); return; }
     // Right-clicking with armor puts it on (swapping with what you were wearing).
     if (def?.armor) {
       if (repeat) return;

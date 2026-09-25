@@ -9,6 +9,8 @@ import { DYES } from './colors.js';
 import { HEIGHT } from './config.js';
 import { identity, translate, rotateX, rotateY, rotateZ, scale, hash2, clamp } from './math.js';
 import { TEX } from './textures.js';
+import { HORSE_COATS } from './tex/mobskins.js';
+import { horseDrive, tameTick } from './riding.js';
 
 const TAU = Math.PI * 2;
 const wrap = (a) => a - Math.round(a / TAU) * TAU;
@@ -35,6 +37,9 @@ export const MOBS = {
     drops: [d('raw_mutton', 0, 1)], sound: 'goat', leaps: true },
   wolf: { label: 'Wolf', rig: 'wolf', skins: ['wolf', 'wolf_angry'], hw: 0.3, h: 0.85, health: 8, speed: 1.5, kind: 'neutral', anim: 'quad',
     damage: 4, drops: [], sound: 'wolf', pack: true },
+  horse: { label: 'Horse', rig: 'horse', skins: HORSE_COATS.map(([n]) => `horse_${n}`), saddleSkin: 'horse_saddle', hw: 0.65, h: 1.6, health: 22,
+    speed: 1.2, rideSpeed: 9, kind: 'animal', anim: 'horse', food: ['wheat', 'apple', 'sugar', 'carrot', 'hay_block', 'golden_apple', 'golden_carrot'],
+    breedFood: ['golden_apple', 'golden_carrot'], drops: [d('leather', 0, 2)], sound: 'horse', rideable: true },
   polar_bear: { label: 'Polar Bear', rig: 'polar_bear', skins: ['polar_bear'], hw: 0.7, h: 1.4, health: 30, speed: 1.3, kind: 'neutral',
     anim: 'quad', damage: 6, drops: [d('cod', 0, 2), d('salmon', 0, 2)], sound: 'bear' },
   squid: { label: 'Squid', rig: 'squid', skins: ['squid'], hw: 0.4, h: 0.8, health: 10, speed: 1.2, kind: 'water', anim: 'squid',
@@ -69,6 +74,7 @@ for (const [type, m] of Object.entries(MOBS)) {
   m.hostile = m.kind === 'hostile';
   m.drops = m.drops.map(([name, lo, hi, chance]) => [I[name] ?? B[name], lo, hi, chance]).filter((x) => x[0] !== undefined);
   m.foodIds = new Set((m.food ?? []).map((n) => I[n] ?? B[n]));
+  m.breedIds = m.breedFood ? new Set(m.breedFood.map((n) => I[n] ?? B[n])) : null;
   m.rigDef = RIGS[m.rig];
 }
 export const MOB_TYPES = MOBS;
@@ -84,7 +90,10 @@ export function initMob(e, type, o = {}) {
     flap: 0, onFire: 0, speedMul: 1, target: null, angry: 0, love: 0, breedCd: 0, variant: o.variant ?? 0, size, baby: !!o.baby,
     grow: o.baby ? 24000 : 0, sheared: !!o.sheared, colour: o.colour ?? 0, eggTimer: 6000 + Math.floor(Math.random() * 6000), fuse: 0,
     aim: 0, lookAt: null, lookTime: 0, squish: 0, jumpCd: 0, teleportCd: 0, graze: 0, pinned: o.pinned ?? null, home: o.home ?? null,
+    tame: !!o.tame, saddled: !!o.saddled, temper: o.temper ?? 0, rider: null,
   });
+  if (type === 'horse' && o.health === undefined) e.health = 15 + Math.floor(Math.random() * 16);
+  e.maxHealth = e.health;
   if (t.sized) { e.hw = 0.26 * size; e.h = 0.52 * size; }
   else if (e.baby) { e.hw = t.hw * 0.5; e.h = t.h * 0.5; }
   return e;
@@ -134,6 +143,7 @@ export function mobTick(ents, e) {
     if (e.onGround && Math.random() < 0.15) { e.vy = 4; e.vx = (Math.random() - 0.5) * 3; e.vz = (Math.random() - 0.5) * 3; }
     if (++e.burnCd >= 40) { e.burnCd = 0; ents.hurtMob(e, 1, null); }
   }
+  if (e.rider) { riddenTick(ents, e); return; }
   switch (t.kind) {
     case 'hostile': hostileTick(ents, e); break;
     case 'neutral': neutralTick(ents, e); break;
@@ -143,6 +153,22 @@ export function mobTick(ents, e) {
   }
   lookTick(ents, e);
   if (t.sound && Math.random() < (t.hostile ? 0.005 : 0.003)) game.audio.mob(t.sound, 'say', { x: e.x, y: e.y + e.h * 0.8, z: e.z }, t.pitch);
+}
+
+// With someone on its back: an untamed horse makes up its mind whether to keep them; a tame one
+// without a saddle wanders where it likes. (The rider's keys steer a saddled one; see riding.js.)
+function riddenTick(ents, e) {
+  const game = ents.game, at = { x: e.x, y: e.y + e.h, z: e.z };
+  const verdict = tameTick(e);
+  if (verdict === 'tame') {
+    game.particles.bits(e.x, e.y + e.h + 0.3, e.z, TEX.heart, 7, 1, 0.5);
+    game.audio.mob('horse', 'say', at, 1.1);
+  } else if (verdict === 'buck') {
+    game.audio.mob('horse', 'angry', at);
+    game.particles.bits(e.x, e.y + e.h + 0.3, e.z, TEX.angry, 5, 0.8, 0.4);
+    ents.throwRider(e);
+  } else if (e.tame && !e.saddled) wander(e, 0.5);
+  e.headYaw *= 0.8; e.headPitch *= 0.8;
 }
 
 // Heads turn towards a nearby player now and then (or towards what the creature is after).
@@ -199,7 +225,9 @@ function animalTick(ents, e) {
       e.moving = dist2(mate, e) > 1.2;
       if (!e.moving && e.love > 0 && mate.love > 0) {
         e.love = mate.love = 0; e.breedCd = mate.breedCd = 6000;
-        const baby = ents.spawnMob(e.type, (e.x + mate.x) / 2, e.y, (e.z + mate.z) / 2, { baby: true, variant: e.variant, colour: Math.random() < 0.5 ? e.colour : mate.colour });
+        // (A foal of two tame horses is born tame.)
+        const baby = ents.spawnMob(e.type, (e.x + mate.x) / 2, e.y, (e.z + mate.z) / 2, { baby: true, variant: Math.random() < 0.5 ? e.variant : mate.variant,
+          colour: Math.random() < 0.5 ? e.colour : mate.colour, tame: e.tame && mate.tame });
         game.particles.bits(baby.x, baby.y + 0.5, baby.z, TEX.heart, 6, 1, 0.5);
       }
       return;
@@ -437,6 +465,13 @@ export function provoked(ents, e, from) {
 export function mobUseEffect(e, id) {
   const t = e.def;
   if (!id || e.dying) return null;
+  if (t.rideable) {
+    // Horses: saddled once tame; fed to heal and to warm to you; golden food to breed.
+    if (id === I.saddle) return e.tame && !e.saddled && !e.baby ? 'saddle' : null;
+    if (t.breedIds?.has(id) && e.tame && !e.baby && e.breedCd === 0 && e.love === 0) return 'breed';
+    if (t.foodIds.has(id)) return e.baby ? 'grow' : e.health < e.maxHealth || !e.tame ? 'feed' : null;
+    return null;
+  }
   if (t.milk && id === I.bucket && !e.baby) return 'milk';
   if (t.wool && id === I.shears && !e.sheared && !e.baby) return 'shear';
   if (t.foodIds.has(id)) return e.baby ? 'grow' : e.breedCd === 0 && e.love === 0 ? 'breed' : null;
@@ -458,6 +493,13 @@ export function applyMobUse(ents, e, id, effect) {
     case 'breed': e.love = 600; game.particles.bits(e.x, e.y + e.h + 0.3, e.z, TEX.heart, 5, 0.8, 0.4); break;
     case 'grow': e.grow = Math.max(0, e.grow - 2400); game.particles.bits(e.x, e.y + e.h + 0.2, e.z, TEX.happy, 5, 0.8, 0.4); break;
     case 'dye': e.colour = DYE_OF[id]; break;
+    case 'saddle': e.saddled = true; game.audio.equip('leather'); break;
+    case 'feed':
+      e.health = Math.min(e.maxHealth ?? e.health, e.health + (id === I.wheat ? 2 : 4));
+      if (!e.tame) e.temper = Math.min(100, (e.temper ?? 0) + (id === I.golden_apple || id === I.golden_carrot ? 10 : 3));
+      game.particles.bits(e.x, e.y + e.h + 0.2, e.z, TEX.happy, 5, 0.8, 0.4);
+      game.audio.mob('horse', 'eat', at);
+      break;
     default:
   }
 }
@@ -480,6 +522,7 @@ export function mobDrops(e) {
     if (n > 0) out.push([id, n]);
   }
   if (e.def.wool && !e.sheared) out.push([woolBlock(e.colour), 1]);
+  if (e.saddled) out.push([I.saddle, 1]);
   if (e.def.sized && e.size > 1) return [];
   return out;
 }
@@ -494,10 +537,13 @@ export function mobPhysics(ents, e, dt, fluid) {
     e.move(w, 0, e.vy * dt, 0);
     return;
   }
+  // A saddled horse goes where its rider steers.
+  if (e.rider && t.rideable) horseDrive(e, e.drive, dt);
   let speed = e.moving ? t.speed * (e.speedMul || 1) * (e.baby ? 1.3 : 1) : 0;
-  const fx = -Math.sin(e.yaw), fz = -Math.cos(e.yaw);
+  const dir = e.yaw + (e.rider ? e.rideDir ?? 0 : 0);
+  const fx = -Math.sin(dir), fz = -Math.cos(dir);
   // Animals won't walk off a cliff or into water on their own.
-  if (speed && !t.hostile && t.kind !== 'water' && t.kind !== 'civilian' && e.onGround && !e.panic) {
+  if (speed && !t.hostile && t.kind !== 'water' && t.kind !== 'civilian' && e.onGround && !e.panic && !e.rider) {
     const ax = Math.floor(e.x + fx * (e.hw + 0.4)), az = Math.floor(e.z + fz * (e.hw + 0.4)), y = Math.floor(e.y + 0.1);
     const ahead = w.getBlock(ax, y - 1, az), ahead2 = w.getBlock(ax, y - 2, az);
     if ((!SOLID[ahead] && !SOLID[ahead2]) || WATERLIKE[ahead] || WATERLIKE[w.getBlock(ax, y, az)]) {
@@ -565,6 +611,15 @@ export function poseMob(e, pose) {
       pose.legFR = [a, 0, 0]; pose.legBL = [a, 0, 0]; pose.legFL = [-a, 0, 0]; pose.legBR = [-a, 0, 0];
       pose.tail = [Math.sin(age * (e.angry ? 12 : 4)) * 0.1, Math.sin(age * 3) * (e.angry ? 0.5 : 0.25), 0];
       if (e.graze > 0) { pose.head = [0.9, 0, 0]; pose['head@'] = [0, -3, -1]; }
+      break;
+    }
+    case 'horse': {
+      // A slower stride than the other four-legged animals (their legs are long), the head nodding
+      // along, and the tail swishing (streaming out behind at a gallop).
+      const g = Math.sin(e.walkPhase * 0.45) * 0.9 * e.walk;
+      pose.head = [head[0] * 0.6 + Math.sin(e.walkPhase * 0.9) * 0.06 * e.walk, head[1] * 0.6, 0];
+      pose.legFR = [g, 0, 0]; pose.legBL = [g, 0, 0]; pose.legFL = [-g, 0, 0]; pose.legBR = [-g, 0, 0];
+      pose.tail = [Math.sin(age * 1.9) * 0.08 - e.walk * 0.6, Math.sin(age * 3.1) * 0.22 * (1 - e.walk * 0.7), 0];
       break;
     }
     case 'chicken': {
@@ -636,7 +691,9 @@ const baseMat = new Float32Array(16);
 // Adds creature `e` to the render list `out` (camera-relative position rx, ry, rz).
 export function renderMob(ents, e, rx, ry, rz, light, out) {
   const t = e.def, r = ents.game.renderer;
-  const skins = { main: t.skins[Math.min(e.variant, t.skins.length - 1)], wool: t.wool };
+  const skins = { main: t.skins[Math.min(e.variant, t.skins.length - 1)] };
+  if (t.wool) skins.wool = t.wool;
+  if (t.saddleSkin) skins.saddle = t.saddleSkin;
   if (t.type === 'wolf' && e.angry > 0) skins.main = 'wolf_angry';
   if (t.kind === 'civilian') skins.main = e.skin;
   const tint = t.wool ? woolTint(e.colour) : null;
@@ -660,7 +717,7 @@ export function renderMob(ents, e, rx, ry, rz, light, out) {
   poseMob(e, pose);
   const parts = [];
   for (const m of meshes) {
-    if (m.bone.wool && e.sheared) continue;
+    if ((m.bone.wool && e.sheared) || (m.bone.saddle && !e.saddled)) continue;
     parts.push({ mesh: m.mesh, model: boneMatrix(ents.mat(), base, m.bone, pose, m.name) });
   }
   // What it holds: attached to the hand of the arm bone.
@@ -694,12 +751,12 @@ function woolTint(colour) {
 // ---------------------------------------------------------------- where they live
 // Animals that turn up with a newly generated chunk, by biome: [type, weight, group size].
 const HERDS = {
-  plains: [['pig', 10, 3], ['cow', 8, 3], ['sheep', 12, 4], ['chicken', 10, 3], ['rabbit', 3, 2]],
+  plains: [['pig', 10, 3], ['cow', 8, 3], ['sheep', 12, 4], ['chicken', 10, 3], ['rabbit', 3, 2], ['horse', 5, 3]],
   forest: [['pig', 8, 3], ['cow', 6, 3], ['sheep', 8, 4], ['chicken', 8, 3], ['wolf', 3, 3], ['fox', 3, 2], ['rabbit', 3, 2]],
   taiga: [['wolf', 6, 4], ['rabbit', 6, 3], ['fox', 6, 2], ['sheep', 6, 3], ['pig', 3, 3]],
   snowy: [['rabbit', 10, 3], ['polar_bear', 3, 2], ['fox', 4, 2]],
   desert: [['rabbit', 8, 2]],
-  savanna: [['cow', 8, 3], ['sheep', 8, 3], ['chicken', 6, 3]],
+  savanna: [['cow', 8, 3], ['sheep', 8, 3], ['chicken', 6, 3], ['horse', 6, 3]],
   jungle: [['chicken', 10, 3], ['pig', 6, 3]],
   peaks: [['goat', 10, 3], ['rabbit', 2, 2]],
   meadow: [['sheep', 10, 4], ['rabbit', 6, 3], ['goat', 3, 2], ['cow', 4, 3]],
@@ -741,7 +798,8 @@ export function herdFor(chunk, seed) {
         const yy = water ? y - 1 - Math.floor(Math.random() * 2) : y + 1;
         if (water && WATERLIKE[chunk.blocks[(yy << 8) | (lz << 4) | lx]] !== 1) break;
         out.push({ type, x: chunk.cx * 16 + lx + 0.5, y: yy, z: chunk.cz * 16 + lz + 0.5,
-          o: { variant, colour: type === 'sheep' ? sheepColour(Math.random()) : 0, baby: Math.random() < 0.1 } });
+          o: { variant: type === 'horse' ? Math.floor(Math.random() * MOBS.horse.skins.length) : variant,
+            colour: type === 'sheep' ? sheepColour(Math.random()) : 0, baby: Math.random() < 0.1 } });
       }
       break;
     }

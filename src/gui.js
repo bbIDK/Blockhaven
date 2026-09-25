@@ -112,7 +112,7 @@ function creativeTab(id) {
     const cat = BLOCKS[d.block].cat;
     return cat === 'functional' ? 'utility' : cat ?? 'building';
   }
-  if (d.tool || d.weapon || d.armor || GEAR.has(d.name)) return 'equipment';
+  if (d.tool || d.weapon || d.armor || d.boat || GEAR.has(d.name)) return 'equipment';
   return 'materials';
 }
 const PALETTE = [...CREATIVE_BLOCKS, ...[...ITEMS.keys()].filter((id) => id >= 256)];

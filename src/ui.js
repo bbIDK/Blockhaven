@@ -432,12 +432,12 @@ export class UI {
     this.titleTimer = setTimeout(() => el.classList.remove('show'), 3500);
   }
 
-  showItemName(text) {
+  showItemName(text, ms = 1500) {
     const el = $('item-name');
     el.textContent = text;
     el.classList.add('show');
     clearTimeout(this.nameTimer);
-    this.nameTimer = setTimeout(() => el.classList.remove('show'), 1500);
+    this.nameTimer = setTimeout(() => el.classList.remove('show'), ms);
   }
 
   renderStats(survival, health, air, underwater, food = 20, armor = 0) {

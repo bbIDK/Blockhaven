@@ -32,6 +32,7 @@ export class RemotePlayer {
     this.hurtN = null; this.hurt = 0;
     this.walk = 0; this.walkPhase = 0;
     this.lastX = 0; this.lastZ = 0;
+    this.mountId = null; // the entity they ride, if any
   }
 
   get sneaking() { return !!(this.flags & 1); }
@@ -55,6 +56,7 @@ export class RemotePlayer {
       }
     }
     this.flags = Number.isInteger(pres.f) ? pres.f : 0;
+    this.mountId = Array.isArray(pres.r) && Number.isInteger(pres.r[0]) && pres.r[0] > 0 ? pres.r[0] : null;
     this.held = Number.isInteger(pres.i) && itemDef(pres.i) ? pres.i : 0;
     this.look = Number.isInteger(pres.k) ? pres.k : -1;
     const a = Array.isArray(pres.a) ? pres.a : [];
@@ -87,7 +89,7 @@ export class RemotePlayer {
     }
     const moved = Math.hypot(this.x - this.lastX, this.z - this.lastZ);
     this.lastX = this.x; this.lastZ = this.z;
-    const speed = dt > 0 ? moved / dt : 0;
+    const speed = dt > 0 && this.mountId === null ? moved / dt : 0;
     this.walk += (Math.min(1, speed / 4.3) - this.walk) * Math.min(1, dt * 10);
     this.walkPhase += Math.min(speed, 12) * dt * 1.7;
     // The body follows the head lazily, and turns with it when walking.
@@ -201,14 +203,21 @@ export class Avatars {
       };
       const add = (g, mat) => { translate(mat, mat, -MODEL_OFFSET, -MODEL_OFFSET, -MODEL_OFFSET); parts.push({ mesh: g.mesh, model: mat }); };
       const legBack = sneak ? 0.3 : 0;
-      add(m.rightLeg, joint(base(this.mat()), m.rightLeg.pivot, walkA - legBack));
-      add(m.leftLeg, joint(base(this.mat()), m.leftLeg.pivot, -walkA - legBack));
+      // Riding: sitting with the legs out in front, a little apart, and the hands forward.
+      const sit = rp.mountId !== null;
+      if (sit) {
+        add(m.rightLeg, joint(base(this.mat()), m.rightLeg.pivot, 1.41, -0.31));
+        add(m.leftLeg, joint(base(this.mat()), m.leftLeg.pivot, 1.41, 0.31));
+      } else {
+        add(m.rightLeg, joint(base(this.mat()), m.rightLeg.pivot, walkA - legBack));
+        add(m.leftLeg, joint(base(this.mat()), m.leftLeg.pivot, -walkA - legBack));
+      }
       add(m.body, torso(this.mat()));
       add(m.head, joint(torso(this.mat()), m.head.pivot, rp.pitch + (sneak ? 0.45 : 0), wrap(rp.yaw - rp.bodyYaw)));
-      const leftA = walkA * 0.7 + (sneak ? 0.35 : 0);
+      const leftA = walkA * 0.7 + (sneak ? 0.35 : 0) + (sit ? 0.63 : 0);
       add(m.leftArm, joint(torso(this.mat()), m.leftArm.pivot, leftA, 0, -0.05));
       // The right arm swings forward and up to hit or use something, and holds the item.
-      const rightA = -walkA * 0.7 + (sneak ? 0.35 : 0) + (rp.held ? 0.3 : 0) + attack * 1.3;
+      const rightA = -walkA * 0.7 + (sneak ? 0.35 : 0) + (rp.held ? 0.3 : 0) + attack * 1.3 + (sit ? 0.63 : 0);
       const arm = joint(torso(this.mat()), m.rightArm.pivot, rightA, -attack * 0.4, 0.05);
       const held = rp.held ? this.renderer.itemMesh(rp.held) : null;
       if (held) parts.push({ mesh: held, model: this.heldItem(arm, held) });

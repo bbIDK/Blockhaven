@@ -203,6 +203,43 @@ skin('goat', (sk) => {
   feet(sk, 'goat', ['legFR'], 2, [0x3a3632, 0x4a4540]);
 });
 
+// Horses: a coat in seven colours with a darker (or, on creamy horses, flaxen) mane and tail,
+// eyes set on the sides of the head, a soft muzzle and dark hooves.
+export const HORSE_COATS = [
+  ['white', 0xe8e4dc, 0xcdc8be], ['creamy', 0xc9a878, 0xeadcbc], ['chestnut', 0x9c5a2e, 0x6a3818], ['brown', 0x6e4a2e, 0x2e1c10],
+  ['black', 0x2c2826, 0x121010], ['gray', 0x8c8884, 0x4c4846], ['dark_brown', 0x40291c, 0x1a100a],
+];
+for (const [name, coatC, maneC] of HORSE_COATS) {
+  skin(`horse_${name}`, (sk) => {
+    const coat = ramp(coatC, 5, 0.1, 6), mane = ramp(maneC, 4, 0.1, 6);
+    fur(sk, 'horse', ['body', 'head', 'legFR'], coat, { cell: 2, grain: 0.25 });
+    const [, head, earR, , maneCube] = cubesOf('horse', 'head');
+    sk.box(maneCube, (face, r) => sk.fill(r, mane, { cell: 1, cy: 2, grain: 0.35 }));
+    sk.box(earR, (face, r) => sk.fill(r, coat.slice(0, 3), { cell: 1 }));
+    for (const cube of cubesOf('horse', 'tail')) sk.box(cube, (face, r) => sk.fill(r, mane, { cell: 1, cy: 3, grain: 0.4 }));
+    // Eyes on the sides, towards the front; nostrils and a darker muzzle at the end of the nose.
+    const R = reg(head);
+    at(sk, R.right, 5, 1, 0x141010); at(sk, R.right, 6, 1, 0x2a2420);
+    at(sk, R.left, 1, 1, 0x2a2420); at(sk, R.left, 2, 1, 0x141010);
+    for (const face of ['front', 'bottom']) tone(sk, [R[face][0], R[face][1] + R[face][3] - 2, R[face][2], 2], 0.82);
+    for (const side of ['right', 'left']) tone(sk, [R[side][0] + (side === 'right' ? 6 : 0), R[side][1] + 2, 2, 3], 0.85);
+    at(sk, R.front, 1, 3, 0x1a1412); at(sk, R.front, 4, 3, 0x1a1412);
+    // A lighter blaze down the face of the darker coats.
+    if (['chestnut', 'brown', 'dark_brown'].includes(name)) for (let y = 0; y < 3; y++) { at(sk, R.front, 2, y, coat[4]); at(sk, R.front, 3, y, coat[4]); }
+    feet(sk, 'horse', ['legFR'], 2, [0x2a2420, 0x3a322c]);
+  });
+}
+// The saddle: dark leather, a lighter seat, iron stirrups.
+skin('horse_saddle', (sk) => {
+  const leather = [0x3a2010, 0x5a3218, 0x6e4122, 0x8e5832];
+  for (const cube of cubesOf('horse', 'saddle')) {
+    sk.box(cube, (face, r) => {
+      if (cube.size[1] === 6) { sk.fill(r, [0x5a5a5a, 0x8a8a8a, 0xb0b0b0], { cell: 1 }); if (face !== 'top' && face !== 'bottom') row(sk, r, 0, leather[1]); }
+      else sk.fill(r, face === 'top' ? leather.slice(1) : leather.slice(0, 3), { cell: 1, grain: 0.3 });
+    });
+  }
+});
+
 const BEAR = ramp(0xecebe4, 5, 0.07, 6);
 skin('polar_bear', (sk) => {
   fur(sk, 'polar_bear', ['body', 'head', 'legFR'], BEAR, { cell: 2, grain: 0.3 });

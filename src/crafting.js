@@ -60,7 +60,9 @@ for (const w of WOOD_NAMES) {
   shaped(`${w}_fence`, 3, ['W#W', 'W#W'], { W: `${w}_planks`, '#': 'stick' }, 'misc');
   shaped(`${w}_fence_gate`, 1, ['#W#', '#W#'], { W: `${w}_planks`, '#': 'stick' }, 'misc');
   shaped(`${w}_trapdoor`, 2, ['###', '###'], { '#': `${w}_planks` }, 'misc');
+  if (I[`${w}_boat`] !== undefined) shaped(`${w}_boat`, 1, ['# #', '###'], { '#': `${w}_planks` }, 'misc');
 }
+shaped('saddle', 1, [' L ', 'LIL'], { L: 'leather', I: 'iron_ingot' }, 'equipment');
 // Switches and the things they work.
 shaped('iron_door', 3, ['##', '##', '##'], { '#': 'iron_ingot' }, 'misc');
 shaped('iron_trapdoor', 1, ['##', '##'], { '#': 'iron_ingot' }, 'misc');

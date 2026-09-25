@@ -1,5 +1,6 @@
 // Everything that moves besides the player: dropped items, lit TNT, falling sand and gravel,
-// arrows, and creatures (whose particulars live in mobs.js; village people in civilians.js).
+// arrows, boats, and creatures (whose particulars live in mobs.js; village people in
+// civilians.js; riding in riding.js).
 // In multiplayer the host simulates them all; a guest's entities are copies of the host's (see
 // the end of this file), and what a guest does to them is sent to the host.
 import { Body } from './body.js';
@@ -13,6 +14,7 @@ import { HEIGHT } from './config.js';
 import { villageAt } from './villages.js';
 import { MOBS, initMob, mobTick, mobPhysics, renderMob, provoked, mobUseEffect, applyMobUse, applyHeldUse, mobDrops, herdFor, monsterFor, HOSTILE_TYPES } from './mobs.js';
 import { Civilians } from './civilians.js';
+import { boatPhysics, boatMesh, boatModel, BOAT_WOODS } from './riding.js';
 
 class Entity extends Body {
   constructor(kind, hw, h, x, y, z) {
@@ -32,16 +34,19 @@ export function mobExtra(e) {
   if (e.size !== 1) o.s = e.size;
   if (e.baby) o.b = 1;
   if (e.sheared) o.sh = 1;
+  if (e.tame) o.tm = 1;
+  if (e.saddled) o.sd = 1;
+  if (e.temper) o.te = e.temper;
   if (e.def.kind === 'civilian') { o.r = e.rid; o.sk = e.skin; o.n = e.name; o.ro = e.role; }
   return o;
 }
 const extraOpts = (s) => ({ variant: Number.isInteger(s.v) ? s.v : 0, colour: Number.isInteger(s.c) ? s.c : 0, size: [1, 2, 4].includes(s.s) ? s.s : 1,
-  baby: !!s.b, sheared: !!s.sh });
+  baby: !!s.b, sheared: !!s.sh, tame: !!s.tm, saddled: !!s.sd, temper: Number.isFinite(s.te) ? Math.max(0, Math.min(100, s.te)) : 0 });
 // Flags sent with each creature update: 1 hurt, 2 dying, 4 swinging, 8 burning, 16 shorn, 32 angry,
-// 64 about to explode, 128 drawing a bow, 256 asleep.
+// 64 about to explode, 128 drawing a bow, 256 asleep, 512 saddled, 1024 tame, 2048 being ridden.
 export function mobFlags(e) {
   return (e.hurt > 0 ? 1 : 0) | (e.dying ? 2 : 0) | (e.swing > 0.3 ? 4 : 0) | (e.burning ? 8 : 0) | (e.sheared ? 16 : 0) | (e.angry > 0 ? 32 : 0) |
-    (e.fuse > 0 ? 64 : 0) | (e.aim > 0 ? 128 : 0) | (e.pose === 'sleep' ? 256 : 0);
+    (e.fuse > 0 ? 64 : 0) | (e.aim > 0 ? 128 : 0) | (e.pose === 'sleep' ? 256 : 0) | (e.saddled ? 512 : 0) | (e.tame ? 1024 : 0) | (e.rider ? 2048 : 0);
 }
 
 export class Entities {
@@ -70,15 +75,17 @@ export class Entities {
       else if (s.k === 'mob' && MOBS[s.t] && MOBS[s.t].kind !== 'civilian') {
         const m = this.spawnMob(s.t, s.x, s.y, s.z, extraOpts(s));
         m.yaw = s.yaw ?? 0; m.health = s.hp ?? m.health;
-      }
+        if (Number.isFinite(s.mh)) m.maxHealth = s.mh;
+      } else if (s.k === 'boat') this.spawnBoat(s.x, s.y, s.z, BOAT_WOODS.includes(s.w) ? s.w : 'oak', s.yaw ?? 0);
     }
   }
 
   serialize() {
-    return this.list.filter((e) => !e.dead && (e.kind === 'item' || (e.kind === 'mob' && e.def.kind !== 'civilian' && !e.pinned))).slice(0, 300)
-      .map((e) => (e.kind === 'item'
-        ? { k: 'item', x: e.x, y: e.y, z: e.z, id: e.id, count: e.count, dmg: e.dmg }
-        : { k: 'mob', t: e.type, x: e.x, y: e.y, z: e.z, yaw: e.yaw, hp: e.health, ...mobExtra(e) }));
+    return this.list.filter((e) => !e.dead && (e.kind === 'item' || e.kind === 'boat' || (e.kind === 'mob' && e.def.kind !== 'civilian' && !e.pinned)))
+      .slice(0, 300)
+      .map((e) => (e.kind === 'item' ? { k: 'item', x: e.x, y: e.y, z: e.z, id: e.id, count: e.count, dmg: e.dmg }
+        : e.kind === 'boat' ? { k: 'boat', x: e.x, y: e.y, z: e.z, yaw: e.yaw, w: e.wood }
+          : { k: 'mob', t: e.type, x: e.x, y: e.y, z: e.z, yaw: e.yaw, hp: e.health, mh: e.maxHealth, ...mobExtra(e) }));
   }
 
   // ---------------------------------------------------------------- spawning
@@ -128,6 +135,52 @@ export class Entities {
     initMob(e, type, o);
     this.list.push(e);
     return e;
+  }
+
+  // A boat of `wood` set down at (x, y, z) (the middle of its bottom), pointing along `yaw`.
+  spawnBoat(x, y, z, wood, yaw = 0) {
+    if (this.guest) { this.game.net.placeBoat?.(x, y, z, wood, yaw); return null; }
+    const e = new Entity('boat', 0.65, 0.55, x, y, z);
+    Object.assign(e, { wood, yaw, hits: 0, hurt: 0, rider: null, def: { label: 'Boat' } });
+    this.list.push(e);
+    return e;
+  }
+
+  // Someone knocks at a boat: a few knocks (one in Creative) and it breaks, dropping itself.
+  hitBoat(e, creative) {
+    const game = this.game;
+    e.hurt = 0.35;
+    game.audio.place('wood', { x: e.x, y: e.y + 0.3, z: e.z });
+    if (++e.hits < (creative ? 1 : 3)) return;
+    if (e.rider) this.throwRider(e);
+    e.dead = true;
+    game.particles.burst(Math.floor(e.x), Math.floor(e.y), Math.floor(e.z), B[`${e.wood}_planks`] ?? B.oak_planks);
+    game.net?.entityGone?.(e, 'b');
+    if (!creative) this.spawnItem(e.x, e.y + 0.4, e.z, I[`${e.wood}_boat`] ?? I.oak_boat, 1);
+  }
+
+  // A mount throws its rider off (an untamed horse, a broken boat).
+  throwRider(e) {
+    const game = this.game;
+    if (e.rider === 'me') game.dismount(true);
+    else if (e.rider) game.net?.buck?.(e.rider, e);
+    e.rider = null;
+    e.guestRider = false;
+    e.drive = null;
+  }
+
+  // A mount a guest is riding goes where they say (see HostSession.rideMove), smoothly.
+  glideRidden(e, dt) {
+    const k = 1 - Math.exp(-dt * 14), ox = e.x, oz = e.z;
+    if (Math.abs(e.tx - e.x) + Math.abs(e.ty - e.y) + Math.abs(e.tz - e.z) > 8) { e.x = e.tx; e.y = e.ty; e.z = e.tz; }
+    else { e.x += (e.tx - e.x) * k; e.y += (e.ty - e.y) * k; e.z += (e.tz - e.z) * k; }
+    let d = e.tyaw - e.yaw;
+    d -= Math.round(d / (Math.PI * 2)) * Math.PI * 2;
+    e.yaw += d * k;
+    if (e.kind !== 'mob') return;
+    const speed = Math.min(14, Math.hypot(e.x - ox, e.z - oz) / Math.max(dt, 1e-3));
+    e.walk += (Math.min(1, speed / 1.5) - e.walk) * Math.min(1, dt * 8);
+    e.walkPhase += speed * dt * 5;
   }
 
   // An arrow flying from (x, y, z). `owner`: who shot it (not hit by it at first); `pickup`:
@@ -198,11 +251,14 @@ export class Entities {
       if (e.kind === 'tnt') {
         if (--e.fuse <= 0) { e.dead = true; this.explode(e.x, e.y + 0.5, e.z, 4); }
       } else if (e.kind === 'mob') {
-        mobTick(this, e);
+        const loaded = this.world.isLoaded(e.x, e.z);
+        if (loaded) mobTick(this, e);
         // Out of sight, out of mind: creatures far from everyone go (village folk and penned
-        // animals come back when the village does).
+        // animals come back when the village does). Horses someone has tamed or saddled stay,
+        // waiting where they were left.
         const near = this.players.some((p) => Math.hypot(p.x - e.x, p.z - e.z) < (game.settings.renderDistance + 2) * 16);
-        if ((!near && (e.def.kind !== 'civilian' || !this.world.isLoaded(e.x, e.z))) || e.y < -40) { e.dead = true; this.civilians.gone(e); }
+        const kept = e.tame || e.saddled || e.rider;
+        if ((!near && !kept && (e.def.kind !== 'civilian' || !loaded)) || e.y < -40) { e.dead = true; this.civilians.gone(e); }
       }
     }
     // Merge nearby identical items.
@@ -252,8 +308,13 @@ export class Entities {
         if (e.onGround || e.age > 30 || e.y < 0) this.land(e);
       } else if (e.kind === 'arrow') {
         this.arrowPhysics(e, dt, fluid);
+      } else if (e.kind === 'boat') {
+        // (A guest's boat moves where they paddle it; see remoteRide.)
+        e.hurt = Math.max(0, e.hurt - dt);
+        if (e.guestRider) this.glideRidden(e, dt); else boatPhysics(w, e, dt, e.drive ?? null);
+        if (e.y < -40) e.dead = true;
       } else if (e.kind === 'mob') {
-        mobPhysics(this, e, dt, fluid);
+        if (e.guestRider) this.glideRidden(e, dt); else mobPhysics(this, e, dt, fluid);
       }
     }
     this.list = this.list.filter((e) => !e.dead);
@@ -346,7 +407,7 @@ export class Entities {
     }
     provoked(this, e, from && (from.addr !== undefined || from.kind === 'mob') ? from : from === this.game.player ? this.players[0] : null);
     if (t.kind === 'civilian') this.civilians.hurt(e, from);
-    if (e.health <= 0) e.dying = 0.001;
+    if (e.health <= 0) { e.dying = 0.001; if (e.rider) this.throwRider(e); }
   }
 
   finishDeath(e) {
@@ -371,15 +432,25 @@ export class Entities {
   // The player hits a creature. `bonus` adds knockback (a sprinting, full-strength hit).
   attack(e, amount, bonus = 0) {
     const n = this.game.creative ? 100 : amount;
+    if (e.kind === 'boat') {
+      if (e.remote) this.game.net.hitMob(e, n, bonus);
+      else this.hitBoat(e, this.game.creative);
+      return;
+    }
     if (e.remote) this.game.net.hitMob(e, n, bonus);
     else this.hurtMob(e, n, this.game.player, bonus);
   }
 
-  // Right-click on a creature: feeding, shearing, milking; talking to villagers.
+  // Right-click on a creature: feeding, shearing, milking; talking to villagers; getting into a
+  // boat or onto a horse.
   interact(e, held) {
+    if (e.kind === 'boat') { this.game.mount(e); return; }
     if (e.def.kind === 'civilian') { this.civilians.talk(e); return; }
     const effect = mobUseEffect(e, held?.id);
-    if (!effect) return;
+    if (!effect) {
+      if (e.def.rideable && !e.baby && !this.game.player.sneaking) this.game.mount(e);
+      return;
+    }
     applyHeldUse(this.game, effect);
     if (e.remote) this.game.net.useMob(e, held.id, effect);
     else applyMobUse(this, e, held.id, effect);
@@ -457,6 +528,9 @@ export class Entities {
       } else if (s.k === 'a') {
         e = new Entity('arrow', 0.05, 0.1, s.x, s.y, s.z);
         Object.assign(e, { stuck: false, life: 0, ayaw: Number.isFinite(s.a) ? s.a : 0, apitch: Number.isFinite(s.p) ? s.p : 0 });
+      } else if (s.k === 'b') {
+        e = new Entity('boat', 0.65, 0.55, s.x, s.y, s.z);
+        Object.assign(e, { wood: BOAT_WOODS.includes(s.w) ? s.w : 'oak', yaw: Number.isFinite(s.a) ? s.a : 0, hits: 0, hurt: 0, def: { label: 'Boat' } });
       } else if (s.k === 'm' && MOBS[s.ty]) {
         const t = MOBS[s.ty];
         e = new Entity('mob', t.hw, t.h, s.x, s.y, s.z);
@@ -480,6 +554,9 @@ export class Entities {
       e.tyaw = Number.isFinite(s.a) ? s.a : e.yaw;
       if (Number.isInteger(s.c)) e.colour = s.c;
       this.remoteFlags(e, Number.isInteger(s.f) ? s.f : 0);
+    } else if (s.k === 'b') {
+      e.tyaw = Number.isFinite(s.a) ? s.a : e.yaw;
+      e.ridden = !!((s.f ?? 0) & 2);
     }
   }
 
@@ -491,6 +568,10 @@ export class Entities {
     if (e.kind === 'mob') {
       if (Number.isFinite(u[4])) e.tyaw = u[4];
       this.remoteFlags(e, Number.isInteger(u[5]) ? u[5] : 0);
+    } else if (e.kind === 'boat' && Number.isFinite(u[4])) {
+      e.tyaw = u[4];
+      if (u[5] & 1) e.hurt = 0.35;
+      e.ridden = !!(u[5] & 2);
     } else if (e.kind === 'arrow' && Number.isFinite(u[4])) { e.ayaw = u[4]; e.apitch = Number.isFinite(u[5]) ? u[5] / 100 : e.apitch; }
     else if (e.kind === 'item' && Number.isInteger(u[6]) && u[6] > 0) e.count = u[6];
   }
@@ -511,6 +592,9 @@ export class Entities {
     e.fuseOn = !!(f & 64);
     e.aim = f & 128 ? 1 : 0;
     e.pose = f & 256 ? 'sleep' : null;
+    e.saddled = !!(f & 512);
+    e.tame = !!(f & 1024);
+    e.ridden = !!(f & 2048);
     e.flags = f;
   }
 
@@ -545,10 +629,28 @@ export class Entities {
     for (const e of this.list) {
       if (e.dead) continue;
       e.age += dt;
+      // What this player rides, they move themselves (and tell the host where it is).
+      if (e.rider === 'me') {
+        const ox = e.x, oz = e.z;
+        if (e.kind === 'boat') boatPhysics(this.world, e, dt, e.drive ?? null);
+        else {
+          mobPhysics(this, e, dt, WATERLIKE[this.world.getBlock(Math.floor(e.x), Math.floor(e.y + 0.3), Math.floor(e.z))]);
+          const speed = Math.min(14, Math.hypot(e.x - ox, e.z - oz) / Math.max(dt, 1e-3));
+          e.walk += (Math.min(1, speed / 1.5) - e.walk) * Math.min(1, dt * 8);
+        }
+        e.tx = e.x; e.ty = e.y; e.tz = e.z; e.tyaw = e.yaw;
+        continue;
+      }
       const ox = e.x, oy = e.y, oz = e.z;
       // Far jumps (teleports, merged stacks) snap.
       if (Math.abs(e.tx - e.x) + Math.abs(e.ty - e.y) + Math.abs(e.tz - e.z) > 8) { e.x = e.tx; e.y = e.ty; e.z = e.tz; }
       else { e.x += (e.tx - e.x) * k; e.y += (e.ty - e.y) * k; e.z += (e.tz - e.z) * k; }
+      if (e.kind === 'boat') {
+        let dy = (e.tyaw ?? e.yaw) - e.yaw;
+        dy -= Math.round(dy / (Math.PI * 2)) * Math.PI * 2;
+        e.yaw += dy * k;
+        e.hurt = Math.max(0, e.hurt - dt);
+      }
       if (e.kind === 'item') {
         e.spin += dt * 1.8;
         e.pickupDelay -= dt;
@@ -574,7 +676,7 @@ export class Entities {
   raycast(ox, oy, oz, dx, dy, dz, maxDist) {
     let best = null;
     for (const e of this.list) {
-      if (e.kind !== 'mob' || e.dead || e.dying) continue;
+      if ((e.kind !== 'mob' && e.kind !== 'boat') || e.dead || e.dying || e.rider === 'me') continue;
       const b = [-e.hw, 0, -e.hw, e.hw, e.h, e.hw];
       const hit = rayBox(ox - e.x, oy - e.y, oz - e.z, dx, dy, dz, b);
       if (hit && hit.t <= maxDist && (!best || hit.t < best.t)) best = { entity: e, t: hit.t };
@@ -583,7 +685,7 @@ export class Entities {
   }
 
   blocksPlacement(x, y, z) {
-    return this.list.some((e) => e.kind === 'mob' && !e.dead &&
+    return this.list.some((e) => (e.kind === 'mob' || e.kind === 'boat') && !e.dead &&
       e.x - e.hw < x + 1 && e.x + e.hw > x && e.y < y + 1 && e.y + e.h > y && e.z - e.hw < z + 1 && e.z + e.hw > z);
   }
 
@@ -655,6 +757,8 @@ export class Entities {
         scale(m, m, 0.5, 0.5, 0.5);
         translate(m, m, -MODEL_OFFSET, -MODEL_OFFSET, -MODEL_OFFSET);
         out.push({ parts: [{ mesh: this.arrowModel(), model: m }], light, tint: null });
+      } else if (e.kind === 'boat') {
+        out.push({ parts: [{ mesh: boatMesh(r, e.wood), model: boatModel(this.mat(), rx, ry, rz, e.yaw) }], light, tint: null, hurt: e.hurt > 0 });
       } else if (e.kind === 'mob') {
         renderMob(this, e, rx, ry, rz, light, out);
       }

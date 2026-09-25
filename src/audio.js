@@ -20,7 +20,7 @@ const MATERIALS = {
 // Mob sound fallbacks: hurt reuses the idle sound pitched up, death reuses hurt pitched down.
 const MOB_PITCH = { chicken: 1.1 };
 const BORROW = { goat: ['sheep', 0.78], bear: ['cow', 0.55], husk: ['zombie', 0.8] };
-const SYNTH = new Set(['rabbit', 'fox', 'wolf', 'fish', 'skeleton', 'creeper', 'spider', 'enderman', 'slime']);
+const SYNTH = new Set(['rabbit', 'fox', 'wolf', 'fish', 'skeleton', 'creeper', 'spider', 'enderman', 'slime', 'horse']);
 
 // A low thump layered under breaking and placing, by block material: [start Hz, end Hz, gain].
 const THUMP = {
@@ -413,6 +413,23 @@ export class Audio {
       case 'fox':
         this.tone(at, { type: 'triangle', f0: 1200 * r(), f1: hurt ? 700 : 1600, time: 0.12, volume: 0.18 });
         break;
+      case 'horse': {
+        // Munching; a snort (before an angry whinny); and the whinny itself: a buzzy voice through
+        // two formants, trilling fast as it falls away, with breath behind it.
+        if (event === 'eat') {
+          for (let i = 0; i < 3; i++) this.hiss(at, { f: 650 * r(), q: 1.5, time: 0.07, volume: 0.28, delay: i * 0.13, type: 'lowpass' });
+          break;
+        }
+        const angry = event === 'angry', delay = angry ? 0.28 : 0;
+        if (angry) this.hiss(at, { f: 1100, q: 0.7, time: 0.3, volume: 0.4, sweep: 280, type: 'lowpass' });
+        const f = (hurt ? 620 : 980) * pitch * r(), time = death ? 1.2 : hurt ? 0.32 : 0.8;
+        for (const [ff, q] of [[950, 3], [2100, 5]]) {
+          this.tone(at, { type: 'sawtooth', f0: f, f1: f * (death ? 0.3 : 0.48), time, volume: hurt ? 0.1 : 0.075, attack: 0.03, filter: { f: ff, q },
+            vibrato: f * 0.07, vibratoRate: hurt ? 30 : 21, delay });
+        }
+        this.hiss(at, { f: 2600, q: 0.8, time: time * 0.7, volume: 0.05, delay: delay + 0.05 });
+        break;
+      }
       case 'rabbit':
         if (hurt || death) this.tone(at, { type: 'sine', f0: 1800 * r(), f1: 1200, time: 0.12, volume: 0.2 });
         break;

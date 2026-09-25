@@ -503,6 +503,18 @@ for (const [name, w] of Object.entries(WOODS)) {
     t.set(10, 9, 0x3a3a3a); t.set(10, 10, 0x7a7a7a);
   });
 }
+// Boats: the hull side-on in its wood's planks (a board to each row, the joints staggered), the
+// dark inside showing over the gunwale, and an oar resting across it.
+const BOAT = ['', '', '', '', '', '............wW..', '...........wW...', '#.........wW...#', '#h.......wW...h#', '#hiiiiiiwWiiiih#',
+  '#llllllllllllll#', '.#llllllllllll#.', '..#mmmmmmmmmm#..', '...#dddddddd#...', '....########....'];
+for (const [name, w] of Object.entries(WOODS)) {
+  def(`${name}_boat`, (t) => {
+    const p = w.planks;
+    const joint = (x, y) => (x + y * 5) % 7 === 0;
+    paint(t, BOAT, { '#': p[0], h: p[4], i: p[0], w: H.W, W: H.w,
+      l: (x, y) => (y === 10 ? p[5] : joint(x, y) ? p[2] : p[4 - (y - 10)]), m: (x, y) => (joint(x, y) ? p[1] : p[2]), d: p[1] });
+  });
+}
 def('bed_item', (t) => {
   t.clear();
   paint(t, ['', '', '', '', '', '', '.#############..', '#wwwwrrrrrrrrr#.', '#WwwwrrrrrrrrrR#', '#RRRRRRRRRRRRRR#', '#bbbbbbbbbbbbbb#',

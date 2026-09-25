@@ -104,6 +104,7 @@ item(376, 'spider_eye', { label: 'Spider Eye', food: 2, sat: 0.8, effects: [['po
 item(377, 'rabbit_stew', { label: 'Rabbit Stew', stack: 1, food: 10, sat: 0.6, leftover: 'bowl' });
 item(378, 'fishing_rod', { label: 'Fishing Rod', stack: 1, durability: 64 });
 item(379, 'saddle', { stack: 1 });
+['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'cherry'].forEach((wood, i) => item(400 + i, `${wood}_boat`, { stack: 1, boat: wood }));
 // Dyes are one texture in sixteen colours.
 DYES.forEach((d, i) => item(380 + i, `${d.name}_dye`, { tex: TEX.dye, tint: rgb(d.dye),
   label: `${d.name === 'light_gray' ? 'Light Gray' : d.name === 'light_blue' ? 'Light Blue' : d.name[0].toUpperCase() + d.name.slice(1)} Dye` }));

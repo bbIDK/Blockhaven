@@ -25,8 +25,14 @@ export class Body {
   moveAxis(world, axis, d) {
     if (d === 0) return false;
     const dx = axis === 0 ? d : 0, dy = axis === 1 ? d : 0, dz = axis === 2 ? d : 0;
-    if (!this.collides(world, dx, dy, dz) || this.collides(world, 0, 0, 0)) {
-      // Free to move, or already stuck inside something (let it climb out).
+    if (!this.collides(world, dx, dy, dz)) {
+      this.x += dx; this.y += dy; this.z += dz;
+      return false;
+    }
+    if (this.collides(world, 0, 0, 0)) {
+      // Already stuck inside something: it may climb or walk out, but never sink any deeper
+      // (or it would fall straight through the ground).
+      if (axis === 1 && d < 0) return true;
       this.x += dx; this.y += dy; this.z += dz;
       return false;
     }
