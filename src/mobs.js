@@ -11,6 +11,7 @@ import { identity, translate, rotateX, rotateY, rotateZ, scale, hash2, clamp } f
 import { TEX } from './textures.js';
 import { HORSE_COATS } from './tex/mobskins.js';
 import { horseDrive, tameTick } from './riding.js';
+import { leashTick, leashPull } from './leads.js';
 
 const TAU = Math.PI * 2;
 const wrap = (a) => a - Math.round(a / TAU) * TAU;
@@ -113,6 +114,8 @@ for (const [type, m] of Object.entries(MOBS)) {
   m.petFoodIds = m.petFood ? ids(m.petFood) : m.foodIds;
   m.breedIds = m.breedFood ? new Set(m.breedFood.map((n) => I[n] ?? B[n])) : null;
   m.rigDef = RIGS[m.rig];
+  // (What can be put on a lead: animals, and neutral creatures other than endermen.)
+  m.leashable = (m.kind === 'animal' || m.kind === 'neutral') && !m.flies && type !== 'enderman' && type !== 'turtle';
 }
 export const MOB_TYPES = MOBS;
 export const isMob = (type) => !!MOBS[type];
@@ -132,6 +135,8 @@ export function initMob(e, type, o = {}) {
     owner: o.owner ?? null, sitting: !!o.sitting, collar: o.collar ?? RED,
     // (Golems someone built stay put when they're far away, like pets.)
     made: !!o.made,
+    // (A name given with a name tag; who holds its lead, or the fence post it's tied to.)
+    named: o.named ?? null, leash: o.leash ?? null,
   });
   if (type === 'horse' && o.health === undefined) e.health = 15 + Math.floor(Math.random() * 16);
   if (e.owner && t.tameHealth) e.health = t.tameHealth;
@@ -219,6 +224,7 @@ export function mobTick(ents, e) {
     if ((e.drowning = (e.drowning ?? 0) + 1) >= 600) { becomeDrowned(ents, e); return; }
   } else e.drowning = 0;
   if (e.rider) { riddenTick(ents, e); return; }
+  if (e.leash && leashTick(ents, e)) { lookTick(ents, e); return; }
   if (e.owner && petTick(ents, e)) { lookTick(ents, e); return; }
   if (t.flies === 'phantom') phantomTick(ents, e);
   else if (t.flies) flyTick(ents, e);
@@ -388,7 +394,8 @@ function petTick(ents, e) {
     return true;
   }
   e.target = null; e.angry = 0;
-  if (!owner || owner.dead) return false;
+  // (On a lead, it goes where the lead takes it.)
+  if (!owner || owner.dead || e.leash) return false;
   const d = Math.hypot(owner.x - e.x, owner.z - e.z);
   if ((d > 20 || Math.abs(owner.y - e.y) > 10) && petTeleport(ents, e, owner)) return true;
   if (t.flies) {
@@ -845,10 +852,16 @@ export function provoked(ents, e, from) {
 }
 
 // What using item `id` on creature `e` would do: 'milk', 'shear', 'breed', 'grow', 'dye' or null.
-// (`mine`: the creature is a pet of whoever's using it.)
-export function mobUseEffect(e, id, mine = false) {
+// `who`: whether the creature is a pet of whoever's using it (mine), whether they hold its lead
+// (holds), and the name on the item (name).
+export function mobUseEffect(e, id, { mine = false, holds = false, name = null } = {}) {
   const t = e.def;
   if (e.dying) return null;
+  // Leads: take yours off again (whatever's in hand), or put one on.
+  if (e.leash && holds) return 'unleash';
+  if (id && id === I.lead) return t.leashable && !e.leash ? 'leash' : null;
+  // A name tag that's been named at an anvil names the creature.
+  if (id && id === I.name_tag) return name && name !== e.named ? 'name' : null;
   // Taming: a wolf with a bone, a cat with fish, a parrot with seeds (it takes a few goes). A pet
   // of yours is fed to heal it (and to breed it, once it's well), its collar can be dyed, and
   // anything else tells it to sit, or to get up again.
@@ -873,10 +886,13 @@ export function mobUseEffect(e, id, mine = false) {
   if (t.wool && !e.sheared && DYE_OF[id] !== undefined && DYE_OF[id] !== e.colour) return 'dye';
   return null;
 }
-// The creature's side of it (on the host). `uid`: who's using it.
-export function applyMobUse(ents, e, id, effect, uid = null) {
+// The creature's side of it (on the host). `uid`: who's using it; `name`: the name on the item.
+export function applyMobUse(ents, e, id, effect, uid = null, name = null) {
   const game = ents.game, at = { x: e.x, y: e.y + 1, z: e.z };
   switch (effect) {
+    case 'leash': e.leash = { uid }; e.sitting = false; game.audio.equip('leather'); game.net?.resend?.(e); break;
+    case 'unleash': e.leash = null; ents.spawnItem(e.x, e.y + e.h * 0.6, e.z, I.lead, 1); game.net?.resend?.(e); break;
+    case 'name': e.named = name; game.net?.resend?.(e); break;
     case 'tame':
       if (Math.random() < 1 / 3) {
         // (A village cat that's taken in is no longer the village's.)
@@ -918,7 +934,7 @@ export function applyMobUse(ents, e, id, effect, uid = null) {
 }
 // The player's side: what happens to what they're holding.
 export function applyHeldUse(game, effect) {
-  if (effect === 'sit') { game.swingArm(); return; }
+  if (effect === 'sit' || effect === 'unleash') { game.swingArm(); return; }
   if (effect === 'milk') game.swapHeldTo(I.milk_bucket);
   else if (effect === 'shear') { if (!game.creative && game.inv.damageHeld(1)) game.audio.toolBreak(); game.invChanged(); }
   else if (!game.creative) { game.inv.consumeHeld(); game.invChanged(); }
@@ -929,6 +945,8 @@ const DYE_OF = Object.fromEntries(DYES.map((dd, i) => [I[`${dd.name}_dye`], i]).
 // What a creature leaves behind when it dies.
 export function mobDrops(e) {
   const out = [];
+  // (Its lead falls off, if it had one on.)
+  if (e.leash) out.push([I.lead, 1]);
   if (e.baby) return out;
   // (Looting on the weapon that killed it: up to that many more of each.)
   const extra = e.looting ?? 0;
@@ -1020,6 +1038,7 @@ export function mobPhysics(ents, e, dt, fluid) {
     const onLadder = CLIMB[w.getBlock(Math.floor(e.x), Math.floor(e.y + 0.2), Math.floor(e.z))] || CLIMB[w.getBlock(Math.floor(e.x), Math.floor(e.y + 1.2), Math.floor(e.z))];
     if (onLadder) e.vy = e.climb ? e.climb * 2.6 : Math.max(e.vy, -1.6);
   }
+  if (e.leash && !ents.guest) leashPull(ents, e, dt);
   e.move(w, e.vx * dt, e.vy * dt, e.vz * dt);
   if (e.hitWall && speed) {
     if (t.climbs) e.vy = Math.max(e.vy, 3.5);

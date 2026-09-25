@@ -352,6 +352,34 @@ def('fishing_bobber', (t) => {
 def('saddle', (t) => shaded(t, ['', '', '', '', '...xx......xx...', '..xxxxxxxxxxxx..', '..xxxxxxxxxxxx..', '...xxxxxxxxxx...', '....xxxxxxxx....',
   '....x......x....', '....x......x....', '...xxx....xxx...'], MATERIAL.leather, {}, { outline: 'all', grain: 0.15 }));
 
+// A name tag: a card tag, pointed at one end, on a loop of string.
+def('name_tag', (t) => {
+  shaded(t, ['', '', '', '..........x.....', '.........xxx....', '........xxxxx...', '.......xxxoxx...', '......xxxxxxx...', '.....xxxxxxx....',
+    '....xxxxxxx.....', '...xxxxxxx......', '..xxxxxxx.......', '..xxxxxx........', '..xxxxx.........', '...xxx..........'],
+  [0x5a4424, 0xb89868, 0xd4b886, 0xe8d0a0, 0xfaecc8], { o: 0x3a2a14 }, { outline: 'all' });
+  for (const [x, y] of [[11, 3], [11, 2], [12, 1], [13, 1], [14, 2], [14, 3], [13, 4], [12, 4]]) t.set(x, y, x > 12 ? 0xb8b8b8 : 0xe8e8e8);
+});
+// A lead: a coil of rope with its end hanging loose.
+const ROPE = [0x2e1c0c, 0x7a5430, 0xa87c48, 0xcaa068];
+def('lead', (t) => {
+  t.clear();
+  // A long loop of rope, tilted, with its end trailing away.
+  const ring = (x, y) => {
+    const u = (x - 6 + (y - 6)) / Math.SQRT2, v = (x - 6 - (y - 6)) / Math.SQRT2;
+    return Math.abs(Math.hypot(u / 5.2, v / 3) - 1) < 0.2;
+  };
+  const tail = (x, y) => x >= 9 && x <= 15 && (y === x + 1 + (x > 11 && x < 14 ? 1 : 0) || y === x + (x > 11 && x < 14 ? 1 : 0));
+  const on = (x, y) => x >= 0 && y >= 0 && x < 16 && y < 16 && (ring(x, y) || tail(x, y));
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    if (on(x, y)) t.set(x, y, ROPE[(x + y) % 3 === 0 ? 1 : x + y < 12 ? 3 : 2]);
+    else if (on(x - 1, y) || on(x + 1, y) || on(x, y - 1) || on(x, y + 1)) t.set(x, y, ROPE[0]);
+  }
+});
+// The rope itself, as it's drawn between a creature and whoever holds it (twisted strands).
+def('lead_rope', (t) => {
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, ROPE[(x + y) % 4 < 2 ? 3 : 2]);
+});
+
 // ---------------------------------------------------------------- food
 def('apple', (t) => {
   shaded(t, ['', '', '', '', '....xxx..xxx....', '...xxxxxxxxxx...', '..xxxxxxxxxxxx..', '..xxxxxxxxxxxx..', '..xxxxxxxxxxxx..',
@@ -470,11 +498,6 @@ def('bowl', (t) => bowl(t, null));
 def('mushroom_stew', (t) => bowl(t, 0x9a6a3a));
 def('beetroot_soup', (t) => bowl(t, 0xa01a2c));
 def('rabbit_stew', (t) => bowl(t, 0x8a5a24));
-def('cake', (t) => {
-  t.clear();
-  paint(t, ['', '', '', '', '....r..r..r.....', '..##########....', '.#wwwwwwwwww#...', '#wwwwwwwwwwww#..', '#cccwwcccwwcc#..', '#bbbbbbbbbbbb#..',
-    '#BBBBBBBBBBBB#..', '#bbbbbbbbbbbb#..', '#BBBBBBBBBBBB#..', '.############...'], { '#': 0x5a3a1a, w: 0xf8f4ec, c: 0xe8e0d0, b: 0xd8a868, B: 0xb8864a, r: 0xd02a2a });
-});
 
 // ---------------------------------------------------------------- armour
 const ARMOR = {

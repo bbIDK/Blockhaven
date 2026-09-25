@@ -9,7 +9,7 @@
 // which is also how open games are listed in the claude.ai room.
 import { Link, RoomTransport, PeerTransport, PROTOCOL, cleanCode } from './net.js';
 import { RemotePlayer } from './avatars.js';
-import { mobFlags, mobExtra } from './entities.js';
+import { mobFlags, mobExtra, cleanTagName } from './entities.js';
 import { encodeRLE16, decodeRLE16 } from './storage.js';
 import { B, BLOCKS, REPLACEABLE, CHEST, FURNACE_IDS, SIGN } from './blocks.js';
 import { itemDef, maxStack } from './items.js';
@@ -17,7 +17,7 @@ import { extras, cleanExtras } from './inventory.js';
 import { shiny } from './enchanting.js';
 import { chunkKey, HEIGHT, CHUNK_VOLUME } from './config.js';
 import { S_READY, rayBox } from './world.js';
-import { clamp } from './math.js';
+import { clamp, hashString } from './math.js';
 import { startRide, seatY, BOAT_WOODS } from './riding.js';
 import { POTIONS, EFFECTS } from './potions.js';
 
@@ -41,6 +41,10 @@ export function cleanName(text) {
   const s = String(text ?? '').replace(/\p{C}/gu, '').replace(/\s+/g, ' ').trim().slice(0, 16);
   return s || 'Player';
 }
+
+// What other players are told instead of someone's lasting id (which would let them pass for that
+// player): a short key made from it. Pets and leads show whose they are by it.
+export const playerKey = (uid) => (uid ? hashString(`key:${uid}`).toString(36) : null);
 
 // A random id kept in this browser, so a host can give a returning guest their things back.
 let memoryUid = null;
@@ -178,6 +182,7 @@ class Session {
   myPresence() {
     const g = this.game, p = g.player;
     const pres = { v: PROTOCOL, n: this.name, g: this.gid };
+    if (this.myKey) pres.pk = this.myKey;
     if (g.world && g.meta && g.state !== 'loading') {
       pres.p = [r2(p.x), r2(p.y), r2(p.z), r2(p.yaw), r2(p.pitch)];
       pres.f = (p.sneaking ? 1 : 0) | (p.sprinting ? 2 : 0) | (p.flying ? 4 : 0) | (p.onGround ? 8 : 0) |
@@ -304,6 +309,7 @@ export class HostSession extends Session {
 
   get host() { return true; }
   get count() { return 1 + this.guests.size; }
+  get myKey() { return playerKey(playerUid()); }
 
   update(dt) {
     if (this.closed) return;
@@ -421,7 +427,15 @@ export class HostSession extends Session {
           this.game.entities.spawnXp(msg.x, msg.y, msg.z, Math.min(msg.n, 200));
         }
         break;
-      case 'um': if (int(msg.e) && int(msg.i) && typeof msg.f === 'string') this.game.entities.remoteUse(msg.e, msg.i, msg.f, g.uid); break;
+      case 'um':
+        if (int(msg.e) && int(msg.i) && typeof msg.f === 'string') this.game.entities.remoteUse(msg.e, msg.i, msg.f, g.uid, cleanTagName(msg.n));
+        break;
+      case 'lead':
+        // A guest used a fence post (tying up what they lead there, or taking what's tied there).
+        if ([msg.x, msg.y, msg.z].every(int) && g.x !== null && Math.hypot(msg.x + 0.5 - g.x, msg.y - g.y, msg.z + 0.5 - g.z) < 8) {
+          this.game.entities.useFence(g.uid, msg.x, msg.y, msg.z);
+        }
+        break;
       case 'arw': this.arrow(g, msg); break;
       case 'sign': this.sign(msg); break;
       case 'pvp': this.pvpHit(g, msg); break;
@@ -471,7 +485,7 @@ export class HostSession extends Session {
       t: 'welcome', g: this.gid, be: this.link.epoch, bs: this.link.stream('*').seq, pvp: this.pvp ? 1 : 0,
       w: { name: meta.name, seed: meta.seed, type: meta.type, gen: meta.gen ?? 1, mode: meta.mode, spawn: meta.spawn, time: Math.floor(game.time),
         rain: game.weather.raining ? 1 : 0 },
-      you: meta.players?.[g.uid] ?? null,
+      you: meta.players?.[g.uid] ?? null, mk: playerKey(g.uid),
       keys: [...w.store.keys],
       ents: game.entities.list.filter((e) => !e.dead).map((e) => { if (!e.nid) e.nid = this.nextNid++; return entityState(e); }),
       signs: game.signs.serialize(),
@@ -763,7 +777,11 @@ function entityState(e) {
   }
   if (e.kind === 'boat') return Object.assign(s, { k: 'b', w: e.wood, a: r2(e.yaw), f: boatFlags(e) });
   if (e.kind === 'xp') return Object.assign(s, { k: 'x', v: e.value });
-  return Object.assign(s, { k: 'm', ty: e.type, a: r2(e.yaw), f: mobFlags(e), ...mobExtra(e) });
+  // (Whose pet it is, and who holds its lead, go as keys.)
+  const x = mobExtra(e);
+  if (x.ow) x.ow = playerKey(x.ow);
+  if (typeof x.le === 'string') x.le = playerKey(x.le);
+  return Object.assign(s, { k: 'm', ty: e.type, a: r2(e.yaw), f: mobFlags(e), ...x });
 }
 
 // ---------------------------------------------------------------- guest
@@ -836,6 +854,7 @@ export class GuestSession extends Session {
     this.resyncing = false;
     this.hostSeen = performance.now();
     this.welcomed = null;
+    this.myKey = null; // (what the host calls this player; see playerKey)
   }
 
   get guest() { return true; }
@@ -942,6 +961,7 @@ export class GuestSession extends Session {
     if (!w || !int(w.seed) || typeof msg.g !== 'string' || !Array.isArray(msg.keys) || typeof msg.be !== 'string') return;
     this.gid = msg.g;
     this.pvp = msg.pvp !== 0;
+    this.myKey = typeof msg.mk === 'string' ? msg.mk.slice(0, 16) : null;
     this.link.follow(this.hostAddr, msg.be, int(msg.bs) ? msg.bs : 0);
     this.store = new RemoteStore(this, msg.keys.filter(int));
     this.buffered.clear();
@@ -1071,7 +1091,8 @@ export class GuestSession extends Session {
   placeBoat(x, y, z, wood, yaw) { this.toHost({ t: 'boat', x: r2(x), y: r2(y), z: r2(z), w: wood, a: r2(yaw) }); }
   dropXp(x, y, z, n) { this.toHost({ t: 'orb', x: r2(x), y: r2(y), z: r2(z), n }); }
   ride(e, on) { if (e.nid) this.toHost({ t: 'ride', e: e.nid, on: on ? 1 : 0 }); }
-  useMob(e, id, effect) { this.toHost({ t: 'um', e: e.nid, i: id, f: effect }); }
+  useMob(e, id, effect, name) { this.toHost({ t: 'um', e: e.nid, i: id, f: effect, n: name ?? undefined }); }
+  useFence(x, y, z) { this.toHost({ t: 'lead', x, y, z }); }
   writeSign(x, y, z, lines) { this.toHost({ t: 'sign', k: `${x},${y},${z}`, l: lines }); }
   shootArrow(x, y, z, vx, vy, vz, damage, pickup, fx) {
     this.toHost({ t: 'arw', x: r2(x), y: r2(y), z: r2(z), vx: r2(vx), vy: r2(vy), vz: r2(vz), d: damage, p: pickup ? 1 : 0,

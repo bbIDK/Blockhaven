@@ -261,10 +261,16 @@ export class CraftingMenu extends Menu {
     this.result[0] = r ? { id: r.out, count: r.count, dmg: 0 } : null;
   }
 
+  // One of everything in the grid is used up. (A bucket of milk leaves its bucket behind.)
   consumeGrid() {
     for (let i = 0; i < this.grid.length; i++) {
       const s = this.grid[i];
-      if (s) this.grid[i] = s.count > 1 ? { ...s, count: s.count - 1 } : null;
+      if (!s) continue;
+      const rest = I[itemDef(s.id)?.leftover] ?? 0;
+      if (s.count > 1) {
+        this.grid[i] = { ...s, count: s.count - 1 };
+        if (rest && this.inv.add(rest, 1)) this.game.entities.dropItem(this.game.player, { id: rest, count: 1, dmg: 0 });
+      } else this.grid[i] = rest ? { id: rest, count: 1, dmg: 0 } : null;
     }
     this.updateResult();
   }

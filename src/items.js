@@ -112,6 +112,9 @@ item(409, 'enchanted_book', { label: 'Enchanted Book', stack: 1 });
 item(410, 'glass_bottle', { label: 'Glass Bottle' });
 item(411, 'phantom_membrane', { label: 'Phantom Membrane' });
 item(436, 'snowball', { stack: 16, throws: 'snowball' });
+// A name tag (named at an anvil) gives a creature a name; a lead leads it about.
+item(437, 'name_tag', { label: 'Name Tag' });
+item(438, 'lead', { label: 'Lead' });
 // Potions (see potions.js): drunk from the bottle, or thrown to break over everyone nearby.
 POTION_NAMES.forEach((name, i) => {
   const label = POTIONS[name].label;
@@ -185,8 +188,9 @@ ARMOR.forEach(([mat, points, durability, toughness, labels], m) => {
   });
 });
 
-// (Signs stack to sixteen.)
+// (Signs stack to sixteen; cakes don't stack.)
 ITEMS.get(B.sign).stack = 16;
+ITEMS.get(B.cake).stack = 1;
 
 export const itemDef = (id) => ITEMS.get(id);
 export const itemLabel = (id) => ITEMS.get(id)?.label ?? 'Unknown';

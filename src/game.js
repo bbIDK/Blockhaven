@@ -16,7 +16,7 @@ import { Particles } from './particles.js';
 import { Weather } from './weather.js';
 import { Entities } from './entities.js';
 import { TouchControls } from './touch.js';
-import { HostSession, GuestSession, openRoom, openGames, cleanName, COLORS, playerUid } from './multiplayer.js';
+import { HostSession, GuestSession, openRoom, openGames, cleanName, COLORS, playerUid, playerKey } from './multiplayer.js';
 import { Avatars, playerSkin } from './avatars.js';
 import * as storage from './storage.js';
 import { makeEnvironment, updateEnvironment, clockText } from './sky.js';
@@ -24,7 +24,7 @@ import {
   B, BLOCKS, BASE, SOLID, REPLACEABLE, WATERLIKE, FACING_VARIANTS, WALL_TORCH, FACE_DIRS,
   RENDER, R, SLAB, STAIRS, DOOR, doorId, CLIMB, LADDER, oppositeFace, CHEST, CHEST_PAIR, CHEST_RIGHT, chestId, chestHalf, BED, bedId,
   FURNACE_IDS, furnaceVariant, isLitFurnace, FURNACE_KIND, FURNACE_FRONT, LOG_AXES, GATE, gateId, VINE, DOUBLE, LEAVES_WOOD,
-  TRAPDOOR, trapdoorId, SWITCH, SIGN, WALL_SIGN,
+  TRAPDOOR, trapdoorId, SWITCH, SIGN, WALL_SIGN, CAKE,
   NATURAL_LEAVES, WOOD, LOOT_KIND, LOOT_FRONT,
 } from './blocks.js';
 import { rollLoot } from './loot.js';
@@ -37,6 +37,7 @@ import { Fishing, bobberMesh, bobberModel, linePoints } from './fishing.js';
 import { tableBook } from './tablebook.js';
 import { POTIONS, EFFECTS } from './potions.js';
 import { Signs, SignEditor } from './signs.js';
+import { drawLeads, isFence, LEAD_SNAP } from './leads.js';
 import { ITEMS, I, itemDef, itemLabel, breakTime, dropsFor, attackDamage, attackSpeed, canHarvest } from './items.js';
 import { BIOME_NAMES } from './biomes.js';
 import { CHUNK_VOLUME, HEIGHT, TICKS_PER_DAY, SAVE_VERSION } from './config.js';
@@ -1772,6 +1773,18 @@ export class Game {
     if (!def.potion) this.audio.burp();
   }
 
+  // A slice of cake: two food points straight away, if you're hungry (or playing creative).
+  eatCake(x, y, z) {
+    const w = this.world, id = w.getBlock(x, y, z), n = CAKE[id];
+    if (n === undefined || (this.food >= 20 && !this.creative)) return false;
+    this.food = Math.min(20, this.food + 2);
+    this.saturation = Math.min(this.food, this.saturation + 0.4);
+    this.audio.eat();
+    this.particles.bits(x + 0.2 + n * 0.12, y + 0.5, z + 0.5, TEX.cake_side, 8, 1.4, 0.4);
+    w.setBlock(x, y, z, n < 6 ? id + 1 : 0);
+    return true;
+  }
+
   // Now and then, lava close by bubbles and pops.
   ambientTick() {
     const p = this.player, w = this.world;
@@ -2014,7 +2027,7 @@ export class Game {
     return (!!DOOR[id] && !DOOR[id].iron) || CHEST[id] !== undefined || !!BED[id] || id === B.crafting_table || FURNACE_IDS.has(id) || !!GATE[id] ||
       id === B.barrel || LOOT_KIND[id] !== undefined || id === B.bell || id === B.bell_z || id === B.composter_ready ||
       (!!TRAPDOOR[id] && !TRAPDOOR[id].iron) || SWITCH[id]?.kind === 'lever' || SWITCH[id]?.kind === 'button' ||
-      id === B.enchanting_table || id === B.anvil || id === B.anvil_z || id === B.grindstone || id === B.grindstone_z || !!SIGN[id];
+      id === B.enchanting_table || id === B.anvil || id === B.anvil_z || id === B.grindstone || id === B.grindstone_z || !!SIGN[id] || CAKE[id] !== undefined;
   }
 
   breakTarget() {
@@ -2094,6 +2107,8 @@ export class Game {
     // Doors, chests, beds, crafting tables and furnaces are used rather than built on (sneak to
     // place blocks against them).
     if (t && !t.entity && !t.player && !p.sneaking && !repeat && useWorkstation(this, held, t)) return;
+    // A fence post: somewhere to tie up the creatures you're leading.
+    if (t && !t.entity && !t.player && !repeat && isFence(t.id) && this.useFence(t.x, t.y, t.z)) { this.swingArm(); return; }
     if (t && !t.entity && !t.player && !p.sneaking && this.interactive(t.id)) {
       if (repeat) return;
       this.swingArm();
@@ -2121,6 +2136,7 @@ export class Game {
       else if (t.id === B.crafting_table) this.openCraftingTable(t.x, t.y, t.z);
       else if (t.id === B.enchanting_table) this.openEnchanting(t.x, t.y, t.z);
       else if (SIGN[t.id]) this.editSign(t.x, t.y, t.z);
+      else if (CAKE[t.id] !== undefined) this.eatCake(t.x, t.y, t.z);
       else if (t.id === B.anvil || t.id === B.anvil_z) this.openAnvil(t.x, t.y, t.z);
       else if (t.id === B.grindstone || t.id === B.grindstone_z) this.openGrindstone(t.x, t.y, t.z);
       else if (FURNACE_IDS.has(t.id)) this.openFurnaceAt(t.x, t.y, t.z);
@@ -2684,6 +2700,8 @@ export class Game {
         tableBook(this.renderer, mats, t.x, t.y, t.z, cam, now, near, t, list);
       }
     }
+    // Leads, from the hands holding them (or the posts they're tied to) to the creatures on them.
+    drawLeads(this, cam, list, (this.leadMats ??= []), (uid) => this.leadHolder(uid, cam));
     // What's written on signs.
     this.signMats ??= [];
     let sk = 0;
@@ -2699,6 +2717,38 @@ export class Game {
       list.push({ parts: [{ mesh: bobberMesh(this.renderer), model: bobberModel(m, b.x - cam.x, b.y - cam.y, b.z - cam.z, this.player.yaw) }], light: [l >> 4, l & 15], tint: null });
     });
     return list;
+  }
+
+  // Where the rope of a lead held by player `uid` starts: low on the right of this player's view,
+  // or in another player's right hand. (A guest knows players by their keys; see playerKey.)
+  leadHolder(uid, cam) {
+    const net = this.net;
+    if (!net || uid === (net.guest ? net.myKey : this.uid)) {
+      if (this.state === 'dead') return null;
+      const cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw), cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
+      const f = 0.6, r = 0.32, u = -0.38;
+      return { x: cam.x - sy * cp * f + cy * r + sy * sp * u, y: cam.y + sp * f + cp * u, z: cam.z - cy * cp * f - sy * r + cy * sp * u };
+    }
+    const key = net.guest ? uid : playerKey(uid);
+    for (const rp of net.players.values()) {
+      if (!rp.ready || rp.dead || rp.key !== key) continue;
+      const yaw = rp.bodyYaw ?? rp.yaw, cy = Math.cos(yaw), sy = Math.sin(yaw);
+      return { x: rp.x + cy * 0.37 - sy * 0.15, y: rp.y + (rp.sneaking ? 0.6 : 0.75), z: rp.z - sy * 0.37 - cy * 0.15 };
+    }
+    return null;
+  }
+
+  // A fence post used: the creatures this player leads are tied to it, or (leading none) the ones
+  // tied there are taken. True if anything happened. (A guest asks the host, when it looks as
+  // though something will.)
+  useFence(x, y, z) {
+    const E = this.entities, net = this.net;
+    if (!net?.guest) return E.useFence(this.uid, x, y, z);
+    const key = net.myKey, near = (e) => Math.hypot(e.x - x - 0.5, e.y - y, e.z - z - 0.5) < LEAD_SNAP;
+    const any = E.list.some((e) => e.kind === 'mob' && !e.dead && e.leash &&
+      (e.leash.uid ? e.leash.uid === key && near(e) : e.leash.x === x && e.leash.y === y && e.leash.z === z));
+    if (any) net.useFence(x, y, z);
+    return any;
   }
 
   // Other players' fishing lines: from the tips of their rods to their floats.
@@ -2741,11 +2791,28 @@ export class Game {
       'resume-hint': this.state === 'play' && !this.input.locked && !this.touch.enabled,
       crosshair: this.state === 'play' || this.state === 'chat',
     });
-    if (this.net && this.lastCam) this.avatars.renderTags(this.net.players.values(), this.lastCam, this.renderer.viewProj, this.canvas, $('nametags'));
+    if (this.lastCam) this.renderTags();
     $('leave-bed').hidden = !(this.net && this.state === 'sleeping');
     if (this.showDebug) ui.setDebug(this.debugLines());
     else if (this.settings.showFps) ui.setDebug([`${Math.round(this.fps)} fps`]);
     else ui.setDebug(null);
+  }
+
+  // Name tags: over other players (not while they're invisible), and over creatures that were
+  // given a name, when they're close or looked at.
+  renderTags() {
+    const cam = this.lastCam, tags = (this.tagList ??= []), aim = this.target?.entity;
+    tags.length = 0;
+    if (this.net) {
+      for (const rp of this.net.players.values()) {
+        if (rp.ready && !rp.dead && !rp.invisible) tags.push({ key: rp.addr, x: rp.x, y: rp.y + (rp.sneaking ? 1.95 : 2.1), z: rp.z, text: rp.name, dim: rp.sneaking });
+      }
+    }
+    for (const e of this.entities.list) {
+      if (e.kind !== 'mob' || !e.named || e.dead || Math.hypot(e.x - cam.x, e.y - cam.y, e.z - cam.z) > (e === aim ? 32 : 12)) continue;
+      tags.push({ key: e, x: e.x, y: e.y + e.h + 0.3, z: e.z, text: e.named });
+    }
+    this.avatars.renderTags(tags, cam, this.renderer.viewProj, this.canvas, $('nametags'));
   }
 
   debugLines() {

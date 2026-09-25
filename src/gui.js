@@ -142,7 +142,7 @@ const BOOK_TABS = [
   { id: 'misc', label: 'Miscellaneous', icon: 'torch' },
 ];
 const GEAR = new Set(['flint_and_steel', 'bow', 'arrow', 'shears', 'bucket', 'water_bucket', 'lava_bucket', 'compass', 'clock',
-  'fishing_rod', 'saddle']);
+  'fishing_rod', 'saddle', 'name_tag', 'lead']);
 function creativeTab(id) {
   const d = itemDef(id);
   if (d.block !== null) {

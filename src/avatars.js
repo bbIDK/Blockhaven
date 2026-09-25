@@ -64,6 +64,7 @@ export class RemotePlayer {
       }
     }
     this.flags = Number.isInteger(pres.f) ? pres.f : 0;
+    this.key = typeof pres.pk === 'string' ? pres.pk.slice(0, 16) : null;
     this.mountId = Array.isArray(pres.r) && Number.isInteger(pres.r[0]) && pres.r[0] > 0 ? pres.r[0] : null;
     this.bobber = Array.isArray(pres.fb) && pres.fb.length === 3 && pres.fb.every(num) ? pres.fb : null;
     this.held = Number.isInteger(pres.i) && itemDef(pres.i) ? pres.i : 0;
@@ -258,37 +259,32 @@ export class Avatars {
     return m;
   }
 
-  // Name tags over the heads, positioned with the frame's view-projection matrix.
-  renderTags(players, cam, viewProj, canvas, root) {
+  // Name tags (other players', and names given to creatures), placed with the frame's
+  // view-projection matrix. `tags`: [{ key, x, y, z (the bottom of the tag), text, dim }].
+  renderTags(tags, cam, viewProj, canvas, root) {
     const seen = new Set();
-    const w = canvas.clientWidth, h = canvas.clientHeight;
-    for (const rp of players) {
-      if (!rp.ready || rp.dead) continue;
-      const x = rp.x - cam.x, y = rp.y + (rp.sneaking ? 1.95 : 2.1) - cam.y, z = rp.z - cam.z;
+    const w = canvas.clientWidth, h = canvas.clientHeight, m = viewProj;
+    for (const tag of tags) {
+      const x = tag.x - cam.x, y = tag.y - cam.y, z = tag.z - cam.z;
       const dist = Math.hypot(x, y, z);
-      const m = viewProj;
       const cw = m[3] * x + m[7] * y + m[11] * z + m[15];
       if (cw < 0.1 || dist > 64) continue;
       const cx = (m[0] * x + m[4] * y + m[8] * z + m[12]) / cw, cy = (m[1] * x + m[5] * y + m[9] * z + m[13]) / cw;
       if (cx < -1.2 || cx > 1.2 || cy < -1.2 || cy > 1.4) continue;
-      let el = this.tags.get(rp.addr);
+      let el = this.tags.get(tag.key);
       if (!el) {
         el = document.createElement('div');
         el.className = 'nametag';
         root.appendChild(el);
-        this.tags.set(rp.addr, el);
+        this.tags.set(tag.key, el);
       }
-      if (el.textContent !== rp.name) el.textContent = rp.name;
+      if (el.textContent !== tag.text) el.textContent = tag.text;
       const s = clamp(6 / Math.max(1, dist), 0.45, 1.2);
       el.style.transform = `translate(${((cx * 0.5 + 0.5) * w).toFixed(1)}px, ${((0.5 - cy * 0.5) * h).toFixed(1)}px) translate(-50%, -100%) scale(${s.toFixed(3)})`;
-      el.classList.toggle('sneak', rp.sneaking);
-      el.hidden = false;
-      seen.add(rp.addr);
+      el.classList.toggle('sneak', !!tag.dim);
+      seen.add(tag.key);
     }
-    for (const [addr, el] of this.tags) {
-      if (seen.has(addr)) continue;
-      if (![...players].some((p) => p.addr === addr)) { el.remove(); this.tags.delete(addr); } else el.hidden = true;
-    }
+    for (const [key, el] of this.tags) if (!seen.has(key)) { el.remove(); this.tags.delete(key); }
   }
 
   clearTags() {

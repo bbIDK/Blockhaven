@@ -8,6 +8,7 @@ import './tex/items.js';
 import './tex/entities.js';
 import './tex/redstone.js';
 import './tex/magic.js';
+import './tex/decor.js';
 
 export const ARRAY_LAYERS = 256;
 

@@ -18,7 +18,8 @@ import { randomBook } from './enchanting.js';
 const FISH = [['cod', 60], ['salmon', 25], ['tropical_fish', 2], ['pufferfish', 13]];
 const JUNK = [['lily_pad', 17], ['leather_boots', 10, 1, 1, true], ['leather', 10], ['bone', 10], ['bowl', 10], ['string', 5], ['stick', 5],
   ['rotten_flesh', 10], ['fishing_rod', 2, 1, 1, true], ['wheat_seeds', 6]];
-const TREASURE = [['bow', 1, 1, 1, true], ['fishing_rod', 1, 1, 1, true], ['saddle', 1], ['gold_coin', 1, 4, 10], ['emerald', 1], ['golden_apple', 1]];
+const TREASURE = [['bow', 1, 1, 1, true], ['fishing_rod', 1, 1, 1, true], ['saddle', 1], ['name_tag', 1], ['gold_coin', 1, 4, 10], ['emerald', 1],
+  ['golden_apple', 1]];
 const pick = (list) => {
   let r = Math.random() * list.reduce((a, e) => a + e[1], 0);
   for (const e of list) if ((r -= e[1]) <= 0) return e;

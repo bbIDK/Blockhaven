@@ -19,6 +19,7 @@ import { extras, cleanExtras } from './inventory.js';
 import { boatPhysics, boatMesh, boatModel, BOAT_WOODS } from './riding.js';
 import { splitXp, orbSize } from './enchanting.js';
 import { POTIONS, UNDEAD } from './potions.js';
+import { holdsLead, useFence } from './leads.js';
 
 class Entity extends Body {
   constructor(kind, hw, h, x, y, z) {
@@ -44,13 +45,19 @@ export function mobExtra(e) {
   if (e.owner) { o.ow = e.owner; o.co = e.collar; }
   if (e.sitting) o.si = 1;
   if (e.made) o.md = 1;
+  if (e.named) o.nm = e.named;
+  if (e.leash) o.le = e.leash.uid ?? [e.leash.x, e.leash.y, e.leash.z];
   if (e.def.kind === 'civilian') { o.r = e.rid; o.sk = e.skin; o.n = e.name; o.ro = e.role; }
   return o;
 }
 const extraOpts = (s) => ({ variant: Number.isInteger(s.v) ? s.v : 0, colour: Number.isInteger(s.c) ? s.c : 0, size: [1, 2, 4].includes(s.s) ? s.s : 1,
   baby: !!s.b, sheared: !!s.sh, tame: !!s.tm, saddled: !!s.sd, temper: Number.isFinite(s.te) ? Math.max(0, Math.min(100, s.te)) : 0,
   owner: typeof s.ow === 'string' && s.ow ? s.ow.slice(0, 64) : null, sitting: !!s.si, collar: Number.isInteger(s.co) && s.co >= 0 && s.co < 16 ? s.co : undefined,
-  made: !!s.md });
+  made: !!s.md, named: typeof s.nm === 'string' ? cleanTagName(s.nm) : null,
+  leash: typeof s.le === 'string' && s.le ? { uid: s.le.slice(0, 64) }
+    : Array.isArray(s.le) && s.le.length === 3 && s.le.every(Number.isInteger) ? { x: s.le[0], y: s.le[1], z: s.le[2] } : null });
+// A name from a name tag: printable, and no longer than the original allows.
+export const cleanTagName = (text) => String(text ?? '').replace(/\p{C}/gu, '').trim().slice(0, 50) || null;
 // Flags sent with each creature update: 1 hurt, 2 dying, 4 swinging, 8 burning, 16 shorn, 32 angry,
 // 64 about to explode, 128 drawing a bow, 256 asleep, 512 saddled, 1024 tame, 2048 being ridden,
 // 4096 roosting (a bat hanging upside down), 8192 drinking (a witch), 16384 sitting (a pet).
@@ -354,7 +361,7 @@ export class Entities {
         // animals come back when the village does). Horses someone has tamed or saddled stay,
         // waiting where they were left.
         const near = this.players.some((p) => Math.hypot(p.x - e.x, p.z - e.z) < (game.settings.renderDistance + 2) * 16);
-        const kept = e.tame || e.saddled || e.rider || e.made;
+        const kept = e.tame || e.saddled || e.rider || e.made || e.named || e.leash;
         if ((!near && !kept && (e.def.kind !== 'civilian' || !loaded)) || e.y < -40) { e.dead = true; this.civilians.gone(e); }
       }
     }
@@ -612,21 +619,27 @@ export class Entities {
   interact(e, held) {
     if (e.kind === 'boat') { this.game.mount(e); return; }
     if (e.def.kind === 'civilian') { this.civilians.talk(e); return; }
-    const uid = this.game.uid, mine = !!e.owner && (e.owner === uid || !this.game.net);
-    const effect = mobUseEffect(e, held?.id ?? 0, mine);
+    // (A guest's copies of creatures know players by their keys; see playerKey.)
+    const net = this.game.net, me = this.guest ? net.myKey : this.game.uid;
+    const who = { mine: !!e.owner && (e.owner === me || !net), holds: !!e.leash?.uid && (e.leash.uid === me || !net), name: held?.name ?? null };
+    const effect = mobUseEffect(e, held?.id ?? 0, who);
     if (!effect) {
       if (e.def.rideable && !e.baby && !this.game.player.sneaking) this.game.mount(e);
       return;
     }
     applyHeldUse(this.game, effect);
-    if (e.remote) this.game.net.useMob(e, held?.id ?? 0, effect);
-    else applyMobUse(this, e, held?.id ?? 0, effect, uid);
+    if (e.remote) net.useMob(e, held?.id ?? 0, effect, who.name);
+    else applyMobUse(this, e, held?.id ?? 0, effect, this.game.uid, who.name);
   }
   // A guest (`uid`) used something on a creature (checked again here).
-  remoteUse(nid, id, effect, uid) {
+  remoteUse(nid, id, effect, uid, name = null) {
     const e = this.list.find((x) => x.nid === nid && x.kind === 'mob' && !x.dead);
-    if (e && mobUseEffect(e, id, !!e.owner && e.owner === uid) === effect) applyMobUse(this, e, id, effect, uid);
+    if (!e) return;
+    const who = { mine: !!e.owner && e.owner === uid, holds: holdsLead(this, e, uid), name };
+    if (mobUseEffect(e, id, who) === effect) applyMobUse(this, e, id, effect, uid, name);
   }
+  // A player (`uid`) used a fence post: see leads.js.
+  useFence(uid, x, y, z) { return useFence(this, uid, x, y, z); }
   // A player (`uid`) attacked `foe`: their wolves join in.
   rallyPets(uid, foe) { rallyPets(this, uid, foe); }
 
@@ -729,6 +742,7 @@ export class Entities {
       if (Number.isInteger(s.c)) e.colour = s.c;
       const x = extraOpts(s);
       e.owner = x.owner; if (x.collar !== undefined) e.collar = x.collar;
+      e.named = x.named; e.leash = x.leash;
       this.remoteFlags(e, Number.isInteger(s.f) ? s.f : 0);
     } else if (s.k === 'b') {
       e.tyaw = Number.isFinite(s.a) ? s.a : e.yaw;

@@ -173,6 +173,7 @@ shaped('glass_bottle', 3, ['G G', ' G '], { G: 'glass' }, 'misc');
 shaped('snow_block', 1, ['SS', 'SS'], { S: 'snowball' }, 'building');
 shaped('snow', 6, ['###'], { '#': 'snow_block' }, 'building');
 shaped('sign', 3, ['###', '###', ' S '], { '#': '#planks', S: 'stick' }, 'misc');
+shaped('lead', 2, ['~~ ', '~O ', '  ~'], { '~': 'string', O: 'slime_ball' }, 'misc');
 shaped('compass', 1, [' I ', 'IRI', ' I '], { I: 'iron_ingot', R: 'redstone' }, 'equipment');
 shaped('clock', 1, [' G ', 'GRG', ' G '], { G: 'gold_ingot', R: 'redstone' }, 'equipment');
 shaped('fishing_rod', 1, ['  #', ' #S', '# S'], { '#': 'stick', S: 'string' }, 'equipment');
@@ -180,6 +181,7 @@ shaped('fishing_rod', 1, ['  #', ' #S', '# S'], { '#': 'stick', S: 'string' }, '
 shaped('bread', 1, ['WWW'], { W: 'wheat' }, 'misc');
 shaped('cookie', 8, ['WSW'], { W: 'wheat', S: 'sugar' }, 'misc');
 shapeless('pumpkin_pie', 1, ['pumpkin', 'sugar', 'egg'], 'misc');
+shaped('cake', 1, ['MMM', 'SES', 'WWW'], { M: 'milk_bucket', S: 'sugar', E: 'egg', W: 'wheat' }, 'misc');
 shaped('golden_apple', 1, ['GGG', 'GAG', 'GGG'], { G: 'gold_ingot', A: 'apple' }, 'misc');
 shaped('golden_carrot', 1, ['NNN', 'NCN', 'NNN'], { N: 'gold_nugget', C: 'carrot' }, 'misc');
 shapeless('beetroot_soup', 1, ['bowl', 'beetroot', 'beetroot', 'beetroot', 'beetroot', 'beetroot', 'beetroot'], 'misc');

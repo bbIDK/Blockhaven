@@ -929,6 +929,16 @@ function signBoxes(face, wall) {
 FACING_VARIANTS[2304] = { 4: 2304, 5: 2305, 0: 2306, 1: 2307 };
 export const WALL_SIGN = { 4: 2308, 5: 2309, 0: 2310, 1: 2311 };
 
+// The cake: seven slices, eaten one at a time from its west side (see Game.eatCake), showing the
+// sponge inside once it's cut. CAKE: block id -> slices eaten.
+export const CAKE = {};
+for (let n = 0; n < 7; n++) {
+  const box = tb([1 + 2 * n, 0, 1, 15, 8, 15], ['cake_side', n ? 'cake_inner' : 'cake_side', 'cake_top', 'cake_bottom', 'cake_side', 'cake_side']);
+  shaped(2312 + n, n ? `cake_${n}` : 'cake', [box], { label: 'Cake', tex: 'cake_side', hardness: 0.5, sound: 'cloth', base: 2312, item: n === 0,
+    drop: null, support: 'solid', cat: 'materials' });
+  CAKE[2312 + n] = n;
+}
+
 // Blocks shown in the inventory and in the hand as a flat picture rather than a little model
 // (-1 for the rest). Tall flowers show their flowering top.
 export function spriteOf(block) {
@@ -943,6 +953,7 @@ export function spriteOf(block) {
   if (block === B.lily_pad) return TEX.lily_pad;
   if (SWITCH[block]?.kind === 'lever') return TEX.lever_item;
   if (SIGN[block]) return TEX.sign_item;
+  if (CAKE[block] !== undefined) return TEX.cake_item;
   if (DOUBLE[block] && !DOUBLE[block].upper) return TEXL[DOUBLE[block].other * 6];
   return -1;
 }
