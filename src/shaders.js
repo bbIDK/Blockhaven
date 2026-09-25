@@ -99,6 +99,7 @@ uniform float u_gamma;
 uniform vec4 u_lightOverride;
 uniform vec4 u_colorMul;
 uniform float u_hurt;
+uniform float u_glint;  // enchanted things shimmer
 uniform vec3 u_precip; // falling rain/snow: scroll, sway amount, sway phase
 uniform vec2 u_precipScale;
 in vec3 v_uv;
@@ -109,6 +110,14 @@ in vec3 v_rel;
 flat in uint v_flags;
 out vec4 o_color;
 float curve(float l) { return l / (3.0 - 2.0 * l); }
+// The shimmer on enchanted things: a purple sheen with bright bands sweeping across it.
+vec3 glint() {
+  vec2 p = gl_FragCoord.xy / 48.0;
+  float s = fract(p.x * 0.7 + p.y * 0.35 - u_time * 0.45);
+  float s2 = fract(-p.x * 0.3 + p.y * 0.8 - u_time * 0.3 + 0.37);
+  float g = smoothstep(0.0, 0.08, s) * (1.0 - smoothstep(0.08, 0.3, s)) + 0.6 * smoothstep(0.0, 0.1, s2) * (1.0 - smoothstep(0.1, 0.25, s2));
+  return vec3(0.45, 0.22, 0.85) * (0.2 + g * 0.9) * u_glint;
+}
 #ifdef FANCY
 uniform vec3 u_camPos;
 uniform vec3 u_lightDir;    // towards the sun (or moon)
@@ -211,6 +220,7 @@ void main() {
   col *= u_colorMul.rgb;
   float fog = clamp((length(v_rel) - u_fog.x) / (u_fog.y - u_fog.x), 0.0, 1.0);
   col = mix(col, u_fogColor, fog);
+  if (u_glint > 0.0) col += glint();
   o_color = vec4(col, tex.a * u_alphaMul * u_colorMul.a);
 #else
   vec3 albedo = pow(col, vec3(2.2)) * u_colorMul.rgb;
@@ -267,6 +277,7 @@ void main() {
   float haze = u_underwater > 0.5 ? 0.0 : 1.0 - exp(-dist * 0.0035);
   vec3 fogC = u_fogColor + u_sunGlow * pow(max(dot(-V, u_lightDir), 0.0), 6.0) * 0.35;
   c = mix(c, fogC, max(fog, haze * 0.45));
+  if (u_glint > 0.0) c += pow(glint(), vec3(2.2)) * 3.0;
   o_color = vec4(c * u_outScale, alpha);
 #endif
 }`;

@@ -13,6 +13,8 @@ import { mobFlags, mobExtra } from './entities.js';
 import { encodeRLE16, decodeRLE16 } from './storage.js';
 import { B, BLOCKS, REPLACEABLE, CHEST, FURNACE_IDS } from './blocks.js';
 import { itemDef, maxStack } from './items.js';
+import { extras, cleanExtras } from './inventory.js';
+import { shiny } from './enchanting.js';
 import { chunkKey, HEIGHT, CHUNK_VOLUME } from './config.js';
 import { S_READY, rayBox } from './world.js';
 import { clamp } from './math.js';
@@ -116,7 +118,7 @@ async function unpackChunk(msg) {
 // ---------------------------------------------------------------- checks on what others send
 export function cleanStack(s) {
   if (!s || typeof s !== 'object' || !itemDef(s.id) || !int(s.count) || s.count < 1) return null;
-  return { id: s.id, count: Math.min(s.count, maxStack(s.id)), dmg: int(s.dmg) && s.dmg > 0 ? s.dmg : 0 };
+  return { id: s.id, count: Math.min(s.count, maxStack(s.id)), dmg: int(s.dmg) && s.dmg > 0 ? s.dmg : 0, ...cleanExtras(s) };
 }
 
 function parseKey(k) {
@@ -180,6 +182,7 @@ class Session {
       pres.f = (p.sneaking ? 1 : 0) | (p.sprinting ? 2 : 0) | (p.flying ? 4 : 0) | (p.onGround ? 8 : 0) |
         (g.state === 'dead' ? 16 : 0) | (g.state === 'sleeping' ? 32 : 0) | (g.creative ? 64 : 0);
       pres.i = g.handLook;
+      if (shiny(g.inv.held)) pres.ih = 1;
       pres.a = g.inv.armor.map((s) => s?.id ?? 0);
       pres.k = g.settings.look;
       pres.s = g.swingCount;
@@ -409,6 +412,12 @@ export class HostSession extends Session {
       case 'hit': this.hit(g, msg); break;
       case 'ride': if (int(msg.e)) this.rideRequest(g, msg); break;
       case 'boat': this.placeBoatFor(g, msg); break;
+      case 'orb':
+        // Experience a guest earned (mining, fishing, trading), as orbs where they are.
+        if ([msg.x, msg.y, msg.z].every(num) && int(msg.n) && msg.n > 0 && g.x !== null && Math.hypot(msg.x - g.x, msg.y - g.y, msg.z - g.z) < 12) {
+          this.game.entities.spawnXp(msg.x, msg.y, msg.z, Math.min(msg.n, 200));
+        }
+        break;
       case 'um': if (int(msg.e) && int(msg.i) && typeof msg.f === 'string') this.game.entities.remoteUse(msg.e, msg.i, msg.f); break;
       case 'arw': this.arrow(g, msg); break;
       case 'pvp': this.pvpHit(g, msg); break;
@@ -520,10 +529,10 @@ export class HostSession extends Session {
   }
 
   drop(m) {
-    const s = cleanStack({ id: m.id, count: m.n, dmg: m.d });
+    const s = cleanStack({ id: m.id, count: m.n, dmg: m.d, ...cleanExtras(m.ex) });
     if (!s || ![m.x, m.y, m.z].every(num) || m.y < -64 || m.y > HEIGHT + 64) return;
     const v = Array.isArray(m.v) && m.v.length === 3 && m.v.every(num) ? m.v.map((a) => clamp(a, -20, 20)) : null;
-    this.game.entities.spawnItem(m.x, m.y, m.z, s.id, s.count, s.dmg, num(m.pd) ? clamp(m.pd, 0, 5) : 0.6, v);
+    this.game.entities.spawnItem(m.x, m.y, m.z, s.id, s.count, s.dmg, num(m.pd) ? clamp(m.pd, 0, 5) : 0.6, v, extras(s));
   }
 
   take(g, m) {
@@ -533,14 +542,16 @@ export class HostSession extends Session {
     const n = Math.min(m.n, e.count);
     e.count -= n;
     if (!e.count) { e.dead = true; this.gone.set(e.nid, 'p'); }
-    this.send(g.addr, { t: 'give', id: e.id, n, d: e.dmg ?? 0 });
+    this.send(g.addr, { t: 'give', id: e.id, n, d: e.dmg ?? 0, ex: e.extra ?? undefined });
   }
 
   hit(g, m) {
-    const e = this.game.entities.list.find((x) => x.nid === m.e && (x.kind === 'mob' || x.kind === 'boat') && !x.dead);
+    const E = this.game.entities, e = E.list.find((x) => x.nid === m.e && (x.kind === 'mob' || x.kind === 'boat') && !x.dead);
     if (!e || e.dying || !num(m.a) || !num(m.x) || !num(m.z)) return;
-    if (e.kind === 'boat') { this.game.entities.hitBoat(e, g.creative); return; }
-    this.game.entities.hurtMob(e, clamp(m.a, 0, 100), { x: m.x, z: m.z }, num(m.b) ? clamp(m.b, 0, 1) : 0);
+    if (e.kind === 'boat') { E.hitBoat(e, g.creative); return; }
+    const who = E.players?.find((p) => p.addr === g.addr) ?? { x: m.x, y: g.y ?? e.y, z: m.z, addr: g.addr };
+    E.hurtMob(e, clamp(m.a, 0, 100), { ...who, x: m.x, z: m.z }, num(m.b) ? clamp(m.b, 0, 3) : 0,
+      { fire: num(m.f) ? clamp(m.f, 0, 8) : 0, looting: int(m.l) ? clamp(m.l, 0, 3) : 0 });
   }
 
   // A guest's arrow: shot from where they stand.
@@ -549,7 +560,7 @@ export class HostSession extends Session {
     if (![...v, ...at].every(num) || g.x === null || Math.hypot(m.x - g.x, m.y - g.y - 1.5, m.z - g.z) > 3) return;
     const owner = this.others().find((o) => o.addr === g.addr) ?? { x: g.x, y: g.y, z: g.z, addr: g.addr };
     this.game.entities.spawnArrow(m.x, m.y, m.z, clamp(m.vx, -80, 80), clamp(m.vy, -80, 80), clamp(m.vz, -80, 80), owner,
-      clamp(num(m.d) ? m.d : 2, 0, 12), !!m.p);
+      clamp(num(m.d) ? m.d : 2, 0, 30), !!m.p, { punch: int(m.pu) ? clamp(m.pu, 0, 2) : 0, flame: !!m.fl });
   }
 
   // One player hits another.
@@ -691,6 +702,8 @@ export class HostSession extends Session {
   entityGone(e, how) { if (e.nid) this.gone.set(e.nid, how); }
   // An untamed horse (or a broken boat) throws a guest off.
   buck(addr, e) { this.send(addr, { t: 'buck', e: e.nid ?? 0 }); }
+  // An experience orb reached a guest.
+  giveXp(addr, n) { this.send(addr, { t: 'xp', n }); }
   ride() {} // (the host's own riding needs no one's say-so)
   effect(k, x, y, z) { this.link.broadcast({ t: 'fx', k, x: r2(x), y: r2(y), z: r2(z) }); }
 
@@ -717,11 +730,12 @@ const boatFlags = (e) => (e.hurt > 0 ? 1 : 0) | (e.rider ? 2 : 0);
 
 function entityState(e) {
   const s = { i: e.nid, x: r2(e.x), y: r2(e.y), z: r2(e.z) };
-  if (e.kind === 'item') return Object.assign(s, { k: 'i', id: e.id, n: e.count, d: e.dmg ?? 0, pd: r2(Math.max(0, e.pickupDelay)) });
+  if (e.kind === 'item') return Object.assign(s, { k: 'i', id: e.id, n: e.count, d: e.dmg ?? 0, pd: r2(Math.max(0, e.pickupDelay)), ex: e.extra ?? undefined });
   if (e.kind === 'tnt') return Object.assign(s, { k: 't', f: e.fuse });
   if (e.kind === 'falling') return Object.assign(s, { k: 'f', b: e.block });
   if (e.kind === 'arrow') return Object.assign(s, { k: 'a', a: r2(e.ayaw ?? Math.atan2(-e.vx, -e.vz)), p: r2(e.apitch ?? 0) });
   if (e.kind === 'boat') return Object.assign(s, { k: 'b', w: e.wood, a: r2(e.yaw), f: boatFlags(e) });
+  if (e.kind === 'xp') return Object.assign(s, { k: 'x', v: e.value });
   return Object.assign(s, { k: 'm', ty: e.type, a: r2(e.yaw), f: mobFlags(e), ...mobExtra(e) });
 }
 
@@ -860,10 +874,10 @@ export class GuestSession extends Session {
       case 'chunk': this.chunk(msg); break;
       case 'en': this.entities(msg); break;
       case 'give': {
-        const s = cleanStack({ id: msg.id, count: msg.n, dmg: msg.d });
+        const s = cleanStack({ id: msg.id, count: msg.n, dmg: msg.d, ...cleanExtras(msg.ex) });
         if (!s || !game.world) break;
-        const left = game.pickup(s.id, s.count, s.dmg);
-        if (left) game.entities.dropItem(game.player, { id: s.id, count: left, dmg: s.dmg });
+        const left = game.pickup(s.id, s.count, s.dmg, extras(s));
+        if (left) game.entities.dropItem(game.player, { ...s, count: left });
         break;
       }
       case 'hurt':
@@ -879,6 +893,7 @@ export class GuestSession extends Session {
       case 'shut': if (game.openBlock?.key === msg.k) game.closeMenu(); break;
       case 'wake': game.wake(true); break;
       case 'buck': if (game.riding && game.riding.nid === msg.e) game.dismount(true); break;
+      case 'xp': if (int(msg.n) && msg.n > 0) game.gainXp(Math.min(msg.n, 5000)); break;
       case 'pvp': this.pvp = !!msg.on; break;
       case 'fx': this.effect(msg); break;
       case 'bye': game.disconnected('The host closed the game.'); break;
@@ -1011,21 +1026,23 @@ export class GuestSession extends Session {
     return out;
   }
 
-  dropItem(x, y, z, id, count, dmg, delay, vel) {
-    this.toHost({ t: 'drop', x: r2(x), y: r2(y), z: r2(z), id, n: count, d: dmg ?? 0, pd: delay, v: vel ? vel.map(r2) : null });
+  dropItem(x, y, z, id, count, dmg, delay, vel, extra) {
+    this.toHost({ t: 'drop', x: r2(x), y: r2(y), z: r2(z), id, n: count, d: dmg ?? 0, pd: delay, v: vel ? vel.map(r2) : null, ex: extra ?? undefined });
   }
 
   primeTNT(x, y, z, fuse) { this.toHost({ t: 'tnt', x, y, z, f: fuse }); }
   placeBoat(x, y, z, wood, yaw) { this.toHost({ t: 'boat', x: r2(x), y: r2(y), z: r2(z), w: wood, a: r2(yaw) }); }
+  dropXp(x, y, z, n) { this.toHost({ t: 'orb', x: r2(x), y: r2(y), z: r2(z), n }); }
   ride(e, on) { if (e.nid) this.toHost({ t: 'ride', e: e.nid, on: on ? 1 : 0 }); }
   useMob(e, id, effect) { this.toHost({ t: 'um', e: e.nid, i: id, f: effect }); }
-  shootArrow(x, y, z, vx, vy, vz, damage, pickup) {
-    this.toHost({ t: 'arw', x: r2(x), y: r2(y), z: r2(z), vx: r2(vx), vy: r2(vy), vz: r2(vz), d: damage, p: pickup ? 1 : 0 });
+  shootArrow(x, y, z, vx, vy, vz, damage, pickup, fx) {
+    this.toHost({ t: 'arw', x: r2(x), y: r2(y), z: r2(z), vx: r2(vx), vy: r2(vy), vz: r2(vz), d: damage, p: pickup ? 1 : 0,
+      pu: fx?.punch || undefined, fl: fx?.flame ? 1 : undefined });
   }
 
-  hitMob(e, amount, bonus) {
+  hitMob(e, amount, bonus, opts = null) {
     const p = this.game.player;
-    this.toHost({ t: 'hit', e: e.nid, a: r2(amount), b: bonus, x: r2(p.x), z: r2(p.z) });
+    this.toHost({ t: 'hit', e: e.nid, a: r2(amount), b: bonus, x: r2(p.x), z: r2(p.z), f: opts?.fire || undefined, l: opts?.looting || undefined });
   }
 
   attackPlayer(rp, amount, bonus) {

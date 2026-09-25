@@ -456,6 +456,27 @@ export class Audio {
   }
   shear(at) { for (let i = 0; i < 2; i++) this.hiss(at, { f: 5000, q: 4, time: 0.06, volume: 0.3, delay: i * 0.09 }); }
   trade() { this.tone(null, { type: 'triangle', f0: 880, time: 0.12, volume: 0.12 }); this.tone(null, { type: 'triangle', f0: 1320, time: 0.2, volume: 0.1, delay: 0.08 }); }
+  // Picking up experience: a bright little ding, a different note each time.
+  orb() {
+    const f = 1400 + Math.random() * 900;
+    this.tone(null, { type: 'sine', f0: f, f1: f * 1.02, time: 0.14, volume: 0.07 });
+    this.tone(null, { type: 'sine', f0: f * 2, time: 0.08, volume: 0.025 });
+  }
+  // Every fifth level: a rising fanfare.
+  levelUp() {
+    [523, 659, 784, 1047, 1319].forEach((f, i) => this.tone(null, { type: 'triangle', f0: f, time: 0.5 - i * 0.05, volume: 0.1, delay: i * 0.07 }));
+  }
+  // Enchanting: a shimmer of high notes.
+  enchant(at) {
+    for (let i = 0; i < 6; i++) this.tone(at, { type: 'sine', f0: 1200 + Math.random() * 1600, time: 0.4, volume: 0.05, delay: i * 0.05, vibrato: 12, vibratoRate: 9 });
+    this.hiss(at, { f: 5000, q: 2, time: 0.6, volume: 0.06, sweep: 9000 });
+  }
+  // The anvil: a ringing clank.
+  anvil(at) {
+    this.tone(at, { type: 'square', f0: 1760, f1: 1700, time: 0.5, volume: 0.05, filter: { f: 2400, q: 6 } });
+    this.tone(at, { type: 'triangle', f0: 880, time: 0.6, volume: 0.08 });
+    this.thump(at, 300, 120, 0.3, 0.06);
+  }
 
   // The steady sound of rain, faded towards `volume` (0 lets it die away).
   setRain(volume) {

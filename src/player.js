@@ -86,7 +86,7 @@ export class Player extends Body {
     let speed, accel;
     if (this.flying) { speed = this.sprinting ? 21.6 : 10.9; accel = 5; }
     else if (this.inLava) { speed = 1.2; accel = 4; }
-    else if (this.inWater) { speed = 2.2; accel = 5; }
+    else if (this.inWater) { speed = 2.2 + (4.32 - 2.2) * Math.min(3, this.depthStrider ?? 0) / 3; accel = 5; }
     else if (this.sneaking) { speed = 1.31; accel = 14; }
     else { speed = this.sprinting ? 5.61 : 4.32; accel = this.onGround ? 14 : 2.8; }
     const k = 1 - Math.exp(-accel * dt);

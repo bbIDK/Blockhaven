@@ -2,9 +2,10 @@
 // armor slots), the crafting table, furnaces and chests. A menu is a list of slots over the
 // player's inventory and some other storage; clicking, shift-clicking, dragging a stack across
 // slots and double-clicking work the same way on all of them.
-import { maxStack, itemDef } from './items.js';
-import { sameItem } from './inventory.js';
+import { maxStack, itemDef, I } from './items.js';
+import { sameItem, extras } from './inventory.js';
 import { matchGrid, planRecipe, countItems, recipeFits, smeltsIn, fuelTime } from './crafting.js';
+import { tableOffers, enchantable, anvil, grind } from './enchanting.js';
 
 class Slot {
   constructor(menu, arr, i, group, o = {}) {
@@ -315,7 +316,7 @@ export class CraftingMenu extends Menu {
     for (let i = 0; i < this.grid.length; i++) {
       const s = this.grid[i];
       if (!s) continue;
-      const left = this.inv.add(s.id, s.count, s.dmg ?? 0);
+      const left = this.inv.add(s.id, s.count, s.dmg ?? 0, extras(s));
       this.grid[i] = left ? { ...s, count: left } : null;
     }
     this.updateResult();
@@ -403,6 +404,19 @@ export class FurnaceMenu extends Menu {
     this.addPlayer();
   }
 
+  // Whatever comes out of the output slot, however it's taken, is worth some experience.
+  tracked(fn) {
+    const before = this.outputSlot.stack, id = before?.id, n0 = before?.count ?? 0;
+    const r = fn();
+    const after = this.outputSlot.stack, n1 = after && after.id === id ? after.count : 0;
+    if (id && n0 > n1) this.game.menuEvent?.('smelted', { id, count: n0 - n1 });
+    return r;
+  }
+  click(slot, button) { return this.tracked(() => super.click(slot, button)); }
+  quickMove(slot) { return this.tracked(() => super.quickMove(slot)); }
+  swapWithHotbar(slot, n) { return this.tracked(() => super.swapWithHotbar(slot, n)); }
+  takeToDrop(slot, all) { return this.tracked(() => super.takeToDrop(slot, all)); }
+
   targets(slot, s) {
     if (slot.group === 'storage' || slot.group === 'hotbar') {
       if (smeltsIn(s.id, this.furnace.only)) return [[[this.inputSlot], false]];
@@ -426,6 +440,199 @@ export class ChestMenu extends Menu {
 
   targets(slot) {
     return slot.group === 'chest' ? [[this.playerSlots, true]] : [[this.chestSlots, false]];
+  }
+}
+
+// ---------------------------------------------------------------- enchanting, the anvil, the grindstone
+// These keep what's put in them only while they're open (it comes back to you when you close them).
+class WorkMenu extends Menu {
+  // Their result slot (the anvil's, the grindstone's) is taken whole, however it's taken, and
+  // only then are the inputs used up (see take()).
+  take() { return null; }
+  takeResult() {
+    if (this.cursor) return;
+    const out = this.take();
+    if (out) this.cursor = out;
+  }
+  craftAll() {
+    if (!this.result?.[0] || !this.inv.slots.some((x) => !x)) return;
+    const out = this.take();
+    if (out) this.moveInto(out, 1, this.playerSlots, true);
+  }
+  takeToDrop(slot, all) { return slot.output === 'craft' ? (this.cursor ? null : this.take()) : super.takeToDrop(slot, all); }
+  swapWithHotbar(slot, n) {
+    if (slot.output !== 'craft') { super.swapWithHotbar(slot, n); return; }
+    if (this.inv.slots[n]) return;
+    const out = this.take();
+    if (out) this.inv.slots[n] = out;
+  }
+
+  close() {
+    const spill = [];
+    for (const arr of this.held) for (let i = 0; i < arr.length; i++) {
+      const s = arr[i];
+      if (!s) continue;
+      const left = this.inv.add(s.id, s.count, s.dmg ?? 0, extras(s));
+      if (left) spill.push({ ...s, count: left });
+      arr[i] = null;
+    }
+    return spill;
+  }
+}
+
+// The enchanting table: an item and some lapis, and three enchantments on offer (see
+// enchanting.js). `shelves`: how many bookshelves stand around the table.
+export class EnchantingMenu extends WorkMenu {
+  constructor(game, shelves) {
+    super(game, 'enchanting');
+    this.shelves = shelves;
+    this.items = [null, null];
+    this.held = [this.items];
+    this.itemSlot = this.add(this.items, 0, 'item', { limit: 1, filter: (s) => enchantable(s) || s.id === I.book });
+    this.lapisSlot = this.add(this.items, 1, 'lapis', { filter: (s) => s.id === I.lapis_lazuli });
+    this.addPlayer();
+    this.offers = [];
+  }
+
+  changed(slot) { if (slot === this.itemSlot) this.updateOffers(); }
+
+  updateOffers() {
+    const s = this.items[0];
+    this.offers = s && (enchantable(s) || s.id === I.book) ? tableOffers(this.game.enchantSeed, s, this.shelves) : [];
+  }
+
+  // Can option `i` be taken? ('ok', or why not: 'lapis', 'levels', or null for nothing there.)
+  canTake(i) {
+    const o = this.offers[i], g = this.game;
+    if (!o || !o.cost) return null;
+    if (g.creative) return 'ok';
+    if ((this.items[1]?.count ?? 0) < i + 1) return 'lapis';
+    if (g.xp.level < o.cost) return 'levels';
+    return 'ok';
+  }
+
+  enchant(i) {
+    if (this.canTake(i) !== 'ok') return false;
+    const g = this.game, o = this.offers[i], s = this.items[0];
+    let ench = { ...o.ench };
+    if (s.id === I.book) {
+      // A book takes just one of them, at random, when more than one came up.
+      const names = Object.keys(ench);
+      if (names.length > 1) ench = { [names[Math.floor(Math.random() * names.length)]]: ench[names[0]] };
+      this.items[0] = { id: I.enchanted_book, count: 1, dmg: 0, ench };
+    } else this.items[0] = { ...s, ench };
+    if (!g.creative) {
+      g.spendLevels(i + 1);
+      const l = this.items[1];
+      this.items[1] = l.count > i + 1 ? { ...l, count: l.count - (i + 1) } : null;
+    }
+    g.newEnchantSeed();
+    this.updateOffers();
+    g.menuEvent?.('enchant', this.items[0]);
+    return true;
+  }
+
+  targets(slot, s) {
+    if (slot.group === 'storage' || slot.group === 'hotbar') {
+      if (s.id === I.lapis_lazuli) return [[[this.lapisSlot], false]];
+      if ((enchantable(s) || s.id === I.book) && !this.items[0]) return [[[this.itemSlot], false]];
+      return super.targets(slot, s);
+    }
+    return [[this.playerSlots, false]];
+  }
+}
+
+// The anvil: mend with material or a second of the same, put an enchanted book's enchantments
+// on, and name things; each job costs levels.
+export class AnvilMenu extends WorkMenu {
+  constructor(game) {
+    super(game, 'anvil');
+    this.items = [null, null];
+    this.result = [null];
+    this.held = [this.items];
+    this.leftSlot = this.add(this.items, 0, 'left');
+    this.rightSlot = this.add(this.items, 1, 'right');
+    this.resultSlot = this.add(this.result, 0, 'result', { output: 'craft' });
+    this.addPlayer();
+    this.name = undefined;
+    this.job = null;
+  }
+
+  changed(slot) {
+    if (slot === this.leftSlot && this.items[0]?.name !== this.nameFor) { this.name = undefined; this.nameFor = this.items[0]?.name; }
+    this.update();
+  }
+
+  // The name typed into the box (undefined: leave it as it is).
+  rename(text) { this.name = text; this.update(); }
+
+  update() {
+    const a = this.items[0], b = this.items[1];
+    const isPlanks = (id) => /_planks$/.test(itemDef(id)?.name ?? '');
+    this.job = a ? anvil(a, b, this.name, isPlanks) : null;
+    this.result[0] = this.job ? this.job.out : null;
+  }
+
+  get tooExpensive() { return !!this.job && this.job.cost >= 40 && !this.game.creative; }
+  affordable() { const j = this.job; return !!j && !this.tooExpensive && (this.game.creative || this.game.xp.level >= j.cost); }
+
+  take() {
+    const j = this.job;
+    if (!this.affordable()) return null;
+    this.game.spendLevels(j.cost);
+    this.items[0] = null;
+    const b = this.items[1];
+    if (b) this.items[1] = b.count > j.used ? { ...b, count: b.count - j.used } : null;
+    this.name = undefined;
+    this.update();
+    this.game.menuEvent?.('anvil', j.out);
+    return { ...j.out };
+  }
+
+  targets(slot, s) {
+    if (slot.group === 'storage' || slot.group === 'hotbar') {
+      if (!this.items[0]) return [[[this.leftSlot], false]];
+      return [[[this.rightSlot], false]];
+    }
+    return [[this.playerSlots, false]];
+  }
+}
+
+// The grindstone: takes enchantments off (giving back some of the experience) and mends two of
+// the same thing into one.
+export class GrindstoneMenu extends WorkMenu {
+  constructor(game, at) {
+    super(game, 'grindstone');
+    this.at = at;
+    this.items = [null, null];
+    this.result = [null];
+    this.held = [this.items];
+    const ok = (s) => !!itemDef(s.id)?.durability || s.id === I.enchanted_book;
+    this.topSlot = this.add(this.items, 0, 'top', { limit: 1, filter: ok });
+    this.bottomSlot = this.add(this.items, 1, 'bottom', { limit: 1, filter: ok });
+    this.resultSlot = this.add(this.result, 0, 'result', { output: 'craft' });
+    this.addPlayer();
+    this.job = null;
+  }
+
+  changed() {
+    this.job = grind(this.items[0], this.items[1]);
+    this.result[0] = this.job ? this.job.out : null;
+  }
+
+  take() {
+    const j = this.job;
+    if (!j) return null;
+    this.items[0] = this.items[1] = null;
+    this.changed();
+    if (j.xp) this.game.dropXp(this.at.x, this.at.y + 0.6, this.at.z, j.xp);
+    this.game.menuEvent?.('grind', j.out);
+    return { ...j.out };
+  }
+
+  targets(slot) {
+    if (slot.group === 'storage' || slot.group === 'hotbar') return [[[this.topSlot, this.bottomSlot], false]];
+    return [[this.playerSlots, false]];
   }
 }
 

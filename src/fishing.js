@@ -11,9 +11,10 @@ import { I } from './items.js';
 import { TEX } from './textures.js';
 import { boxMesh, MODEL_OFFSET } from './models.js';
 import { identity, translate, rotateY } from './math.js';
+import { randomBook } from './enchanting.js';
 
 // What comes up: [item, weight, least, most, damaged]. Fish 85%, junk 10%, treasure 5%, like the
-// original.
+// original (Luck of the Sea shifts the odds towards treasure).
 const FISH = [['cod', 60], ['salmon', 25], ['tropical_fish', 2], ['pufferfish', 13]];
 const JUNK = [['lily_pad', 17], ['leather_boots', 10, 1, 1, true], ['leather', 10], ['bone', 10], ['bowl', 10], ['string', 5], ['stick', 5],
   ['rotten_flesh', 10], ['fishing_rod', 2, 1, 1, true], ['wheat_seeds', 6]];
@@ -23,12 +24,16 @@ const pick = (list) => {
   for (const e of list) if ((r -= e[1]) <= 0) return e;
   return list[0];
 };
-export function rollCatch() {
-  const r = Math.random();
-  const [name, , lo = 1, hi = 1, worn] = pick(r < 0.85 ? FISH : r < 0.95 ? JUNK : TREASURE);
+export function rollCatch(luck = 0) {
+  const fish = 85 - luck, junk = Math.max(0, 10 - 2 * luck), treasure = 5 + 2 * luck;
+  const r = Math.random() * (fish + junk + treasure);
+  const kind = r < fish ? 'fish' : r < fish + junk ? 'junk' : 'treasure';
+  const [name, , lo = 1, hi = 1, worn] = pick(kind === 'fish' ? FISH : kind === 'junk' ? JUNK : TREASURE);
   const id = I[name];
   const count = lo + Math.floor(Math.random() * (hi - lo + 1));
-  return { id, count, worn: !!worn, treasure: r >= 0.95 };
+  // Now and then the treasure is a book of enchantments.
+  if (kind === 'treasure' && Math.random() < 0.25) return { id: I.enchanted_book, count: 1, worn: false, treasure: true, book: true };
+  return { id, count, worn: !!worn, treasure: kind === 'treasure' };
 }
 
 const G = 12;         // gravity on the bobber (blocks/s²)
@@ -55,7 +60,9 @@ export class Fishing {
     b.vx = d[0] * speed + (Math.random() - 0.5) * 0.8 + p.vx;
     b.vy = d[1] * speed + 2.5 + (Math.random() - 0.5) * 0.8;
     b.vz = d[2] * speed + (Math.random() - 0.5) * 0.8 + p.vz;
-    Object.assign(b, { state: 'fly', age: 0, wait: 0, approach: 0, nibble: 0, hooked: null, angle: 0, bob: 0 });
+    // (The rod's Luck of the Sea and Lure.)
+    const ench = g.inv.held?.ench;
+    Object.assign(b, { state: 'fly', age: 0, wait: 0, approach: 0, nibble: 0, hooked: null, angle: 0, bob: 0, luck: ench?.luck_of_the_sea ?? 0, lure: ench?.lure ?? 0 });
     this.bobber = b;
     g.audio.hiss({ x: b.x, y: b.y, z: b.z }, { f: 1600, q: 1.2, time: 0.3, volume: 0.25, sweep: 500 });
     g.swingArm();
@@ -72,11 +79,12 @@ export class Fishing {
       if (!e.remote) { e.vx += dx * 1.4; e.vz += dz * 1.4; e.vy = Math.max(e.vy, 4 + dy * 1.2); }
       wear = 5;
     } else if (b.nibble > 0) {
-      const c = rollCatch();
+      const c = rollCatch(b.luck);
       const dx = p.x - b.x, dy = p.eyeY - 0.5 - b.y, dz = p.z - b.z;
       const dmg = c.worn ? Math.floor(Math.random() * 30) + 10 : 0;
-      g.entities.spawnItem(b.x, b.y + 0.2, b.z, c.id, c.count, dmg, 0, [dx * 1.8, dy * 1.25 + 8, dz * 1.8]);
-      g.gainXp?.(1 + Math.floor(Math.random() * 6), b);
+      const extra = c.book ? { ench: randomBook(true) } : null;
+      g.entities.spawnItem(b.x, b.y + 0.2, b.z, c.id, c.count, dmg, 0, [dx * 1.8, dy * 1.25 + 8, dz * 1.8], extra);
+      g.dropXp(p.x, p.y + 0.5, p.z, 1 + Math.floor(Math.random() * 6));
       g.audio.splash(0.3, { x: b.x, y: b.y, z: b.z });
       wear = 1;
     } else if (b.state === 'ground') wear = 2;
@@ -165,7 +173,7 @@ export class Fishing {
       }
       return;
     }
-    if (b.wait <= 0 && b.approach === 0) { b.wait = 100 + Math.floor(Math.random() * 500); return; }
+    if (b.wait <= 0 && b.approach === 0) { b.wait = Math.max(20, 100 + Math.floor(Math.random() * 500) - b.lure * 100); return; }
     // Fish come sooner in the rain and slower with no sky above.
     const open = (w.getLight(x, Math.floor(top) + 1, z) >> 4) >= 15;
     let step = 1;

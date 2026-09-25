@@ -107,6 +107,7 @@ item(379, 'saddle', { stack: 1 });
 ['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'cherry'].forEach((wood, i) => item(400 + i, `${wood}_boat`, { stack: 1, boat: wood }));
 item(407, 'tropical_fish', { label: 'Tropical Fish', food: 1, sat: 0.1 });
 item(408, 'pufferfish', { food: 1, sat: 0.1, effects: [['poison', 60, 2], ['hunger', 15, 3]] });
+item(409, 'enchanted_book', { label: 'Enchanted Book', stack: 1 });
 // (Only ever seen in a hand: the rod while its line is out.)
 item(1020, 'fishing_rod_cast', { label: 'Fishing Rod', stack: 1, hidden: true });
 // Dyes are one texture in sixteen colours.
@@ -189,11 +190,13 @@ export function canHarvest(block, tool) {
 }
 
 // Seconds to break `block` holding item `tool` (Minecraft's hand/tool formula).
-export function breakTime(block, tool) {
+// (`efficiency`: the tool's Efficiency level, which speeds it up on what it's meant for.)
+export function breakTime(block, tool, efficiency = 0) {
   if (block.hardness < 0) return Infinity;
   if (block.hardness === 0) return 0;
   const t = tool && ITEMS.get(tool)?.tool;
-  const speed = t && t.type === block.tool ? t.speed : 1;
+  let speed = t && t.type === block.tool ? t.speed : 1;
+  if (efficiency && speed > 1) speed += efficiency * efficiency + 1;
   return (block.hardness * (canHarvest(block, tool) ? 1.5 : 5)) / speed;
 }
 

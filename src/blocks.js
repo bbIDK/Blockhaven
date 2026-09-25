@@ -893,6 +893,10 @@ LEVER_PLACES.forEach(([f, axisX], pi) => [false, true].forEach((on) => {
 block(2300, 'redstone_lamp', { tex: 'redstone_lamp', hardness: 0.3, sound: 'glass', cat: 'functional' });
 block(2301, 'redstone_lamp_on', { label: 'Redstone Lamp', tex: 'redstone_lamp_on', hardness: 0.3, sound: 'glass', emit: 15, emissive: true,
   base: 2300, item: false, drop: 'redstone_lamp' });
+// The enchanting table (see enchanting.js): obsidian under red cloth, 12 pixels high, glowing
+// faintly. Its book is drawn floating above it (see Game.drawList).
+shaped(2302, 'enchanting_table', [tb([0, 0, 0, 16, 12, 16], { side: 'enchanting_table_side', top: 'enchanting_table_top', bottom: 'enchanting_table_bottom' })],
+  { tex: 'enchanting_table_side', hardness: 5, tool: 'pickaxe', tier: 1, sound: 'stone', emit: 7, cat: 'functional' });
 
 // Blocks shown in the inventory and in the hand as a flat picture rather than a little model
 // (-1 for the rest). Tall flowers show their flowering top.
@@ -1050,7 +1054,7 @@ const CREATIVE_ORDER = [
   'red_mushroom', 'brown_mushroom', 'pumpkin', 'melon', 'hay_block',
   // functional
   'crafting_table', 'furnace', 'smoker', 'blast_furnace', 'chest', 'barrel', 'smithing_table', 'fletching_table', 'bed', 'bookshelf',
-  'anvil', 'grindstone', 'stonecutter', 'loom', 'lectern', 'cartography_table', 'composter', 'cauldron', 'bell', 'flower_pot',
+  'enchanting_table', 'anvil', 'grindstone', 'stonecutter', 'loom', 'lectern', 'cartography_table', 'composter', 'cauldron', 'bell', 'flower_pot',
   'torch', 'lantern', 'campfire', 'glowstone', 'jack_o_lantern', 'ladder', 'iron_bars', 'tnt',
   ...WOOD_NAMES.flatMap((w) => [`${w}_door`, `${w}_trapdoor`, `${w}_fence`, `${w}_fence_gate`]), 'iron_door', 'iron_trapdoor',
   'lever', 'stone_button', 'oak_button', 'stone_pressure_plate', 'oak_pressure_plate', 'redstone_lamp', 'redstone_block',

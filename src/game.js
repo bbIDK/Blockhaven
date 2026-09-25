@@ -6,8 +6,8 @@ import { Player } from './player.js';
 import { Input } from './input.js';
 import { UI, $ } from './ui.js';
 import { Audio } from './audio.js';
-import { Inventory } from './inventory.js';
-import { InventoryMenu, CraftingTableMenu, FurnaceMenu, ChestMenu, CreativeMenu } from './containers.js';
+import { Inventory, extras } from './inventory.js';
+import { InventoryMenu, CraftingTableMenu, FurnaceMenu, ChestMenu, CreativeMenu, EnchantingMenu, AnvilMenu, GrindstoneMenu } from './containers.js';
 import { ContainerGUI, sprites } from './gui.js';
 import { Furnace } from './furnace.js';
 import { initIcons, warmIcons } from './icons.js';
@@ -32,8 +32,10 @@ import { useItemOnBlock, useBucket, placeLilyPad, placeBoat, useWorkstation } fr
 import { nearestVillage } from './villages.js';
 import { TalkScreen } from './tradeui.js';
 import { seatY, startRide, driveFrom, dismountSpot } from './riding.js';
+import { addXp, xpToNext, enchLevel, SMELT_XP, ORE_XP, shiny } from './enchanting.js';
 import { Fishing, bobberMesh, bobberModel, linePoints } from './fishing.js';
-import { ITEMS, I, itemDef, itemLabel, breakTime, dropsFor, attackDamage, attackSpeed } from './items.js';
+import { tableBook } from './tablebook.js';
+import { ITEMS, I, itemDef, itemLabel, breakTime, dropsFor, attackDamage, attackSpeed, canHarvest } from './items.js';
 import { BIOME_NAMES } from './biomes.js';
 import { CHUNK_VOLUME, HEIGHT, TICKS_PER_DAY, SAVE_VERSION } from './config.js';
 import { seedFromText, clamp, hashString, mat4, identity, translate, rotateX, rotateZ } from './math.js';
@@ -72,6 +74,40 @@ const TIPS = [
 const CLOUD_HEIGHT = 216.5; // above all but the highest peaks
 // Which face of a lit furnace has the fire in it.
 const REACH = { creative: 5.5, survival: 4.6 };
+
+// Extra damage from a weapon's enchantments against creature `type`.
+const UNDEAD = new Set(['zombie', 'husk', 'skeleton', 'stray', 'drowned', 'zombie_villager', 'phantom']);
+const ARTHROPODS = new Set(['spider', 'cave_spider', 'silverfish', 'bee']);
+function enchantDamage(ench, type) {
+  if (!ench) return 0;
+  let n = 0;
+  if (ench.sharpness) n += 0.5 * ench.sharpness + 0.5;
+  if (ench.smite && UNDEAD.has(type)) n += 2.5 * ench.smite;
+  if (ench.bane_of_arthropods && ARTHROPODS.has(type)) n += 2.5 * ench.bane_of_arthropods;
+  return n;
+}
+
+// How much the armor's enchantments protect against harm of the kind in `cause`.
+function protection(armor, cause) {
+  const kind = /fell from/.test(cause) ? 'fall' : /flames|lava|burned/.test(cause) ? 'fire' : /blown up/.test(cause) ? 'blast'
+    : /shot/.test(cause) ? 'projectile' : /drowned|starved|poisoned|out of the world|gave up/.test(cause) ? 'none' : 'any';
+  if (kind === 'none') return 0;
+  let n = 0;
+  for (const s of armor) {
+    const e = s?.ench;
+    if (!e) continue;
+    n += e.protection ?? 0;
+    if (kind === 'fire') n += (e.fire_protection ?? 0) * 2;
+    if (kind === 'blast') n += (e.blast_protection ?? 0) * 2;
+    if (kind === 'projectile') n += (e.projectile_protection ?? 0) * 2;
+    if (kind === 'fall') n += (e.feather_falling ?? 0) * 3;
+  }
+  return n;
+}
+
+// Blocks Silk Touch takes whole (that otherwise drop something else, or nothing).
+const SILK_TOUCH = (name) => !!name && (/_ore$|glass|leaves$|^ice$|packed_ice|blue_ice/.test(name) ||
+  ['stone', 'deepslate', 'grass_block', 'podzol', 'dirt_path', 'bookshelf', 'clay', 'melon', 'glowstone', 'campfire', 'gravel', 'snowy_grass'].includes(name));
 
 export class Game {
   constructor() {
@@ -411,6 +447,9 @@ export class Game {
     this.riding = null;
     this.fishing.retract();
     this.remount = !!meta.player?.riding;
+    const xp = meta.player?.xp;
+    this.xp = { level: Number.isInteger(xp?.[0]) ? Math.max(0, xp[0]) : 0, points: Number.isFinite(xp?.[1]) ? Math.max(0, xp[1]) : 0 };
+    this.enchantSeed = Number.isInteger(meta.player?.es) ? meta.player.es >>> 0 : (Math.random() * 2 ** 32) >>> 0;
     if (meta.player && (meta.player.health ?? 20) > 0) {
       Object.assign(p, { x: meta.player.x, y: meta.player.y, z: meta.player.z, yaw: meta.player.yaw, pitch: meta.player.pitch, flying: !!meta.player.flying });
       this.health = meta.player.health ?? 20;
@@ -491,7 +530,7 @@ export class Game {
     const p = this.player;
     return {
       player: { x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, flying: p.flying, health: this.health, air: this.air,
-        food: this.food, saturation: this.saturation, exhaustion: this.exhaustion, riding: this.riding ? 1 : 0 },
+        food: this.food, saturation: this.saturation, exhaustion: this.exhaustion, riding: this.riding ? 1 : 0, xp: [this.xp.level, this.xp.points], es: this.enchantSeed },
       inventory: this.inv.serialize(), mode: this.meta?.mode ?? 'survival', bed: this.meta?.bed ?? null,
     };
   }
@@ -752,7 +791,7 @@ export class Game {
       lastPlayed: Date.now(),
       time: Math.floor(this.time),
       player: { x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, flying: p.flying, health: this.health, air: this.air,
-        food: this.food, saturation: this.saturation, exhaustion: this.exhaustion, riding: this.riding ? 1 : 0 },
+        food: this.food, saturation: this.saturation, exhaustion: this.exhaustion, riding: this.riding ? 1 : 0, xp: [this.xp.level, this.xp.points], es: this.enchantSeed },
       inventory: this.inv.serialize(),
       entities: this.entities.serialize(),
       containers: [...this.containers].map(([k, slots]) => ({ k, slots: slots.map((x) => (x ? { ...x } : null)) })),
@@ -848,8 +887,8 @@ export class Game {
     this.inv.cursor = null;
     if (!this.creative) {
       for (const s of spill) {
-        const left = this.inv.add(s.id, s.count, s.dmg ?? 0);
-        if (left) this.entities.dropItem(this.player, { id: s.id, count: left, dmg: s.dmg ?? 0 });
+        const left = this.inv.add(s.id, s.count, s.dmg ?? 0, extras(s));
+        if (left) this.entities.dropItem(this.player, { ...s, count: left });
       }
     }
     if ((m.kind === 'chest' || m.kind === 'large_chest') && this.openBlock) this.audio.chest(false, this.openBlock.at);
@@ -900,6 +939,8 @@ export class Game {
         if (this.creative && target.stack) this.inv.cursor = { ...target.stack, count: itemDef(target.stack.id).stack };
         break;
       case 'recipe': m.placeRecipe?.(target, button === 1); break;
+      case 'enchant': m.enchant?.(target); break;
+      case 'rename': m.rename?.(target); break;
       case 'trash':
         if (!this.creative) break;
         if (this.inv.cursor) this.inv.cursor = null;
@@ -911,7 +952,7 @@ export class Game {
         if (!c) break;
         if (this.creative) { this.inv.cursor = null; break; }
         const n = button === 2 ? 1 : c.count;
-        this.entities.dropItem(this.player, { id: c.id, count: n, dmg: c.dmg ?? 0 });
+        this.entities.dropItem(this.player, { ...c, count: n });
         this.inv.cursor = n < c.count ? { ...c, count: c.count - n } : null;
         break;
       }
@@ -926,8 +967,20 @@ export class Game {
 
   // Sounds for things that happen in menus.
   menuEvent(type, stack) {
+    const at = this.openBlock?.at ?? { x: this.player.x, y: this.player.eyeY, z: this.player.z };
     if (type === 'craft') this.audio.craft();
     else if (type === 'equip') this.audio.equip(itemDef(stack.id).armor.material);
+    else if (type === 'enchant') {
+      this.audio.enchant(at);
+      this.particles.bits(at.x, at.y + 0.4, at.z, TEX.glyph, 14, 1.2, 0.9);
+    } else if (type === 'anvil') this.audio.anvil(at);
+    else if (type === 'grind') this.audio.place('stone', at);
+    else if (type === 'smelted') {
+      // Taking smelted things out of a furnace is worth a little experience.
+      const per = SMELT_XP[itemDef(stack.id)?.name] ?? 0, total = per * stack.count;
+      const n = Math.floor(total) + (Math.random() < total % 1 ? 1 : 0);
+      if (n > 0) this.dropXp(this.player.x, this.player.y + 0.5, this.player.z, n);
+    }
   }
 
   paletteClick(id, button, shift) {
@@ -1056,7 +1109,7 @@ export class Game {
     this.furnaces.delete(key);
     this.net?.containerRemoved(key);
     if (!slots || this.net?.guest) return;
-    for (const s of slots) if (s) this.entities.spawnItem(x + 0.5, y + 0.5, z + 0.5, s.id, s.count, s.dmg ?? 0);
+    for (const s of slots) if (s) this.entities.spawnItem(x + 0.5, y + 0.5, z + 0.5, s.id, s.count, s.dmg ?? 0, 0.6, null, extras(s));
   }
 
   sleepIn(x, y, z) {
@@ -1298,15 +1351,21 @@ export class Game {
       else { this.placeAt(Math.floor(p.x), Math.floor(p.z)); this.needsRespawnY = false; }
     }
     if (active) this.handleLook();
-    // Smoke drifting up from campfires.
+    // Smoke drifting up from campfires, and glyphs from bookshelves to enchanting tables.
     if (!paused && this.campfires) {
       for (const [x, y, z] of this.campfires) if (Math.random() < dt * 3) this.particles.smoke(x + 0.5, y + 0.8, z + 0.5, 1, 0.2, true);
+    }
+    if (!paused && this.tables) {
+      for (const t of this.tables) for (const [x, y, z] of t.shelves) {
+        if (Math.random() < dt * 0.18) this.particles.glyph(x + 0.5, y + 0.9, z + 0.5, t.x + 0.5, t.y + 1.1, t.z + 0.5);
+      }
     }
     const move = active ? this.movementInput() : { forward: 0, right: 0, jump: false, sneak: false, sprint: false };
     p.frozen = !w.isLoaded(p.x, p.z) || this.needsRespawnY;
     if (!paused && this.state !== 'dead') {
       if (this.riding) this.steer(move);
       else {
+        p.depthStrider = enchLevel(this.inv.armor[3], 'depth_strider');
         const prevInWater = p.inWater;
         p.update(dt, move, w);
         if (p.inWater && !prevInWater && p.vy < -4) this.audio.splash(Math.min(1, -p.vy / 14));
@@ -1388,6 +1447,69 @@ export class Game {
       if (d > 1.2) { const g = p.groundBlock(this.world); if (g) this.audio.land(BLOCKS[g]?.sound ?? 'stone'); }
     }
     if (this.creative && p.y < -64) { p.y = 120; p.vy = 0; p.flying = true; }
+  }
+
+  // ---------------------------------------------------------------- experience (see enchanting.js)
+  // Experience picked up. Mending gear takes it first: each point mends two points of wear.
+  gainXp(n) {
+    const gear = [this.inv.held, ...this.inv.armor].filter((s) => s && s.dmg > 0 && enchLevel(s, 'mending'));
+    if (gear.length) {
+      const s = gear[Math.floor(Math.random() * gear.length)], fix = Math.min(s.dmg, n * 2);
+      s.dmg -= fix;
+      n -= Math.ceil(fix / 2);
+      this.invChanged();
+    }
+    this.audio.orb();
+    if (n <= 0) return;
+    const before = this.xp.level;
+    addXp(this.xp, n);
+    if (this.xp.level > before && this.xp.level % 5 === 0) this.audio.levelUp();
+  }
+
+  // Experience earned here (mining, smelting, fishing, trading), as orbs at (x, y, z).
+  dropXp(x, y, z, n) { if (n > 0 && !this.creative) this.entities.spawnXp(x, y, z, n); }
+
+  // The enchanting table's offers change once something's been enchanted.
+  newEnchantSeed() { this.enchantSeed = (Math.random() * 2 ** 32) >>> 0; }
+
+  // Bookshelves around an enchanting table: two blocks out, on its level or one up, with air
+  // between them and the table (up to 15 count).
+  bookshelvesAround(x, y, z) {
+    const w = this.world;
+    let n = 0;
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      if ((dx || dz) && !w.getBlock(x + dx, y, z + dz) && !w.getBlock(x + dx, y + 1, z + dz)) {
+        for (const dy of [0, 1]) {
+          if (w.getBlock(x + dx * 2, y + dy, z + dz * 2) === B.bookshelf) n++;
+          if (dx && dz) {
+            if (w.getBlock(x + dx * 2, y + dy, z + dz) === B.bookshelf) n++;
+            if (w.getBlock(x + dx, y + dy, z + dz * 2) === B.bookshelf) n++;
+          }
+        }
+      }
+    }
+    return Math.min(15, n);
+  }
+
+  openEnchanting(x, y, z) {
+    this.openMenu(new EnchantingMenu(this, this.bookshelvesAround(x, y, z)), { key: this.containerKey(x, y, z), at: { x: x + 0.5, y: y + 0.8, z: z + 0.5 } });
+  }
+
+  openAnvil(x, y, z) {
+    this.openMenu(new AnvilMenu(this), { key: this.containerKey(x, y, z), at: { x: x + 0.5, y: y + 0.5, z: z + 0.5 } });
+  }
+
+  openGrindstone(x, y, z) {
+    const at = { x: x + 0.5, y: y + 0.5, z: z + 0.5 };
+    this.openMenu(new GrindstoneMenu(this, at), { key: this.containerKey(x, y, z), at });
+  }
+
+  // Levels spent (enchanting, the anvil). Creative players have all they need.
+  spendLevels(n) {
+    if (this.creative) return true;
+    if (this.xp.level < n) return false;
+    this.xp.level -= n;
+    return true;
   }
 
   // ---------------------------------------------------------------- riding (see riding.js)
@@ -1483,7 +1605,8 @@ export class Game {
       this.invuln = Math.max(0, this.invuln - 1);
       this.sinceDamage++;
       if (p.headInWater) {
-        this.air--;
+        const r = enchLevel(this.inv.armor[0], 'respiration');
+        if (!r || Math.random() < 1 / (r + 1)) this.air--;
         if (this.air <= -20) { this.air = 0; this.damage(2, 'You drowned', true); }
       } else this.air = Math.min(300, this.air + 6);
       const inFire = this.touching(B.fire) || this.touching(B.campfire);
@@ -1558,12 +1681,25 @@ export class Game {
   // Now and then, lava close by bubbles and pops.
   ambientTick() {
     const p = this.player, w = this.world;
-    // Look around for campfires to send smoke up from (see updateGame).
+    // Look around for campfires to send smoke up from, and enchanting tables (with the bookshelves
+    // around them) to draw books over (see updateGame and drawList).
     this.campfires = [];
+    const tables = [];
     const px = Math.floor(p.x), py = Math.floor(p.y), pz = Math.floor(p.z);
     for (let y = py - 6; y <= py + 6; y++) for (let z = pz - 16; z <= pz + 16; z++) for (let x = px - 16; x <= px + 16; x++) {
-      if (w.getBlock(x, y, z) === B.campfire) this.campfires.push([x, y, z]);
+      const id = w.getBlock(x, y, z);
+      if (id === B.campfire) this.campfires.push([x, y, z]);
+      else if (id === B.enchanting_table) tables.push([x, y, z]);
     }
+    const old = new Map((this.tables ?? []).map((t) => [`${t.x},${t.y},${t.z}`, t]));
+    this.tables = tables.map(([x, y, z]) => {
+      const t = old.get(`${x},${y},${z}`) ?? { x, y, z, yaw: Math.random() * 6.28, open: 0 };
+      t.shelves = [];
+      for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) for (const dy of [0, 1]) {
+        if ((Math.abs(dx) === 2 || Math.abs(dz) === 2) && w.getBlock(x + dx, y + dy, z + dz) === B.bookshelf) t.shelves.push([x + dx, y + dy, z + dz]);
+      }
+      return t;
+    });
     if (Math.random() > 0.35) return;
     for (let i = 0; i < 16; i++) {
       const x = Math.floor(p.x + (Math.random() - 0.5) * 24), y = Math.floor(p.y + (Math.random() - 0.5) * 12);
@@ -1600,6 +1736,10 @@ export class Game {
       amount *= 1 - eff / 25;
       this.invChanged();
     }
+    // Protection enchantments: each level takes off another 4% (Feather Falling, Fire, Blast and
+    // Projectile Protection more against their own kind of harm), up to 80%.
+    const epf = protection(this.inv.armor, cause);
+    if (epf > 0) amount *= 1 - Math.min(20, epf) / 25;
     this.health = Math.max(0, this.health - amount);
     this.hurtCount++;
     this.exhaust(0.1);
@@ -1690,14 +1830,19 @@ export class Game {
     if (t < 0.1) return;
     const f = Math.min(1, t), power = (f * f + f * 2) / 3;
     if (power < 0.1) return;
-    const p = this.player, d = p.lookDir(), v = power * 55;
+    const p = this.player, d = p.lookDir(), v = power * 55, ench = this.inv.held?.ench;
     const crit = power >= 1;
-    const dmg = Math.round(power * 5) + 1 + (crit ? Math.floor(Math.random() * 3) : 0);
+    let dmg = Math.round(power * 5) + 1 + (crit ? Math.floor(Math.random() * 3) : 0);
+    // Power: a quarter more damage per level (and one level's worth more); Infinity: the arrow
+    // isn't used up (and can't be picked up).
+    if (ench?.power) dmg = Math.round(dmg * (1 + 0.25 * (ench.power + 1)));
+    const infinite = !!ench?.infinity;
     const me = this.players()[0];
-    this.entities.spawnArrow(p.x + d[0] * 0.4, p.eyeY - 0.1 + d[1] * 0.4, p.z + d[2] * 0.4, d[0] * v + p.vx, d[1] * v, d[2] * v + p.vz, me, dmg, !this.creative);
+    this.entities.spawnArrow(p.x + d[0] * 0.4, p.eyeY - 0.1 + d[1] * 0.4, p.z + d[2] * 0.4, d[0] * v + p.vx, d[1] * v, d[2] * v + p.vz, me, dmg,
+      !this.creative && !infinite, ench ? { punch: ench.punch ?? 0, flame: !!ench.flame } : null);
     this.audio.bow({ x: p.x, y: p.eyeY, z: p.z });
     if (!this.creative) {
-      this.inv.take(I.arrow, 1);
+      if (!infinite) this.inv.take(I.arrow, 1);
       if (this.inv.damageHeld(1)) this.audio.toolBreak();
       this.invChanged();
     }
@@ -1715,18 +1860,24 @@ export class Game {
   }
 
   attackEntity(e) {
-    const p = this.player, held = this.inv.heldId, def = itemDef(held);
+    const p = this.player, held = this.inv.heldId, def = itemDef(held), ench = this.inv.held?.ench ?? null;
     const f = this.attackStrength(this.tickAcc);
     const strong = f > 0.9;
     // A fully wound-up hit while falling is a critical hit: half again as much damage, with sparks.
     const crit = strong && !p.onGround && p.vy < -0.5 && !p.inWater && !p.onLadder && !p.flying;
     let amount = attackDamage(held) * (0.2 + f * f * 0.8);
     if (crit) amount *= 1.5;
+    // Sharpness (and Smite on the undead, Bane of Arthropods on spiders) add their own damage,
+    // scaled by the wind-up like the rest, with blue sparks.
+    const extra = enchantDamage(ench, e.type) * f;
+    amount += extra;
     this.swingArm();
     this.resetAttack();
-    this.audio.attack(crit ? 'crit' : strong ? 'strong' : 'weak', { x: e.x, y: e.y + e.def.h * 0.6, z: e.z }, def?.weapon || def?.tool?.type === 'axe');
-    if (crit) this.particles.bits(e.x, e.y + e.def.h * 0.7, e.z, TEX.crit, 10, 2.4, 0.5);
-    this.entities.attack(e, amount, strong && p.sprinting ? 1 : 0);
+    this.audio.attack(crit ? 'crit' : strong ? 'strong' : 'weak', { x: e.x, y: e.y + e.h * 0.6, z: e.z }, def?.weapon || def?.tool?.type === 'axe');
+    if (crit) this.particles.bits(e.x, e.y + e.h * 0.7, e.z, TEX.crit, 10, 2.4, 0.5);
+    if (extra > 0.5) this.particles.bits(e.x, e.y + e.h * 0.7, e.z, TEX.magic_crit, 10, 2.2, 0.5);
+    const opts = ench ? { fire: (ench.fire_aspect ?? 0) * 4, looting: ench.looting ?? 0 } : null;
+    this.entities.attack(e, amount, (strong && p.sprinting ? 1 : 0) + (ench?.knockback ?? 0), opts);
     this.exhaust(0.1);
     // Swords wear by one per hit; tools used as weapons wear twice as fast.
     if (!this.creative && def?.durability && this.inv.damageHeld(def.tool ? 2 : 1)) this.audio.toolBreak();
@@ -1738,7 +1889,7 @@ export class Game {
     const p = this.player, held = this.inv.heldId, def = itemDef(held);
     const f = this.attackStrength(this.tickAcc), strong = f > 0.9;
     const crit = strong && !p.onGround && p.vy < -0.5 && !p.inWater && !p.onLadder && !p.flying;
-    let amount = attackDamage(held) * (0.2 + f * f * 0.8);
+    let amount = attackDamage(held) * (0.2 + f * f * 0.8) + enchantDamage(this.inv.held?.ench, 'player') * f;
     if (crit) amount *= 1.5;
     this.swingArm();
     this.resetAttack();
@@ -1755,7 +1906,8 @@ export class Game {
   interactive(id) {
     return (!!DOOR[id] && !DOOR[id].iron) || CHEST[id] !== undefined || !!BED[id] || id === B.crafting_table || FURNACE_IDS.has(id) || !!GATE[id] ||
       id === B.barrel || LOOT_KIND[id] !== undefined || id === B.bell || id === B.bell_z || id === B.composter_ready ||
-      (!!TRAPDOOR[id] && !TRAPDOOR[id].iron) || SWITCH[id]?.kind === 'lever' || SWITCH[id]?.kind === 'button';
+      (!!TRAPDOOR[id] && !TRAPDOOR[id].iron) || SWITCH[id]?.kind === 'lever' || SWITCH[id]?.kind === 'button' ||
+      id === B.enchanting_table || id === B.anvil || id === B.anvil_z || id === B.grindstone || id === B.grindstone_z;
   }
 
   breakTarget() {
@@ -1776,8 +1928,18 @@ export class Game {
     this.particles.burst(x, y, z, id);
     this.audio.breakBlock(def.sound, { x: x + 0.5, y: y + 0.5, z: z + 0.5 });
     if (!this.creative && byPlayer) {
-      const held = this.inv.heldId;
-      for (const drop of dropsFor(id, held)) this.entities.spawnItem(x + 0.5, y + 0.3, z + 0.5, drop.id, drop.count);
+      const held = this.inv.heldId, stack = this.inv.held, name = BLOCKS[BASE[id]]?.name;
+      const silk = enchLevel(stack, 'silk_touch') && SILK_TOUCH(name) && canHarvest(def, held);
+      let drops = silk ? [{ id: BASE[id], count: 1 }] : dropsFor(id, held);
+      // Fortune: each ore can drop several times over.
+      const fortune = enchLevel(stack, 'fortune');
+      if (fortune && !silk && /_ore$/.test(name ?? '')) {
+        const k = Math.max(0, Math.floor(Math.random() * (fortune + 2)) - 1) + 1;
+        drops = drops.map((d) => ({ ...d, count: d.count * k }));
+      }
+      for (const drop of drops) this.entities.spawnItem(x + 0.5, y + 0.3, z + 0.5, drop.id, drop.count);
+      const ox = ORE_XP[name];
+      if (ox && !silk) this.dropXp(x + 0.5, y + 0.5, z + 0.5, ox[0] + Math.floor(Math.random() * (ox[1] - ox[0] + 1)));
       if (def.hardness > 0 && itemDef(held)?.durability && this.inv.damageHeld(itemDef(held).weapon ? 2 : 1)) this.audio.toolBreak();
       this.invChanged();
     }
@@ -1791,7 +1953,13 @@ export class Game {
       this.mining = { x: target.x, y: target.y, z: target.z, id: target.id, progress: 0, sound: 0 };
     }
     const cur = this.mining;
-    const time = breakTime(BLOCKS[target.id], this.inv.heldId);
+    // Efficiency speeds tools up; mining is five times slower with your head under water (unless
+    // your helmet has Aqua Affinity) and again five times slower when you're not standing on
+    // something, as in the original.
+    const p = this.player;
+    let time = breakTime(BLOCKS[target.id], this.inv.heldId, enchLevel(this.inv.held, 'efficiency'));
+    if (p.headInWater && !enchLevel(this.inv.armor[0], 'aqua_affinity')) time *= 5;
+    if (!p.onGround && !p.flying) time *= 5;
     cur.progress += time <= 0 ? 1 : dt / time;
     cur.sound -= dt;
     if (!this.swinging || this.swing >= 0.5) this.swingArm();
@@ -1844,6 +2012,9 @@ export class Game {
       }
       else if (CHEST[t.id] !== undefined) this.openChestAt(t.x, t.y, t.z);
       else if (t.id === B.crafting_table) this.openCraftingTable(t.x, t.y, t.z);
+      else if (t.id === B.enchanting_table) this.openEnchanting(t.x, t.y, t.z);
+      else if (t.id === B.anvil || t.id === B.anvil_z) this.openAnvil(t.x, t.y, t.z);
+      else if (t.id === B.grindstone || t.id === B.grindstone_z) this.openGrindstone(t.x, t.y, t.z);
       else if (FURNACE_IDS.has(t.id)) this.openFurnaceAt(t.x, t.y, t.z);
       else if (BED[t.id]) {
         const b = BED[t.id], d = FACE_DIRS[b.dir];
@@ -2040,19 +2211,19 @@ export class Game {
     if (!s) return;
     const count = all ? s.count : 1;
     if (!this.creative) {
-      this.entities.dropItem(this.player, { id: s.id, count, dmg: s.dmg });
+      this.entities.dropItem(this.player, { ...s, count });
       s.count -= count;
       if (s.count <= 0) this.inv.slots[this.inv.selected] = null;
     } else {
-      this.entities.dropItem(this.player, { id: s.id, count, dmg: 0 });
+      this.entities.dropItem(this.player, { ...s, count });
     }
     this.swingArm();
     this.invChanged();
   }
 
-  // Items walked over are picked up (called by entities).
-  pickup(id, count, dmg) {
-    const left = this.creative ? 0 : this.inv.add(id, count, dmg);
+  // Items walked over are picked up (called by entities). `x`: the stack's extras.
+  pickup(id, count, dmg, x = null) {
+    const left = this.creative ? 0 : this.inv.add(id, count, dmg, x);
     if (left < count) { this.audio.pop(); this.invChanged(); }
     return left;
   }
@@ -2349,6 +2520,7 @@ export class Game {
         equip: 1 - this.handHeight,
         bob, walk, roll, lag: [(this.lagPitch - p.pitch) * 0.1, (this.lagYaw - p.yaw) * 0.1],
         eat: this.eating ? this.eating.left : undefined,
+        glint: shiny(this.inv.held),
         light: [Math.max(heldLight >> 4, 0), heldLight & 15],
       },
     });
@@ -2357,6 +2529,19 @@ export class Game {
   drawList(cam) {
     const list = this.entities.renderList(cam);
     if (this.net) this.avatars.render(this.net.players.values(), cam, this.world, this.settings.renderDistance * 16, list);
+    // The books over enchanting tables, turned to the nearest player within three blocks.
+    if (this.tables?.length) {
+      const now = performance.now() / 1000, everyone = this.players();
+      this.bookMats ??= [];
+      let k = 0;
+      const mats = () => this.bookMats[k++] ??= mat4();
+      for (const t of this.tables) {
+        if (Math.hypot(t.x - cam.x, t.z - cam.z) > 32) continue;
+        let near = null, nd = 3;
+        for (const q of everyone) { const d = Math.hypot(q.x - t.x - 0.5, q.z - t.z - 0.5); if (d < nd && Math.abs(q.y - t.y) < 3) { nd = d; near = q; } }
+        tableBook(this.renderer, mats, t.x, t.y, t.z, cam, now, near, t, list);
+      }
+    }
     // Fishing floats: this player's, and anyone else's.
     const floats = [];
     if (this.fishing.bobber) floats.push(this.fishing.bobber);
@@ -2396,6 +2581,7 @@ export class Game {
     }
     if (this.menu) this.gui.frame();
     ui.renderStats(!this.creative, Math.ceil(this.health), this.air, p.headInWater, this.food, this.inv.armorPoints);
+    ui.renderXp(!this.creative, this.xp.level, this.xp.points / xpToNext(this.xp.level));
     const wind = this.attackStrength(this.tickAcc);
     ui.setAttackMeter(this.state === 'play' && wind < 1 ? wind : -1);
     this.touch.update();

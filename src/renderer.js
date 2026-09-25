@@ -552,7 +552,11 @@ export class Renderer {
       gl.uniform4f(u.u_lightOverride, 1, e.light[0] / 15, e.light[1] / 15, 0);
       gl.uniform4f(u.u_colorMul, e.tint ? e.tint[0] : 1, e.tint ? e.tint[1] : 1, e.tint ? e.tint[2] : 1, 1);
       gl.uniform1f(u.u_hurt, e.hurt ? 0.45 : 0);
-      for (const part of e.parts) this.drawModel(part.mesh, part.model);
+      for (const part of e.parts) {
+        if (part.glint) gl.uniform1f(u.u_glint, 1);
+        this.drawModel(part.mesh, part.model);
+        if (part.glint) gl.uniform1f(u.u_glint, 0);
+      }
     }
     gl.uniform1f(u.u_hurt, 0);
     gl.uniform4f(u.u_lightOverride, 0, 0, 0, 0);
@@ -771,7 +775,9 @@ export class Renderer {
     const m = identity(this.model);
     const mesh = this.handModel(hand, m);
     if (!mesh || mesh.kind !== 'block') gl.disable(gl.CULL_FACE);
+    if (mesh && hand.glint) gl.uniform1f(u.u_glint, 1);
     this.drawModel(mesh ?? this.handMesh, m);
+    gl.uniform1f(u.u_glint, 0);
     gl.enable(gl.CULL_FACE);
     gl.uniform4f(u.u_lightOverride, 0, 0, 0, 0);
   }

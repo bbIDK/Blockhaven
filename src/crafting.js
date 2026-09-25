@@ -63,6 +63,7 @@ for (const w of WOOD_NAMES) {
   if (I[`${w}_boat`] !== undefined) shaped(`${w}_boat`, 1, ['# #', '###'], { '#': `${w}_planks` }, 'misc');
 }
 shaped('saddle', 1, [' L ', 'LIL'], { L: 'leather', I: 'iron_ingot' }, 'equipment');
+shaped('enchanting_table', 1, [' B ', 'DOD', 'OOO'], { B: 'book', D: 'diamond', O: 'obsidian' }, 'misc');
 // Switches and the things they work.
 shaped('iron_door', 3, ['##', '##', '##'], { '#': 'iron_ingot' }, 'misc');
 shaped('iron_trapdoor', 1, ['##', '##'], { '#': 'iron_ingot' }, 'misc');

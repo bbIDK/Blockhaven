@@ -12,9 +12,11 @@ import { I, itemDef } from './items.js';
 import { rayBox } from './world.js';
 import { HEIGHT } from './config.js';
 import { villageAt } from './villages.js';
-import { MOBS, initMob, mobTick, mobPhysics, renderMob, provoked, mobUseEffect, applyMobUse, applyHeldUse, mobDrops, herdFor, monsterFor, HOSTILE_TYPES } from './mobs.js';
+import { MOBS, initMob, mobTick, mobPhysics, renderMob, provoked, mobUseEffect, applyMobUse, applyHeldUse, mobDrops, mobXp, herdFor, monsterFor, HOSTILE_TYPES } from './mobs.js';
 import { Civilians } from './civilians.js';
+import { extras, cleanExtras } from './inventory.js';
 import { boatPhysics, boatMesh, boatModel, BOAT_WOODS } from './riding.js';
+import { splitXp, orbSize } from './enchanting.js';
 
 class Entity extends Body {
   constructor(kind, hw, h, x, y, z) {
@@ -71,29 +73,32 @@ export class Entities {
     this.civilians.reset();
     if (!saved) return;
     for (const s of saved) {
-      if (s.k === 'item' && itemDef(s.id)) this.spawnItem(s.x, s.y, s.z, s.id, s.count, s.dmg, 0);
+      if (s.k === 'item' && itemDef(s.id)) this.spawnItem(s.x, s.y, s.z, s.id, s.count, s.dmg, 0, null, cleanExtras(s.ex));
       else if (s.k === 'mob' && MOBS[s.t] && MOBS[s.t].kind !== 'civilian') {
         const m = this.spawnMob(s.t, s.x, s.y, s.z, extraOpts(s));
         m.yaw = s.yaw ?? 0; m.health = s.hp ?? m.health;
         if (Number.isFinite(s.mh)) m.maxHealth = s.mh;
       } else if (s.k === 'boat') this.spawnBoat(s.x, s.y, s.z, BOAT_WOODS.includes(s.w) ? s.w : 'oak', s.yaw ?? 0);
+      else if (s.k === 'xp' && Number.isInteger(s.v) && s.v > 0) this.spawnXp(s.x, s.y, s.z, Math.min(s.v, 2477));
     }
   }
 
   serialize() {
-    return this.list.filter((e) => !e.dead && (e.kind === 'item' || e.kind === 'boat' || (e.kind === 'mob' && e.def.kind !== 'civilian' && !e.pinned)))
+    return this.list.filter((e) => !e.dead && (e.kind === 'item' || e.kind === 'boat' || e.kind === 'xp' || (e.kind === 'mob' && e.def.kind !== 'civilian' && !e.pinned)))
       .slice(0, 300)
-      .map((e) => (e.kind === 'item' ? { k: 'item', x: e.x, y: e.y, z: e.z, id: e.id, count: e.count, dmg: e.dmg }
+      .map((e) => (e.kind === 'item' ? { k: 'item', x: e.x, y: e.y, z: e.z, id: e.id, count: e.count, dmg: e.dmg, ex: e.extra ?? undefined }
         : e.kind === 'boat' ? { k: 'boat', x: e.x, y: e.y, z: e.z, yaw: e.yaw, w: e.wood }
+          : e.kind === 'xp' ? { k: 'xp', x: e.x, y: e.y, z: e.z, v: e.value }
           : { k: 'mob', t: e.type, x: e.x, y: e.y, z: e.z, yaw: e.yaw, hp: e.health, mh: e.maxHealth, ...mobExtra(e) }));
   }
 
   // ---------------------------------------------------------------- spawning
   // `vel`: [vx, vy, vz], or null for a little random hop.
-  spawnItem(x, y, z, id, count, dmg = 0, delay = 0.6, vel = null) {
-    if (this.guest) { this.game.net.dropItem(x, y, z, id, count, dmg, delay, vel); return null; }
+  // (`extra`: the stack's enchantments and so on; see inventory.js.)
+  spawnItem(x, y, z, id, count, dmg = 0, delay = 0.6, vel = null, extra = null) {
+    if (this.guest) { this.game.net.dropItem(x, y, z, id, count, dmg, delay, vel, extra); return null; }
     const e = new Entity('item', 0.125, 0.25, x, y, z);
-    Object.assign(e, { id, count, dmg, pickupDelay: delay, spin: Math.random() * 6.28 });
+    Object.assign(e, { id, count, dmg, pickupDelay: delay, spin: Math.random() * 6.28, extra });
     if (vel) [e.vx, e.vy, e.vz] = vel;
     else {
       e.vx = (Math.random() - 0.5) * 2;
@@ -107,7 +112,7 @@ export class Entities {
   dropItem(player, stack) {
     if (!stack?.id || !stack.count) return;
     const d = player.lookDir();
-    this.spawnItem(player.x, player.eyeY - 0.3, player.z, stack.id, stack.count, stack.dmg ?? 0, 1.5, [d[0] * 6, d[1] * 6 + 2, d[2] * 6]);
+    this.spawnItem(player.x, player.eyeY - 0.3, player.z, stack.id, stack.count, stack.dmg ?? 0, 1.5, [d[0] * 6, d[1] * 6 + 2, d[2] * 6], extras(stack));
   }
 
   primeTNT(x, y, z, fuse) {
@@ -144,6 +149,46 @@ export class Entities {
     Object.assign(e, { wood, yaw, hits: 0, hurt: 0, rider: null, def: { label: 'Boat' } });
     this.list.push(e);
     return e;
+  }
+
+  // Experience worth `n` points: orbs that spring out and home in on the nearest player.
+  spawnXp(x, y, z, n) {
+    n = Math.round(n);
+    if (n <= 0) return;
+    if (this.guest) { this.game.net.dropXp?.(x, y, z, n); return; }
+    for (const v of splitXp(Math.min(n, 5000))) {
+      const e = new Entity('xp', 0.125, 0.25, x, y, z);
+      const a = Math.random() * Math.PI * 2, s = 0.8 + Math.random() * 1.2;
+      Object.assign(e, { value: v, vx: Math.cos(a) * s, vy: 2 + Math.random() * 2.5, vz: Math.sin(a) * s, pickupDelay: 0.5 });
+      this.list.push(e);
+    }
+  }
+
+  // Orbs are light: they float up in water, drift, and are drawn to anyone within 8 blocks,
+  // faster the closer they get; touching someone gives them the experience.
+  orbPhysics(e, dt, fluid) {
+    const game = this.game;
+    e.pickupDelay -= dt;
+    if (fluid) e.vy += (2.5 - e.vy) * Math.min(1, dt * 3); else e.vy = Math.max(-20, e.vy - 12 * dt);
+    let best = null, bd = 8;
+    for (const p of this.players ?? []) {
+      if (p.dead) continue;
+      const d = Math.hypot(p.x - e.x, p.y + 0.9 - e.y, p.z - e.z);
+      if (d < bd) { bd = d; best = p; }
+    }
+    if (best) {
+      const f = (1 - bd / 8) ** 2 * 40 * dt / Math.max(bd, 0.1);
+      e.vx += (best.x - e.x) * f; e.vy += (best.y + 0.9 - e.y) * f; e.vz += (best.z - e.z) * f;
+    }
+    const drag = e.onGround ? Math.exp(-6 * dt) : Math.exp(-0.4 * dt);
+    e.vx *= drag; e.vz *= drag;
+    e.move(this.world, e.vx * dt, e.vy * dt, e.vz * dt);
+    if (best && bd < 1.2 && e.pickupDelay <= 0) {
+      e.dead = true;
+      game.net?.entityGone?.(e, 'p');
+      if (best.addr) game.net?.giveXp?.(best.addr, e.value); else game.gainXp(e.value);
+    }
+    if (e.age > 300) e.dead = true;
   }
 
   // Someone knocks at a boat: a few knocks (one in Creative) and it breaks, dropping itself.
@@ -185,10 +230,11 @@ export class Entities {
 
   // An arrow flying from (x, y, z). `owner`: who shot it (not hit by it at first); `pickup`:
   // whether it can be collected where it lands.
-  spawnArrow(x, y, z, vx, vy, vz, owner, damage, pickup) {
-    if (this.guest) { this.game.net.shootArrow?.(x, y, z, vx, vy, vz, damage, pickup); return null; }
+  // (`fx`: what the bow's enchantments add: { punch: extra knockback, flame: sets things alight }.)
+  spawnArrow(x, y, z, vx, vy, vz, owner, damage, pickup, fx = null) {
+    if (this.guest) { this.game.net.shootArrow?.(x, y, z, vx, vy, vz, damage, pickup, fx); return null; }
     const e = new Entity('arrow', 0.05, 0.1, x, y, z);
-    Object.assign(e, { vx, vy, vz, owner, damage, pickup, stuck: false, life: 0 });
+    Object.assign(e, { vx, vy, vz, owner, damage, pickup, stuck: false, life: 0, punch: fx?.punch ?? 0, flame: !!fx?.flame });
     this.list.push(e);
     return e;
   }
@@ -253,6 +299,7 @@ export class Entities {
       } else if (e.kind === 'mob') {
         const loaded = this.world.isLoaded(e.x, e.z);
         if (loaded) mobTick(this, e);
+        if (e.playerHurt > 0) e.playerHurt--;
         // Out of sight, out of mind: creatures far from everyone go (village folk and penned
         // animals come back when the village does). Horses someone has tamed or saddled stay,
         // waiting where they were left.
@@ -293,7 +340,7 @@ export class Entities {
         e.move(w, e.vx * dt, e.vy * dt, e.vz * dt);
         const d = Math.hypot(p.x - e.x, p.y + 0.9 - e.y, p.z - e.z);
         if (e.pickupDelay <= 0 && d < 1.6 && game.state !== 'dead') {
-          const left = game.pickup(e.id, e.count, e.dmg);
+          const left = game.pickup(e.id, e.count, e.dmg, e.extra);
           if (left === 0) e.dead = true; else e.count = left;
         }
         if (e.age > 300) e.dead = true;
@@ -308,6 +355,8 @@ export class Entities {
         if (e.onGround || e.age > 30 || e.y < 0) this.land(e);
       } else if (e.kind === 'arrow') {
         this.arrowPhysics(e, dt, fluid);
+      } else if (e.kind === 'xp') {
+        this.orbPhysics(e, dt, fluid);
       } else if (e.kind === 'boat') {
         // (A guest's boat moves where they paddle it; see remoteRide.)
         e.hurt = Math.max(0, e.hurt - dt);
@@ -333,6 +382,7 @@ export class Entities {
       return;
     }
     e.life += dt;
+    if (e.flame && !fluid && Math.random() < dt * 20) game.particles.smoke(e.x, e.y, e.z, 1, 0.05);
     const drag = Math.exp(-(fluid ? 3 : 0.2) * dt);
     e.vx *= drag; e.vy = e.vy * drag - 20 * dt; e.vz *= drag;
     const sp = Math.hypot(e.vx, e.vy, e.vz), step = sp * dt;
@@ -355,7 +405,7 @@ export class Entities {
     if (victim) {
       const dmg = Math.max(1, Math.round(e.damage * Math.min(1.5, sp / 25)));
       const at = { x: e.x, y: e.y, z: e.z };
-      if (victim.kind === 'mob') this.hurtMob(victim, dmg, e.owner ?? at, 0);
+      if (victim.kind === 'mob') this.hurtMob(victim, dmg, e.owner ?? at, e.punch, e.flame ? { fire: 5 } : null);
       else game.hurtPlayer(victim, dmg, e.owner?.label ? `You were shot by a ${e.owner.label.toLowerCase()}` : 'You were shot', [dx * 3, 2, dz * 3], true);
       game.audio.arrowHit?.(true, at);
       e.dead = true;
@@ -383,8 +433,11 @@ export class Entities {
     } else if (!game.creative) this.spawnItem(e.x, e.y + 0.3, e.z, BASE[e.block], 1);
   }
 
-  hurtMob(e, amount, from, bonus = 0) {
+  hurtMob(e, amount, from, bonus = 0, opts = null) {
     if (e.dying || e.dead) return;
+    // Hurt by a player lately: it gives experience when it dies (and more drops with Looting).
+    if (from && (from === this.game.player || 'addr' in from)) { e.playerHurt = 100; e.looting = opts?.looting ?? 0; }
+    if (opts?.fire) e.onFire = Math.max(e.onFire ?? 0, opts.fire * 20);
     // Like the original, a creature that was just hurt only takes the part of a new hit that's
     // stronger than the last one, so spam-clicking doesn't help.
     if (e.hurt > 0) {
@@ -425,20 +478,22 @@ export class Entities {
         s.vy = 4; s.vx = (Math.random() - 0.5) * 3; s.vz = (Math.random() - 0.5) * 3;
       }
     }
+    if (e.playerHurt > 0) this.spawnXp(e.x, e.y + 0.4, e.z, mobXp(e));
     if (game.creative) return;
     for (const [id, n] of mobDrops(e)) this.spawnItem(e.x, e.y + 0.4, e.z, id, n);
   }
 
   // The player hits a creature. `bonus` adds knockback (a sprinting, full-strength hit).
-  attack(e, amount, bonus = 0) {
+  // `opts`: what the weapon's enchantments add ({ fire: seconds alight, looting: level }).
+  attack(e, amount, bonus = 0, opts = null) {
     const n = this.game.creative ? 100 : amount;
     if (e.kind === 'boat') {
       if (e.remote) this.game.net.hitMob(e, n, bonus);
       else this.hitBoat(e, this.game.creative);
       return;
     }
-    if (e.remote) this.game.net.hitMob(e, n, bonus);
-    else this.hurtMob(e, n, this.game.player, bonus);
+    if (e.remote) this.game.net.hitMob(e, n, bonus, opts);
+    else this.hurtMob(e, n, this.game.player, bonus, opts);
   }
 
   // Right-click on a creature: feeding, shearing, milking; talking to villagers; getting into a
@@ -528,6 +583,9 @@ export class Entities {
       } else if (s.k === 'a') {
         e = new Entity('arrow', 0.05, 0.1, s.x, s.y, s.z);
         Object.assign(e, { stuck: false, life: 0, ayaw: Number.isFinite(s.a) ? s.a : 0, apitch: Number.isFinite(s.p) ? s.p : 0 });
+      } else if (s.k === 'x') {
+        e = new Entity('xp', 0.125, 0.25, s.x, s.y, s.z);
+        e.value = Number.isInteger(s.v) && s.v > 0 ? s.v : 1;
       } else if (s.k === 'b') {
         e = new Entity('boat', 0.65, 0.55, s.x, s.y, s.z);
         Object.assign(e, { wood: BOAT_WOODS.includes(s.w) ? s.w : 'oak', yaw: Number.isFinite(s.a) ? s.a : 0, hits: 0, hurt: 0, def: { label: 'Boat' } });
@@ -545,6 +603,7 @@ export class Entities {
     }
     e.tx = s.x; e.ty = s.y; e.tz = s.z;
     if (s.k === 'i') {
+      e.extra = cleanExtras(s.ex);
       e.count = Number.isInteger(s.n) && s.n > 0 ? s.n : 1;
       e.dmg = Number.isInteger(s.d) ? s.d : 0;
       e.pickupDelay = Number.isFinite(s.pd) ? s.pd : 0;
@@ -711,6 +770,17 @@ export class Entities {
     return this.arrowMesh;
   }
 
+  // An orb: a flat picture turned to face the camera.
+  orbModel() {
+    if (!this.orbMesh) {
+      const L = TEX.xp_orb;
+      this.orbMesh = this.game.renderer.createMesh(boxMesh([
+        { from: [-0.5, 0, 0], to: [0.5, 1, 0], faces: [null, null, null, null, { layer: L, uv: [0, 0, 16, 16] }, { layer: L, uv: [16, 0, 0, 16] }] },
+      ]));
+    }
+    return this.orbMesh;
+  }
+
   renderList(cam) {
     this.matIndex = 0;
     const out = [];
@@ -731,7 +801,7 @@ export class Entities {
         const s = mesh.kind === 'block' ? 0.25 : 0.4;
         scale(m, m, s, s, s);
         translate(m, m, -0.5 - MODEL_OFFSET, -MODEL_OFFSET, -0.5 - MODEL_OFFSET);
-        out.push({ parts: [{ mesh, model: m }], light, tint: null });
+        out.push({ parts: [{ mesh, model: m, glint: e.extra?.ench || e.id === I.enchanted_book ? 1 : 0 }], light, tint: null });
       } else if (e.kind === 'tnt') {
         const mesh = r.itemMesh(B.tnt);
         const m = identity(this.mat());
@@ -748,6 +818,14 @@ export class Entities {
         translate(m, m, rx, ry, rz);
         translate(m, m, -0.5 - MODEL_OFFSET, -MODEL_OFFSET, -0.5 - MODEL_OFFSET);
         out.push({ parts: [{ mesh, model: m }], light, tint: null });
+      } else if (e.kind === 'xp') {
+        // Pulsing between green and yellow, and bigger for more experience.
+        const m = identity(this.mat()), s = 0.55 + orbSize(e.value) * 0.05, k = (Math.sin(e.age * 6 + (e.value % 7)) + 1) / 2;
+        translate(m, m, rx, ry - 0.08 + Math.sin(e.age * 3) * 0.03, rz);
+        rotateY(m, m, cam.yaw);
+        scale(m, m, s, s, s);
+        translate(m, m, -MODEL_OFFSET, -MODEL_OFFSET, -MODEL_OFFSET);
+        out.push({ parts: [{ mesh: this.orbModel(), model: m }], light: [15, 15], tint: [0.75 + k * 0.5, 1.25, 0.35 + k * 0.15] });
       } else if (e.kind === 'arrow') {
         if (!e.stuck && !e.remote) { e.ayaw = Math.atan2(-e.vx, -e.vz); e.apitch = Math.atan2(e.vy, Math.hypot(e.vx, e.vz)); }
         const m = identity(this.mat());

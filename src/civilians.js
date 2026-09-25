@@ -7,6 +7,7 @@
 import { villagesNear, villageResidents, villageAnimals, villageAt, RADIUS } from './villages.js';
 import { B, SOLID, DOOR, GATE, CLIMB, WATERLIKE, SHAPE_KIND, BED } from './blocks.js';
 import { I } from './items.js';
+import { randomBook, ENCHANTS } from './enchanting.js';
 import { TICKS_PER_DAY } from './config.js';
 import { mulberry32, hashString, clamp } from './math.js';
 import { TEX } from './textures.js';
@@ -31,8 +32,9 @@ export const ROLES = {
   hunter: { title: 'Hunter', held: 'bow', trades: [['buy', 'bow', 1, 4], ['buy', 'arrow', 16, 2], ['buy', 'leather_helmet', 1, 3], ['buy', 'leather_chestplate', 1, 5],
     ['buy', 'leather_leggings', 1, 4], ['buy', 'leather_boots', 1, 3], ['buy', 'saddle', 1, 8], ['sell', 'leather', 6, 1], ['sell', 'rabbit_hide', 9, 1],
     ['sell', 'feather', 16, 1], ['sell', 'string', 14, 1], ['sell', 'flint', 10, 1]] },
-  librarian: { title: 'Librarian', held: 'book', trades: [['buy', 'book', 1, 2], ['buy', 'bookshelf', 1, 6], ['buy', 'compass', 1, 5], ['buy', 'clock', 1, 5],
-    ['buy', 'paper', 12, 1], ['buy', 'lantern', 1, 3], ['buy', 'glass', 4, 1], ['sell', 'paper', 24, 1], ['sell', 'book', 4, 1], ['sell', 'lapis_lazuli', 8, 1]] },
+  librarian: { title: 'Librarian', held: 'book', trades: [['buy', 'enchanted_book', 1, 0], ['buy', 'enchanted_book', 1, 0], ['buy', 'book', 1, 2],
+    ['buy', 'bookshelf', 1, 6], ['buy', 'enchanting_table', 1, 20], ['buy', 'compass', 1, 5], ['buy', 'clock', 1, 5], ['buy', 'paper', 12, 1],
+    ['buy', 'lantern', 1, 3], ['buy', 'lapis_lazuli', 4, 2], ['sell', 'paper', 24, 1], ['sell', 'book', 4, 1], ['sell', 'lapis_lazuli', 8, 1]] },
   innkeeper: { title: 'Innkeeper', held: null, trades: [['buy', 'mushroom_stew', 1, 2], ['buy', 'bread', 4, 2], ['buy', 'cooked_salmon', 3, 2],
     ['buy', 'pumpkin_pie', 2, 2], ['buy', 'cookie', 8, 1], ['buy', 'bed', 1, 5], ['sell', 'wheat', 20, 1], ['sell', 'sugar_cane', 20, 1],
     ['sell', 'red_mushroom', 8, 1], ['sell', 'brown_mushroom', 8, 1]] },
@@ -563,9 +565,17 @@ export class Civilians {
     const mood = rec ? (rec.rep >= 10 ? -1 : rec.rep < -5 ? 1 : 0) : 0;
     return picked.map(([kind, name, count, price], i) => {
       const id = I[name] ?? B[name];
+      // A librarian's enchanted books: one enchantment each, dearer the higher it goes.
+      let ench = null;
+      if (name === 'enchanted_book') {
+        ench = randomBook(true, r);
+        const [n, lv] = Object.entries(ench)[0];
+        price = 4 + lv * 4 + Math.floor(r() * 6) + (ENCHANTS[n].treasure ? 12 : 0);
+      }
       const p = clamp(price + (r() < 0.25 ? 1 : 0) + (kind === 'buy' ? mood : -mood), 1, 64);
-      const key = `${e.rid}:${i}`, used = rec?.used[key] ?? 0, stock = kind === 'buy' ? 6 + Math.floor(r() * 6) : 10 + Math.floor(r() * 8);
-      return { kind, id, count, price: p, left: Math.max(0, stock - used), key };
+      const key = `${e.rid}:${i}`, used = rec?.used[key] ?? 0;
+      const stock = ench ? 1 + Math.floor(r() * 2) : kind === 'buy' ? 6 + Math.floor(r() * 6) : 10 + Math.floor(r() * 8);
+      return { kind, id, count, price: p, left: Math.max(0, stock - used), key, ench };
     });
   }
   // Makes a trade: true when it went through.
@@ -575,8 +585,9 @@ export class Civilians {
     if (offer.kind === 'buy') {
       if (!game.creative && inv.count(coin) < offer.price) return false;
       if (!game.creative) inv.take(coin, offer.price);
-      const left = inv.add(offer.id, offer.count);
-      if (left) game.entities.dropItem(game.player, { id: offer.id, count: left, dmg: 0 });
+      const x = offer.ench ? { ench: { ...offer.ench } } : null;
+      const left = inv.add(offer.id, offer.count, 0, x);
+      if (left) game.entities.dropItem(game.player, { id: offer.id, count: left, dmg: 0, ...x });
     } else {
       if (inv.count(offer.id) < offer.count) return false;
       inv.take(offer.id, offer.count);
@@ -591,6 +602,7 @@ export class Civilians {
     }
     game.particles.bits(e.x, e.y + 2.1, e.z, TEX.happy, 6, 0.8, 0.5);
     game.audio.trade?.();
+    game.dropXp(e.x, e.y + 1, e.z, 3 + Math.floor(Math.random() * 4));
     game.invChanged();
     return true;
   }

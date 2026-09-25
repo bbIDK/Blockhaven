@@ -95,7 +95,7 @@ export class TalkScreen {
       const col = i % 2, row = Math.floor(i / 2);
       const x = 8 + col * 132, y = 96 + row * 26;
       const give = o.kind === 'buy' ? { id: I.gold_coin, count: o.price } : { id: o.id, count: o.count };
-      const get = o.kind === 'buy' ? { id: o.id, count: o.count } : { id: I.gold_coin, count: o.price };
+      const get = o.kind === 'buy' ? { id: o.id, count: o.count, ench: o.ench ?? undefined } : { id: I.gold_coin, count: o.price };
       const can = o.left > 0 && (this.game.creative && o.kind === 'buy' ? true : inv.count(give.id) >= give.count);
       const rowEl = div(`talk-offer${can ? '' : ' off'}${o.left <= 0 ? ' sold' : ''}`, win, x, y, 128, 22);
       const a = slotBox(rowEl, 2, 2);
@@ -135,7 +135,7 @@ export class TalkScreen {
     const lines = o.kind === 'buy'
       ? [`<b>Buy ${get.count} × ${itemLabel(get.id)}</b>`, `<span class="t-gray">for ${give.count} gold coin${give.count > 1 ? 's' : ''}</span>`]
       : [`<b>Sell ${give.count} × ${itemLabel(give.id)}</b>`, `<span class="t-gray">for ${get.count} gold coin${get.count > 1 ? 's' : ''}</span>`];
-    lines.push(...tooltipLines({ id: get.id, count: get.count, dmg: 0 }).slice(1));
+    lines.push(...tooltipLines({ id: get.id, count: get.count, dmg: 0, ench: get.ench }).slice(1));
     this.tip.innerHTML = lines.join('<br>');
     this.tip.hidden = false;
     this.moveTip(ev);

@@ -229,6 +229,7 @@ function animalTick(ents, e) {
         const baby = ents.spawnMob(e.type, (e.x + mate.x) / 2, e.y, (e.z + mate.z) / 2, { baby: true, variant: Math.random() < 0.5 ? e.variant : mate.variant,
           colour: Math.random() < 0.5 ? e.colour : mate.colour, tame: e.tame && mate.tame });
         game.particles.bits(baby.x, baby.y + 0.5, baby.z, TEX.heart, 6, 1, 0.5);
+        ents.spawnXp(baby.x, baby.y + 0.5, baby.z, 1 + Math.floor(Math.random() * 7));
       }
       return;
     }
@@ -516,15 +517,26 @@ const DYE_OF = Object.fromEntries(DYES.map((dd, i) => [I[`${dd.name}_dye`], i]).
 export function mobDrops(e) {
   const out = [];
   if (e.baby) return out;
+  // (Looting on the weapon that killed it: up to that many more of each.)
+  const extra = e.looting ?? 0;
   for (const [id, lo, hi, chance] of e.def.drops) {
-    if (Math.random() > chance) continue;
-    const n = lo + Math.floor(Math.random() * (hi - lo + 1));
+    if (Math.random() > (chance ?? 1) + extra * 0.01) continue;
+    const n = lo + Math.floor(Math.random() * (hi - lo + 1)) + Math.floor(Math.random() * (extra + 1));
     if (n > 0) out.push([id, n]);
   }
   if (e.def.wool && !e.sheared) out.push([woolBlock(e.colour), 1]);
   if (e.saddled) out.push([I.saddle, 1]);
   if (e.def.sized && e.size > 1) return [];
   return out;
+}
+
+// The experience a creature is worth when a player kills it.
+export function mobXp(e) {
+  const t = e.def;
+  if (e.baby || t.kind === 'civilian') return 0;
+  if (t.sized) return e.size;
+  if (t.hostile) return 5;
+  return 1 + Math.floor(Math.random() * 3);
 }
 
 // ---------------------------------------------------------------- movement (every frame)

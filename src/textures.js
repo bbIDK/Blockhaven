@@ -7,6 +7,7 @@ import './tex/village.js';
 import './tex/items.js';
 import './tex/entities.js';
 import './tex/redstone.js';
+import './tex/magic.js';
 
 export const ARRAY_LAYERS = 256;
 

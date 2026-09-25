@@ -1,6 +1,7 @@
 // DOM side of the game: screens, HUD and options. Game logic lives in game.js; this module renders
 // state and reports user actions through on()/emit(). Sizes are in GUI pixels (--u, see applyScale).
-import { iconFor } from './icons.js';
+import { iconFor, setGlint } from './icons.js';
+import { shiny } from './enchanting.js';
 import { itemDef } from './items.js';
 
 export const $ = (id) => document.getElementById(id);
@@ -87,11 +88,13 @@ function fillSlot(el, stack) {
     img.style.visibility = 'hidden';
     count.textContent = '';
     dur.hidden = true;
+    setGlint(el, false);
     return;
   }
   const src = iconFor(stack.id);
   if (img.getAttribute('src') !== src) img.src = src;
   img.style.visibility = '';
+  setGlint(el, shiny(stack), src);
   count.textContent = stack.count > 1 ? stack.count : '';
   const def = itemDef(stack.id);
   if (def?.durability && stack.dmg) {
@@ -438,6 +441,18 @@ export class UI {
     el.classList.add('show');
     clearTimeout(this.nameTimer);
     this.nameTimer = setTimeout(() => el.classList.remove('show'), ms);
+  }
+
+  // Experience: `level`, and `frac` of the way to the next.
+  renderXp(show, level, frac) {
+    const key = show ? `${level}|${Math.round(frac * 180)}` : '';
+    if (key === this.lastXp) return;
+    this.lastXp = key;
+    const el = $('xpbar');
+    el.style.visibility = show ? 'visible' : 'hidden';
+    if (!show) return;
+    el.firstChild.style.width = `calc(var(--u) * ${Math.round(frac * 180)})`;
+    el.lastChild.textContent = level > 0 ? String(level) : '';
   }
 
   renderStats(survival, health, air, underwater, food = 20, armor = 0) {

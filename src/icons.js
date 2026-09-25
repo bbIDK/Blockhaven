@@ -16,6 +16,16 @@ const CPU = { willReadFrequently: true };
 
 export function initIcons(texturePixels) { pixels = texturePixels; }
 
+// The shimmer over an enchanted item's icon in slot `el` (a purple sheen masked to the icon).
+export function setGlint(el, on, src) {
+  let g = el.querySelector(':scope > .glint');
+  if (!on) { if (g && !g.hidden) g.hidden = true; return; }
+  if (!g) { g = document.createElement('s'); g.className = 'glint'; el.appendChild(g); }
+  g.hidden = false;
+  const v = `url(${src})`;
+  if (g.style.getPropertyValue('--icon') !== v) g.style.setProperty('--icon', v);
+}
+
 // Draws every icon ahead of time, a few at a time while the browser is idle, so that the first
 // look in the inventory (hundreds of icons at once) doesn't stall the game.
 export function warmIcons() {

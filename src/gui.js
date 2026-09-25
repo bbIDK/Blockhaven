@@ -4,7 +4,8 @@
 // coordinates. Menus (containers.js) hold the rules; this module draws them and turns pointer
 // input into menu actions.
 import { $ } from './ui.js';
-import { iconFor } from './icons.js';
+import { iconFor, setGlint } from './icons.js';
+import { shiny, enchantLabel } from './enchanting.js';
 import { ITEMS, I, itemDef, itemLabel, ARMOR_PIECES, attackDamage, attackSpeed } from './items.js';
 import { RECIPES, recipeFits, countItems, planRecipe, layout, COOK_TIME } from './crafting.js';
 import { CREATIVE_BLOCKS, BLOCKS } from './blocks.js';
@@ -66,6 +67,38 @@ const TRASH = ['................', '................', '......aaaa......', '..aa
   '...a.a.aa.a.a...', '...a.a.aa.a.a...', '...a.a.aa.a.a...', '...a.a.aa.a.a...', '...a.a.aa.a.a...', '...a.a.aa.a.a...',
   '...aaaaaaaaaa...', '................', '................', '................'];
 
+const LAPIS = ['................', '................', '.......aa.......', '......aaaa......', '.....aaaaaa.....', '....aaaaaaaa....',
+  '...aaaaaaaaaa...', '...aaaaaaaaaa...', '....aaaaaaaa....', '.....aaaaaa.....', '......aaaa......', '.......aa.......',
+  '................', '................', '................', '................'];
+const PLUS = ['.....aa.....', '.....aa.....', '.....aa.....', '.....aa.....', 'aaaaaaaaaaaa', 'aaaaaaaaaaaa', '.....aa.....', '.....aa.....',
+  '.....aa.....', '.....aa.....'];
+// The enchanting table's writing: a few words in an alphabet of its own (after the one the
+// original uses), made up from a number so they stay put.
+const RUNES = [
+  ['x...', 'x...', 'xxxx', '...x', '...x'], ['.xx.', 'x..x', '...x', '..x.', '.x..'], ['xxxx', '...x', '...x', '...x', 'xxxx'],
+  ['xxxx', 'x...', 'x.x.', 'x...', 'xxxx'], ['x..x', 'x..x', 'xxxx', '....', 'xxxx'], ['xxxx', '....', 'x.x.', '....', '....'],
+  ['...x', '...x', 'xxxx', '...x', '...x'], ['xxxx', '.x..', '.x..', '.x..', '.x..'], ['.x..', '.x..', '....', '.x..', '.x..'],
+  ['.x..', '....', '.x..', '....', '.x..'], ['x..x', 'x.x.', 'xx..', 'x.x.', 'x..x'], ['x...', 'x...', 'x...', 'x...', 'xxxx'],
+  ['xxxx', 'x..x', 'x..x', '....', '....'], ['x..x', 'x..x', '...x', '..x.', '.x..'], ['xxxx', '..x.', '..x.', '..x.', 'xxxx'],
+  ['x.x.', '....', 'x.x.', '....', '....']];
+function runes(seed, width = 80) {
+  let r = seed >>> 0;
+  const next = (n) => { r = (Math.imul(r ^ (r >>> 15), 0x2c1b3c6d) + 0x9e3779b9) >>> 0; return r % n; };
+  const rows = ['', '', '', '', ''];
+  let w = 0;
+  while (w < width - 18) {
+    const len = 2 + next(4);
+    for (let k = 0; k < len && w + 5 <= width; k++) {
+      const g = RUNES[next(RUNES.length)];
+      for (let y = 0; y < 5; y++) rows[y] += `${g[y]}.`;
+      w += 5;
+    }
+    for (let y = 0; y < 5; y++) rows[y] += '..';
+    w += 2;
+  }
+  return pix(rows.map((row) => row.padEnd(width, '.').slice(0, width)), { x: '#fff' });
+}
+
 let SPR = null;
 export function sprites() {
   if (SPR) return SPR;
@@ -79,6 +112,8 @@ export function sprites() {
     flameFull: pix(FLAME, { f: '#e0561a', y: '#ffa21f', w: '#ffe27a' }),
     book: pix(BOOK, { k: '#1e3a12', g: '#2e6a1c', G: '#3f8f2a', h: '#6ec24a', y: '#e8d27a', w: '#f0ede0' }),
     trash: pix(TRASH, { a: 'rgba(55,55,55,0.55)' }),
+    lapis: pix(LAPIS, { a: 'rgba(55,55,55,0.4)' }),
+    plus: pix(PLUS, { a: '#373737' }),
     hints: ARMOR_PIECES.map((p) => pix(HINTS[p], { a: 'rgba(55,55,55,0.4)' })),
   };
   return SPR;
@@ -87,6 +122,7 @@ export function sprites() {
 // ---------------------------------------------------------------- layouts (GUI pixels)
 const SIZES = {
   inventory: [176, 166], crafting: [176, 166], furnace: [176, 166], chest: [176, 168], large_chest: [176, 222], creative: [195, 136],
+  enchanting: [176, 166], anvil: [176, 166], grindstone: [176, 166],
 };
 const TABS = [
   { id: 'building', label: 'Building Blocks', icon: 'bricks' },
@@ -160,11 +196,13 @@ export function fillSlot(el, stack, count = stack?.count) {
     img.hidden = true;
     n.textContent = '';
     dur.hidden = true;
+    setGlint(el, false);
     return;
   }
   const src = iconFor(stack.id);
   if (img.getAttribute('src') !== src) img.src = src;
   img.hidden = false;
+  setGlint(el, shiny(stack), src);
   n.textContent = count > 1 ? count : count === 0 ? '0' : '';
   n.classList.toggle('warn', count === 0);
   const def = itemDef(stack.id);
@@ -183,7 +221,12 @@ const ARMOR_WHERE = ['When on Head:', 'When on Body:', 'When on Legs:', 'When on
 // Tooltip lines for an item: name, then combat and armor stats like the original shows them.
 export function tooltipLines(stack) {
   const d = itemDef(stack.id);
-  const lines = [`<b>${escape(d.label)}</b>`];
+  // A name given at the anvil is in italics; enchanted things are named in aqua, enchanted books
+  // in yellow, and their enchantments are listed underneath.
+  const cls = d.name === 'enchanted_book' ? 't-yellow' : stack.ench ? 't-aqua' : '';
+  const name = stack.name ? `<i>${escape(stack.name)}</i>` : escape(d.label);
+  const lines = [`<b${cls ? ` class="${cls}"` : ''}>${name}</b>`];
+  for (const [n, lv] of Object.entries(stack.ench ?? {})) lines.push(`<span class="t-gray">${escape(enchantLabel(n, lv))}</span>`);
   if (d.tool || d.weapon) {
     lines.push('', '<span class="t-gray">When in Main Hand:</span>',
       `<span class="t-green"> ${fmt(attackDamage(d.id))} Attack Damage</span>`, `<span class="t-green"> ${fmt(attackSpeed(d.id))} Attack Speed</span>`);
@@ -366,6 +409,52 @@ export class ContainerGUI {
       m.chestSlots.forEach((s, k) => slot(s, 7 + (k % 9) * 18, 17 + Math.floor(k / 9) * 18));
       label('Inventory', win, 8, 74 + y0);
       player(84 + y0, 142 + y0);
+    } else if (this.kind === 'enchanting') {
+      label('Enchant', win, 12, 5);
+      image(iconFor(I.enchanted_book), win, 15, 13, 28, 28);
+      slot(m.itemSlot, 14, 46);
+      const lap = slot(m.lapisSlot, 34, 46);
+      lap.classList.add('hint');
+      lap.style.setProperty('--hint', `url(${S.lapis})`);
+      this.optionEls = [0, 1, 2].map((i) => {
+        const el = div('mc-enchant', win, 59, 13 + i * 19, 109, 19);
+        el.dataset.act = 'enchant';
+        el.dataset.i = i;
+        el.innerHTML = `<b class="lvl">${i + 1}</b><i class="runes"></i><b class="cost"></b>`;
+        return el;
+      });
+      label('Inventory', win, 8, 72);
+      player(83, 141);
+    } else if (this.kind === 'anvil') {
+      label('Repair & Name', win, 60, 6);
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'mc-name';
+      input.maxLength = 40;
+      input.spellcheck = false;
+      input.autocomplete = 'off';
+      place(input, 59, 19, 108, 14);
+      input.addEventListener('input', () => this.game.menuAction('rename', input.value));
+      input.addEventListener('keydown', (e) => this.searchKey(e));
+      win.appendChild(input);
+      this.nameEl = input;
+      this.nameFor = undefined;
+      slot(m.leftSlot, 26, 46);
+      image(S.plus, win, 50, 50, 12, 10);
+      slot(m.rightSlot, 75, 46);
+      image(S.arrow, win, 101, 48, 22, 15);
+      slot(m.resultSlot, 133, 46);
+      this.costEl = div('mc-cost', win, 60, 67);
+      label('Inventory', win, 8, 72);
+      player(83, 141);
+    } else if (this.kind === 'grindstone') {
+      label('Repair & Disenchant', win, 8, 6);
+      slot(m.topSlot, 48, 18);
+      slot(m.bottomSlot, 48, 39);
+      image(S.arrow, win, 94, 34, 22, 15);
+      slot(m.resultSlot, 128, 33);
+      label('Inventory', win, 8, 72);
+      player(83, 141);
     } else if (this.kind === 'creative') {
       const tab = TABS.find((t) => t.id === this.tab);
       label(tab.label, win, 8, 6);
@@ -528,6 +617,8 @@ export class ContainerGUI {
       el.classList.toggle('filled', !!stack);
     }
     this.renderGhost();
+    if (this.kind === 'enchanting') this.renderEnchanting();
+    else if (this.kind === 'anvil') this.renderAnvil();
     const c = m.cursor;
     if (c) {
       if (!this.cursorEl.firstChild) this.cursorEl.innerHTML = '<div class="mc-slot bare"><img alt=""><b></b><i class="dur" hidden><i></i></i></div>';
@@ -537,6 +628,58 @@ export class ContainerGUI {
     this.renderBook();
     this.frame(0);
     this.updateTip();
+  }
+
+  // The table's three offers: dim when there's nothing (or not enough lapis or levels), the level
+  // they need on the right, and the table's writing across the middle.
+  renderEnchanting() {
+    const m = this.menu;
+    this.optionEls.forEach((el, i) => {
+      const o = m.offers[i], state = m.canTake(i);
+      el.classList.toggle('none', !o?.cost);
+      el.classList.toggle('ok', state === 'ok');
+      const cost = o?.cost ? String(o.cost) : '';
+      if (el.lastChild.textContent !== cost) el.lastChild.textContent = cost;
+      const key = o?.cost ? `${this.game.enchantSeed}:${i}` : '';
+      if (el.dataset.runes !== key) {
+        el.dataset.runes = key;
+        el.children[1].style.setProperty('--runes', key ? `url(${runes(this.game.enchantSeed + i * 977)})` : 'none');
+      }
+    });
+  }
+
+  // The anvil: the name box (showing the item's name), and what the job costs.
+  renderAnvil() {
+    const m = this.menu, a = m.items[0];
+    if (a !== this.nameFor) {
+      this.nameFor = a;
+      if (m.name === undefined) this.nameEl.value = a ? (a.name ?? itemLabel(a.id)) : '';
+    }
+    this.nameEl.disabled = !a;
+    const j = m.job, el = this.costEl;
+    let text = '', cls = '';
+    if (j) {
+      if (m.tooExpensive) { text = 'Too Expensive!'; cls = 'no'; } else { text = `Enchantment Cost: ${j.cost}`; cls = m.affordable() ? 'ok' : 'no'; }
+    }
+    if (el.textContent !== text) el.textContent = text;
+    el.className = `mc-cost ${cls}`;
+    el.hidden = !text;
+  }
+
+  // What an enchanting offer says when pointed at: the first enchantment (the rest are a
+  // surprise), and what it takes.
+  enchantTip(i) {
+    const m = this.menu, o = m.offers[i], g = this.game;
+    if (!o?.cost) return null;
+    const [name, lv] = Object.entries(o.ench)[0];
+    const lines = [`<i>${escape(enchantLabel(name, lv))} . . . ?</i>`];
+    if (!g.creative) {
+      const lapis = (m.items[1]?.count ?? 0) >= i + 1;
+      lines.push('', `<span class="${lapis ? 't-gray' : 't-red'}">${i + 1} Lapis Lazuli</span>`,
+        `<span class="${g.xp.level >= i + 1 ? 't-gray' : 't-red'}">${i + 1} Enchantment Level${i ? 's' : ''}</span>`);
+      if (g.xp.level < o.cost) lines.push(`<span class="t-red">Level Requirement: ${o.cost}</span>`);
+    }
+    return lines;
   }
 
   // A recipe picked from the book but not craftable shows faintly in the grid.
@@ -619,7 +762,8 @@ export class ContainerGUI {
       else if (el.dataset.recipe) {
         const r = RECIPES[Number(el.dataset.recipe)];
         lines = recipeTooltip(r, !el.classList.contains('no'), this.menu.size);
-      } else if (el.dataset.tip) lines = [escape(el.dataset.tip)];
+      } else if (el.dataset.act === 'enchant') lines = this.enchantTip(Number(el.dataset.i));
+      else if (el.dataset.tip) lines = [escape(el.dataset.tip)];
     }
     if (!lines) { tip.hidden = true; return; }
     const html = lines.join('<br>');
@@ -780,6 +924,9 @@ export class ContainerGUI {
       this.renderBook();
     } else if (act === 'recipe') {
       this.game.menuAction('recipe', RECIPES[Number(el.dataset.recipe)], shift ? 1 : 0);
+    } else if (act === 'enchant') {
+      this.game.menuAction('enchant', Number(el.dataset.i));
+      return;
     }
     this.game.audio.click();
   }

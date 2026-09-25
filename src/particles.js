@@ -70,6 +70,16 @@ export class Particles {
     }
   }
 
+  // A glyph of the enchanting table's writing drifting from a bookshelf to the table, in an arc.
+  glyph(x, y, z, tx, ty, tz) {
+    if (this.list.length >= MAX) this.list.shift();
+    this.list.push({
+      x, y, z, vx: 0, vy: 0, vz: 0, life: 1.4 + Math.random() * 0.8, age: 0, size: 0.03 + Math.random() * 0.015,
+      layer: TEX.glyph, flags: 0, tint: [215, 215, 235], u: Math.floor(Math.random() * 4) * 4, v: Math.floor(Math.random() * 4) * 4,
+      seek: [x, y, z, tx, ty, tz],
+    });
+  }
+
   // A few chips flying off the face being mined.
   chip(x, y, z, face, blockId) {
     const n = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]][face] ?? [0, 1, 0];
@@ -87,6 +97,11 @@ export class Particles {
       const p = list[i];
       p.age += dt;
       if (p.age > p.life) { list.splice(i, 1); continue; }
+      if (p.seek) {
+        const [sx, sy, sz, tx, ty, tz] = p.seek, k = p.age / p.life, e = k * k;
+        p.x = sx + (tx - sx) * e; p.z = sz + (tz - sz) * e; p.y = sy + (ty - sy) * e + Math.sin(k * Math.PI) * 0.8;
+        continue;
+      }
       if (p.smoke) {
         const k = Math.exp(-1.5 * dt);
         p.vx *= k; p.vz *= k; p.vy = p.vy * k + 0.6 * dt;

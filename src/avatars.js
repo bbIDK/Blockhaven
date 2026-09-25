@@ -66,6 +66,7 @@ export class RemotePlayer {
     this.mountId = Array.isArray(pres.r) && Number.isInteger(pres.r[0]) && pres.r[0] > 0 ? pres.r[0] : null;
     this.bobber = Array.isArray(pres.fb) && pres.fb.length === 3 && pres.fb.every(num) ? pres.fb : null;
     this.held = Number.isInteger(pres.i) && itemDef(pres.i) ? pres.i : 0;
+    this.heldShiny = pres.ih === 1;
     this.look = Number.isInteger(pres.k) ? pres.k : -1;
     const a = Array.isArray(pres.a) ? pres.a : [];
     this.armor = [0, 1, 2, 3].map((i) => (Number.isInteger(a[i]) && itemDef(a[i])?.armor?.slot === i ? a[i] : 0));
@@ -228,7 +229,7 @@ export class Avatars {
       const rightA = -walkA * 0.7 + (sneak ? 0.35 : 0) + (rp.held ? 0.3 : 0) + attack * 1.3 + (sit ? 0.63 : 0);
       const arm = joint(torso(this.mat()), m.rightArm.pivot, rightA, -attack * 0.4, 0.05);
       const held = rp.held ? this.renderer.itemMesh(rp.held) : null;
-      if (held) parts.push({ mesh: held, model: this.heldItem(arm, held) });
+      if (held) parts.push({ mesh: held, model: this.heldItem(arm, held), glint: rp.heldShiny ? 1 : 0 });
       add(m.rightArm, arm);
       out.push({ parts, light: [l >> 4, l & 15], tint: null, hurt: rp.hurt > 0 });
     }
