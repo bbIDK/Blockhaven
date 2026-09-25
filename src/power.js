@@ -4,12 +4,13 @@
 // trapdoors and fence gates open, redstone lamps light up, note blocks play and TNT goes off; iron doors and iron
 // trapdoors open only this way. Only the host (or a single player) works this out; everyone else
 // sees the blocks change.
-import { B, SWITCH, DOOR, TRAPDOOR, trapdoorId, GATE, gateId, SOLID, FACE_DIRS, NOTE } from './blocks.js';
+import { B, SWITCH, DOOR, TRAPDOOR, trapdoorId, GATE, gateId, SOLID, FACE_DIRS, NOTE, RAIL, RAIL_ID } from './blocks.js';
 
-const isSource = (id) => !!SWITCH[id] || id === B.redstone_block;
-const isOn = (id) => !!SWITCH[id]?.on || id === B.redstone_block;
+// (A detector rail gives power while a cart is on it.)
+const isSource = (id) => !!SWITCH[id] || id === B.redstone_block || RAIL[id]?.kind === 'detector';
+const isOn = (id) => !!SWITCH[id]?.on || id === B.redstone_block || (RAIL[id]?.kind === 'detector' && RAIL[id].on);
 const family = (id) => (DOOR[id] ? 'door' : TRAPDOOR[id] ? 'trapdoor' : GATE[id] ? 'gate'
-  : id === B.redstone_lamp || id === B.redstone_lamp_on ? 'lamp' : id === B.tnt ? 'tnt' : NOTE[id] !== undefined ? 'note' : null);
+  : id === B.redstone_lamp || id === B.redstone_lamp_on ? 'lamp' : id === B.tnt ? 'tnt' : NOTE[id] !== undefined ? 'note' : RAIL[id]?.kind === 'powered' ? 'rail' : null);
 
 // Is anything powering the block at (x, y, z)?
 export function poweredAt(w, x, y, z) {
@@ -44,6 +45,10 @@ export function refresh(w, x, y, z) {
     if (g.open !== on && w.setBlock(x, y, z, gateId(g.base, g.facing, on), { updates: false })) w.listener?.blockSound?.(x, y, z, on ? 'open' : 'close');
   } else if (kind === 'lamp') {
     const want = poweredAt(w, x, y, z) ? B.redstone_lamp_on : B.redstone_lamp;
+    if (id !== want) w.setBlock(x, y, z, want, { updates: false });
+  } else if (kind === 'rail') {
+    // A powered rail is on while something powers it.
+    const r = RAIL[id], want = RAIL_ID.powered[poweredAt(w, x, y, z) ? 1 : 0][r.shape];
     if (id !== want) w.setBlock(x, y, z, want, { updates: false });
   } else if (kind === 'note') {
     // A note block plays as the power comes on (remembering it's powered, until it goes off).

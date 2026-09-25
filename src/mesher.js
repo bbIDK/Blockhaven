@@ -4,7 +4,7 @@
 // 0 still, 1..254 the direction the surface flows, 255 falling down the sides.
 import {
   R, RENDER, OPAQUE, AO, TEXL, FFLAGS, TINT, TINT_RGB, CULL_SELF, TRANSLUCENT, B, ANIM,
-  F_TINT, F_OVERLAY, F_UVROT, F_ANIM, liquidHeight, liquidLevel, sameCullGroup, TORCH_LEAN, shapeBoxes, boxFaceUV, boxLayer,
+  F_TINT, F_OVERLAY, F_UVROT, F_ANIM, liquidHeight, liquidLevel, sameCullGroup, TORCH_LEAN, shapeBoxes, boxFaceUV, boxLayer, RAIL,
 } from './blocks.js';
 import { columnColors, fromByte } from './biomes.js';
 import { hash2 } from './math.js';
@@ -212,6 +212,27 @@ function crossQuad(buf, pts, layer, flags, sky, blk) {
   for (let k = 3; k >= 0; k--) buf.vertex(pts[k][0], pts[k][1], pts[k][2], UV[k][0], UV[k][1], layer, 6, flags, sky, blk, 255, tint[0], tint[1], tint[2]);
 }
 
+// Rails: the track's picture lying just above the ground, turned the way it runs, or tilted up a
+// slope. (The pictures run north-south; corners join south and east.) For each shape: how many
+// quarter turns the picture is given, and the height of each corner (north-west, north-east,
+// south-east, south-west) in blocks.
+const RAIL_TURN = [0, 1, 1, 1, 0, 0, 0, 1, 2, 3];
+const RAIL_RISE = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 1, 1, 0], [1, 0, 0, 1], [1, 1, 0, 0], [0, 0, 1, 1], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]];
+const RAIL_UV = [[0, 0], [16, 0], [16, 16], [0, 16]];
+function rail(buf, light, x, y, z, p, id) {
+  const shape = RAIL[id].shape, l = light[p];
+  const sky = (l >> 4) * 17, blk = (l & 15) * 17;
+  const layer = TEXL[id * 6], flags = FFLAGS[id * 6] & FLAG_MASK;
+  tint[0] = tint[1] = tint[2] = 255;
+  const X = x * U, Y = y * U + Math.round(U / 16), Z = z * U, rise = RAIL_RISE[shape], turn = RAIL_TURN[shape];
+  const pts = [[X, Z], [X + U, Z], [X + U, Z + U], [X, Z + U]].map(([px, pz], k) => [px, Y + rise[k] * U, pz]);
+  // Both sides, so it can be seen from under a slope too.
+  buf.reserve(8);
+  const corner = (k) => { const uv = RAIL_UV[(k + 4 - turn) % 4]; buf.vertex(pts[k][0], pts[k][1], pts[k][2], uv[0], uv[1], layer, 6, flags, sky, blk, 255, 255, 255, 255); };
+  for (const k of [3, 2, 1, 0]) corner(k);
+  for (const k of [0, 1, 2, 3]) corner(k);
+}
+
 // Small plants are nudged off-centre a little so a meadow doesn't look planted in rows.
 const JITTER = new Set(['tall_grass', 'fern', 'dandelion', 'poppy', 'cornflower', 'dead_bush', 'red_mushroom', 'brown_mushroom', 'allium',
   'azure_bluet', 'blue_orchid', 'oxeye_daisy', 'red_tulip', 'orange_tulip', 'white_tulip', 'pink_tulip', 'lily_of_the_valley'].map((n) => B[n]));
@@ -369,6 +390,7 @@ export function meshSection(blocks, light, climate, cx, cz, biomes = null) {
         else if (rt === R.CACTUS) cactus(dirs, blocks, light, x, y, z, p, id);
         else if (rt === R.MODEL) model(dirs, blocks, light, x, y, z, p, id);
         else if (rt === R.CAMPFIRE) campfire(dirs, other, blocks, light, x, y, z, p, id);
+        else if (rt === R.RAIL) rail(other, light, x, y, z, p, id);
       }
     }
   }

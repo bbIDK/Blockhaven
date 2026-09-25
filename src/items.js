@@ -124,6 +124,8 @@ item(447, 'item_frame', { label: 'Item Frame', hangs: 'frame', tex: TEX.item_fra
 item(448, 'painting', { hangs: 'painting', tex: TEX.painting_item });
 // A shield: held up (right click), it takes hits from in front.
 item(449, 'shield', { stack: 1, durability: 336, shield: true });
+// A minecart: set on a rail, it rolls along the track (see rails.js).
+item(450, 'minecart', { stack: 1, cart: true, tex: TEX.minecart_item });
 // Potions (see potions.js): drunk from the bottle, or thrown to break over everyone nearby.
 POTION_NAMES.forEach((name, i) => {
   const label = POTIONS[name].label;

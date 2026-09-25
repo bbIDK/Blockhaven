@@ -10,6 +10,7 @@ import './tex/redstone.js';
 import './tex/magic.js';
 import './tex/decor.js';
 import './tex/paintings.js';
+import './tex/rails.js';
 
 export const ARRAY_LAYERS = 256;
 

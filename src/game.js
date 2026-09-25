@@ -24,7 +24,7 @@ import {
   B, BLOCKS, BASE, SOLID, REPLACEABLE, WATERLIKE, FACING_VARIANTS, WALL_TORCH, FACE_DIRS,
   RENDER, R, SLAB, STAIRS, DOOR, doorId, CLIMB, LADDER, oppositeFace, CHEST, CHEST_PAIR, CHEST_RIGHT, chestId, chestHalf, BED, bedId,
   FURNACE_IDS, furnaceVariant, isLitFurnace, FURNACE_KIND, FURNACE_FRONT, LOG_AXES, GATE, gateId, VINE, DOUBLE, LEAVES_WOOD,
-  TRAPDOOR, trapdoorId, SWITCH, SIGN, WALL_SIGN, CAKE, NOTE, JUKEBOX,
+  TRAPDOOR, trapdoorId, SWITCH, SIGN, WALL_SIGN, CAKE, NOTE, JUKEBOX, RAIL,
   NATURAL_LEAVES, WOOD, LOOT_KIND, LOOT_FRONT,
 } from './blocks.js';
 import { rollLoot } from './loot.js';
@@ -40,6 +40,7 @@ import { Signs, SignEditor } from './signs.js';
 import { drawLeads, isFence, LEAD_SNAP } from './leads.js';
 import { Jukeboxes, instrumentFor, noteColour, noteClear, nextNote } from './jukebox.js';
 import { isHanging } from './hangings.js';
+import { layRail } from './rails.js';
 import { ITEMS, I, itemDef, itemLabel, breakTime, dropsFor, attackDamage, attackSpeed, canHarvest } from './items.js';
 import { BIOME_NAMES } from './biomes.js';
 import { CHUNK_VOLUME, HEIGHT, TICKS_PER_DAY, SAVE_VERSION } from './config.js';
@@ -1634,8 +1635,9 @@ export class Game {
     this.mining = null;
     this.eating = null;
     this.sitOnMount();
-    this.ui.showItemName(`Press ${this.touch.enabled ? 'Sneak' : 'Shift'} to ${e.kind === 'boat' ? 'get out' : 'dismount'}`, 3000);
+    this.ui.showItemName(`Press ${this.touch.enabled ? 'Sneak' : 'Shift'} to ${e.kind === 'mob' ? 'dismount' : 'get out'}`, 3000);
     if (e.kind === 'boat') this.audio.place('wood', { x: e.x, y: e.y, z: e.z });
+    else if (e.kind === 'cart') this.audio.place('metal', { x: e.x, y: e.y, z: e.z });
     else this.audio.mob('horse', e.tame ? 'say' : 'angry', { x: e.x, y: e.y + e.h, z: e.z });
     this.net?.ride?.(e, true);
     return true;
@@ -1664,7 +1666,7 @@ export class Game {
   remountNear() {
     const p = this.player;
     this.remount = false;
-    const e = this.entities.list.find((m) => (m.kind === 'boat' || m.def?.rideable) && !m.dead && !m.rider && !m.ridden &&
+    const e = this.entities.list.find((m) => (m.kind === 'boat' || m.kind === 'cart' || m.def?.rideable) && !m.dead && !m.rider && !m.ridden &&
       Math.hypot(m.x - p.x, m.z - p.z) < 1 && Math.abs(seatY(m) - p.y) < 1);
     if (e) this.mount(e);
   }
@@ -2237,6 +2239,15 @@ export class Game {
       if (t?.entity && !repeat) this.entities.interact(t.entity, held);
       return;
     }
+    // A minecart goes on the rail pointed at.
+    if (def?.cart) {
+      if (repeat || !RAIL[t.id]) return;
+      this.entities.spawnCart(t.x + 0.5, t.y + 1 / 16, t.z + 0.5, p.yaw);
+      this.swingArm();
+      this.audio.place('metal', { x: t.x + 0.5, y: t.y + 0.5, z: t.z + 0.5 });
+      if (!this.creative) { this.inv.consumeHeld(); this.invChanged(); }
+      return;
+    }
     // An item frame or a painting goes up on the face pointed at.
     if (def?.hangs) {
       if (repeat) return;
@@ -2385,6 +2396,8 @@ export class Game {
 
   afterPlace(id, x, y, z) {
     if (CHEST[id] !== undefined) this.pairChest(x, y, z);
+    // A rail turns to join the track beside it (running the way it was laid, if there's none).
+    if (RAIL[id]) layRail(this.world, x, y, z, Math.abs(Math.sin(this.player.yaw)) > Math.SQRT1_2 ? 'ew' : 'ns');
     this.audio.place(BLOCKS[id].sound, { x: x + 0.5, y: y + 0.5, z: z + 0.5 });
     this.swingArm();
     if (!this.creative) { this.inv.consumeHeld(); this.invChanged(); }

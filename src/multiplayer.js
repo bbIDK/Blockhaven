@@ -12,7 +12,7 @@ import { RemotePlayer } from './avatars.js';
 import { mobFlags, mobExtra, cleanTagName } from './entities.js';
 import { isHanging } from './hangings.js';
 import { encodeRLE16, decodeRLE16 } from './storage.js';
-import { B, BLOCKS, REPLACEABLE, CHEST, FURNACE_IDS, SIGN } from './blocks.js';
+import { B, BLOCKS, REPLACEABLE, CHEST, FURNACE_IDS, SIGN, RAIL } from './blocks.js';
 import { itemDef, maxStack } from './items.js';
 import { extras, cleanExtras } from './inventory.js';
 import { shiny } from './enchanting.js';
@@ -377,7 +377,7 @@ export class HostSession extends Session {
   // A guest gets into a boat or onto a horse (`on`), or off again. Only one rider at a time: anyone
   // else is turned away (as if thrown off).
   rideRequest(g, m) {
-    const e = this.game.entities.list.find((x) => x.nid === m.e && !x.dead && (x.kind === 'boat' || x.def?.rideable));
+    const e = this.game.entities.list.find((x) => x.nid === m.e && !x.dead && (x.kind === 'boat' || x.kind === 'cart' || x.def?.rideable));
     if (m.on) {
       const near = e && g.x !== null && Math.hypot(e.x - g.x, e.z - g.z) < 8;
       if (!e || !near || e.dying || (e.rider && e.rider !== g.addr) || (e.kind === 'mob' && e.baby)) { this.send(g.addr, { t: 'buck', e: m.e }); return; }
@@ -423,6 +423,11 @@ export class HostSession extends Session {
       case 'hit': this.hit(g, msg); break;
       case 'ride': if (int(msg.e)) this.rideRequest(g, msg); break;
       case 'boat': this.placeBoatFor(g, msg); break;
+      case 'cart':
+        // A guest's minecart, on the rail they pointed at.
+        if ([msg.x, msg.y, msg.z, msg.a].every(num) && g.x !== null && Math.hypot(msg.x - g.x, msg.y - g.y, msg.z - g.z) < 8 &&
+          RAIL[this.game.world.getBlock(Math.floor(msg.x), Math.floor(msg.y), Math.floor(msg.z))]) this.game.entities.spawnCart(msg.x, msg.y, msg.z, msg.a);
+        break;
       case 'orb':
         // Experience a guest earned (mining, fishing, trading), as orbs where they are.
         if ([msg.x, msg.y, msg.z].every(num) && int(msg.n) && msg.n > 0 && g.x !== null && Math.hypot(msg.x - g.x, msg.y - g.y, msg.z - g.z) < 12) {
@@ -579,8 +584,9 @@ export class HostSession extends Session {
   }
 
   hit(g, m) {
-    const E = this.game.entities, e = E.list.find((x) => x.nid === m.e && (x.kind === 'mob' || x.kind === 'boat' || isHanging(x)) && !x.dead);
+    const E = this.game.entities, e = E.list.find((x) => x.nid === m.e && (x.kind === 'mob' || x.kind === 'boat' || x.kind === 'cart' || isHanging(x)) && !x.dead);
     if (e && isHanging(e)) { E.hitHanging(e, g.creative); return; }
+    if (e?.kind === 'cart') { E.hitCart(e, g.creative); return; }
     if (!e || e.dying || !num(m.a) || !num(m.x) || !num(m.z)) return;
     if (e.kind === 'boat') { E.hitBoat(e, g.creative); return; }
     // (The guest's own entry, not a copy, so anything that goes after them follows where they go.)
@@ -697,9 +703,10 @@ export class HostSession extends Session {
       seen.add(e.nid);
       const x = r2(e.x), y = r2(e.y), z = r2(e.z);
       const arrow = e.kind === 'arrow';
-      const a = e.kind === 'mob' || e.kind === 'boat' ? r2(e.yaw) : arrow ? r2(e.ayaw ?? 0) : 0;
-      const f = e.kind === 'mob' ? mobFlags(e) : arrow ? Math.round((e.apitch ?? 0) * 100) : e.kind === 'boat' ? boatFlags(e) : 0;
-      const n = e.kind === 'item' ? e.count : 0;
+      const a = e.kind === 'mob' || e.kind === 'boat' || e.kind === 'cart' ? r2(e.yaw) : arrow ? r2(e.ayaw ?? 0) : 0;
+      const f = e.kind === 'mob' ? mobFlags(e) : arrow ? Math.round((e.apitch ?? 0) * 100) : e.kind === 'boat' || e.kind === 'cart' ? boatFlags(e) : 0;
+      // (For a minecart, how it's tipped on a slope.)
+      const n = e.kind === 'item' ? e.count : e.kind === 'cart' ? Math.round((e.pitch ?? 0) * 100) : 0;
       const prev = this.sentEnts.get(e.nid);
       if (!prev) { adds.push(entityState(e)); this.sentEnts.set(e.nid, [x, y, z, a, f, n]); continue; }
       if (prev[0] !== x || prev[1] !== y || prev[2] !== z || prev[3] !== a || prev[4] !== f || prev[5] !== n) {
@@ -792,6 +799,7 @@ function entityState(e) {
     return Object.assign(s, { k: 'a', a: r2(e.ayaw ?? Math.atan2(-e.vx, -e.vz)), p: r2(e.apitch ?? 0), po: e.potion ?? undefined, sb: e.snowball ? 1 : undefined });
   }
   if (e.kind === 'boat') return Object.assign(s, { k: 'b', w: e.wood, a: r2(e.yaw), f: boatFlags(e) });
+  if (e.kind === 'cart') return Object.assign(s, { k: 'c', a: r2(e.yaw), p: r2(e.pitch ?? 0), f: boatFlags(e) });
   if (e.kind === 'xp') return Object.assign(s, { k: 'x', v: e.value });
   if (isHanging(e)) {
     return Object.assign(s, { k: 'h', t: e.kind, b: [e.bx, e.by, e.bz], f: e.face, a: e.art ?? undefined, r: e.rot || undefined,
@@ -1110,6 +1118,7 @@ export class GuestSession extends Session {
 
   primeTNT(x, y, z, fuse) { this.toHost({ t: 'tnt', x, y, z, f: fuse }); }
   placeBoat(x, y, z, wood, yaw) { this.toHost({ t: 'boat', x: r2(x), y: r2(y), z: r2(z), w: wood, a: r2(yaw) }); }
+  placeCart(x, y, z, yaw) { this.toHost({ t: 'cart', x: r2(x), y: r2(y), z: r2(z), a: r2(yaw) }); }
   dropXp(x, y, z, n) { this.toHost({ t: 'orb', x: r2(x), y: r2(y), z: r2(z), n }); }
   ride(e, on) { if (e.nid) this.toHost({ t: 'ride', e: e.nid, on: on ? 1 : 0 }); }
   useMob(e, id, effect, name) { this.toHost({ t: 'um', e: e.nid, i: id, f: effect, n: name ?? undefined }); }

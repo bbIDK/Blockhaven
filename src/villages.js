@@ -726,6 +726,9 @@ const BUILD = {
       }
     }
     l.set(sx + 1, -depth + 1, sz - 10, lootChestId('mine', l.face(5)));
+    // A track down the middle of the tunnel, for the ore carts.
+    const track = [4, 5].includes(l.face(4)) ? B.rail : B.rail + 1;
+    for (let k = 1; k <= 10; k++) l.set(sx, -depth + 1, sz - k, track);
     l.job('miner', sx, 2);
   },
   farm(l, b, rnd) {

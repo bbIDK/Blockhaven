@@ -4,7 +4,7 @@ import { CHUNK, HEIGHT, SECTIONS, chunkKey } from './config.js';
 import {
   B, BLOCKS, OPAQUE, SOLID, FILTER, EMIT, RENDER, R, SELECTABLE, REPLACEABLE, TORCH_LEAN, FACE_DIRS,
   WATERLIKE, isWater, waterLevel, lavaLevel, WATER_FLOW_BASE, LAVA_FLOW_BASE, SHAPE, shapeBoxes, DOOR, doorId, LADDER_SIDE, BED,
-  SPREAD, BURN, CLIMB, VINE_SIDE, DOUBLE, GATE, gateId, TICKS, LOG, NATURAL_LEAVES, SWITCH, SIGN,
+  SPREAD, BURN, CLIMB, VINE_SIDE, DOUBLE, GATE, gateId, TICKS, LOG, NATURAL_LEAVES, SWITCH, SIGN, RAIL,
 } from './blocks.js';
 import { powerChanged, powerMatters } from './power.js';
 import { randomTick, logRemoved, leafTick } from './growth.js';
@@ -76,6 +76,7 @@ export function blockBounds(id) {
   if (rt === R.TORCH) return TORCH_BOUNDS[TORCH_LEAN[id]];
   if (rt === R.CACTUS) return [1 / 16, 0, 1 / 16, 15 / 16, 1, 15 / 16];
   if (rt === R.FIRE) return [0, 0, 0, 1, 0.9, 1];
+  if (rt === R.RAIL) return RAIL[id].shape >= 2 && RAIL[id].shape <= 5 ? [0, 0, 0, 1, 0.5, 1] : [0, 0, 0, 1, 2 / 16, 1];
   return null;
 }
 

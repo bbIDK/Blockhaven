@@ -98,9 +98,9 @@ export function boatPhysics(w, e, dt, drive) {
 // ---------------------------------------------------------------- the rider's side
 // How high a rider's hips are above the mount's feet (blocks). A rider sits with their legs out in
 // front, so where they "stand" is that far below their hips (they're drawn from their feet).
-export const SEAT = { boat: 0.25, horse: 1.38 };
+export const SEAT = { boat: 0.25, cart: 0.42, horse: 1.38 };
 const HIP = 0.75;
-export const seatY = (e) => e.y + (e.kind === 'boat' ? SEAT.boat : e.def?.seat ?? SEAT.horse) - HIP;
+export const seatY = (e) => e.y + (SEAT[e.kind] ?? e.def?.seat ?? SEAT.horse) - HIP;
 
 // Someone (`rider`: 'me', or a guest's address on the host) gets on. An untamed horse gives them
 // a few seconds before it decides what it thinks of that.

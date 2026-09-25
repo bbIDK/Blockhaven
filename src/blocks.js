@@ -5,7 +5,7 @@
 import { TEX } from './textures.js';
 import { DYES, tintFor } from './colors.js';
 
-export const R = { NONE: 0, CUBE: 1, CROSS: 2, TORCH: 3, LIQUID: 4, CACTUS: 5, MODEL: 6, FIRE: 7, CAMPFIRE: 8 };
+export const R = { NONE: 0, CUBE: 1, CROSS: 2, TORCH: 3, LIQUID: 4, CACTUS: 5, MODEL: 6, FIRE: 7, CAMPFIRE: 8, RAIL: 9 };
 
 // Per-face flags (also copied into vertex flags for the shader). F_UVROT only matters while
 // meshing, so in vertices the same bit means F_ANIM: an 8-frame flipbook (consecutive layers).
@@ -956,6 +956,25 @@ for (let k = -1; k < 8; k++) {
   JUKEBOX[2345 + k] = k;
 }
 
+// Rails (see rails.js): a block for each shape the track takes (straight, up a slope, round a
+// corner). Powered and detector rails have only the six straight and sloping shapes, off and on.
+// RAIL: id -> { kind, shape, on }; RAIL_ID[kind][on][shape] -> id.
+export const RAIL = {};
+export const RAIL_ID = { rail: [[], []], powered: [[], []], detector: [[], []] };
+[['rail', 2353, 10, 'Rail'], ['powered', 2363, 6, 'Powered Rail'], ['detector', 2375, 6, 'Detector Rail']].forEach(([kind, first, shapes, label]) => {
+  const name = kind === 'rail' ? 'rail' : `${kind}_rail`;
+  for (const on of kind === 'rail' ? [false] : [false, true]) {
+    for (let shape = 0; shape < shapes; shape++) {
+      const id = first + (on ? shapes : 0) + shape;
+      const tex = kind === 'rail' ? (shape >= 6 ? 'rail_corner' : 'rail') : `${name}${on ? '_on' : ''}`;
+      block(id, id === first ? name : `${name}_${on ? 'on_' : ''}${shape}`, { label, render: R.RAIL, tex, solid: false, opaque: false,
+        hardness: 0.7, tool: 'pickaxe', sound: 'metal', base: first, item: id === first, drop: name, support: 'solid', cat: 'functional' });
+      RAIL[id] = { kind, shape, on };
+      RAIL_ID[kind][on ? 1 : 0][shape] = id;
+    }
+  }
+});
+
 // Blocks shown in the inventory and in the hand as a flat picture rather than a little model
 // (-1 for the rest). Tall flowers show their flowering top.
 export function spriteOf(block) {
@@ -971,6 +990,7 @@ export function spriteOf(block) {
   if (SWITCH[block]?.kind === 'lever') return TEX.lever_item;
   if (SIGN[block]) return TEX.sign_item;
   if (CAKE[block] !== undefined) return TEX.cake_item;
+  if (RAIL[block]) return TEXL[block * 6];
   if (DOUBLE[block] && !DOUBLE[block].upper) return TEXL[DOUBLE[block].other * 6];
   return -1;
 }
@@ -1119,6 +1139,7 @@ const CREATIVE_ORDER = [
   'torch', 'lantern', 'campfire', 'glowstone', 'jack_o_lantern', 'ladder', 'sign', 'iron_bars', 'tnt',
   ...WOOD_NAMES.flatMap((w) => [`${w}_door`, `${w}_trapdoor`, `${w}_fence`, `${w}_fence_gate`]), 'iron_door', 'iron_trapdoor',
   'lever', 'stone_button', 'oak_button', 'stone_pressure_plate', 'oak_pressure_plate', 'redstone_lamp', 'redstone_block', 'note_block', 'jukebox',
+  'rail', 'powered_rail', 'detector_rail',
 ];
 export const CREATIVE_BLOCKS = (() => {
   const out = [], seen = new Set();

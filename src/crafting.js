@@ -179,6 +179,10 @@ shaped('jukebox', 1, ['###', '#D#', '###'], { '#': '#planks', D: 'diamond' }, 'm
 shaped('item_frame', 1, ['SSS', 'SLS', 'SSS'], { S: 'stick', L: 'leather' }, 'misc');
 shaped('painting', 1, ['SSS', 'SWS', 'SSS'], { S: 'stick', W: '#wool' }, 'misc');
 shaped('shield', 1, ['WIW', 'WWW', ' W '], { W: '#planks', I: 'iron_ingot' }, 'equipment');
+shaped('rail', 16, ['I I', 'ISI', 'I I'], { I: 'iron_ingot', S: 'stick' }, 'misc');
+shaped('powered_rail', 6, ['G G', 'GSG', 'GRG'], { G: 'gold_ingot', S: 'stick', R: 'redstone' }, 'misc');
+shaped('detector_rail', 6, ['I I', 'IPI', 'IRI'], { I: 'iron_ingot', P: 'stone_pressure_plate', R: 'redstone' }, 'misc');
+shaped('minecart', 1, ['I I', 'III'], { I: 'iron_ingot' }, 'misc');
 shaped('compass', 1, [' I ', 'IRI', ' I '], { I: 'iron_ingot', R: 'redstone' }, 'equipment');
 shaped('clock', 1, [' G ', 'GRG', ' G '], { G: 'gold_ingot', R: 'redstone' }, 'equipment');
 shaped('fishing_rod', 1, ['  #', ' #S', '# S'], { '#': 'stick', S: 'string' }, 'equipment');

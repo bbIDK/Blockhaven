@@ -7,7 +7,7 @@ import { Body } from './body.js';
 import { boxMesh, MODEL_OFFSET } from './models.js';
 import { TEX } from './textures.js';
 import { mat4, identity, translate, rotateX, rotateY, rotateZ, scale, hash2 } from './math.js';
-import { B, BLOCKS, BASE, SOLID, WATERLIKE, FILTER, REPLACEABLE } from './blocks.js';
+import { B, BLOCKS, BASE, SOLID, WATERLIKE, FILTER, REPLACEABLE, RAIL, RAIL_ID } from './blocks.js';
 import { I, itemDef, DISCS } from './items.js';
 import { rayBox } from './world.js';
 import { HEIGHT, TICKS_PER_DAY } from './config.js';
@@ -17,6 +17,7 @@ import { MOBS, initMob, mobTick, mobPhysics, renderMob, provoked, mobUseEffect, 
 import { Civilians } from './civilians.js';
 import { extras, cleanExtras } from './inventory.js';
 import { boatPhysics, boatMesh, boatModel, BOAT_WOODS } from './riding.js';
+import { cartPhysics, cartMesh, cartModel, CART_SIZE } from './rails.js';
 import { splitXp, orbSize } from './enchanting.js';
 import { POTIONS, UNDEAD } from './potions.js';
 import { holdsLead, useFence } from './leads.js';
@@ -79,6 +80,7 @@ export class Entities {
     this.matIndex = 0;
     this.spawnTimer = 0;
     this.hungTimer = 0;
+    this.detectors = new Set();
     this.arrowMesh = null;
     this.civilians = new Civilians(this);
   }
@@ -98,6 +100,7 @@ export class Entities {
         m.yaw = s.yaw ?? 0; m.health = s.hp ?? m.health;
         if (Number.isFinite(s.mh)) m.maxHealth = s.mh;
       } else if (s.k === 'boat') this.spawnBoat(s.x, s.y, s.z, BOAT_WOODS.includes(s.w) ? s.w : 'oak', s.yaw ?? 0);
+      else if (s.k === 'cart') this.spawnCart(s.x, s.y, s.z, Number.isFinite(s.yaw) ? s.yaw : 0);
       else if (s.k === 'xp' && Number.isInteger(s.v) && s.v > 0) this.spawnXp(s.x, s.y, s.z, Math.min(s.v, 2477));
       else if ((s.k === 'frame' || s.k === 'painting') && [s.bx, s.by, s.bz, s.f].every(Number.isInteger) && s.f >= 0 && s.f < 6) {
         this.spawnHanging(s.k, s.bx, s.by, s.bz, s.f, { art: s.a, item: s.it, rot: s.r });
@@ -109,10 +112,12 @@ export class Entities {
     // (Things hung up are kept however many there are; the rest, up to 300.)
     const hung = this.list.filter((e) => !e.dead && isHanging(e)).map((e) => ({ k: e.kind, bx: e.bx, by: e.by, bz: e.bz, f: e.face, a: e.art ?? undefined,
       it: e.item ? { id: e.item.id, count: 1, dmg: e.item.dmg ?? 0, ex: extras(e.item) ?? undefined } : undefined, r: e.rot || undefined }));
-    return hung.concat(this.list.filter((e) => !e.dead && (e.kind === 'item' || e.kind === 'boat' || e.kind === 'xp' || (e.kind === 'mob' && e.def.kind !== 'civilian' && !e.pinned)))
+    return hung.concat(this.list.filter((e) => !e.dead && (e.kind === 'item' || e.kind === 'boat' || e.kind === 'cart' || e.kind === 'xp' ||
+      (e.kind === 'mob' && e.def.kind !== 'civilian' && !e.pinned)))
       .slice(0, 300)
       .map((e) => (e.kind === 'item' ? { k: 'item', x: e.x, y: e.y, z: e.z, id: e.id, count: e.count, dmg: e.dmg, ex: e.extra ?? undefined }
         : e.kind === 'boat' ? { k: 'boat', x: e.x, y: e.y, z: e.z, yaw: e.yaw, w: e.wood }
+          : e.kind === 'cart' ? { k: 'cart', x: e.x, y: e.y, z: e.z, yaw: e.yaw }
           : e.kind === 'xp' ? { k: 'xp', x: e.x, y: e.y, z: e.z, v: e.value }
           : { k: 'mob', t: e.type, x: e.x, y: e.y, z: e.z, yaw: e.yaw, hp: e.health, mh: e.maxHealth, ...mobExtra(e) })));
   }
@@ -222,6 +227,56 @@ export class Entities {
     Object.assign(e, { wood, yaw, hits: 0, hurt: 0, rider: null, def: { label: 'Boat' } });
     this.list.push(e);
     return e;
+  }
+
+  // A minecart, set down at (x, y, z) (on a rail, as a rule).
+  spawnCart(x, y, z, yaw = 0) {
+    if (this.guest) { this.game.net.placeCart?.(x, y, z, yaw); return null; }
+    const e = new Entity('cart', CART_SIZE.hw, CART_SIZE.h, x, y, z);
+    Object.assign(e, { yaw, pitch: 0, hits: 0, hurt: 0, rider: null, rail: null, def: { label: 'Minecart' } });
+    this.list.push(e);
+    return e;
+  }
+  // Knocked about: a few knocks (one in creative) and it breaks, dropping a minecart.
+  hitCart(e, creative) {
+    const game = this.game;
+    e.hurt = 0.35;
+    game.audio.place('metal', { x: e.x, y: e.y + 0.3, z: e.z });
+    if (++e.hits < (creative ? 1 : 3)) return;
+    if (e.rider) this.throwRider(e);
+    e.dead = true;
+    game.net?.entityGone?.(e, 'b');
+    if (!creative) this.spawnItem(e.x, e.y + 0.4, e.z, I.minecart, 1);
+  }
+  // Detector rails give power while a cart is on them (see power.js).
+  detectorTick() {
+    const w = this.world, on = new Set();
+    for (const e of this.list) {
+      if (e.kind !== 'cart' || e.dead) continue;
+      const x = Math.floor(e.x), z = Math.floor(e.z);
+      for (const y of [Math.floor(e.y + 0.1), Math.floor(e.y + 0.1) - 1]) if (RAIL[w.getBlock(x, y, z)]?.kind === 'detector') on.add(`${x},${y},${z}`);
+    }
+    const flip = (key, lit) => {
+      const [x, y, z] = key.split(',').map(Number), r = RAIL[w.getBlock(x, y, z)];
+      if (r?.kind === 'detector' && r.on !== lit) w.setBlock(x, y, z, RAIL_ID.detector[lit ? 1 : 0][r.shape]);
+    };
+    for (const key of on) if (!this.detectors.has(key)) flip(key, true);
+    for (const key of this.detectors) if (!on.has(key)) flip(key, false);
+    this.detectors = on;
+  }
+
+  // Which way a cart is pushed: by its rider leaning forward, and by anyone walking into it.
+  cartPush(e) {
+    let px = 0, pz = 0;
+    if (e.rider === 'me' && e.drive?.forward > 0) { const yaw = this.game.player.yaw; px -= Math.sin(yaw) * 3; pz -= Math.cos(yaw) * 3; }
+    if (!e.rider) {
+      for (const p of this.players) {
+        if (p.dead) continue;
+        const dx = e.x - p.x, dz = e.z - p.z, d = Math.hypot(dx, dz);
+        if (d < 0.85 && d > 1e-3 && Math.abs(p.y - e.y) < 1.2) { px += (dx / d) * 10; pz += (dz / d) * 10; }
+      }
+    }
+    return px || pz ? [px, pz] : null;
   }
 
   // Experience worth `n` points: orbs that spring out and home in on the nearest player.
@@ -406,6 +461,7 @@ export class Entities {
     if (++this.spawnTimer >= 40) { this.spawnTimer = 0; this.trySpawnHostile(); if (Math.random() < 0.5) this.trySpawnBat(); }
     if ((this.phantomTimer = (this.phantomTimer ?? 0) + 1) >= 600) { this.phantomTimer = 0; this.trySpawnPhantoms(); }
     this.civilians.tick();
+    this.detectorTick();
     const checkHung = ++this.hungTimer % 10 === 0;
     for (const e of this.list) {
       if (e.dead) continue;
@@ -479,6 +535,10 @@ export class Entities {
         // (A guest's boat moves where they paddle it; see remoteRide.)
         e.hurt = Math.max(0, e.hurt - dt);
         if (e.guestRider) this.glideRidden(e, dt); else boatPhysics(w, e, dt, e.drive ?? null);
+        if (e.y < -40) e.dead = true;
+      } else if (e.kind === 'cart') {
+        e.hurt = Math.max(0, e.hurt - dt);
+        if (e.guestRider) { this.glideRidden(e, dt); e.rail = null; } else cartPhysics(w, e, dt, this.cartPush(e));
         if (e.y < -40) e.dead = true;
       } else if (e.kind === 'mob') {
         if (e.guestRider) this.glideRidden(e, dt); else mobPhysics(this, e, dt, fluid);
@@ -673,8 +733,9 @@ export class Entities {
   attack(e, amount, bonus = 0, opts = null) {
     if (isHanging(e)) { this.hitHanging(e, this.game.creative); return; }
     const n = this.game.creative ? 100 : amount;
-    if (e.kind === 'boat') {
+    if (e.kind === 'boat' || e.kind === 'cart') {
       if (e.remote) this.game.net.hitMob(e, n, bonus);
+      else if (e.kind === 'cart') this.hitCart(e, this.game.creative);
       else this.hitBoat(e, this.game.creative);
       return;
     }
@@ -686,7 +747,7 @@ export class Entities {
   // boat or onto a horse.
   interact(e, held) {
     if (isHanging(e)) { if (this.useHanging(e, held) === 'put' && !this.game.creative) { this.game.inv.consumeHeld(); this.game.invChanged(); } this.game.swingArm(); return; }
-    if (e.kind === 'boat') { this.game.mount(e); return; }
+    if (e.kind === 'boat' || e.kind === 'cart') { this.game.mount(e); return; }
     if (e.def.kind === 'civilian') { this.civilians.talk(e); return; }
     // (A guest's copies of creatures know players by their keys; see playerKey.)
     const net = this.game.net, me = this.guest ? net.myKey : this.game.uid;
@@ -785,6 +846,9 @@ export class Entities {
       } else if (s.k === 'x') {
         e = new Entity('xp', 0.125, 0.25, s.x, s.y, s.z);
         e.value = Number.isInteger(s.v) && s.v > 0 ? s.v : 1;
+      } else if (s.k === 'c') {
+        e = new Entity('cart', CART_SIZE.hw, CART_SIZE.h, s.x, s.y, s.z);
+        Object.assign(e, { yaw: Number.isFinite(s.a) ? s.a : 0, pitch: Number.isFinite(s.p) ? s.p : 0, hits: 0, hurt: 0, rail: null, def: { label: 'Minecart' } });
       } else if (s.k === 'b') {
         e = new Entity('boat', 0.65, 0.55, s.x, s.y, s.z);
         Object.assign(e, { wood: BOAT_WOODS.includes(s.w) ? s.w : 'oak', yaw: Number.isFinite(s.a) ? s.a : 0, hits: 0, hurt: 0, def: { label: 'Boat' } });
@@ -823,7 +887,7 @@ export class Entities {
       e.owner = x.owner; if (x.collar !== undefined) e.collar = x.collar;
       e.named = x.named; e.leash = x.leash;
       this.remoteFlags(e, Number.isInteger(s.f) ? s.f : 0);
-    } else if (s.k === 'b') {
+    } else if (s.k === 'b' || s.k === 'c') {
       e.tyaw = Number.isFinite(s.a) ? s.a : e.yaw;
       e.ridden = !!((s.f ?? 0) & 2);
     }
@@ -837,8 +901,9 @@ export class Entities {
     if (e.kind === 'mob') {
       if (Number.isFinite(u[4])) e.tyaw = u[4];
       this.remoteFlags(e, Number.isInteger(u[5]) ? u[5] : 0);
-    } else if (e.kind === 'boat' && Number.isFinite(u[4])) {
+    } else if ((e.kind === 'boat' || e.kind === 'cart') && Number.isFinite(u[4])) {
       e.tyaw = u[4];
+      if (e.kind === 'cart' && Number.isFinite(u[6])) e.pitch = u[6] / 100;
       if (u[5] & 1) e.hurt = 0.35;
       e.ridden = !!(u[5] & 2);
     } else if (e.kind === 'arrow' && Number.isFinite(u[4])) { e.ayaw = u[4]; e.apitch = Number.isFinite(u[5]) ? u[5] / 100 : e.apitch; }
@@ -905,6 +970,7 @@ export class Entities {
       if (e.rider === 'me') {
         const ox = e.x, oz = e.z;
         if (e.kind === 'boat') boatPhysics(this.world, e, dt, e.drive ?? null);
+        else if (e.kind === 'cart') cartPhysics(this.world, e, dt, this.cartPush(e));
         else {
           mobPhysics(this, e, dt, WATERLIKE[this.world.getBlock(Math.floor(e.x), Math.floor(e.y + 0.3), Math.floor(e.z))]);
           const speed = Math.min(14, Math.hypot(e.x - ox, e.z - oz) / Math.max(dt, 1e-3));
@@ -917,7 +983,7 @@ export class Entities {
       // Far jumps (teleports, merged stacks) snap.
       if (Math.abs(e.tx - e.x) + Math.abs(e.ty - e.y) + Math.abs(e.tz - e.z) > 8) { e.x = e.tx; e.y = e.ty; e.z = e.tz; }
       else { e.x += (e.tx - e.x) * k; e.y += (e.ty - e.y) * k; e.z += (e.tz - e.z) * k; }
-      if (e.kind === 'boat') {
+      if (e.kind === 'boat' || e.kind === 'cart') {
         let dy = (e.tyaw ?? e.yaw) - e.yaw;
         dy -= Math.round(dy / (Math.PI * 2)) * Math.PI * 2;
         e.yaw += dy * k;
@@ -955,8 +1021,8 @@ export class Entities {
   raycast(ox, oy, oz, dx, dy, dz, maxDist) {
     let best = null;
     for (const e of this.list) {
-      if ((e.kind !== 'mob' && e.kind !== 'boat' && !isHanging(e)) || e.dead || e.dying || e.rider === 'me') continue;
-      const b = e.box ?? [-e.hw, 0, -e.hw, e.hw, e.h, e.hw];
+      if ((e.kind !== 'mob' && e.kind !== 'boat' && e.kind !== 'cart' && !isHanging(e)) || e.dead || e.dying || e.rider === 'me') continue;
+      const b = e.hitbox ?? [-e.hw, 0, -e.hw, e.hw, e.h, e.hw];
       const hit = rayBox(ox - e.x, oy - e.y, oz - e.z, dx, dy, dz, b);
       if (hit && hit.t <= maxDist && (!best || hit.t < best.t)) best = { entity: e, t: hit.t };
     }
@@ -964,7 +1030,7 @@ export class Entities {
   }
 
   blocksPlacement(x, y, z) {
-    return this.list.some((e) => (e.kind === 'mob' || e.kind === 'boat') && !e.dead &&
+    return this.list.some((e) => (e.kind === 'mob' || e.kind === 'boat' || e.kind === 'cart') && !e.dead &&
       e.x - e.hw < x + 1 && e.x + e.hw > x && e.y < y + 1 && e.y + e.h > y && e.z - e.hw < z + 1 && e.z + e.hw > z);
   }
 
@@ -1068,6 +1134,8 @@ export class Entities {
         out.push({ parts: [{ mesh: this.arrowModel(), model: m }], light, tint: null });
       } else if (e.kind === 'boat') {
         out.push({ parts: [{ mesh: boatMesh(r, e.wood), model: boatModel(this.mat(), rx, ry, rz, e.yaw) }], light, tint: null, hurt: e.hurt > 0 });
+      } else if (e.kind === 'cart') {
+        out.push({ parts: [{ mesh: cartMesh(r), model: cartModel(this.mat(), rx, ry, rz, e.yaw, e.pitch) }], light, tint: null, hurt: e.hurt > 0 });
       } else if (e.kind === 'mob') {
         renderMob(this, e, rx, ry, rz, light, out);
       } else if (isHanging(e)) {

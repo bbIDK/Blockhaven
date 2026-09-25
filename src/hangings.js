@@ -80,7 +80,7 @@ export function place(e) {
   // (A frame is only the middle three quarters of its block.)
   if (e.kind === 'frame') for (let k = 0; k < 3; k++) if (r[k] || u[k]) { min[k] += 2 / 16; max[k] -= 2 / 16; }
   e.x = (min[0] + max[0]) / 2; e.y = (min[1] + max[1]) / 2; e.z = (min[2] + max[2]) / 2;
-  e.box = [min[0] - e.x, min[1] - e.y, min[2] - e.z, max[0] - e.x, max[1] - e.y, max[2] - e.z];
+  e.hitbox = [min[0] - e.x, min[1] - e.y, min[2] - e.z, max[0] - e.x, max[1] - e.y, max[2] - e.z];
   e.hw = Math.max(max[0] - min[0], max[2] - min[2]) / 2; e.h = max[1] - min[1];
 }
 // Is it still held up (and not built over)?
