@@ -54,6 +54,16 @@ function paste(dst, src, x = 0, y = 0) {
   }
   return dst;
 }
+// Blends `src` over `dst` at (x, y), weighing each pixel by its alpha (so the soft edges of an
+// ore drawn over stone mix into the stone rather than punching holes in it).
+function over(dst, src, x = 0, y = 0) {
+  for (let j = 0; j < src.h; j++) for (let i = 0; i < src.w; i++) {
+    const p = src.px(i, j), q = dst.px(x + i, y + j), a = p[3] / 255, b = (q[3] / 255) * (1 - a), out = a + b;
+    if (!out) continue;
+    dst.put(x + i, y + j, [0, 1, 2].map((k) => Math.round((p[k] * a + q[k] * b) / out)).concat(Math.round(out * 255)));
+  }
+  return dst;
+}
 // Quarter turns clockwise.
 function rot(img, turns = 1) {
   let cur = img;
@@ -130,7 +140,7 @@ function tile(img, w = 16, h = 16) {
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) out.put(x, y, img.px(x % img.w, y % img.h));
   return out;
 }
-export const H = { load, blank, crop, frame, paste, rot, flipX, flipY, scale, half, gray, tint, remap, tile };
+export const H = { load, blank, crop, frame, paste, over, rot, flipX, flipY, scale, half, gray, tint, remap, tile };
 
 // A source: a picture ref (its first frame if it's a strip), or a function of the helpers.
 function build(src) {
