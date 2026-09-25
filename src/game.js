@@ -904,9 +904,22 @@ export class Game {
     this.gui.show(menu);
   }
 
+  // How many things are in the containers with these keys.
+  itemsIn(keys) {
+    let n = 0;
+    for (const k of keys) for (const s of this.containers.get(k) ?? []) n += s?.count ?? 0;
+    return n;
+  }
+
   closeMenu() {
     const m = this.menu;
     if (!m) return;
+    // Taken something from a settlement's chest? Someone may have seen.
+    const watched = this.watched;
+    this.watched = null;
+    if (watched && this.itemsIn(watched.keys) < watched.count) {
+      this.entities.civilians.theft(watched.plan, watched.at.x, watched.at.y, watched.at.z, this.player);
+    }
     // Whatever was left in a crafting grid or on the cursor goes back into the inventory, and
     // what doesn't fit is thrown out.
     const spill = m.close();
@@ -1071,6 +1084,9 @@ export class Game {
     // A guest waits for the host to say what's inside before anything can be moved.
     if (this.net?.guest) { menu.waiting = new Set(keys); for (const k of keys) this.net.openContainer(k, 'chest'); }
     this.openMenu(menu, { key: keys[0], keys, at });
+    // One of a settlement's own chests: what's taken from it is stolen (see closeMenu).
+    const owner = this.net?.guest ? null : this.entities.civilians.chestOwner(halves);
+    this.watched = owner ? { plan: owner, keys, at, count: this.itemsIn(keys) } : null;
   }
 
   // A chest placed beside a single chest facing the same way joins it into a double chest
@@ -2139,6 +2155,11 @@ export class Game {
   breakBlockAt(x, y, z, id, byPlayer) {
     const def = BLOCKS[id];
     if (id === B.fire) { this.world.setBlock(x, y, z, 0); this.audio.fizz({ x: x + 0.5, y: y + 0.5, z: z + 0.5 }); return; }
+    // Breaking open one of a settlement's chests is stealing too.
+    if (byPlayer && !this.net?.guest && (CHEST[id] !== undefined || LOOT_KIND[id] !== undefined)) {
+      const owner = this.entities.civilians.chestOwner([[x, y, z]]);
+      if (owner) this.entities.civilians.theft(owner, x + 0.5, y + 0.5, z + 0.5, this.player);
+    }
     // (A sea plant leaves the water it stood in.)
     this.world.setBlock(x, y, z, WET[id] ? B.water : 0);
     if (byPlayer) this.exhaust(0.005);

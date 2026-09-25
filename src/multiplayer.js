@@ -670,11 +670,18 @@ export class HostSession extends Session {
   slots(m, from = null) {
     const arr = this.game.containers.get(m.k) ?? this.game.furnaces.get(m.k)?.slots;
     if (!arr || !m.s || typeof m.s !== 'object') return;
-    const clean = {};
+    const clean = {}, before = arr.reduce((n, s) => n + (s?.count ?? 0), 0);
     for (const [k, v] of Object.entries(m.s)) {
       const i = Number(k);
       if (!int(i) || i < 0 || i >= arr.length) continue;
       arr[i] = clean[i] = cleanStack(v);
+    }
+    // A guest taking from one of a settlement's chests is stealing, if they're seen.
+    const g = from && this.guests.get(from);
+    if (g?.ref && arr.reduce((n, s) => n + (s?.count ?? 0), 0) < before) {
+      const at = String(m.k).split(',').map(Number);
+      const plan = at.length === 3 && at.every(Number.isInteger) ? this.game.entities.civilians.chestOwner([at]) : null;
+      if (plan) this.game.entities.civilians.theft(plan, at[0] + 0.5, at[1] + 0.5, at[2] + 0.5, g.ref);
     }
     for (const addr of this.viewers.get(m.k) ?? []) if (addr !== from) this.send(addr, { t: 'slots', k: m.k, s: clean });
     if (from && (this.game.openBlock?.keys ?? []).includes(m.k)) this.game.menuChanged();

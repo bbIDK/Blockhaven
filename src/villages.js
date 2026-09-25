@@ -10,7 +10,7 @@
 // cut in half. Newer worlds (generator 4) have settlements of every size instead, from camps in
 // the woods to walled kingdoms (settlements.js).
 import { SEA_LEVEL } from './config.js';
-import { B, STAIRS, LADDER, gateId, WOOD, WALL_TORCH } from './blocks.js';
+import { B, STAIRS, LADDER, gateId, WOOD, WALL_TORCH, LOOT_KIND } from './blocks.js';
 import { hash2, mulberry32 } from './math.js';
 import { STYLE_OF, STYLES, HOUSES, LotGrid, Blueprint, DryBlueprint, Lot, BUILD, personName } from './lots.js';
 import { MAJOR, MINOR, MAX_REACH, CAMP_REACH, planRegion, planCamp, build4 } from './settlements.js';
@@ -384,7 +384,7 @@ function built(plan, dry = false) {
   const bp = dry ? new DryBlueprint() : new Blueprint();
   if (plan.gen >= 4) build4(plan, bp); else build(plan, bp);
   plan.built = true;
-  if (!dry) plan.blueprint = bp;
+  if (!dry) plan.blueprint = bp; else plan.chests = bp.chests;
   return bp;
 }
 
@@ -418,3 +418,12 @@ export function villagePieces(gen, cx, cz, plans = villagesNear(gen, cx, cz)) {
 // The people of a settlement, and the animals in its pens.
 export function villageResidents(p) { built(p, true); return p.residents; }
 export function villageAnimals(p) { built(p, true); return p.animals; }
+// Where a settlement's own chests are ("x,y,z"; see DryBlueprint).
+export function villageChests(p) {
+  built(p, true);
+  if (!p.chests && p.blueprint) {
+    p.chests = new Set();
+    for (const a of p.blueprint.chunks.values()) for (let i = 0; i < a.length; i += 4) if (LOOT_KIND[a[i + 3]] !== undefined) p.chests.add(`${a[i]},${a[i + 1]},${a[i + 2]}`);
+  }
+  return p.chests ?? new Set();
+}

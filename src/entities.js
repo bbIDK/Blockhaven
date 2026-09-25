@@ -62,6 +62,8 @@ export function mobExtra(e) {
 const isWild = (e) => !e.def.hostile && e.def.kind !== 'civilian' && e.def.kind !== 'water' && !e.def.flies && !e.pinned && !e.tame &&
   !e.named && !e.made && !e.hatched && !e.saddled && !e.leash;
 
+// The animals that may turn up inside a settlement (see spawnHerds).
+const FARM = new Set(['pig', 'cow', 'sheep', 'chicken', 'horse', 'donkey']);
 // The birds and insects that come and go about the land (see trySpawnAmbient).
 const AMBIENT_TYPES = new Set(['robin', 'blue_jay', 'cardinal', 'sparrow', 'goldfinch', 'crow', 'seagull', 'eagle', 'vulture', 'butterfly', 'bee']);
 // The seas deep enough for whales.
@@ -422,7 +424,9 @@ export class Entities {
       if (room <= 0) break;
       this.herdsDue.delete(key);
       if (about.has(key)) continue;
-      const herd = herdFor(w.readyChunk(cx, cz), game.meta.seed), water = herd.length && MOBS[herd[0].type].kind === 'water';
+      // (Inside a settlement's walls only farm animals: no foxes about the castle.)
+      const herd = herdFor(w.readyChunk(cx, cz), game.meta.seed).filter((h) => FARM.has(h.type) || !villageAt(w.gen, h.x, h.z, 4));
+      const water = herd.length && MOBS[herd[0].type].kind === 'water';
       if (water && sea >= 48) continue;
       for (const h of herd) {
         this.spawnMob(h.type, h.x, h.y, h.z, h.o).herd = key;
@@ -619,7 +623,9 @@ export class Entities {
         // waiting where they were left.
         const near = this.players.some((p) => Math.hypot(p.x - e.x, p.z - e.z) < (game.settings.renderDistance + 2) * 16);
         const kept = e.tame || e.saddled || e.rider || e.made || e.named || e.leash || (e.hatched && !e.def.hostile);
-        if ((!near && !kept && (e.def.kind !== 'civilian' || !loaded)) || e.y < -40) { e.dead = true; this.civilians.gone(e); }
+        // (A settlement's people and animals only go with the land they're on, and come back with it.)
+        const settled = e.def.kind === 'civilian' || e.pinned;
+        if ((!near && !kept && (!settled || !loaded)) || e.y < -40) { e.dead = true; this.civilians.gone(e); }
       }
     }
     // Merge nearby identical items.
@@ -839,6 +845,7 @@ export class Entities {
     }
     provoked(this, e, from && (from.addr !== undefined || from.kind === 'mob') ? from : from === this.game.player ? this.players[0] : null);
     if (t.kind === 'civilian') this.civilians.hurt(e, from);
+    else if (e.pinned && !e.penned && (t.type === 'iron_golem' || t.type === 'cat')) this.civilians.keeperHurt(e, from);
     if (e.health <= 0) {
       e.dying = 0.001;
       // (What killed it: a creeper shot by a skeleton leaves a music disc.)

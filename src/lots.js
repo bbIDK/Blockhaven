@@ -3,7 +3,7 @@
 // houses, workshops, farms and yards that stand on them. Shared by the walled villages of older
 // worlds (villages.js) and the settlements of newer ones (settlements.js).
 import { HEIGHT } from './config.js';
-import { B, STAIRS, FACING_VARIANTS, LADDER, LOG_AXES, doorId, bedId, lootChestId, gateId, trapdoorId, WOOD, WALL_TORCH } from './blocks.js';
+import { B, STAIRS, FACING_VARIANTS, LADDER, LOG_AXES, doorId, bedId, lootChestId, gateId, trapdoorId, WOOD, WALL_TORCH, LOOT_KIND } from './blocks.js';
 import { BIOME } from './biomes.js';
 
 // The building style of each biome settlements are found in.
@@ -148,9 +148,12 @@ export class Blueprint {
     this.last.push(x, y, z, id);
   }
 }
-// A blueprint that keeps nothing: for working out who lives in a settlement (and where) without
-// storing its blocks.
-export class DryBlueprint { constructor() { this.dry = true; } set() {} }
+// A blueprint that keeps no blocks: for working out who lives in a settlement (and where) without
+// storing them. It notes only where the settlement's own chests are (taking from those is theft).
+export class DryBlueprint {
+  constructor() { this.dry = true; this.chests = new Set(); }
+  set(x, y, z, id) { if (LOOT_KIND[id] !== undefined) this.chests.add(`${x},${y},${z}`); }
+}
 
 // Draws one building in its own coordinates: x across its front (0 at the left), z back from the
 // front, y up from the ground. The front faces `face`. Collects the building's beds, the jobs

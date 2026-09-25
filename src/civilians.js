@@ -5,8 +5,8 @@
 // from monsters, and the guards and knights fight. A kingdom's king and queen hold court from
 // their thrones. Talk to anyone (right-click) to chat, ask the way, or trade for gold coins (see
 // tradeui.js).
-import { villagesNear, villageResidents, villageAnimals, villageAt, outside } from './villages.js';
-import { B, SOLID, DOOR, GATE, CLIMB, WATERLIKE, SHAPE_KIND, BED } from './blocks.js';
+import { villagesNear, villageResidents, villageAnimals, villageChests, villageAt, outside } from './villages.js';
+import { B, BLOCKS, BASE, SOLID, DOOR, GATE, CLIMB, WATERLIKE, SHAPE_KIND, BED, CROP, CHEST, FURNACE_IDS } from './blocks.js';
 import { I } from './items.js';
 import { randomBook, ENCHANTS } from './enchanting.js';
 import { TICKS_PER_DAY } from './config.js';
@@ -84,6 +84,28 @@ export const ROLES = {
 };
 // Those who fight monsters (and anyone who hurts their neighbours).
 const FIGHTS = new Set(['guard', 'knight']);
+// What each trade busies itself with round its workplace (see work): the blocks they work at.
+const nameOf = (id) => BLOCKS[BASE[id]]?.name ?? '';
+const fire = (id) => FURNACE_IDS.has(id) || id === B.smoker;
+const WORKS_AT = {
+  farmer: (id) => CROP[id] !== undefined || id === B.composter,
+  woodcutter: (id) => /_log$/.test(nameOf(id)),
+  miner: (id) => id === B.stone || id === B.cobblestone || /_ore$|^(andesite|diorite|granite|deepslate|tuff)$/.test(nameOf(id)),
+  mason: (id) => id === B.stonecutter || id === B.stone || id === B.cobblestone || /bricks$/.test(nameOf(id)),
+  blacksmith: (id) => id === B.anvil || id === B.grindstone || id === B.smithing_table || fire(id),
+  librarian: (id) => id === B.bookshelf || id === B.lectern,
+  cleric: (id) => id === B.cauldron || id === B.lectern || id === B.bookshelf,
+  baker: (id) => fire(id) || id === B.crafting_table || id === B.barrel,
+  butcher: (id) => fire(id) || id === B.barrel,
+  innkeeper: (id) => id === B.barrel || id === B.cauldron || fire(id),
+  merchant: (id) => id === B.barrel || CHEST[id] !== undefined,
+  hunter: (id) => id === B.fletching_table || id === B.barrel,
+  shepherd: (id) => id === B.loom || id === B.hay_block || /_wool$/.test(nameOf(id)),
+  stablehand: (id) => id === B.hay_block || id === B.composter,
+  fisher: (id) => WATERLIKE[id] === 1,
+};
+// ...and the animals some of them tend.
+const TENDS = { shepherd: new Set(['sheep']), stablehand: new Set(['horse', 'donkey', 'mule']), farmer: new Set(['chicken', 'pig', 'cow']) };
 const ROYAL = new Set(['king', 'queen']);
 
 // What people say. `{v}` is the village's name, `{n}` the speaker's, `{r}` their trade.
@@ -152,8 +174,10 @@ export function villageName(plan) {
   return `${PRE[Math.floor(r() * PRE.length)]}${SUF[Math.floor(r() * SUF.length)]}`;
 }
 // What the title says as you walk in: the name, and who lives there.
-export function villageTitle(plan) {
-  const name = villageName(plan), people = villageResidents(plan), n = people.length;
+// The title shown on walking in: its name, and who lives there (`living`: how many are left).
+export function villageTitle(plan, living = null) {
+  const name = villageName(plan), people = villageResidents(plan), n = living ?? people.length;
+  if (n <= 0) return [plan.tier === 'kingdom' ? `The Kingdom of ${name}` : plan.tier === 'camp' ? `${name} Camp` : name, 'Abandoned \u00b7 no one lives here now'];
   switch (plan.tier) {
     case 'camp': return [`${name} Camp`, `${n} ${plan.camp ?? 'travellers'} camp here`];
     case 'kingdom': {
@@ -179,14 +203,14 @@ export class Civilians {
   constructor(ents) {
     this.ents = ents;
     this.live = new Map();     // resident id -> entity
-    this.penned = new Set();   // villages whose pen animals are out
+    this.pens = new Map();     // village key -> its pen animals (by their place in the pens)
     this.keepers = new Map();  // village key -> its iron golem and cats
     this.pathBudget = 0;
     this.currentVillage = null;
   }
   get game() { return this.ents.game; }
   get world() { return this.ents.world; }
-  reset() { this.live.clear(); this.penned.clear(); this.keepers.clear(); this.currentVillage = null; }
+  reset() { this.live.clear(); this.pens.clear(); this.keepers.clear(); this.currentVillage = null; }
 
   // Saved state per village: reputation, who has died (and when), trade stock used today.
   record(plan) {
@@ -195,35 +219,39 @@ export class Civilians {
     return (meta.villages[plan.key] ??= { rep: 0, dead: {}, used: {}, day: -1 });
   }
 
+  // As each chunk of a settlement loads, those who live and work there come out (so a village is
+  // full again whenever you come back to it, however much of it had gone out of reach).
   chunkLoaded(chunk) {
     const gen = this.world?.gen;
     if (!gen?.villages) return;
-    for (const v of villagesNear(gen, chunk.cx, chunk.cz)) {
-      // Everyone comes out once the chunks under the village centre and its houses exist.
-      if ((v.x >> 4) === chunk.cx && (v.z >> 4) === chunk.cz) this.populate(v);
-    }
+    for (const v of villagesNear(gen, chunk.cx, chunk.cz)) this.populate(v);
   }
 
+  // Brings out everyone who belongs to a settlement and isn't about (once the land where they'll
+  // appear has loaded). The dead stay dead: a village that loses people has fewer, and one that
+  // loses everyone lies abandoned.
   populate(plan) {
-    const game = this.game, rec = this.record(plan), day = Math.floor(game.time / TICKS_PER_DAY);
+    const game = this.game, w = this.world, rec = this.record(plan);
     const night = this.phase(game.time % TICKS_PER_DAY, 'x') === 'sleep';
+    const ready = (at) => !!w.readyChunk(at[0] >> 4, at[2] >> 4);
     for (const r of villageResidents(plan)) {
-      if (this.live.has(r.id)) continue;
-      const died = rec.dead[r.id];
-      if (died !== undefined && day - died < 2) continue; // (a new neighbour moves in after a couple of days)
-      if (died !== undefined) delete rec.dead[r.id];
+      if (this.live.has(r.id) || rec.dead[r.id] !== undefined) continue;
       const at = night && r.bed ? r.bed : r.work;
+      if (!ready(at)) continue;
       const e = this.ents.spawnMob('civilian', at[0] + 0.5, at[1] + (night && r.bed ? 0.6 : 0.05), at[2] + 0.5);
       this.dress(e, r, plan);
       this.live.set(r.id, e);
     }
-    if (!this.penned.has(plan.key)) {
-      this.penned.add(plan.key);
-      for (const a of villageAnimals(plan)) {
-        const m = this.ents.spawnMob(a.type, a.at[0] + 0.5, a.at[1] + 0.1, a.at[2] + 0.5, { colour: 0, pinned: plan.key, penned: true });
-        m.home = { x: a.at[0] + 0.5, z: a.at[2] + 0.5 };
-      }
-    }
+    // The animals in the pens (each back in its place if it's gone).
+    const pens = this.pens.get(plan.key) ?? [];
+    villageAnimals(plan).forEach((a, i) => {
+      if ((pens[i] && !pens[i].dead) || !ready(a.at)) return;
+      const m = this.ents.spawnMob(a.type, a.at[0] + 0.5, a.at[1] + 0.1, a.at[2] + 0.5, { colour: 0, pinned: plan.key, penned: true });
+      m.home = { x: a.at[0] + 0.5, z: a.at[2] + 0.5 };
+      pens[i] = m;
+    });
+    this.pens.set(plan.key, pens);
+    if (rec.abandoned !== undefined) return;
     // An iron golem keeps watch over the plaza (two over a kingdom's market), and a few cats laze
     // about - a hamlet has only the cats, a camp neither. (They come back whenever the settlement
     // does, unless someone has seen to them all.)
@@ -269,29 +297,88 @@ export class Civilians {
   died(e) {
     if (!e.rid) return;
     this.gone(e);
-    const rec = this.record(e.village);
-    rec.dead[e.rid] = Math.floor(this.game.time / TICKS_PER_DAY);
+    const rec = this.record(e.village), day = Math.floor(this.game.time / TICKS_PER_DAY);
+    rec.dead[e.rid] = day;
     this.game.ui.message(`${e.name} the ${ROLES[e.role]?.title.toLowerCase() ?? 'villager'} has died`, '#e88a78');
     if (this.game.talk?.who === e) this.game.closeTalk?.();
+    // The last of them gone: the place is left empty (its golems and cats don't come back either).
+    if (rec.abandoned === undefined && villageResidents(e.village).every((r) => rec.dead[r.id] !== undefined)) {
+      rec.abandoned = day;
+      this.game.ui.message(`No one is left in ${villageName(e.village)}. It lies abandoned.`, '#e88a78');
+    }
+  }
+  // How many live somewhere now (the dead don't come back).
+  living(plan) {
+    const rec = this.record(plan);
+    return villageResidents(plan).filter((r) => rec.dead[r.id] === undefined).length;
   }
 
   // Someone hurt a villager: they run, and the guards go after whoever did it.
   hurt(e, from) {
     e.fear = 120;
-    if (!from) return;
-    const player = from === this.game.player || from.addr !== undefined;
-    if (!player || from.creative) return;
+    const who = this.culprit(from);
+    if (!who) return;
     const rec = this.record(e.village);
     rec.rep = Math.max(-20, rec.rep - (e.health <= 0 ? 8 : 2));
-    const who = from === this.game.player ? this.ents.players[0] ?? { x: from.x, y: from.y, z: from.z, addr: null } : from;
-    for (const g of this.live.values()) {
-      if (FIGHTS.has(g.role) && !g.dead && Math.hypot(g.x - e.x, g.z - e.z) < 40) { g.aggro = who; g.aggroTime = 1200; }
-    }
+    this.alarm(e.village, e.x, e.z, who);
     if (FIGHTS.has(e.role)) { e.aggro = who; e.aggroTime = 1200; }
-    // The village's iron golem won't stand for it either.
-    for (const g of this.keepers.get(e.village?.key) ?? []) {
-      if (g.type === 'iron_golem' && !g.dead && !g.dying && Math.hypot(g.x - e.x, g.z - e.z) < 32) { g.angry = 600; g.target = who; }
+  }
+  // Someone attacked a settlement's iron golem (or its cats): the guards take it as they would an
+  // attack on one of its people.
+  keeperHurt(e, from) {
+    const who = this.culprit(from), plan = villageAt(this.world.gen, e.x, e.z, 12);
+    if (!who || !plan || plan.key !== e.pinned) return;
+    const rec = this.record(plan);
+    rec.rep = Math.max(-20, rec.rep - 2);
+    this.alarm(plan, e.x, e.z, who);
+  }
+  // A player (not in Creative) who did something, as the guards see them; else null.
+  culprit(from) {
+    if (!from || from.creative) return null;
+    if (from === this.game.player) return this.game.creative ? null : this.ents.players[0] ?? { x: from.x, y: from.y, z: from.z, addr: null };
+    return from.addr !== undefined ? from : null;
+  }
+  // Word gets round: the guards and knights nearby go after `who` (and give it up once they're far
+  // enough away; see guardFight), and the settlement's iron golems too.
+  alarm(plan, x, z, who) {
+    for (const g of this.live.values()) {
+      if (FIGHTS.has(g.role) && !g.dead && Math.hypot(g.x - x, g.z - z) < 48) { g.aggro = who; g.aggroTime = 1200; }
     }
+    for (const g of this.keepers.get(plan?.key) ?? []) {
+      if (g.type === 'iron_golem' && !g.dead && !g.dying && Math.hypot(g.x - x, g.z - z) < 32) { g.angry = 600; g.target = who; }
+    }
+  }
+
+  // ---------------------------------------------------------------- theft
+  // The settlement a chest belongs to (one it was built with), if any of `cells` is one.
+  chestOwner(cells) {
+    const gen = this.world?.gen;
+    if (!gen?.villages) return null;
+    for (const [x, y, z] of cells) {
+      const plan = villageAt(gen, x, z, 0);
+      if (plan && villageChests(plan).has(`${x},${y},${z}`)) return plan;
+    }
+    return null;
+  }
+  // Someone took from a settlement's chest at (x, y, z): if any of its people saw it (a guard
+  // within 24 blocks, anyone else within 16, with nothing in the way), the guards come for them.
+  theft(plan, x, y, z, from) {
+    const who = this.culprit(from);
+    if (!who) return false;
+    const w = this.world, seen = [...this.live.values()].find((o) => {
+      if (o.dead || o.village !== plan || o.pose === 'sleep') return false;
+      const d = Math.hypot(o.x - x, o.y - y, o.z - z);
+      if (d > (FIGHTS.has(o.role) ? 24 : 16)) return false;
+      const ey = o.y + 1.6, dx = x - o.x, dy = y + 0.5 - ey, dz = z - o.z, n = Math.hypot(dx, dy, dz) || 1;
+      const hit = w.raycast(o.x, ey, o.z, dx / n, dy / n, dz / n, n);
+      return !hit || hit.t > n - 1.5;
+    });
+    if (!seen) return false;
+    const rec = this.record(plan);
+    rec.rep = Math.max(-20, rec.rep - 4);
+    this.alarm(plan, x, z, who);
+    if (from === this.game.player) this.game.ui.message(`${seen.name} saw you steal! The guards are coming.`, '#e88a78');
+    return true;
   }
 
   // ---------------------------------------------------------------- the clock
@@ -317,7 +404,7 @@ export class Civilians {
     const v = villageAt(this.world.gen, p.x, p.z, -1);
     if (v !== this.currentVillage) {
       this.currentVillage = v;
-      if (v) game.ui.showTitle?.(...villageTitle(v));
+      if (v) game.ui.showTitle?.(...villageTitle(v, this.living(v)));
     }
   }
 
@@ -338,6 +425,21 @@ export class Civilians {
       return;
     }
     if (FIGHTS.has(e.role) && this.guardFight(e)) return;
+    // Someone who gets no nearer to where they're going for half a minute (no way there, or wedged
+    // in a stairwell), or is still a way off after a minute, gets there anyway, out of sight: the
+    // king and queen don't end up lost about the town.
+    if (e.goalAt) {
+      const d = Math.hypot(e.goalAt[0] + 0.5 - e.x, e.goalAt[2] + 0.5 - e.z) + Math.abs(e.goalAt[1] - e.y);
+      if (e.goalKey !== e.lostKey) { e.lostKey = e.goalKey; e.bestD = d; e.lost = 0; e.going = 0; }
+      else if (d < e.bestD - 1 || d < 5) { e.bestD = Math.min(e.bestD, d); e.lost = 0; }
+      else e.lost = (e.lost ?? 0) + 1;
+      e.going = d < 5 ? 0 : (e.going ?? 0) + 1;
+      if ((e.lost > 600 || e.going > 1200) &&
+        !this.ents.players.some((p) => Math.hypot(p.x - e.x, p.z - e.z) < 16 || Math.hypot(p.x - e.goalAt[0], p.z - e.goalAt[2]) < 16)) {
+        e.x = e.goalAt[0] + 0.5; e.y = e.goalAt[1] + 0.05; e.z = e.goalAt[2] + 0.5; e.vx = e.vy = e.vz = 0;
+        e.path = null; e.gaveUp = false; e.goalKey = ''; e.lost = 0; e.going = 0;
+      }
+    }
     // Monsters about: everyone else heads home at a run.
     const danger = !FIGHTS.has(e.role) && this.ents.list.find((o) => o.kind === 'mob' && o.def.hostile && !o.dead && !o.dying &&
       Math.hypot(o.x - e.x, o.z - e.z) < 10 && Math.abs(o.y - e.y) < 5);
@@ -381,6 +483,7 @@ export class Civilians {
       case 'watch': this.goTo(e, e.resident.work, 'post'); if (this.arrived(e)) this.loiter(e, e.resident.work, 2); break;
       default: {
         if (e.resident.seat) { this.holdCourt(e); break; }
+        if (e.task) { this.work(e); break; }
         this.goTo(e, e.resident.work, 'work');
         if (this.arrived(e)) this.work(e);
       }
@@ -390,13 +493,80 @@ export class Civilians {
 
   arrived(e) { return !e.path || e.pathI >= e.path.length; }
 
-  // At work: pottering about near the workstation, now and then busy with the hands.
+  // At work: going from one job to the next round the workplace, what their trade needs (a farmer
+  // at the crops, harvesting what's ripe and sowing it again; a smith at the anvil and the furnace;
+  // a woodcutter at the trees; a fisher at the water's edge; a shepherd among the sheep), a while at
+  // each with the hands busy, and a breather between.
   work(e) {
-    if (--e.idle > 0) { if (e.workAnim > 0 && --e.workAnim % 8 === 0) e.swing = 1; return; }
-    const r = Math.random();
-    if (r < 0.35) { e.workAnim = 40; e.idle = 50; e.moving = false; }
-    else if (r < 0.7) this.loiter(e, e.resident.work, 2.5);
+    const task = e.task;
+    if (task) {
+      if (task.animal && (task.animal.dead || Math.hypot(task.animal.x - e.x, task.animal.z - e.z) > 14)) { e.task = null; return; }
+      const [tx, ty, tz] = task.animal ? [Math.floor(task.animal.x), Math.floor(task.animal.y), Math.floor(task.animal.z)] : task.at;
+      const st = task.stand, there = task.animal ? Math.hypot(task.animal.x - e.x, task.animal.z - e.z) < 1.8
+        : Math.floor(e.x) === st[0] && Math.floor(e.z) === st[2] && Math.abs(Math.floor(e.y + 0.1) - st[1]) <= 1;
+      if (!there) {
+        this.goTo(e, task.animal ? [tx, ty, tz] : st, 'task', !!task.animal);
+        if ((e.gaveUp && e.goalKey.startsWith('task')) || --task.patience <= 0) { e.task = null; e.idle = 20; }
+        return;
+      }
+      e.moving = false; e.path = null;
+      e.yaw = Math.atan2(-(tx + 0.5 - e.x), -(tz + 0.5 - e.z));
+      e.lookAt = { x: tx + 0.5, y: ty - 1, z: tz + 0.5 };
+      if (--task.time % 12 === 0) e.swing = 1;
+      if (task.time <= 0) { this.finishTask(e, task); e.task = null; e.lookAt = null; e.idle = 20 + Math.floor(Math.random() * 60); }
+      return;
+    }
+    if (--e.idle > 0) return;
+    e.task = this.findTask(e);
+    if (e.task) return;
+    // (Nothing to do just now: a moment at the workplace.)
+    if (Math.random() < 0.5) this.loiter(e, e.resident.work, 2);
     else { e.moving = false; e.idle = 40 + Math.floor(Math.random() * 60); e.yaw += (Math.random() - 0.5) * 2; }
+  }
+  // The next job for someone: an animal to tend, or a block of their trade near the workplace (ripe
+  // crops before anything else), with where to stand to work at it.
+  findTask(e) {
+    const tends = TENDS[e.role], test = WORKS_AT[e.role];
+    if (tends && Math.random() < (e.role === 'farmer' ? 0.15 : 0.5)) {
+      const [wx, , wz] = e.resident.work;
+      const herd = this.ents.list.filter((o) => o.kind === 'mob' && !o.dead && tends.has(o.type) && Math.hypot(o.x - wx, o.z - wz) < 14);
+      if (herd.length) return { animal: herd[Math.floor(Math.random() * herd.length)], time: 60 + Math.floor(Math.random() * 60), patience: 200 };
+    }
+    if (!test) return null;
+    const w = this.world, [wx, wy, wz] = e.resident.work;
+    let found = null;
+    for (let i = 0; i < 40; i++) {
+      const x = wx + Math.round((Math.random() - 0.5) * 18), z = wz + Math.round((Math.random() - 0.5) * 18);
+      for (let y = wy - 2; y <= wy + 2; y++) {
+        const id = w.getBlock(x, y, z);
+        if (!test(id)) continue;
+        const stand = this.standBeside(x, y, z);
+        if (!stand) break;
+        const ripe = CROP[id] !== undefined && CROP[id].stage === CROP[id].max;
+        if (!found || (ripe && !found.ripe)) found = { at: [x, y, z], stand, id, ripe };
+        break;
+      }
+      if (found && (found.ripe || e.role !== 'farmer')) break;
+    }
+    if (!found) return null;
+    const time = e.role === 'fisher' ? 160 + Math.floor(Math.random() * 200) : 50 + Math.floor(Math.random() * 90);
+    return { ...found, time, patience: 300 };
+  }
+  // Somewhere to stand beside the block at (x, y, z) to work at it.
+  standBeside(x, y, z) {
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      for (const dy of [0, 1, -1]) if (this.walkable(x + dx, y + dy, z + dz)) return [x + dx, y + dy, z + dz];
+    }
+    return null;
+  }
+  // A job done: a ripe crop is harvested and sown again.
+  finishTask(e, task) {
+    if (!task.ripe) return;
+    const [x, y, z] = task.at, w = this.world, id = w.getBlock(x, y, z), crop = CROP[id];
+    if (!crop || crop.stage !== crop.max) return;
+    w.setBlock(x, y, z, crop.first);
+    this.game.audio.dig?.('grass', { x: x + 0.5, y: y + 0.5, z: z + 0.5 });
+    this.game.particles?.burst?.(x, y, z, id);
   }
   loiter(e, at, radius) {
     if (--e.idle > 0) return;
@@ -509,6 +679,7 @@ export class Civilians {
     const k = `${key}:${to[0]},${to[1]},${to[2]}`;
     // (After failing to find a way, try again every few seconds: the way may be through land
     // that hadn't loaded yet, or a door someone has since opened.)
+    e.goalAt = to;
     if (e.goalKey === k && (e.gaveUp ? --e.retry > 0 : e.path)) return;
     const fx = Math.floor(e.x), fy = Math.floor(e.y + 0.1), fz = Math.floor(e.z);
     if (Math.abs(fx - to[0]) + Math.abs(fz - to[2]) <= (near ? 1 : 0) && Math.abs(fy - to[1]) <= 1) { e.goalKey = k; e.path = null; e.gaveUp = false; return; }
