@@ -58,7 +58,7 @@ doubled in size (the particles). Anything not listed is drawn by the game's own 
 | `textures/obsidian.png` | Pixel Perfection CE block/obsidian.png |  |
 | `textures/bedrock.png` | Pixel Perfection CE block/bedrock.png |  |
 | `textures/glowstone.png` | Pixel Perfection CE block/glowstone.png |  |
-| `textures/lava.png` | Pixel Perfection CE block/lava_still.png |  |
+| `textures/lava.png` | Pixel Perfection CE block/lava_still.png | changed |
 | `textures/water.png` | Pixel Perfection CE block/water_still.png | changed |
 | `textures/coal_ore.png` | Pixel Perfection CE block/coal_ore.png |  |
 | `textures/deepslate_coal_ore.png` | Mineclonia mods/ITEMS/mcl_deepslate/textures/mcl_deepslate_coal_ore.png |  |
@@ -207,11 +207,11 @@ doubled in size (the particles). Anything not listed is drawn by the game's own 
 | `textures/smoker_top.png` | Pixel Perfection CE block/smoker_top.png |  |
 | `textures/smoker_bottom.png` | Pixel Perfection CE block/smoker_bottom.png |  |
 | `textures/smoker_front.png` | Pixel Perfection CE block/smoker_front.png |  |
-| `textures/smoker_front_on.png` | Pixel Perfection CE block/smoker_front_on.png |  |
+| `textures/smoker_front_on.png` | Pixel Perfection CE block/smoker_front_on.png | changed |
 | `textures/blast_furnace_side.png` | Pixel Perfection CE block/blast_furnace_side.png |  |
 | `textures/blast_furnace_top.png` | Pixel Perfection CE block/blast_furnace_top.png |  |
 | `textures/blast_furnace_front.png` | Pixel Perfection CE block/blast_furnace_front.png |  |
-| `textures/blast_furnace_front_on.png` | Pixel Perfection CE block/blast_furnace_front_on.png |  |
+| `textures/blast_furnace_front_on.png` | Pixel Perfection CE block/blast_furnace_front_on.png | changed |
 | `textures/barrel_side.png` | Pixel Perfection CE block/barrel_side.png |  |
 | `textures/barrel_top.png` | Pixel Perfection CE block/barrel_top.png |  |
 | `textures/barrel_bottom.png` | Pixel Perfection CE block/barrel_bottom.png |  |
@@ -268,7 +268,7 @@ doubled in size (the particles). Anything not listed is drawn by the game's own 
 | `textures/grindstone_side.png` | Pixel Perfection CE block/grindstone_side.png |  |
 | `textures/stonecutter_top.png` | Pixel Perfection CE block/stonecutter_top.png |  |
 | `textures/stonecutter_side.png` | Pixel Perfection CE block/stonecutter_side.png |  |
-| `textures/stonecutter_saw.png` | Pixel Perfection CE block/stonecutter_saw.png |  |
+| `textures/stonecutter_saw.png` | Pixel Perfection CE block/stonecutter_saw.png | changed |
 | `textures/composter_side.png` | Pixel Perfection CE block/composter_side.png |  |
 | `textures/composter_top.png` | Pixel Perfection CE block/composter_top.png |  |
 | `textures/composter_bottom.png` | Pixel Perfection CE block/composter_bottom.png |  |
@@ -491,7 +491,7 @@ doubled in size (the particles). Anything not listed is drawn by the game's own 
 | `textures/heart.png` | Pixel Perfection CE particle/heart.png | changed |
 | `textures/happy.png` | Pixel Perfection CE particle/glint.png | changed |
 | `textures/angry.png` | Pixel Perfection CE particle/angry.png | changed |
-| `textures/portal.png` | Pixel Perfection CE block/portal.png |  |
+| `textures/portal.png` | Pixel Perfection CE block/portal.png | changed |
 | `textures/bubble.png` | Pixel Perfection CE particle/bubble.png | changed |
 | `textures/smoke.png` | Pixel Perfection CE particle/generic_5.png | changed |
 | `textures/fire_0.png` | Pixel Perfection CE block/fire_0.png | changed |
@@ -614,7 +614,7 @@ doubled in size (the particles). Anything not listed is drawn by the game's own 
 | `textures/rail.png` | Pixel Perfection CE block/rail.png |  |
 | `textures/rail_corner.png` | Pixel Perfection CE block/rail_corner.png |  |
 | `textures/powered_rail.png` | Pixel Perfection CE block/powered_rail.png |  |
-| `textures/powered_rail_on.png` | Pixel Perfection CE block/powered_rail_on.png |  |
+| `textures/powered_rail_on.png` | Pixel Perfection CE block/powered_rail_on.png | changed |
 | `textures/detector_rail.png` | Pixel Perfection CE block/detector_rail.png |  |
 | `textures/detector_rail_on.png` | Pixel Perfection CE block/detector_rail_on.png |  |
 | `textures/minecart.png` | Pixel Perfection CE item/minecart.png |  |
