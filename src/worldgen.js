@@ -10,7 +10,7 @@ import { BIOME, toByte } from './biomes.js';
 import { hash2, hash3, hashString, mulberry32, smoothstep, lerp, clamp } from './math.js';
 import { TREES, WIDE_TREES, TREE_REACH } from './trees.js';
 import { WorldGenV1 } from './worldgen1.js';
-import { villagePieces, villagesNear, groundLevel, insideVillage } from './villages.js';
+import { villagePieces, villagesNear, groundLevel, insideVillage, villageAt } from './villages.js';
 
 const PAD = 1; // neighbour columns kept for slopes
 const GW = CHUNK + PAD * 2;
@@ -129,8 +129,9 @@ const STONEY = new Set([B.stone, B.deepslate]);
 const CARVED = new Set([BIOME.JAGGED_PEAKS, BIOME.FROZEN_PEAKS, BIOME.STONY_PEAKS, BIOME.SNOWY_SLOPES]);
 
 export class WorldGen {
-  // `version`: 2 for worlds made before villages were spread further apart, 3 since.
-  constructor(seed, type = 'default', version = 3) {
+  // `version`: 2 for worlds made before villages were spread further apart, 3 since, and 4 for
+  // worlds with settlements of every size (camps, hamlets, villages, towns and kingdoms).
+  constructor(seed, type = 'default', version = 4) {
     this.seed = seed >>> 0;
     this.type = type;
     this.version = version;
@@ -676,6 +677,9 @@ export class WorldGen {
         const roll = r();
         const col = this.rootColumn(bx, bz);
         const h = col.h;
+        // (In newer worlds nothing but dungeons turns up in a settlement's grounds.)
+        const settled = this.version >= 4 && roll >= 0.14 && villageAt(this, bx, bz, 10);
+        if (settled) continue;
         // Dungeon: a mossy room deep underground with a chest or two.
         if (roll < 0.14 && ncx === cx && ncz === cz) {
           const y0 = 12 + Math.floor(r() * 36);

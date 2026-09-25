@@ -1,10 +1,11 @@
-// The people of the walled villages. Each village plan (villages.js) lists its residents: a role,
-// a workplace and a bed. They're brought to life when their village loads, and live by the clock:
-// up at dawn, off to work, to the market in the afternoon, home at dusk and to bed. They find
-// their way through the town (opening doors and gates and shutting them behind them), run from
-// monsters, and the guards fight. Talk to anyone (right-click) to chat, ask the way, or trade
-// for gold coins (see tradeui.js).
-import { villagesNear, villageResidents, villageAnimals, villageAt, RADIUS } from './villages.js';
+// The people of the settlements. Each settlement's plan (villages.js) lists its residents: a role,
+// a workplace and a bed. They're brought to life when their settlement loads, and live by the
+// clock: up at dawn, off to work, to the market in the afternoon, home at dusk and to bed. They
+// find their way through the town (opening doors and gates and shutting them behind them), run
+// from monsters, and the guards and knights fight. A kingdom's king and queen hold court from
+// their thrones. Talk to anyone (right-click) to chat, ask the way, or trade for gold coins (see
+// tradeui.js).
+import { villagesNear, villageResidents, villageAnimals, villageAt, outside } from './villages.js';
 import { B, SOLID, DOOR, GATE, CLIMB, WATERLIKE, SHAPE_KIND, BED } from './blocks.js';
 import { I } from './items.js';
 import { randomBook, ENCHANTS } from './enchanting.js';
@@ -56,7 +57,34 @@ export const ROLES = {
   fisher: { title: 'Fisher', held: 'fishing_rod', trades: [['buy', 'cooked_cod', 6, 2], ['buy', 'cooked_salmon', 6, 2], ['buy', 'fishing_rod', 1, 3],
     ['buy', 'potion_water_breathing', 1, 6],
     ['sell', 'string', 20, 1], ['sell', 'cod', 15, 1], ['sell', 'salmon', 13, 1]] },
+  // (Newer worlds' settlements have these too.)
+  king: { title: 'King', held: null, trades: [['buy', 'golden_apple', 1, 12], ['buy', 'diamond_sword', 1, 30], ['buy', 'diamond_chestplate', 1, 40],
+    ['buy', 'enchanted_book', 1, 0], ['buy', 'shield', 1, 6], ['buy', 'name_tag', 1, 5], ['sell', 'diamond', 1, 12], ['sell', 'emerald', 1, 5],
+    ['sell', 'gold_block', 1, 30], ['sell', 'iron_block', 1, 10]] },
+  queen: { title: 'Queen', held: null, trades: [['buy', 'cake', 1, 4], ['buy', 'potion_regeneration', 1, 6], ['buy', 'potion_healing', 1, 5],
+    ['buy', 'golden_carrot', 4, 4], ['buy', 'enchanted_book', 1, 0], ['buy', 'bookshelf', 1, 5], ['sell', 'poppy', 12, 1], ['sell', 'cornflower', 12, 1],
+    ['sell', 'lily_of_the_valley', 10, 1], ['sell', 'diamond', 1, 10]] },
+  knight: { title: 'Knight', held: 'iron_sword', trades: [['buy', 'iron_sword', 1, 6], ['buy', 'shield', 1, 5], ['buy', 'iron_chestplate', 1, 10],
+    ['buy', 'chainmail_helmet', 1, 5], ['buy', 'diamond_sword', 1, 26], ['buy', 'arrow', 16, 2], ['buy', 'bow', 1, 4], ['sell', 'bone', 12, 1],
+    ['sell', 'rotten_flesh', 16, 1], ['sell', 'gunpowder', 5, 1], ['sell', 'string', 10, 1]] },
+  cleric: { title: 'Cleric', held: null, trades: [['buy', 'potion_healing', 1, 4], ['buy', 'potion_regeneration', 1, 6], ['buy', 'splash_potion_healing', 1, 5],
+    ['buy', 'glowstone', 4, 3], ['buy', 'lapis_lazuli', 6, 2], ['buy', 'ender_pearl', 1, 5], ['buy', 'redstone', 8, 2], ['sell', 'rotten_flesh', 24, 1],
+    ['sell', 'gold_ingot', 2, 3], ['sell', 'glass_bottle', 6, 1], ['sell', 'spider_eye', 6, 1]] },
+  woodcutter: { title: 'Woodcutter', held: 'iron_axe', trades: [['buy', 'oak_log', 16, 1], ['buy', 'spruce_log', 16, 1], ['buy', 'birch_log', 16, 1],
+    ['buy', 'dark_oak_log', 12, 1], ['buy', 'charcoal', 8, 1], ['buy', 'iron_axe', 1, 5], ['buy', 'apple', 4, 1], ['buy', 'oak_sapling', 4, 1],
+    ['sell', 'stick', 32, 1], ['sell', 'oak_planks', 32, 1], ['sell', 'coal', 10, 1]] },
+  traveller: { title: 'Traveller', held: null, trades: [['buy', 'compass', 1, 4], ['buy', 'clock', 1, 4], ['buy', 'cherry_sapling', 2, 2], ['buy', 'cactus', 4, 1],
+    ['buy', 'sugar_cane', 6, 1], ['buy', 'melon_slice', 8, 1], ['buy', 'lead', 1, 2], ['buy', 'saddle', 1, 7], ['buy', 'name_tag', 1, 5],
+    ['buy', 'potion_night_vision', 1, 5], ['sell', 'emerald', 1, 4], ['sell', 'diamond', 1, 9], ['sell', 'gold_ingot', 1, 3], ['sell', 'leather', 5, 1]] },
+  mason: { title: 'Mason', held: 'iron_pickaxe', trades: [['buy', 'stone_bricks', 16, 1], ['buy', 'polished_andesite', 16, 1], ['buy', 'polished_granite', 16, 1],
+    ['buy', 'polished_diorite', 16, 1], ['buy', 'bricks', 12, 1], ['buy', 'chiseled_stone_bricks', 8, 1], ['buy', 'terracotta', 12, 1],
+    ['buy', 'deepslate_bricks', 12, 1], ['sell', 'cobblestone', 32, 1], ['sell', 'stone', 24, 1], ['sell', 'clay_ball', 12, 1]] },
+  stablehand: { title: 'Stablehand', held: 'wheat', trades: [['buy', 'saddle', 1, 6], ['buy', 'lead', 2, 2], ['buy', 'golden_carrot', 3, 3],
+    ['buy', 'hay_block', 4, 1], ['buy', 'apple', 6, 1], ['buy', 'name_tag', 1, 5], ['sell', 'wheat', 20, 1], ['sell', 'carrot', 18, 1], ['sell', 'leather', 6, 1]] },
 };
+// Those who fight monsters (and anyone who hurts their neighbours).
+const FIGHTS = new Set(['guard', 'knight']);
+const ROYAL = new Set(['king', 'queen']);
 
 // What people say. `{v}` is the village's name, `{n}` the speaker's, `{r}` their trade.
 const GREET = [
@@ -66,6 +94,13 @@ const GREET = [
 const GREET_NIGHT = ["It's late... what brings you out in the dark?", 'Keep your voice down, folk are sleeping.', 'Quickly, inside the walls is safest at night.'];
 const GREET_RAIN = ['Wretched weather, isn\'t it?', 'Come in out of the rain!', "At least the crops are getting a drink."];
 const GREET_ANGRY = ["I've nothing to say to you.", 'You again. Keep your distance.', 'Guards! ...oh. Just go away.'];
+// Royalty and their knights speak as befits them.
+const GREET_AS = {
+  king: ['Welcome to my kingdom, traveller.', 'Approach the throne. What brings you to {v}?', 'Kneel... oh, very well, stand. Speak.',
+    'You stand before the king of {v}.'],
+  queen: ['Be welcome at our court, stranger.', 'The gates of {v} are open to honest folk.', 'Ah, a visitor! How lovely.'],
+  knight: ['Halt! ...ah, a friend. Pass, then.', 'For the crown of {v}!', 'Mind yourself in the castle, stranger.'],
+};
 const CHAT = {
   merchant: ['Everything has its price. Most things, anyway.', 'Gold coins, friend. Nothing else spends as well.', 'Business was better before the creepers came.',
     'I buy gold by the ingot, if you find any.'],
@@ -87,8 +122,23 @@ const CHAT = {
   miner: ['The deeper you go, the better the ore. And the worse the company.', 'Always carry torches. Always.', 'Mind the lava down there. It\'ll take everything you carry.',
     'Iron sits higher up. Diamonds deep, near the bedrock.'],
   fisher: ['The fish bite best in the rain.', 'Patience is the only bait that never runs out.', 'Salmon in the cold rivers, cod in the sea.'],
+  king: ['A kingdom is only as strong as its walls. And its bakers.', 'My knights keep the roads safe. Mostly.', 'Bring me diamonds and you shall not find me ungrateful.',
+    'The crown is heavier than it looks.', 'Every stone of these walls was laid in my grandfather\'s day.'],
+  queen: ['The gardens are lovely at this time of year.', 'Bring me flowers from the meadows and I shall pay you well.',
+    'The king worries too much. The walls will hold.', 'Have you visited the chapel? The glass is beautiful at dawn.'],
+  knight: ['I swore an oath to defend the crown.', 'Zombies, skeletons, spiders... they all fall to cold iron.', 'A shield will save your life. Raise it and the arrows break on it.',
+    'The castle gate is shut at night. The king sleeps soundly.'],
+  cleric: ['May the light keep you safe on the road.', 'A healing potion has saved many a traveller.', 'The dead walk only at night. Rest while the sun is up.',
+    'Glowstone comes from a fiery place. Or so the old books say.'],
+  woodcutter: ['Oak, birch, spruce... each splits in its own way.', 'Plant a sapling for every tree you fell, I always say.', 'An axe does the job twice as fast as your fists.',
+    'Leaves drop apples now and then, if you\'re patient.'],
+  traveller: ["I've seen deserts, jungles, mountains of ice... and now you.", 'The road is long, but the stories are worth it.',
+    'Kingdoms to the east, they say, with walls taller than oaks.', 'Never camp without a fire. Things come out of the dark.'],
+  mason: ['Cut stone lasts a thousand years. Wood, maybe fifty.', 'A stonecutter turns one block into stairs without waste.', 'Mossy stone? Just add vines. Or time.'],
+  stablehand: ['Horses love golden carrots. And apples, and hay...', 'Saddle a tamed horse and it will carry you anywhere.', 'Breed two good horses for a faster foal.'],
 };
 const RUMOURS = ['They say there are ruins in the deep caves.', 'A merchant told me of villages built of sandstone in the desert.',
+  'Somewhere out there is a kingdom with a castle and a king on a golden throne.', 'Hunters camp in the woods. Their fires can be seen for miles.',
   'The peaks to the north are cold enough to freeze your breath.', "If you find a dungeon, mind the monster cage.", 'Some say the endermen come from another world.',
   'Cherry trees bloom pink all year round, in the groves.', 'Slimes bounce about the swamps on a full moon.'];
 
@@ -101,10 +151,27 @@ export function villageName(plan) {
   const r = mulberry32(plan.seed ^ 0x5eed);
   return `${PRE[Math.floor(r() * PRE.length)]}${SUF[Math.floor(r() * SUF.length)]}`;
 }
+// What the title says as you walk in: the name, and who lives there.
+export function villageTitle(plan) {
+  const name = villageName(plan), people = villageResidents(plan), n = people.length;
+  switch (plan.tier) {
+    case 'camp': return [`${name} Camp`, `${n} ${plan.camp ?? 'travellers'} camp here`];
+    case 'kingdom': {
+      const king = people.find((r) => r.role === 'king');
+      return [`The Kingdom of ${name}`, `${king ? `${king.name} rules here` : 'A kingdom'} \u00b7 ${n} people live here`];
+    }
+    case 'town': return [name, `A walled town \u00b7 ${n} people live here`];
+    case 'hamlet': return [name, `A hamlet \u00b7 ${n} people live here`];
+    default: return [name, `${n} people live here`];
+  }
+}
 
 // Directions to the town's places.
 const PLACES = [['smithy', 'the smithy'], ['tavern', 'the tavern'], ['library', 'the library'], ['bakery', 'the bakery'], ['butcher', 'the butcher'],
-  ['hunter', "the hunter's lodge"], ['mine', 'the mine'], ['barracks', 'the barracks'], ['farm', 'the farms']];
+  ['hunter', "the hunter's lodge"], ['mine', 'the mine'], ['barracks', 'the barracks'], ['farm', 'the farms'], ['church', 'the church'],
+  ['castle', 'the castle'], ['market', 'the market'], ['stable', 'the stables'], ['mason', "the mason's yard"], ['windmill', 'the windmill']];
+// The kind of place a settlement is, as its people say it.
+const KIND = { camp: 'camp', hamlet: 'hamlet', village: 'village', town: 'town', kingdom: 'kingdom' };
 const COMPASS = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
 
 // ---------------------------------------------------------------- the people
@@ -157,18 +224,23 @@ export class Civilians {
         m.home = { x: a.at[0] + 0.5, z: a.at[2] + 0.5 };
       }
     }
-    // An iron golem keeps watch over the plaza, and a few cats laze about the village. (They come
-    // back whenever the village does, unless someone has seen to them all.)
-    const keepers = this.keepers.get(plan.key);
-    if (!keepers || keepers.every((m) => m.dead)) {
-      const h = hashString(plan.key), home = { x: plan.x + 0.5, z: plan.z + 0.5 }, list = [];
-      const golem = this.ents.spawnMob('iron_golem', plan.x + 0.5, plan.y + 1, plan.z + 5.5, { pinned: plan.key, home });
-      golem.yaw = Math.PI;
-      list.push(golem);
-      const cats = 1 + (h % 3), spots = [[-6, 3], [6, -3], [3, 6], [-3, -6]];
+    // An iron golem keeps watch over the plaza (two over a kingdom's market), and a few cats laze
+    // about - a hamlet has only the cats, a camp neither. (They come back whenever the settlement
+    // does, unless someone has seen to them all.)
+    const keepers = this.keepers.get(plan.key), tier = plan.tier ?? 'village';
+    if (tier !== 'camp' && (!keepers || keepers.every((m) => m.dead))) {
+      const h = hashString(plan.key), [mx, mz] = plan.market ?? [0, 0], list = [];
+      const home = { x: plan.x + mx + 0.5, z: plan.z + mz + 0.5 };
+      const golems = tier === 'hamlet' ? 0 : tier === 'kingdom' ? 2 : 1;
+      for (let k = 0; k < golems; k++) {
+        const golem = this.ents.spawnMob('iron_golem', home.x + (k ? -5 : 0), plan.y + 1, home.z + (k ? 0 : 5), { pinned: plan.key, home });
+        golem.yaw = Math.PI;
+        list.push(golem);
+      }
+      const cats = tier === 'hamlet' ? 1 : 1 + (h % 3), spots = [[-6, 3], [6, -3], [3, 6], [-3, -6]];
       for (let k = 0; k < cats; k++) {
         const [dx, dz] = spots[(h + k) % spots.length];
-        list.push(this.ents.spawnMob('cat', plan.x + dx + 0.5, plan.y + 1, plan.z + dz + 0.5, { pinned: plan.key, home, variant: (h >>> (k * 3)) % 6 }));
+        list.push(this.ents.spawnMob('cat', home.x + dx, plan.y + 1, home.z + dz, { pinned: plan.key, home, variant: (h >>> (k * 3)) % 6 }));
       }
       this.keepers.set(plan.key, list);
     }
@@ -213,9 +285,9 @@ export class Civilians {
     rec.rep = Math.max(-20, rec.rep - (e.health <= 0 ? 8 : 2));
     const who = from === this.game.player ? this.ents.players[0] ?? { x: from.x, y: from.y, z: from.z, addr: null } : from;
     for (const g of this.live.values()) {
-      if (g.role === 'guard' && !g.dead && Math.hypot(g.x - e.x, g.z - e.z) < 40) { g.aggro = who; g.aggroTime = 1200; }
+      if (FIGHTS.has(g.role) && !g.dead && Math.hypot(g.x - e.x, g.z - e.z) < 40) { g.aggro = who; g.aggroTime = 1200; }
     }
-    if (e.role === 'guard') { e.aggro = who; e.aggroTime = 1200; }
+    if (FIGHTS.has(e.role)) { e.aggro = who; e.aggroTime = 1200; }
     // The village's iron golem won't stand for it either.
     for (const g of this.keepers.get(e.village?.key) ?? []) {
       if (g.type === 'iron_golem' && !g.dead && !g.dying && Math.hypot(g.x - e.x, g.z - e.z) < 32) { g.angry = 600; g.target = who; }
@@ -226,6 +298,9 @@ export class Civilians {
   // What someone should be doing at time t (ticks into the day).
   phase(t, role) {
     if (role === 'guard') return t < 12500 || t > 23000 ? 'patrol' : 'watch';
+    // (Knights keep to their posts day and night; the king and queen hold court all day.)
+    if (role === 'knight') return 'watch';
+    if (ROYAL.has(role) && t >= 600 && t < 11200) return 'work';
     if (t >= 12600 && t < 23300) return 'sleep';
     if (t >= 11200) return 'home';
     if (t >= 8800 && role !== 'merchant') return 'social';
@@ -242,7 +317,7 @@ export class Civilians {
     const v = villageAt(this.world.gen, p.x, p.z, -1);
     if (v !== this.currentVillage) {
       this.currentVillage = v;
-      if (v) game.ui.showTitle?.(villageName(v), `${villageResidents(v).length} people live here`);
+      if (v) game.ui.showTitle?.(...villageTitle(v));
     }
   }
 
@@ -257,17 +332,18 @@ export class Civilians {
     if (e.talking) {
       const who = e.talking;
       e.moving = false; e.path = null;
-      e.yaw = Math.atan2(-(who.x - e.x), -(who.z - e.z));
+      if (!e.sitting) e.yaw = Math.atan2(-(who.x - e.x), -(who.z - e.z));
       e.lookAt = who;
       if (Math.hypot(who.x - e.x, who.z - e.z) > 8) e.talking = null;
       return;
     }
-    if (e.role === 'guard' && this.guardFight(e)) return;
+    if (FIGHTS.has(e.role) && this.guardFight(e)) return;
     // Monsters about: everyone else heads home at a run.
-    const danger = e.role !== 'guard' && this.ents.list.find((o) => o.kind === 'mob' && o.def.hostile && !o.dead && !o.dying &&
+    const danger = !FIGHTS.has(e.role) && this.ents.list.find((o) => o.kind === 'mob' && o.def.hostile && !o.dead && !o.dying &&
       Math.hypot(o.x - e.x, o.z - e.z) < 10 && Math.abs(o.y - e.y) < 5);
     const phase = this.phase(t, e.role);
     if (e.pose === 'sleep' && (phase !== 'sleep' || danger || e.hurt)) this.wake(e);
+    if (e.sitting && (phase !== 'work' || danger || e.fear > 0)) this.standUp(e);
     if (danger || e.fear > 0) {
       e.speedMul = 1.7;
       this.goTo(e, e.resident.home, 'home');
@@ -276,19 +352,24 @@ export class Civilians {
       return;
     }
     e.speedMul = 1;
-    e.held = phase === 'work' || e.role === 'guard' ? (ROLES[e.role]?.held ? I[ROLES[e.role].held] : null) : null;
+    e.held = phase === 'work' || FIGHTS.has(e.role) ? (ROLES[e.role]?.held ? I[ROLES[e.role].held] : null) : null;
     switch (phase) {
       case 'sleep': this.sleepTick(e); break;
       case 'home': this.goTo(e, e.resident.home, 'home'); if (this.arrived(e)) this.loiter(e, e.resident.home, 1.5); break;
       case 'social': {
         const p = e.village, key = `social${Math.floor(game.time / 2400)}`;
         if (e.spotKey !== key) {
-          // Somewhere to stand in the plaza (not in the well or a stall).
-          const r = mulberry32(hashString(e.rid) ^ Math.floor(game.time / 2400));
+          // Somewhere to stand in the square nearest home (not in the well or a stall).
+          const r = mulberry32(hashString(e.rid) ^ Math.floor(game.time / 2400)), home = e.resident.home;
+          let sq = [0, 0, 7], best = Infinity;
+          for (const q of p.squares ?? [[0, 0, 7]]) {
+            const dd = Math.hypot(p.x + q[0] - home[0], p.z + q[1] - home[2]);
+            if (dd < best) { best = dd; sq = q; }
+          }
           e.spotKey = key;
           for (let i = 0; i < 12; i++) {
-            const a = r() * Math.PI * 2, d = 3 + r() * 3;
-            e.spot = [Math.floor(p.x + Math.cos(a) * d), p.y + 1, Math.floor(p.z + Math.sin(a) * d)];
+            const a = r() * Math.PI * 2, d = 3 + r() * Math.max(1, Math.min(3, sq[2] - 3));
+            e.spot = [Math.floor(p.x + sq[0] + Math.cos(a) * d), p.y + 1, Math.floor(p.z + sq[1] + Math.sin(a) * d)];
             if (this.walkable(...e.spot)) break;
           }
         }
@@ -299,6 +380,7 @@ export class Civilians {
       case 'patrol': this.patrol(e); break;
       case 'watch': this.goTo(e, e.resident.work, 'post'); if (this.arrived(e)) this.loiter(e, e.resident.work, 2); break;
       default: {
+        if (e.resident.seat) { this.holdCourt(e); break; }
         this.goTo(e, e.resident.work, 'work');
         if (this.arrived(e)) this.work(e);
       }
@@ -335,7 +417,7 @@ export class Civilians {
     const bed = e.resident.bed;
     if (!bed) { this.goTo(e, e.resident.home, 'home'); return; }
     if (e.pose === 'sleep') { e.moving = false; e.x = e.restAt[0]; e.z = e.restAt[2]; e.vx = e.vz = 0; return; }
-    this.goTo(e, bed, 'bed');
+    this.goTo(e, bed, 'bed', true);
     if (this.arrived(e) && Math.hypot(e.x - bed[0] - 0.5, e.z - bed[2] - 0.5) < 1.5 && Math.abs(e.y - bed[1]) < 1.5) {
       // Lie down: feet at the foot of the bed, head on the pillow.
       const id = this.world.getBlock(bed[0], bed[1], bed[2]), b = BED[id];
@@ -353,6 +435,25 @@ export class Civilians {
     if (e.restAt) { e.y = e.restAt[1] + 0.1; }
     e.restAt = null;
   }
+  // The king and queen sit on their thrones through the day.
+  holdCourt(e) {
+    const r = e.resident, seat = r.seat;
+    if (e.sitting) { e.moving = false; return; }
+    this.goTo(e, r.work, 'work');
+    if (!this.arrived(e) || Math.hypot(e.x - r.work[0] - 0.5, e.z - r.work[2] - 0.5) > 1.2 || Math.abs(e.y - r.work[1]) > 1) return;
+    const [dx, dz] = { 5: [0, -1], 4: [0, 1], 0: [1, 0], 1: [-1, 0] }[seat[3]] ?? [0, -1];
+    e.sitting = true;
+    e.restAt = [seat[0] + 0.5 + dx * 0.15, seat[1] + 0.5, seat[2] + 0.5 + dz * 0.15];
+    e.x = e.restAt[0]; e.y = e.restAt[1]; e.z = e.restAt[2];
+    e.yaw = Math.atan2(-dx, -dz);
+    e.moving = false; e.path = null;
+  }
+  standUp(e) {
+    const w = e.resident.work;
+    e.sitting = false;
+    e.restAt = null;
+    e.x = w[0] + 0.5; e.y = w[1] + 0.05; e.z = w[2] + 0.5;
+  }
 
   // Guards walk between their gate, the plaza and the lane.
   patrol(e) {
@@ -360,8 +461,9 @@ export class Civilians {
     if (e.spotKey !== key) {
       e.spotKey = key;
       const r = mulberry32(hashString(e.rid) ^ Math.floor(this.game.time / 1200));
-      const spots = [e.resident.work, [p.x, p.y + 1, p.z + 9], [p.x + 9, p.y + 1, p.z], [p.x - 9, p.y + 1, p.z], [p.x, p.y + 1, p.z - 9],
-        [p.x + (r() < 0.5 ? -1 : 1) * (RADIUS - 4), p.y + 1, p.z + Math.round((r() - 0.5) * 30)]];
+      const [mx, mz] = p.market ?? [0, 0], lane = p.rx - (p.wall?.t ?? 2) - 2, x = p.x + mx, z = p.z + mz;
+      const spots = [e.resident.work, [x, p.y + 1, z + 9], [x + 9, p.y + 1, z], [x - 9, p.y + 1, z], [x, p.y + 1, z - 9],
+        [p.x + (r() < 0.5 ? -1 : 1) * lane, p.y + 1, p.z + Math.round((r() - 0.5) * Math.min(30, p.rz))]];
       e.spot = spots[Math.floor(r() * spots.length)];
       if (!this.walkable(...e.spot)) e.spot = e.resident.work;
     }
@@ -376,7 +478,7 @@ export class Civilians {
     if (!foe) {
       for (const o of this.ents.list) {
         if (o.kind !== 'mob' || !o.def.hostile || o.dead || o.dying) continue;
-        if (Math.max(Math.abs(o.x - p.x), Math.abs(o.z - p.z)) > RADIUS + 12) continue;
+        if (outside(p, o.x, o.z) > 12) continue;
         const dd = Math.hypot(o.x - e.x, o.z - e.z);
         if (dd < fd) { fd = dd; foe = o; }
       }
@@ -400,20 +502,21 @@ export class Civilians {
   }
 
   // ---------------------------------------------------------------- getting about
-  // Plans a route to `to` (a block cell to stand in) unless already heading there.
-  goTo(e, to, key) {
+  // Plans a route to `to` (a block cell to stand in, or with `near` one beside it) unless already
+  // heading there.
+  goTo(e, to, key, near = false) {
     if (!to) return;
     const k = `${key}:${to[0]},${to[1]},${to[2]}`;
     // (After failing to find a way, try again every few seconds: the way may be through land
     // that hadn't loaded yet, or a door someone has since opened.)
     if (e.goalKey === k && (e.gaveUp ? --e.retry > 0 : e.path)) return;
     const fx = Math.floor(e.x), fy = Math.floor(e.y + 0.1), fz = Math.floor(e.z);
-    if (fx === to[0] && fz === to[2] && Math.abs(fy - to[1]) <= 1) { e.goalKey = k; e.path = null; e.gaveUp = false; return; }
+    if (Math.abs(fx - to[0]) + Math.abs(fz - to[2]) <= (near ? 1 : 0) && Math.abs(fy - to[1]) <= 1) { e.goalKey = k; e.path = null; e.gaveUp = false; return; }
     if (this.pathBudget <= 0) return; // (someone else is thinking this tick; try again next)
     this.pathBudget--;
     e.goalKey = k;
     e.gaveUp = false;
-    e.path = this.findPath([fx, fy, fz], to) ?? null;
+    e.path = this.findPath([fx, fy, fz], to, 3000, near) ?? null;
     e.pathI = 0;
     e.stuck = 0;
     if (!e.path) { e.gaveUp = true; e.retry = 100; e.path = [to]; }
@@ -482,7 +585,7 @@ export class Civilians {
   }
 
   // A* over the cells feet can stand in, within the village. Returns waypoints or null.
-  findPath(from, to, limit = 3000) {
+  findPath(from, to, limit = 3000, near = false) {
     const ox = from[0] - 128, oz = from[2] - 128;
     const key = (x, y, z) => ((x - ox) & 255) | ((z - oz) & 255) << 8 | (y & 255) << 16;
     if (Math.abs(to[0] - from[0]) > 120 || Math.abs(to[2] - from[2]) > 120) return null;
@@ -496,7 +599,7 @@ export class Civilians {
     while (open.size && n++ < limit) {
       const [, x, y, z] = open.pop();
       const kc = key(x, y, z), gc = g.get(kc);
-      if (x === to[0] && z === to[2] && Math.abs(y - to[1]) <= 1) {
+      if (Math.abs(x - to[0]) + Math.abs(z - to[2]) <= (near ? 1 : 0) && Math.abs(y - to[1]) <= 1) {
         const out = [];
         let k = kc, p = [x, y, z];
         while (k !== k0) { out.push(p); const c = came.get(k); k = c.k; p = c.p; }
@@ -543,8 +646,8 @@ export class Civilians {
   greeting(e) {
     const game = this.game, v = e.village, rec = v ? this.record(v) : { rep: 0 };
     const pickFrom = (list) => list[Math.floor(Math.random() * list.length)];
-    let line = rec.rep < -5 ? pickFrom(GREET_ANGRY) : game.env.daylight < 0.3 ? pickFrom(GREET_NIGHT) : game.weather.rain > 0.5 && Math.random() < 0.5
-      ? pickFrom(GREET_RAIN) : pickFrom(GREET);
+    let line = rec.rep < -5 ? pickFrom(GREET_ANGRY) : GREET_AS[e.role] && Math.random() < 0.7 ? pickFrom(GREET_AS[e.role])
+      : game.env.daylight < 0.3 ? pickFrom(GREET_NIGHT) : game.weather.rain > 0.5 && Math.random() < 0.5 ? pickFrom(GREET_RAIN) : pickFrom(GREET);
     line = line.replace('{v}', v ? villageName(v) : 'our village');
     return line;
   }
@@ -553,20 +656,24 @@ export class Civilians {
     return lines[Math.floor(Math.random() * lines.length)] ?? 'Hm.';
   }
   intro(e) {
-    const title = ROLES[e.role]?.title ?? 'villager', v = e.village ? villageName(e.village) : 'here';
+    const title = ROLES[e.role]?.title ?? 'villager', v = e.village ? villageName(e.village) : 'here', kind = KIND[e.village?.tier] ?? 'village';
     const bits = {
-      merchant: 'I keep a stall in the market square.', guard: 'I keep watch over the gates.', blacksmith: 'I work the forge.',
-      butcher: 'I run the butcher\'s shop.', hunter: 'I hunt the woods beyond the walls.', librarian: 'I keep the library.',
-      innkeeper: 'I run the tavern.', baker: 'I bake the bread.', farmer: 'I work the fields.', shepherd: 'I tend the flocks.',
-      miner: 'I dig in the mine, down below the town.', fisher: 'I fish the waters round about.',
+      merchant: kind === 'camp' ? 'I trade along the roads.' : 'I keep a stall in the market square.', guard: 'I keep watch over the gates.',
+      blacksmith: 'I work the forge.', butcher: 'I run the butcher\'s shop.', hunter: kind === 'camp' ? 'I hunt these woods.' : 'I hunt the woods beyond the walls.',
+      librarian: 'I keep the library.', innkeeper: 'I run the tavern.', baker: 'I bake the bread.', farmer: 'I work the fields.', shepherd: 'I tend the flocks.',
+      miner: 'I dig in the mine, down below the town.', fisher: 'I fish the waters round about.', knight: 'I serve the crown, and guard the castle.',
+      cleric: 'I tend the church, and heal the sick.', woodcutter: kind === 'camp' ? 'We fell timber here, then move on.' : 'I cut the timber for the town.',
+      traveller: "I'm passing through - we've come a long way.", mason: 'I cut the stone for our walls and houses.', stablehand: 'I look after the horses.',
     };
-    return `I'm ${e.name}, the ${title.toLowerCase()} of ${v}. ${bits[e.role] ?? ''}`;
+    if (e.role === 'king') return `I am ${e.name}, and ${v} is my kingdom. My knights keep its roads, my people its fields.`;
+    if (e.role === 'queen') return `I am ${e.name} of ${v}. The king and I hold court here in the great hall.`;
+    return `I'm ${e.name}, the ${title.toLowerCase()}${kind === 'camp' ? '' : ` of ${v}`}. ${bits[e.role] ?? ''}`;
   }
   // "Where is the smithy?" - from where the player stands.
   directions(e, place) {
     const v = e.village, p = this.game.player;
     if (!v) return "I'm not from round here, sorry.";
-    const b = v.buildings.find((x) => x.type === place && (x.doors?.length || place === 'farm'));
+    const b = [...v.buildings, ...(v.landmarks ?? [])].find((x) => x.type === place && (x.doors?.length || x.landmark || place === 'farm'));
     const name = PLACES.find(([k]) => k === place)?.[1] ?? place;
     if (!b) return `We haven't got ${name} in ${villageName(v)}, I'm afraid.`;
     const [x0, z0, x1, z1] = b.box;
@@ -576,7 +683,7 @@ export class Civilians {
     const ang = Math.atan2(dx, -dz), dir = COMPASS[(Math.round(ang / (Math.PI / 4)) + 8) % 8];
     return `${name[0].toUpperCase()}${name.slice(1)}? Head ${dir}, about ${dist} blocks.`;
   }
-  places(e) { return e.village ? PLACES.filter(([k]) => e.village.buildings.some((b) => b.type === k)) : []; }
+  places(e) { return e.village ? PLACES.filter(([k]) => [...e.village.buildings, ...(e.village.landmarks ?? [])].some((b) => b.type === k)) : []; }
 
   // Their offers today: [{ kind, id, count, price, left }].
   offers(e) {

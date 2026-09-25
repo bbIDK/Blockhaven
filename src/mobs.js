@@ -1000,6 +1000,8 @@ export function mobPhysics(ents, e, dt, fluid) {
     return;
   }
   if (t.flies && (e.flyVel || e.roost || t.flies !== 'parrot')) { flyPhysics(ents, e, dt); return; }
+  // Seated on a throne: held in place.
+  if (e.sitting && e.restAt && t.kind === 'civilian') { [e.x, e.y, e.z] = e.restAt; e.vx = e.vy = e.vz = 0; e.onGround = true; e.walk = 0; return; }
   // A saddled horse goes where its rider steers.
   if (e.rider && t.rideable) horseDrive(e, e.drive, dt);
   let speed = e.moving ? t.speed * (e.speedMul || 1) * (e.baby ? 1.3 : 1) * (e.slowed > 0 ? 0.5 : 1) : 0;
@@ -1168,6 +1170,11 @@ export function poseMob(e, pose) {
       }
       // Holding something, the arm comes forward a little and swings half as far (as in Minecraft).
       else if ((e.held ?? t.held) && t.rigDef.hand) pose.rightArm = [pose.rightArm[0] * 0.5 + 0.31, 0, 0.05];
+      // Seated (a king on his throne): legs out in front, a little apart, hands on the arms.
+      if (e.sitting && t.anim === 'humanoid') {
+        pose.rightLeg = [1.41, 0.31, 0]; pose.leftLeg = [1.41, -0.31, 0];
+        pose.rightArm = [0.55, 0, 0.12]; pose.leftArm = [0.55, 0, -0.12];
+      }
       if (e.swing > 0 && t.anim !== 'zombie') pose.rightArm = [1.8 * Math.sin(e.swing * Math.PI), 0, 0.2];
       break;
     }
@@ -1307,6 +1314,8 @@ export function renderMob(ents, e, rx, ry, rz, light, out) {
   rotateY(base, base, e.yaw);
   if (e.dying) rotateZ(base, base, Math.min(1, Math.sqrt(e.dying * 1.6)) * Math.PI / 2);
   if (e.pose === 'sleep') { translate(base, base, 0, 0.3, 0); rotateX(base, base, -Math.PI / 2); translate(base, base, 0, -0.1, -0.9); }
+  // (Seated, the hips come down onto the seat.)
+  if (e.sitting && t.anim === 'humanoid') translate(base, base, 0, -0.6, 0);
   let s = (t.scale ?? 1) * (e.baby ? 0.5 : 1);
   if (t.sized) s *= e.size;
   // Flyers (and dolphins) pitch up and down with where they're heading; bats fly leaning

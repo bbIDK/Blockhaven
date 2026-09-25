@@ -29,7 +29,7 @@ import {
 } from './blocks.js';
 import { rollLoot } from './loot.js';
 import { useItemOnBlock, useBucket, placeLilyPad, placeBoat, useWorkstation } from './behaviors.js';
-import { nearestVillage } from './villages.js';
+import { nearestVillage, KINDS } from './villages.js';
 import { TalkScreen } from './tradeui.js';
 import { seatY, startRide, driveFrom, dismountSpot } from './riding.js';
 import { addXp, xpToNext, enchLevel, SMELT_XP, ORE_XP, shiny } from './enchanting.js';
@@ -407,7 +407,7 @@ export class Game {
     const { mode, type } = this.ui.createState;
     const meta = {
       id: `w${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`,
-      name, seed, seedText, mode, type, gen: 3, created: Date.now(), lastPlayed: Date.now(), time: 1000,
+      name, seed, seedText, mode, type, gen: 4, created: Date.now(), lastPlayed: Date.now(), time: 1000,
       spawn: null, player: null, inventory: null, version: SAVE_VERSION,
     };
     await storage.saveWorld(meta);
@@ -527,7 +527,7 @@ export class Game {
     const world = w.w;
     const meta = {
       id: `mp-${session.gid}`, name: String(world.name ?? 'World').slice(0, 32), seed: world.seed >>> 0,
-      type: world.type === 'flat' ? 'flat' : 'default', gen: world.gen === 2 || world.gen === 3 ? world.gen : 1,
+      type: world.type === 'flat' ? 'flat' : 'default', gen: [2, 3, 4].includes(world.gen) ? world.gen : 1,
       mode: you?.mode === 'creative' || (!you?.mode && world.mode === 'creative') ? 'creative' : 'survival',
       spawn: world.spawn && Number.isFinite(world.spawn.x) && Number.isFinite(world.spawn.z) ? { x: world.spawn.x, y: world.spawn.y ?? null, z: world.spawn.z } : { x: 0.5, y: null, z: 0.5 },
       time: Number.isFinite(world.time) ? world.time : 1000, weather: { raining: !!world.rain },
@@ -2607,7 +2607,7 @@ export class Game {
       case 'help':
         say('/time set day|noon|night|midnight|<ticks>, /time add <n>');
         say('/gamemode creative|survival, /tp <x> <y> <z>, /give <item> [count], /weather clear|rain');
-        say('/spawn, /setspawn, /seed, /locate village, /fly, /kill, /clear');
+        say('/spawn, /setspawn, /seed, /locate village|camp|hamlet|town|kingdom, /fly, /kill, /clear');
         if (this.net) say(`/list${this.net.host ? ', /pvp on|off' : ''}`);
         break;
       case 'list': case 'players':
@@ -2658,11 +2658,17 @@ export class Game {
       }
       case 'seed': say(`Seed: ${this.meta.seedText || this.meta.seed}`); break;
       case 'locate': {
-        if ((args[0] ?? 'village').toLowerCase() !== 'village') { say('Usage: /locate village', '#e88a78'); break; }
-        const v = this.world.gen?.villages ? nearestVillage(this.world.gen, p.x, p.z, 4) : null;
-        if (!v) { say('There are no villages nearby', '#e88a78'); break; }
+        // (In newer worlds: a kind of settlement, or `village` for the nearest of any but camps; a
+        // kingdom is looked for further afield, as there are fewer of them.)
+        let kind = (args[0] ?? 'village').toLowerCase().replace(/s$/, '');
+        if (kind === 'castle' || kind === 'city') kind = 'kingdom';
+        if (!KINDS.includes(kind)) { say('Usage: /locate village|camp|hamlet|town|kingdom', '#e88a78'); break; }
+        const gen = this.world.gen, v4 = gen?.version >= 4;
+        if (!v4 && kind !== 'village') { say('This world has only villages (it was made before the other kinds of settlement)', '#e88a78'); break; }
+        const v = gen?.villages ? nearestVillage(gen, p.x, p.z, kind === 'kingdom' ? 6 : 4, v4 && kind !== 'village' ? kind : null) : null;
+        if (!v) { say(`There are no ${kind === 'village' ? 'villages' : `${kind}s`} nearby`, '#e88a78'); break; }
         const dist = Math.round(Math.hypot(v.x - p.x, v.z - p.z));
-        say(`The nearest village is at ${v.x}, ${v.y + 1}, ${v.z} (${dist} blocks away)`);
+        say(`The nearest ${v.tier ?? 'village'} is at ${v.x}, ${v.y + 1}, ${v.z} (${dist} blocks away)`);
         break;
       }
       case 'spawn': p.x = this.meta.spawn.x; p.z = this.meta.spawn.z; this.respawnAtBed = false; this.needsRespawnY = true; say('Teleported to spawn'); break;

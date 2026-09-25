@@ -1,13 +1,19 @@
-// Walled villages. Inside a ring of stone walls - corner towers, a gatehouse on every side and a
-// walk along the top - two main streets cross at a plaza with a well, a bell and market stalls,
-// and a lane runs round the inside of the wall. Houses and workshops line the streets and the
-// lane, with farms, pens, gardens and a mine behind. A village is planned once per region from
-// the seed; every chunk it overlaps copies its share of the blocks, so they all agree. The
-// people who live there are listed on the plan (see civilians.js).
-import { HEIGHT, SEA_LEVEL } from './config.js';
-import { B, STAIRS, FACING_VARIANTS, LADDER, LOG_AXES, doorId, bedId, lootChestId, gateId, WOOD, WALL_TORCH } from './blocks.js';
-import { BIOME } from './biomes.js';
+// Where settlements stand, and how the world generator and the people see them. A settlement is
+// planned once from the seed; every chunk it overlaps copies its share of the blocks, so they all
+// agree, and the people who live there are listed on the plan (see civilians.js).
+//
+// Worlds from generators 2 and 3 have walled villages, one to a region: inside a ring of stone
+// walls - corner towers, a gatehouse on every side and a walk along the top - two main streets
+// cross at a plaza with a well, a bell and market stalls, and a lane runs round the inside of the
+// wall. Houses and workshops line the streets and the lane, with farms, pens, gardens and a mine
+// behind. They're planned here, exactly as they always were, so no village anyone has found is
+// cut in half. Newer worlds (generator 4) have settlements of every size instead, from camps in
+// the woods to walled kingdoms (settlements.js).
+import { SEA_LEVEL } from './config.js';
+import { B, STAIRS, LADDER, gateId, WOOD, WALL_TORCH } from './blocks.js';
 import { hash2, mulberry32 } from './math.js';
+import { STYLE_OF, STYLES, HOUSES, LotGrid, Blueprint, DryBlueprint, Lot, BUILD, personName } from './lots.js';
+import { MAJOR, MINOR, MAX_REACH, CAMP_REACH, planRegion, planCamp, build4 } from './settlements.js';
 
 export const RADIUS = 34;  // from the centre to the outer face of the wall
 const LANE = RADIUS - 5;   // the lane inside the wall runs LANE..LANE+2 from the centre
@@ -18,74 +24,79 @@ const REACH = RADIUS + BLEND;
 // The world is divided into square regions that may hold one village each, somewhere away from
 // their edges. Worlds made since villages were spread out (generator 3) have larger regions, fewer
 // of them with a village, and villages kept well inside them, so neighbours are at least 320 blocks
-// apart; older worlds keep their layout (so no village they've found is cut in half).
+// apart; older worlds keep their layout (so no village they've found is cut in half). Generator 4
+// has regions the size of generator 3's (see settlements.js), and a finer grid of its own for camps.
 const SPREAD = {
   2: { size: 24 * 16, margin: REACH + 16, chance: 0.8 },
   3: { size: 40 * 16, margin: 160, chance: 0.7 },
 };
-const spread = (gen) => SPREAD[gen.version >= 3 ? 3 : 2];
+const spread = (gen) => (gen.version >= 4 ? MAJOR : SPREAD[gen.version >= 3 ? 3 : 2]);
 
-const STYLE_OF = {
-  [BIOME.PLAINS]: 'plains', [BIOME.SUNFLOWER_PLAINS]: 'plains', [BIOME.MEADOW]: 'plains', [BIOME.FLOWER_FOREST]: 'plains',
-  [BIOME.FOREST]: 'plains', [BIOME.BIRCH_FOREST]: 'plains', [BIOME.SAVANNA]: 'savanna', [BIOME.DESERT]: 'desert', [BIOME.TAIGA]: 'taiga',
-  [BIOME.SNOWY_PLAINS]: 'snowy', [BIOME.SNOWY_TAIGA]: 'snowy', [BIOME.CHERRY_GROVE]: 'cherry',
-};
-// Block names for each style. `roof` names a kind of stairs and slab (desert houses have flat
-// roofs), `stair` the stone the steps up the wall are made of, `tree` the gardens' trees.
-const FLOWERS = ['poppy', 'dandelion', 'cornflower', 'allium', 'azure_bluet', 'oxeye_daisy', 'red_tulip', 'lily_of_the_valley'];
-const STYLES = {
-  plains: { wall: 'stone_bricks', wall2: 'mossy_stone_bricks', stair: 'stone_brick', crest: 'stone_brick_wall', found: 'cobblestone',
-    planks: 'oak_planks', log: 'oak_log', roof: 'spruce', door: 'oak', fence: 'oak_fence', gate: 'oak', floor: 'oak_planks', road: 'dirt_path',
-    edge: 'gravel', plaza: 'cobblestone', accent: 'white', glass: 'glass_pane', tree: 'oak', flowers: FLOWERS, soil: 'grass_block',
-    stall: ['red', 'yellow', 'blue', 'lime'] },
-  taiga: { wall: 'cobblestone', wall2: 'mossy_cobblestone', stair: 'cobblestone', crest: 'cobblestone_wall', found: 'cobblestone',
-    planks: 'spruce_planks', log: 'spruce_log', roof: 'dark_oak', door: 'spruce', fence: 'spruce_fence', gate: 'spruce', floor: 'spruce_planks',
-    road: 'dirt_path', edge: 'coarse_dirt', plaza: 'cobblestone', accent: 'brown', glass: 'glass_pane', tree: 'spruce',
-    flowers: ['fern', 'fern', 'cornflower', 'lily_of_the_valley'], soil: 'podzol', stall: ['brown', 'green', 'red', 'orange'] },
-  snowy: { wall: 'stone_bricks', wall2: 'cobblestone', stair: 'stone_brick', crest: 'stone_brick_wall', found: 'cobblestone', planks: 'spruce_planks',
-    log: 'spruce_log', roof: 'spruce', door: 'spruce', fence: 'spruce_fence', gate: 'spruce', floor: 'spruce_planks', road: 'dirt_path',
-    edge: 'gravel', plaza: 'stone_bricks', accent: 'light_blue', glass: 'glass_pane', tree: 'spruce', flowers: ['fern', 'lily_of_the_valley'],
-    soil: 'grass_block', stall: ['light_blue', 'blue', 'cyan', 'purple'] },
-  desert: { wall: 'sandstone', wall2: 'cut_sandstone', stair: 'sandstone', crest: 'sandstone_wall', found: 'sandstone', planks: 'cut_sandstone',
-    log: 'chiseled_sandstone', roof: null, door: 'jungle', fence: 'jungle_fence', gate: 'jungle', floor: 'cut_sandstone', road: 'dirt_path',
-    edge: 'sandstone', plaza: 'cut_sandstone', accent: 'orange', glass: 'glass_pane', tree: 'jungle', flowers: ['dead_bush', 'cactus'],
-    soil: 'sand', stall: ['orange', 'yellow', 'red', 'cyan'] },
-  savanna: { wall: 'red_sandstone', wall2: 'cut_red_sandstone', stair: 'red_sandstone', crest: 'red_sandstone_wall', found: 'cobblestone',
-    planks: 'acacia_planks', log: 'acacia_log', roof: 'acacia', door: 'acacia', fence: 'acacia_fence', gate: 'acacia', floor: 'acacia_planks',
-    road: 'dirt_path', edge: 'coarse_dirt', plaza: 'cut_red_sandstone', accent: 'orange', glass: 'glass_pane', tree: 'acacia',
-    flowers: ['dandelion', 'poppy', 'allium'], soil: 'grass_block', stall: ['orange', 'yellow', 'lime', 'red'] },
-  cherry: { wall: 'stone_bricks', wall2: 'polished_andesite', stair: 'stone_brick', crest: 'stone_brick_wall', found: 'cobblestone',
-    planks: 'cherry_planks', log: 'cherry_log', roof: 'dark_oak', door: 'cherry', fence: 'cherry_fence', gate: 'cherry', floor: 'cherry_planks',
-    road: 'dirt_path', edge: 'gravel', plaza: 'polished_andesite', accent: 'pink', glass: 'glass_pane', tree: 'cherry',
-    flowers: ['pink_tulip', 'allium', 'lily_of_the_valley', 'oxeye_daisy'], soil: 'grass_block', stall: ['pink', 'magenta', 'purple', 'white'] },
-};
-for (const st of Object.values(STYLES)) st.walk = st.roof ? `${st.roof}_slab` : 'sandstone_slab';
+// How far (x, z) is outside a settlement's bounds (<= 0 inside them).
+export const outside = (p, x, z) => Math.max(Math.abs(x - p.x) - p.rx, Math.abs(z - p.z) - p.rz);
 
 // ---------------------------------------------------------------- planning
-const plans = new Map(); // world and region -> plan or null
+// World, grid and cell -> plan or null; the most recently used last.
+const plans = new Map();
+function cached(key, make) {
+  if (plans.has(key)) {
+    const p = plans.get(key);
+    plans.delete(key); plans.set(key, p);
+    return p;
+  }
+  const p = make();
+  plans.set(key, p);
+  if (plans.size > 160) plans.delete(plans.keys().next().value);
+  return p;
+}
 
-// The village of region (rx, rz), or null if it has none.
+// The settlement of region (rx, rz), or null if it has none.
 export function regionVillage(gen, rx, rz) {
-  const key = `${rx},${rz}`, cacheKey = `${gen.seed}:${gen.type}:${key}`;
-  if (plans.has(cacheKey)) return plans.get(cacheKey);
-  let plan = null;
-  if (gen.villages) {
+  const key = `${rx},${rz}`;
+  return cached(`${gen.seed}:${gen.type}:${gen.version}:${key}`, () => {
+    if (!gen.villages) return null;
     const rnd = mulberry32(Math.floor(hash2(rx, rz, gen.seed ^ 0x7111a9e) * 4294967296));
     // The regions around the origin try hard, so every world has a village near spawn.
     const home = (rx === 0 || rx === -1) && (rz === 0 || rz === -1);
-    const { size, margin, chance } = spread(gen);
-    const tries = home ? 40 : (rnd() < chance ? 3 : 0);
-    for (let t = 0; t < tries && !plan; t++) {
-      const span = size - margin * 2;
-      const cx = rx * size + margin + Math.floor(rnd() * span);
-      const cz = rz * size + margin + Math.floor(rnd() * span);
-      plan = site(gen, cx, cz, rnd);
+    let plan = null;
+    if (gen.version >= 4) plan = planRegion(gen, rx, rz, rnd, home);
+    else {
+      const { size, margin, chance } = spread(gen);
+      const tries = home ? 40 : (rnd() < chance ? 3 : 0);
+      for (let t = 0; t < tries && !plan; t++) {
+        const span = size - margin * 2;
+        const cx = rx * size + margin + Math.floor(rnd() * span);
+        const cz = rz * size + margin + Math.floor(rnd() * span);
+        plan = site(gen, cx, cz, rnd);
+      }
     }
     if (plan) plan.key = key;
+    return plan;
+  });
+}
+
+// The camp in cell (cx, cz) of the finer grid (generator 4), or null.
+export function cellCamp(gen, cx, cz) {
+  const key = `c${cx},${cz}`;
+  return cached(`${gen.seed}:${gen.type}:${gen.version}:${key}`, () => {
+    if (!gen.villages || gen.version < 4) return null;
+    const rnd = mulberry32(Math.floor(hash2(cx, cz, gen.seed ^ 0x3ca5e11) * 4294967296));
+    // (Not too near a town: that's where the camp would be.)
+    const clear = (x, z, margin) => !majorAround(gen, x, z).some((p) => outside(p, x, z) <= margin);
+    const plan = planCamp(gen, cx, cz, rnd, clear);
+    if (plan) plan.key = key;
+    return plan;
+  });
+}
+
+// The settlements of the regions round (x, z).
+function majorAround(gen, x, z) {
+  const size = spread(gen).size, rx = Math.floor(x / size), rz = Math.floor(z / size), out = [];
+  for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+    const p = regionVillage(gen, rx + dx, rz + dz);
+    if (p) out.push(p);
   }
-  plans.set(cacheKey, plan);
-  if (plans.size > 64) plans.delete(plans.keys().next().value);
-  return plan;
+  return out;
 }
 
 // Is (cx, cz) a good spot? Level ground, dry, in a biome that has villages.
@@ -107,99 +118,78 @@ function site(gen, cx, cz, rnd) {
   return layout({ x: cx, z: cz, y, style: STYLES[styleName], styleName, rnd });
 }
 
-// Villages whose grounds reach into chunk (cx, cz).
+// Settlements whose grounds reach into chunk (cx, cz).
 export function villagesNear(gen, cx, cz) {
   const out = [];
-  const x = cx * 16 + 8, z = cz * 16 + 8, span = spread(gen).size;
-  for (let rz = Math.floor((z - REACH - 16) / span); rz <= Math.floor((z + REACH + 16) / span); rz++) {
-    for (let rx = Math.floor((x - REACH - 16) / span); rx <= Math.floor((x + REACH + 16) / span); rx++) {
+  const x = cx * 16 + 8, z = cz * 16 + 8, span = spread(gen).size, v4 = gen.version >= 4;
+  // (Generator 4 also counts those just short of the chunk, whose clearings keep trees rooted in it back.)
+  const reach = v4 ? MAX_REACH : REACH, near = (p) => outside(p, x, z) <= p.blend + (v4 ? 12 : 8);
+  for (let rz = Math.floor((z - reach - 16) / span); rz <= Math.floor((z + reach + 16) / span); rz++) {
+    for (let rx = Math.floor((x - reach - 16) / span); rx <= Math.floor((x + reach + 16) / span); rx++) {
       const p = regionVillage(gen, rx, rz);
-      if (p && Math.abs(p.x - x) <= REACH + 8 && Math.abs(p.z - z) <= REACH + 8) out.push(p);
+      if (p && near(p)) out.push(p);
+    }
+  }
+  if (v4 && gen.villages) {
+    const cell = MINOR.size, r = CAMP_REACH + 16;
+    for (let kz = Math.floor((z - r) / cell); kz <= Math.floor((z + r) / cell); kz++) {
+      for (let kx = Math.floor((x - r) / cell); kx <= Math.floor((x + r) / cell); kx++) {
+        const p = cellCamp(gen, kx, kz);
+        if (p && near(p)) out.push(p);
+      }
     }
   }
   return out;
 }
 
-// The nearest village to (x, z) within `regions` regions, or null (for /locate).
-export function nearestVillage(gen, x, z, regions = 3) {
-  const span = spread(gen).size, rx0 = Math.floor(x / span), rz0 = Math.floor(z / span);
+// The kinds of settlement, smallest first; /locate looks for one of them, or any but a camp.
+export const KINDS = ['camp', 'hamlet', 'village', 'town', 'kingdom'];
+const kindOf = (p) => p.tier ?? 'village';
+
+// The nearest settlement of `kind` (null: any but a camp) to (x, z) within `regions` regions, or
+// null (for /locate).
+export function nearestVillage(gen, x, z, regions = 3, kind = null) {
   let best = null, bd = Infinity;
-  for (let rz = rz0 - regions; rz <= rz0 + regions; rz++) for (let rx = rx0 - regions; rx <= rx0 + regions; rx++) {
-    const p = regionVillage(gen, rx, rz);
-    if (!p) continue;
+  const consider = (p) => {
+    if (!p || (kind ? kindOf(p) !== kind : kindOf(p) === 'camp')) return;
     const d = Math.hypot(p.x - x, p.z - z);
     if (d < bd) { bd = d; best = p; }
+  };
+  if (kind === 'camp') {
+    if (gen.version < 4) return null;
+    const cell = MINOR.size, k = Math.ceil(regions * spread(gen).size / cell / 2), kx0 = Math.floor(x / cell), kz0 = Math.floor(z / cell);
+    for (let kz = kz0 - k; kz <= kz0 + k; kz++) for (let kx = kx0 - k; kx <= kx0 + k; kx++) consider(cellCamp(gen, kx, kz));
+    return best;
   }
+  const span = spread(gen).size, rx0 = Math.floor(x / span), rz0 = Math.floor(z / span);
+  for (let rz = rz0 - regions; rz <= rz0 + regions; rz++) for (let rx = rx0 - regions; rx <= rx0 + regions; rx++) consider(regionVillage(gen, rx, rz));
   return best;
 }
 
-// The village whose walls (x, z) is inside, if any.
+// The settlement whose bounds (x, z) is inside (give or take `margin`), if any.
 export function villageAt(gen, x, z, margin = 0) {
   if (!gen?.villages) return null;
   const span = spread(gen).size, rx = Math.floor(x / span), rz = Math.floor(z / span);
   for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
     const p = regionVillage(gen, rx + dx, rz + dz);
-    if (p && Math.max(Math.abs(x - p.x), Math.abs(z - p.z)) <= RADIUS + margin) return p;
+    if (p && outside(p, x, z) <= margin) return p;
+  }
+  if (gen.version >= 4) {
+    const cell = MINOR.size, kx = Math.floor(x / cell), kz = Math.floor(z / cell);
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      const p = cellCamp(gen, kx + dx, kz + dz);
+      if (p && outside(p, x, z) <= margin) return p;
+    }
   }
   return null;
 }
 
-// Sizes of what can stand on a lot: [across the front, front to back].
-const SIZE = { house_small: [7, 6], house_large: [9, 8], house_tall: [7, 7], smithy: [9, 8], butcher: [7, 7], hunter: [7, 7],
-  library: [9, 7], barracks: [9, 9], tavern: [11, 9], bakery: [7, 7], mine: [7, 7], farm: [11, 7], pen: [9, 8], garden: [7, 5],
-  plot: [7, 5], yard: [5, 4] };
-const HOUSES = ['house_small', 'house_small', 'house_large', 'house_tall', 'house_tall'];
-
 // Where things go: the streets, then lots along them with their doors on the street.
 function layout(plan) {
   const { rnd } = plan;
-  const R = RADIUS, W = 2 * R + 1;
-  const occ = new Uint8Array(W * W);
-  const free = (x0, z0, x1, z1) => {
-    for (let z = z0 - 1; z <= z1 + 1; z++) for (let x = x0 - 1; x <= x1 + 1; x++) {
-      if (Math.abs(x) > FRONT + 1 || Math.abs(z) > FRONT + 1 || occ[(z + R) * W + x + R]) return false;
-    }
-    return true;
-  };
-  const take = (x0, z0, x1, z1) => { for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) occ[(z + R) * W + x + R] = 1; };
-  take(-2, -R, 2, R); take(-R, -2, R, 2); take(-PLAZA, -PLAZA, PLAZA, PLAZA);
-  const buildings = [];
-  const place = (type, face, box) => {
-    if (!free(...box)) return false;
-    take(...box);
-    const [w, d] = SIZE[type];
-    buildings.push({ type, w, d, face, box });
-    return true;
-  };
-  const pick = (list) => list[Math.floor(rnd() * list.length)];
-  const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
-  // A frontage: lots standing side by side along a street, from s0 towards s1. `along` is the axis
-  // the street runs on, `front` the line their fronts stand on, `grow` the way they reach back.
-  const boxAt = (fr, s, w, d) => {
-    const dir = Math.sign(fr.s1 - fr.s0), a = s, b = s + dir * (w - 1), c = fr.front, e = fr.front + fr.grow * (d - 1);
-    const u0 = Math.min(a, b), u1 = Math.max(a, b), v0 = Math.min(c, e), v1 = Math.max(c, e);
-    return fr.along === 'z' ? [v0, u0, v1, u1] : [u0, v0, u1, v1];
-  };
-  // Fills frontages from a queue, a lot at a time on each in turn (so the first things in the
-  // queue get the best spots on every street). A lot that fits nowhere is left out.
-  const rows = (frontages, queue) => {
-    const cur = frontages.map((f) => ({ ...f, s: f.s0, dir: Math.sign(f.s1 - f.s0) }));
-    let q = 0;
-    while (q < queue.length) {
-      let placed = false;
-      for (const c of cur) {
-        if (q >= queue.length) break;
-        const [w, d] = SIZE[queue[q]];
-        for (let s = c.s; (c.s1 - (s + c.dir * (w - 1))) * c.dir >= 0; s += c.dir) {
-          if (!place(queue[q], c.face, boxAt(c, s, w, d))) continue;
-          q++; placed = true;
-          c.s = s + c.dir * (w + (rnd() < 0.3 ? 2 : 1));
-          break;
-        }
-      }
-      if (!placed) q++;
-    }
-  };
+  const R = RADIUS;
+  const g = new LotGrid(R, R, FRONT, FRONT, rnd);
+  g.take(-2, -R, 2, R); g.take(-R, -2, R, 2); g.take(-PLAZA, -PLAZA, PLAZA, PLAZA);
   // Lots along the main streets, beyond the plaza.
   const street = [];
   for (const [ax, az] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
@@ -210,10 +200,10 @@ function layout(plan) {
     }
   }
   // The barracks stands by a gate; the workshops get the spots nearest the plaza.
-  const bf = pick(street);
-  rows([{ ...bf, s0: bf.s1, s1: bf.s0 }], ['barracks']);
-  rows(shuffle([...street]), [...shuffle(['tavern', 'library', 'smithy', 'bakery', 'butcher', 'hunter']),
-    ...Array.from({ length: 12 }, () => pick(HOUSES))]);
+  const bf = g.pick(street);
+  g.rows([{ ...bf, s0: bf.s1, s1: bf.s0 }], ['barracks']);
+  g.rows(g.shuffle([...street]), [...g.shuffle(['tavern', 'library', 'smithy', 'bakery', 'butcher', 'hunter']),
+    ...Array.from({ length: 12 }, () => g.pick(HOUSES))]);
   // Lots on the lane inside the wall, facing it.
   const lane = [];
   for (const half of [-1, 1]) {
@@ -222,152 +212,26 @@ function layout(plan) {
       { along: 'z', front: -FRONT, grow: 1, face: 1, s0: half * 4, s1: half * FRONT },
       { along: 'z', front: FRONT, grow: -1, face: 0, s0: half * 4, s1: half * FRONT });
   }
-  rows(shuffle(lane), ['mine', 'farm', 'farm', ...shuffle(['farm', 'pen', 'pen', 'garden', 'garden', ...Array.from({ length: 9 }, () => pick(HOUSES))])]);
+  g.rows(g.shuffle(lane), ['mine', 'farm', 'farm', ...g.shuffle(['farm', 'pen', 'pen', 'garden', 'garden', ...Array.from({ length: 9 }, () => g.pick(HOUSES))])]);
   // Back yards: gardens, vegetable plots, pens and woodpiles in the space left behind.
-  const spots = [];
-  for (let z = -FRONT; z <= FRONT; z += 2) for (let x = -FRONT; x <= FRONT; x += 2) spots.push([x, z]);
-  let yards = 0;
-  for (const [x, z] of shuffle(spots)) {
-    for (const type of shuffle(['garden', 'plot', 'yard', 'pen', 'garden', 'plot'])) {
-      const [w, d] = SIZE[type], face = pick([4, 5, 0, 1]), sideways = face === 0 || face === 1;
-      if (place(type, face, [x, z, x + (sideways ? d : w) - 1, z + (sideways ? w : d) - 1])) { yards++; break; }
-    }
-    if (yards >= 16) break;
-  }
-  plan.buildings = buildings;
+  g.yards(['garden', 'plot', 'yard', 'pen', 'garden', 'plot'], 16);
+  plan.buildings = g.buildings;
   plan.radius = R;
   plan.blueprint = null;
   plan.residents = [];
   plan.animals = [];
   plan.rnd = null;
   plan.seed = Math.floor(rnd() * 4294967296);
+  // (What the rest of the game knows of every settlement: its bounds, where the ground eases back
+  // to nature, and the squares where people meet.)
+  Object.assign(plan, { gen: 3, tier: 'village', rx: R, rz: R, blend: BLEND, squares: [[0, 0, PLAZA]] });
   return plan;
 }
 
 // ---------------------------------------------------------------- building
-// A village's blocks, sorted by chunk: chunk key -> [x, y, z, id, ...].
-class Blueprint {
-  constructor() { this.chunks = new Map(); }
-  set(x, y, z, id) {
-    if (y < 1 || y >= HEIGHT || id === undefined) return;
-    const k = `${x >> 4},${z >> 4}`;
-    let a = this.chunks.get(k);
-    if (!a) this.chunks.set(k, a = []);
-    a.push(x, y, z, id);
-  }
-}
-
-// Draws one building in its own coordinates: x across its front (0 at the left), z back from the
-// front, y up from the ground. The front faces `face`. Collects the building's beds, the jobs
-// done there and the animals kept there.
-class Lot {
-  constructor(bp, plan, b) {
-    this.bp = bp; this.plan = plan; this.b = b; this.st = plan.style;
-    this.y0 = plan.y;
-    this.beds = []; this.jobs = []; this.animals = []; this.doors = [];
-    const [x0, z0, x1, z1] = b.box;
-    // The corner of the lot at local (0, 0), and which way local +x and +z run.
-    const f = b.face;
-    if (f === 5) { this.o = [x0, z0]; this.ux = [1, 0]; this.uz = [0, 1]; }
-    else if (f === 4) { this.o = [x1, z1]; this.ux = [-1, 0]; this.uz = [0, -1]; }
-    else if (f === 0) { this.o = [x1, z0]; this.ux = [0, 1]; this.uz = [-1, 0]; }
-    else { this.o = [x0, z1]; this.ux = [0, -1]; this.uz = [1, 0]; }
-    this.o = [plan.x + this.o[0], plan.z + this.o[1]];
-    // Local faces (5 = front, 4 = back, 1 = left, 0 = right) to world faces.
-    const turn = { 5: [5, 4, 1, 0], 4: [4, 5, 0, 1], 0: [0, 1, 5, 4], 1: [1, 0, 4, 5] }[f];
-    this.faces = { 5: turn[0], 4: turn[1], 1: turn[2], 0: turn[3], 2: 2, 3: 3 };
-  }
-  at(x, z) { return [this.o[0] + this.ux[0] * x + this.uz[0] * z, this.o[1] + this.ux[1] * x + this.uz[1] * z]; }
-  world(x, y, z) { const [wx, wz] = this.at(x, z); return [wx, this.y0 + y, wz]; }
-  face(f) { return this.faces[f]; }
-  set(x, y, z, id) { const [wx, wz] = this.at(x, z); this.bp.set(wx, this.y0 + y, wz, typeof id === 'string' ? B[id] : id); }
-  fill(x0, y0, z0, x1, y1, z1, id) {
-    for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) this.set(x, y, z, id);
-  }
-  stairs(x, y, z, kind, face, upside = false) {
-    const s = STAIRS[B[`${kind}_stairs`]];
-    if (s) this.set(x, y, z, s.ids[this.face(face)][upside ? 1 : 0]);
-  }
-  door(x, z, wood, face = 5) {
-    const base = WOOD[wood].door, f = this.face(face);
-    this.set(x, 1, z, doorId(f, false, false, base));
-    this.set(x, 2, z, doorId(f, false, true, base));
-    this.doors.push(this.world(x, 1, z));
-  }
-  // A bed with its foot at (x, z), the head towards `face`.
-  bed(x, y, z, face, who = null) {
-    const f = this.face(face), d = { 5: [0, -1], 4: [0, 1], 1: [-1, 0], 0: [1, 0] }[face];
-    this.set(x, y, z, bedId(f, false));
-    this.set(x + d[0], y, z + d[1], bedId(f, true));
-    this.beds.push({ at: this.world(x, y, z), who });
-  }
-  job(role, x, z, y = 1) { this.jobs.push({ role, work: this.world(x, y, z) }); }
-  chest(x, y, z, kind, front) { this.set(x, y, z, lootChestId(kind, this.face(front))); }
-  facing(name, x, y, z, front) { this.set(x, y, z, FACING_VARIANTS[B[name]][this.face(front)]); }
-  torch(x, y, z, face) { this.set(x, y, z, WALL_TORCH[this.face(face)]); }
-  ladder(x, y0, y1, z, wallFace) { for (let y = y0; y <= y1; y++) this.set(x, y, z, LADDER[this.face(wallFace)]); }
-  // A log lying along local x (or z).
-  beam(x, y, z, alongX = true) {
-    const axes = LOG_AXES[B[this.st.log]];
-    const worldX = alongX ? this.ux[0] !== 0 : this.uz[0] !== 0;
-    this.set(x, y, z, axes ? axes[worldX ? 0 : 1] : this.st.log);
-  }
-  carpet(x, y, z, colour = this.st.accent) { this.set(x, y, z, `${colour}_carpet`); }
-  // A pitched roof over the box [0..w-1] x [0..d-1] with its eaves at height y, the ridge running
-  // front to back; the gable ends are filled with `gable`.
-  roof(w, d, y, kind, gable) {
-    const half = w >> 1;
-    for (let i = 0; i <= half; i++) {
-      for (let z = -1; z <= d; z++) {
-        if (i < half || w % 2 === 0) {
-          this.stairs(i, y + i, z, kind, 0);
-          this.stairs(w - 1 - i, y + i, z, kind, 1);
-        } else this.set(i, y + i, z, `${kind}_slab`);
-      }
-      if (i > 0) for (let x = i; x <= w - 1 - i; x++) { this.set(x, y + i - 1, 0, gable); this.set(x, y + i - 1, d - 1, gable); }
-    }
-  }
-  // A flat roof with a low parapet (desert houses).
-  flatRoof(w, d, y) {
-    this.fill(0, y, 0, w - 1, y, d - 1, this.st.planks);
-    for (let x = 0; x < w; x++) { this.set(x, y + 1, 0, 'sandstone_slab'); this.set(x, y + 1, d - 1, 'sandstone_slab'); }
-    for (let z = 0; z < d; z++) { this.set(0, y + 1, z, 'sandstone_slab'); this.set(w - 1, y + 1, z, 'sandstone_slab'); }
-  }
-  topRoof(w, d, y) { if (this.st.roof) this.roof(w, d, y, this.st.roof, this.st.planks); else this.flatRoof(w, d, y); }
-  // Walls of a room w x d, h high: logs at the corners, planks between, windows in the middle.
-  shell(w, d, h, { windows = true, walls = null, corners = null, y = 0, floor = true } = {}) {
-    const st = this.st;
-    if (floor) { this.fill(0, y, 0, w - 1, y, d - 1, st.found); this.fill(1, y, 1, w - 2, y, d - 2, st.floor); }
-    this.fill(1, y + 1, 1, w - 2, y + h, d - 2, 0);
-    for (let yy = y + 1; yy <= y + h; yy++) {
-      for (let x = 0; x < w; x++) { this.set(x, yy, 0, walls ?? st.planks); this.set(x, yy, d - 1, walls ?? st.planks); }
-      for (let z = 0; z < d; z++) { this.set(0, yy, z, walls ?? st.planks); this.set(w - 1, yy, z, walls ?? st.planks); }
-      for (const [x, z] of [[0, 0], [w - 1, 0], [0, d - 1], [w - 1, d - 1]]) this.set(x, yy, z, corners ?? st.log);
-    }
-    if (windows) {
-      for (let z = 2; z < d - 2; z += 2) { this.set(0, y + 2, z, st.glass); this.set(w - 1, y + 2, z, st.glass); }
-      for (let x = 2; x < w - 2; x += 3) if (x !== (w >> 1)) this.set(x, y + 2, d - 1, st.glass);
-    }
-  }
-  // Clears the lot and the step in front of it.
-  clear(w, d, h = 10) { this.fill(0, 1, 0, w - 1, h, d - 1, 0); this.fill(0, 1, -1, w - 1, 3, -1, 0); }
-  // The front door with its step and a torch beside it.
-  entrance(w, wood = this.st.door) {
-    this.door(w >> 1, 0, wood);
-    this.set(w >> 1, 0, -1, this.st.found);
-    this.torch((w >> 1) + 1, 2, -1, 5);
-  }
-  // A chimney up a wall with a campfire smoking on top.
-  chimney(x, z, top) {
-    for (let y = 1; y <= top; y++) this.set(x, y, z, B.cobblestone);
-    this.set(x, top + 1, z, B.campfire);
-  }
-}
-
-// Fills a plan's blueprint (on first use).
-function build(plan) {
-  if (plan.blueprint) return plan.blueprint;
-  const bp = new Blueprint(), st = plan.style, R = RADIUS, { x: cx, y, z: cz } = plan;
+// Draws a village of the older worlds into blueprint `bp`, and lists its people.
+function build(plan, bp) {
+  const st = plan.style, R = RADIUS, { x: cx, y, z: cz } = plan;
   const rnd = mulberry32(plan.seed);
   const set = (x, yy, z, id) => bp.set(cx + x, y + yy, cz + z, typeof id === 'string' ? B[id] : id);
   const stair = (x, yy, z, kind, face) => { const s = STAIRS[B[`${kind}_stairs`]]; if (s) set(x, yy, z, s.ids[face][0]); };
@@ -510,346 +374,47 @@ function build(plan) {
   plan.residents = residents;
   plan.animals = animals;
   plan.doors = doors;
-  plan.blueprint = bp;
+}
+
+
+// A plan's blocks (and people), worked out on first use. `dry`: only who lives there is wanted,
+// so the blocks needn't be kept.
+function built(plan, dry = false) {
+  if (plan.blueprint || (dry && plan.built)) return plan.blueprint;
+  const bp = dry ? new DryBlueprint() : new Blueprint();
+  if (plan.gen >= 4) build4(plan, bp); else build(plan, bp);
+  plan.built = true;
+  if (!dry) plan.blueprint = bp;
   return bp;
 }
 
-// ---------------------------------------------------------------- the buildings
-const flowerAt = (st, rnd) => st.flowers[Math.floor(rnd() * st.flowers.length)];
-const POTS = ['potted_poppy', 'potted_dandelion', 'potted_cornflower', 'potted_allium', 'potted_oak_sapling'];
-const BUILD = {
-  house_small(l, b, rnd) {
-    const st = l.st, w = b.w, d = b.d;
-    l.clear(w, d);
-    l.shell(w, d, 3);
-    l.entrance(w);
-    l.topRoof(w, d, 4);
-    l.bed(1, 1, d - 2, 5);
-    l.set(w - 2, 1, d - 2, B.crafting_table);
-    l.chest(w - 2, 1, 1, 'house', 1);
-    l.carpet(1, 1, 1);
-    l.set(w >> 1, 3, d >> 1, B.lantern_hanging);
-    if (rnd() < 0.5) l.set(1, 1, 2, POTS[Math.floor(rnd() * POTS.length)]);
-    if (st.roof && rnd() < 0.6) l.chimney(w - 2, d - 1, 6);
-  },
-  house_large(l, b, rnd) {
-    const st = l.st, w = b.w, d = b.d;
-    l.clear(w, d, 12);
-    l.shell(w, d, 4);
-    l.entrance(w);
-    l.torch((w >> 1) - 1, 2, -1, 5);
-    l.topRoof(w, d, 5);
-    l.bed(1, 1, d - 2, 5); l.bed(w - 2, 1, d - 2, 5);
-    l.facing('furnace', 1, 1, 1, 0);
-    l.set(w - 2, 1, 1, B.crafting_table);
-    l.set(w - 2, 2, 1, B.bookshelf);
-    l.chest(w - 3, 1, d - 2, 'house', 5);
-    // A table and stools.
-    l.set(w >> 1, 1, d >> 1, st.fence); l.carpet(w >> 1, 2, d >> 1);
-    l.stairs((w >> 1) - 1, 1, d >> 1, st.roof ?? 'sandstone', 1);
-    l.stairs((w >> 1) + 1, 1, d >> 1, st.roof ?? 'sandstone', 0);
-    l.set(w >> 1, 4, d >> 1, B.lantern_hanging);
-    // Flower boxes under the front windows.
-    for (const x of [1, w - 2]) {
-      const f = flowerAt(st, rnd);
-      l.set(x, 2, 0, st.glass); l.set(x, 1, -1, f === 'cactus' ? B.sand : B[st.soil] ?? B.grass_block); l.set(x, 2, -1, B[f]);
-    }
-    if (st.roof && rnd() < 0.5) l.chimney(1, d - 1, 8);
-  },
-  // Two storeys: a stone ground floor with the kitchen, a timber-framed bedroom above.
-  house_tall(l, b, rnd) {
-    const st = l.st, w = b.w, d = b.d;
-    l.clear(w, d, 14);
-    l.shell(w, d, 3, { walls: st.found === 'sandstone' ? B.cut_sandstone : B.cobblestone, corners: st.log });
-    l.fill(1, 4, 1, w - 2, 4, d - 2, st.floor);
-    for (let x = 0; x < w; x++) { l.beam(x, 4, 0); l.beam(x, 4, d - 1); }
-    for (let z = 1; z < d - 1; z++) { l.beam(0, 4, z, false); l.beam(w - 1, 4, z, false); }
-    l.shell(w, d, 3, { y: 4, floor: false, windows: false });
-    for (let yy = 5; yy <= 7; yy++) { l.set(w >> 1, yy, 0, st.log); l.set(w >> 1, yy, d - 1, st.log); }
-    for (const x of [1, w - 2]) { l.set(x, 6, 0, st.glass); l.set(x, 6, d - 1, st.glass); }
-    l.set(0, 6, d >> 1, st.glass); l.set(w - 1, 6, d >> 1, st.glass);
-    l.entrance(w);
-    l.topRoof(w, d, 8);
-    // Downstairs: kitchen and a ladder up.
-    l.facing('furnace', 1, 1, d - 2, 5);
-    l.set(2, 1, d - 2, B.barrel);
-    l.set(w - 2, 1, 1, B.crafting_table);
-    l.ladder(w - 2, 1, 4, d - 2, 4);
-    l.set(w >> 1, 3, d >> 1, B.lantern_hanging);
-    // Upstairs: two beds and a chest.
-    l.bed(1, 5, 2, 4); l.bed(w - 3, 5, 1, 1);
-    l.chest(1, 5, d - 2, 'house', 0);
-    l.carpet(w >> 1, 5, 2);
-    l.set(w >> 1, 7, d >> 1, B.lantern_hanging);
-    if (st.roof && rnd() < 0.5) l.chimney(1, d - 1, 10);
-  },
-  smithy(l, b) {
-    const st = l.st, w = b.w, d = b.d;
-    l.clear(w, d);
-    // Stone floor, a back wall, pillars at the front, and a slab roof.
-    l.fill(0, 0, 0, w - 1, 0, d - 1, B.cobblestone);
-    for (let y = 1; y <= 4; y++) {
-      for (let x = 0; x < w; x++) l.set(x, y, d - 1, B.cobblestone);
-      for (let z = 3; z < d; z++) { l.set(0, y, z, B.cobblestone); l.set(w - 1, y, z, B.cobblestone); }
-      l.set(0, y, 0, st.log); l.set(w - 1, y, 0, st.log);
-    }
-    for (let z = -1; z <= d; z++) for (let x = -1; x <= w; x++) l.set(x, 5, z, B.stone_brick_slab);
-    l.facing('blast_furnace', 1, 1, d - 2, 5);
-    l.facing('furnace', 2, 1, d - 2, 5);
-    l.set(3, 1, d - 2, B.smithing_table);
-    // The forge: a pool of lava behind iron bars.
-    l.set(w - 3, 0, d - 2, B.lava); l.set(w - 2, 0, d - 2, B.lava);
-    for (const [x, z] of [[w - 4, d - 2], [w - 3, d - 3], [w - 2, d - 3]]) l.set(x, 1, z, B.iron_bars);
-    l.chest(1, 1, 3, 'smith', 0);
-    l.facing('anvil', w - 3, 1, 1, 5);
-    l.facing('grindstone', 1, 1, 1, 0);
-    l.set(w - 2, 1, 1, B.water_cauldron);
-    l.set(w >> 1, 4, 2, B.lantern_hanging);
-    l.job('blacksmith', w >> 1, 2);
-  },
-  butcher(l, b) {
-    const st = l.st, w = b.w, d = b.d;
-    l.clear(w, d);
-    l.shell(w, d, 3, { walls: st.found === 'sandstone' ? B.cut_sandstone : B.stone_bricks, corners: st.log });
-    l.entrance(w);
-    l.topRoof(w, d, 4);
-    l.facing('smoker', 1, 1, d - 2, 5);
-    l.set(w - 2, 1, d - 2, B.hay_block);
-    l.set(w - 2, 1, 1, B.barrel);
-    l.set(1, 1, 1, B.cauldron);
-    l.set(w >> 1, 3, d >> 1, B.lantern_hanging);
-    l.job('butcher', w >> 1, 2);
-  },
-  hunter(l, b) {
-    const st = l.st, w = b.w, d = b.d;
-    l.clear(w, d);
-    l.shell(w, d, 3, { walls: B.spruce_planks, corners: B.spruce_log });
-    l.entrance(w, 'spruce');
-    l.roof(w, d, 4, 'spruce', B.spruce_planks);
-    l.set(1, 1, d - 2, B.fletching_table);
-    l.set(w - 2, 1, d - 2, B.barrel);
-    l.chest(w - 2, 1, 1, 'village', 1);
-    l.set(1, 1, 1, B.hay_block);
-    l.set(w >> 1, 3, d >> 1, B.lantern_hanging);
-    // A rack of hides drying out front.
-    l.set(0, 1, -1, st.fence); l.set(0, 2, -1, B.brown_carpet);
-    l.job('hunter', w >> 1, 2);
-  },
-  library(l, b) {
-    const w = b.w, d = b.d;
-    l.clear(w, d);
-    l.shell(w, d, 4);
-    l.entrance(w);
-    l.topRoof(w, d, 5);
-    for (let x = 1; x < w - 1; x++) for (let y = 1; y <= 3; y++) l.set(x, y, d - 2, B.bookshelf);
-    for (let z = 2; z < d - 2; z++) { l.set(1, 1, z, B.bookshelf); l.set(w - 2, 1, z, B.bookshelf); }
-    l.set(w >> 1, 1, 2, B.lectern);
-    l.set((w >> 1) + 2, 1, 1, B.cartography_table);
-    l.carpet(w >> 1, 1, 3, 'red');
-    l.set(w >> 1, 4, d >> 1, B.lantern_hanging);
-    l.job('librarian', w >> 1, 1);
-  },
-  barracks(l, b) {
-    const st = l.st, w = b.w, d = b.d;
-    l.clear(w, d);
-    l.shell(w, d, 4, { walls: st.found === 'sandstone' ? B.sandstone : B.cobblestone, corners: st.wall === 'sandstone' ? B.cut_sandstone : B.stone_bricks,
-      windows: false });
-    for (let z = 2; z < d - 2; z += 2) { l.set(0, 2, z, B.iron_bars); l.set(w - 1, 2, z, B.iron_bars); }
-    l.entrance(w);
-    l.torch((w >> 1) - 1, 2, -1, 5);
-    l.fill(-1, 5, -1, w, 5, d, B.stone_brick_slab);
-    l.bed(1, 1, 2, 4, 'guard'); l.bed(1, 1, d - 3, 4, 'guard'); l.bed(w - 2, 1, 2, 4, 'guard');
-    l.chest(w - 2, 1, d - 2, 'smith', 1);
-    l.set(w - 2, 1, d - 4, B.anvil);
-    l.set(w >> 1, 4, d >> 1, B.lantern_hanging);
-  },
-  tavern(l, b) {
-    const st = l.st, w = b.w, d = b.d;
-    l.clear(w, d, 12);
-    l.shell(w, d, 4);
-    l.entrance(w);
-    l.torch((w >> 1) - 1, 2, -1, 5);
-    l.topRoof(w, d, 5);
-    // A bar along the back, tables with stools.
-    for (let x = 1; x < w - 1; x++) l.set(x, 1, d - 3, x === 1 ? 0 : B.barrel);
-    l.facing('smoker', w - 2, 1, d - 2, 5);
-    l.set(w - 3, 1, d - 2, B.water_cauldron);
-    l.set(1, 1, d - 2, B.barrel);
-    for (const tx of [2, w - 3]) {
-      l.set(tx, 1, 2, st.fence); l.set(tx, 2, 2, B.white_carpet);
-      l.stairs(tx - 1, 1, 2, st.roof ?? 'sandstone', 1); l.stairs(tx + 1, 1, 2, st.roof ?? 'sandstone', 0);
-    }
-    l.set(w >> 1, 4, 2, B.lantern_hanging); l.set(w >> 1, 4, d - 3, B.lantern_hanging);
-    l.job('innkeeper', w >> 1, d - 2);
-    if (st.roof) l.chimney(w - 2, d - 1, 9);
-  },
-  bakery(l, b) {
-    const st = l.st, w = b.w, d = b.d;
-    l.clear(w, d);
-    l.shell(w, d, 3, { walls: st.found === 'sandstone' ? B.cut_sandstone : B.bricks, corners: st.log });
-    l.entrance(w);
-    l.topRoof(w, d, 4);
-    l.facing('furnace', 1, 1, d - 2, 5); l.facing('smoker', 2, 1, d - 2, 5);
-    l.set(w - 2, 1, d - 2, B.hay_block); l.set(w - 2, 2, d - 2, B.hay_block);
-    l.set(w - 2, 1, 1, B.barrel);
-    l.set(1, 1, 1, B.crafting_table);
-    l.set(w >> 1, 3, d >> 1, B.lantern_hanging);
-    l.job('baker', w >> 1, 2);
-    if (st.roof) l.chimney(1, d - 1, 6);
-  },
-  // A stone hut over a shaft with a ladder down to a lit tunnel, where the miner works.
-  mine(l, b, rnd) {
-    const st = l.st, w = b.w, d = b.d;
-    l.clear(w, d);
-    l.shell(w, d, 3, { walls: B.cobblestone, corners: st.log, windows: false });
-    l.set(0, 2, d >> 1, B.iron_bars); l.set(w - 1, 2, d >> 1, B.iron_bars);
-    l.entrance(w);
-    l.fill(-1, 4, -1, w, 4, d, B.cobblestone_slab);
-    l.chest(1, 1, 1, 'mine', 1);
-    l.set(w - 2, 1, 1, B.barrel);
-    l.set(w >> 1, 3, 2, B.lantern_hanging);
-    // The shaft, lined with cobblestone so no cave leaks into it.
-    const sx = w >> 1, sz = d - 3, depth = 16;
-    for (let y = -depth; y <= 0; y++) {
-      for (let a = -1; a <= 1; a++) for (let c = -1; c <= 1; c++) if (a || c) l.set(sx + a, y, sz + c, B.cobblestone);
-      l.set(sx, y, sz, 0);
-    }
-    l.set(sx, -depth, sz, B.cobblestone);
-    l.ladder(sx, -depth + 1, 0, sz, 4);
-    // The tunnel runs back towards the front from the foot of the shaft.
-    const ores = [B.coal_ore, B.coal_ore, B.iron_ore, B.copper_ore, B.iron_ore, B.gold_ore];
-    for (let k = 1; k <= 11; k++) {
-      const z = sz - k;
-      for (let a = -2; a <= 2; a++) for (let yy = -depth; yy <= -depth + 4; yy++) {
-        const shell = Math.abs(a) === 2 || yy === -depth || yy === -depth + 4 || k === 11;
-        if (!shell) l.set(sx + a, yy, z, 0);
-        else if (yy > -depth && rnd() < 0.1) l.set(sx + a, yy, z, ores[Math.floor(rnd() * ores.length)]);
-        else l.set(sx + a, yy, z, yy === -depth ? B.cobblestone : B.stone);
-      }
-      // Timber supports every few blocks.
-      if (k % 3 === 0) {
-        for (const a of [-1, 1]) for (let yy = -depth + 1; yy <= -depth + 2; yy++) l.set(sx + a, yy, z, st.fence);
-        for (let a = -1; a <= 1; a++) l.set(sx + a, -depth + 3, z, B.oak_planks);
-        l.set(sx, -depth + 2, z, 0);
-        l.torch(sx - 1, -depth + 2, z + 1, 0);
-      }
-    }
-    l.set(sx + 1, -depth + 1, sz - 10, lootChestId('mine', l.face(5)));
-    // A track down the middle of the tunnel, for the ore carts.
-    const track = [4, 5].includes(l.face(4)) ? B.rail : B.rail + 1;
-    for (let k = 1; k <= 10; k++) l.set(sx, -depth + 1, sz - k, track);
-    l.job('miner', sx, 2);
-  },
-  farm(l, b, rnd) {
-    const st = l.st, w = b.w, d = b.d;
-    l.clear(w, d, 4);
-    const crop = ['wheat', 'wheat', 'carrots', 'potatoes', 'beetroots'][Math.floor(rnd() * 5)];
-    const first = B[crop], max = crop === 'wheat' ? 7 : 3;
-    for (let z = 0; z < d; z++) for (let x = 0; x < w; x++) {
-      const edge = x === 0 || z === 0 || x === w - 1 || z === d - 1;
-      if (edge) { l.beam(x, 0, z, z === 0 || z === d - 1); continue; }
-      if (x === (w >> 1)) { l.set(x, 0, z, B.water); l.set(x, -1, z, st.found); continue; }
-      l.set(x, 0, z, B.farmland_moist);
-      l.set(x, 1, z, first + Math.floor(rnd() * (max + 1)));
-    }
-    l.set(0, 1, 0, B.composter); l.set(w - 1, 1, 0, B.lantern); l.set(w - 1, 1, d - 1, B.hay_block);
-    l.chest(0, 1, d - 1, 'farm', 5);
-    l.job('farmer', w >> 1, -1);
-  },
-  pen(l, b, rnd) {
-    const st = l.st, w = b.w, d = b.d;
-    l.clear(w, d, 4);
-    for (let z = 0; z < d; z++) for (let x = 0; x < w; x++) {
-      l.set(x, 0, z, st.soil === 'sand' ? B.coarse_dirt : B.grass_block);
-      if (x === 0 || z === 0 || x === w - 1 || z === d - 1) l.set(x, 1, z, st.fence);
-    }
-    l.set(w >> 1, 1, 0, gateId(WOOD[st.gate].gate, l.face(5), false));
-    l.set(1, 1, d - 2, B.hay_block); l.set(2, 1, d - 2, B.hay_block); l.set(w - 2, 1, d - 2, B.water_cauldron);
-    l.set((w >> 1) + 2, 1, -1, B.loom);
-    const kind = ['sheep', 'sheep', 'cow', 'pig', 'chicken'][Math.floor(rnd() * 5)];
-    for (let k = 0; k < 3; k++) l.animals.push({ type: kind, at: l.world(2 + k * 2, 1, 3) });
-    l.job('shepherd', w >> 1, -1);
-  },
-  // A vegetable plot behind the houses: a fenced bed of crops round a water hole.
-  plot(l, b, rnd) {
-    const st = l.st, w = b.w, d = b.d;
-    l.clear(w, d, 3);
-    const crop = ['carrots', 'potatoes', 'beetroots', 'wheat'][Math.floor(rnd() * 4)], max = crop === 'wheat' ? 7 : 3;
-    for (let z = 0; z < d; z++) for (let x = 0; x < w; x++) {
-      if (x === 0 || z === 0 || x === w - 1 || z === d - 1) { l.set(x, 0, z, B[st.soil] ?? B.grass_block); l.set(x, 1, z, st.fence); continue; }
-      if (x === (w >> 1) && z === (d >> 1)) { l.set(x, 0, z, B.water); l.set(x, -1, z, st.found); continue; }
-      l.set(x, 0, z, B.farmland_moist);
-      l.set(x, 1, z, B[crop] + Math.floor(rnd() * (max + 1)));
-    }
-    l.set(w >> 1, 1, 0, gateId(WOOD[st.gate].gate, l.face(5), false));
-  },
-  // A woodpile, hay and a barrel or two.
-  yard(l, b, rnd) {
-    const st = l.st, w = b.w;
-    l.clear(w, b.d, 4);
-    for (let x = 0; x < w - 1; x++) { l.beam(x, 1, b.d - 1); if (rnd() < 0.7) l.beam(x, 2, b.d - 1); }
-    l.set(w - 1, 1, b.d - 1, B.hay_block);
-    if (rnd() < 0.6) l.set(w - 1, 2, b.d - 1, B.hay_block);
-    l.set(0, 1, 0, rnd() < 0.5 ? B.barrel : B.composter);
-    if (rnd() < 0.5) l.set(w - 1, 1, 0, B.hay_block);
-    if (rnd() < 0.4) l.set(2, 1, 1, st.soil === 'sand' ? B.dead_bush : B.tall_grass);
-  },
-  // A little garden: a tree, a bed of flowers and a bench.
-  garden(l, b, rnd) {
-    const st = l.st, w = b.w, d = b.d;
-    l.clear(w, d, 9);
-    for (let z = 0; z < d; z++) for (let x = 0; x < w; x++) l.set(x, 0, z, B[st.soil] ?? B.grass_block);
-    const leaves = WOOD[st.tree].placedLeaves, log = WOOD[st.tree].log, tx = w >> 1, tz = d - 2;
-    for (let y = 1; y <= 4; y++) l.set(tx, y, tz, log);
-    for (let y = 3; y <= 5; y++) for (let a = -2; a <= 2; a++) for (let c = -2; c <= 1; c++) {
-      const r = Math.abs(a) + Math.abs(c) + (y === 5 ? 2 : 0);
-      if (r <= 3 && !(a === 0 && c === 0 && y < 5) && rnd() < (r === 3 ? 0.5 : 1)) l.set(tx + a, y, tz + c, leaves);
-    }
-    l.set(tx, 6, tz, leaves);
-    for (let x = 0; x < w; x++) {
-      if (x === tx || rnd() > 0.8) continue;
-      const f = flowerAt(st, rnd);
-      if (f === 'cactus') { l.set(x, 0, 0, B.sand); l.set(x, 1, 0, B.cactus); } else l.set(x, 1, 0, B[f]);
-    }
-    for (const x of [1, w - 2]) l.stairs(x, 1, 2, st.roof ?? 'sandstone', 4);
-    l.set(0, 1, d - 1, B.lantern);
-  },
-};
-
-const FIRST = ['Ada', 'Bram', 'Cora', 'Dunstan', 'Edda', 'Finn', 'Gwen', 'Hale', 'Ivo', 'Jora', 'Kell', 'Lark', 'Mira', 'Nils', 'Oda', 'Pim',
-  'Quill', 'Rosa', 'Sten', 'Tilda', 'Ulf', 'Vera', 'Wren', 'Yara', 'Arlo', 'Bea', 'Cal', 'Dora', 'Emrys', 'Fern', 'Gus', 'Hilde', 'Ines',
-  'Jasper', 'Kit', 'Lena', 'Milo', 'Nell', 'Otto', 'Pia', 'Rolf', 'Saga', 'Tam', 'Una', 'Viggo', 'Willa'];
-const LAST = ['Ashdown', 'Brook', 'Copperfield', 'Dale', 'Elmstead', 'Fairweather', 'Greenhill', 'Hollow', 'Ironside', 'Juniper', 'Kettle',
-  'Longmeadow', 'Millstone', 'Northwood', 'Oakes', 'Pebble', 'Quarry', 'Reed', 'Stonebridge', 'Thatcher', 'Underhill', 'Vale', 'Whitlock', 'Yew'];
-function personName(rnd) { return `${FIRST[Math.floor(rnd() * FIRST.length)]} ${LAST[Math.floor(rnd() * LAST.length)]}`; }
-
 // ---------------------------------------------------------------- using it
-// Town ground height for a column, or -1: the level inside the wall, easing back to the natural
-// height over BLEND columns outside it (`natural`: that column's own height).
+// Town ground height for a column, or -1: the level inside the settlement's bounds, easing back to
+// the natural height over the next few columns outside them (`natural`: that column's own height).
 export function groundLevel(plans, x, z, natural) {
   for (const p of plans) {
-    const d = Math.max(Math.abs(x - p.x), Math.abs(z - p.z));
-    if (d <= RADIUS) return p.y;
-    if (d <= REACH) {
-      const t = (d - RADIUS) / BLEND, s = t * t * (3 - 2 * t);
+    const d = outside(p, x, z);
+    if (d <= 0) return p.y;
+    if (d <= p.blend) {
+      const t = d / p.blend, s = t * t * (3 - 2 * t);
       return Math.round(p.y + (natural - p.y) * s);
     }
   }
   return -1;
 }
-export const insideVillage = (plans, x, z, margin = 0) => plans.some((p) => Math.max(Math.abs(x - p.x), Math.abs(z - p.z)) <= RADIUS + margin);
+export const insideVillage = (plans, x, z, margin = 0) => plans.some((p) => outside(p, x, z) <= margin);
 
-// The village blocks that fall in chunk (cx, cz), for the world generator: a function that
+// The settlement blocks that fall in chunk (cx, cz), for the world generator: a function that
 // writes them with `set`.
 export function villagePieces(gen, cx, cz, plans = villagesNear(gen, cx, cz)) {
   const out = [];
   for (const p of plans) {
-    const list = build(p).chunks.get(`${cx},${cz}`);
+    const list = built(p).chunks.get(`${cx},${cz}`);
     if (list) out.push((set) => { for (let i = 0; i < list.length; i += 4) set(list[i], list[i + 1], list[i + 2], list[i + 3]); });
   }
   return out;
 }
 
-// The people of a village, and the animals in its pens (building it if need be).
-export function villageResidents(p) { build(p); return p.residents; }
-export function villageAnimals(p) { build(p); return p.animals; }
+// The people of a settlement, and the animals in its pens.
+export function villageResidents(p) { built(p, true); return p.residents; }
+export function villageAnimals(p) { built(p, true); return p.animals; }
