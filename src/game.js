@@ -42,7 +42,7 @@ const REDUCED_MOTION = typeof matchMedia === 'function' && matchMedia('(prefers-
 const DEFAULT_SETTINGS = {
   renderDistance: COARSE ? 5 : 8, resolution: 0, fov: 75, sensitivity: 100, brightness: 50, volume: 60, music: 40,
   viewBobbing: !REDUCED_MOTION, clouds: true, invertMouse: false, showFps: false, recipeBook: true, guiScale: 0, mix: 3,
-  name: '', look: -1, blood: true,
+  name: '', look: -1, blood: true, shaders: null, // (null: chosen for the device on first run)
 };
 const FACE_NAMES = ['east (+X)', 'west (-X)', 'up', 'down', 'south (+Z)', 'north (-Z)'];
 const TIPS = [
@@ -83,6 +83,9 @@ export class Game {
     this.touch = new TouchControls(this);
     this.audio = new Audio();
     this.settings = storage.loadPrefs(SETTINGS_KEY, DEFAULT_SETTINGS);
+    // Shaders start on (with shadows) where there's a graphics card to run them.
+    if (![0, 1, 2].includes(this.settings.shaders)) this.settings.shaders = COARSE || this.renderer.software ? 0 : 2;
+    this.shaderCap = 2; // (lowered for the session if the device can't keep up)
     // Settings saved by earlier versions still have their old default volumes.
     if ((this.settings.mix ?? 1) < 3) {
       if ([70, 80].includes(this.settings.volume)) this.settings.volume = DEFAULT_SETTINGS.volume;
@@ -223,7 +226,14 @@ export class Game {
     let next = this.autoScale;
     if (this.slowTime > 2 && next > 0.55) next = Math.max(0.55, next - 0.12);
     else if (this.fastTime > 6 && next < 1) next = Math.min(1, next + 0.1);
-    else return;
+    else if (this.slowTime > 4 && this.frameMs > 30 && Math.min(this.settings.shaders, this.shaderCap) > 0) {
+      // Still slow at the lowest resolution: ease off the shaders for this session.
+      this.shaderCap = Math.min(this.settings.shaders, this.shaderCap) - 1;
+      this.slowTime = 0;
+      this.ui.message(this.shaderCap ? 'Shadows turned off to keep the game smooth (Options > Shaders).'
+        : 'Shaders turned off to keep the game smooth (Options > Shaders).', '#aaaaaa');
+      return;
+    } else return;
     this.slowTime = this.fastTime = 0;
     this.autoScale = next;
     this.onResize();
@@ -1257,7 +1267,7 @@ export class Game {
     this.renderer.render({
       cam: c, fov: 70, env: this.env, time: performance.now() / 1000, renderDist: rd, world: this.panorama,
       fogColor: this.env.fogColor, fogStart: rd * 16 * 0.5, fogEnd: rd * 16 * 0.92, underwater: false,
-      clouds: true, cloudHeight: CLOUD_HEIGHT, brightness: 0.5, wave: true,
+      clouds: true, cloudHeight: CLOUD_HEIGHT, brightness: 0.5, wave: true, shaders: Math.min(1, this.settings.shaders),
     });
     this.audio.update('title');
   }
@@ -2105,6 +2115,9 @@ export class Game {
     grey(e.fogColor, k * 0.65, 0.8);
     grey(e.cloudColor, k * 0.7, 0.7);
     grey(e.skyLight, k * 0.5, 0.9);
+    grey(e.ambient, k * 0.6, 0.75);
+    grey(e.sunGlow, k * 0.8, 0.5);
+    for (let i = 0; i < 3; i++) e.lightColor[i] *= 1 - 0.85 * k;
     e.daylight = Math.max(0.2, e.daylight * (1 - 0.25 * k));
     e.stars *= 1 - k;
     e.sunset *= 1 - k * 0.8;
@@ -2161,7 +2174,7 @@ export class Game {
     this.renderer.render({
       cam, fov: s.fov * this.fovMul, env: this.env, time: performance.now() / 1000, renderDist: rd, world: this.world,
       fogColor, fogStart, fogEnd, underwater, clouds: s.clouds, cloudHeight: CLOUD_HEIGHT, brightness: s.brightness / 100,
-      wave: true,
+      wave: true, shaders: Math.min(s.shaders, this.shaderCap),
       selection: target && this.state !== 'dead' ? { x: target.x, y: target.y, z: target.z, box: this.world.selectionBox(target.x, target.y, target.z, target.id) } : null,
       crack: this.mining && this.mining.progress > 0 ? { x: this.mining.x, y: this.mining.y, z: this.mining.z, stage: Math.floor(this.mining.progress * 10) } : null,
       particles: this.particles,

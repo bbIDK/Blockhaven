@@ -211,6 +211,7 @@ export const OPTIONS = [
   { key: 'resolution', label: 'Resolution', min: 0, max: 6, fmt: (v) => (v ? `${40 + v * 10}%` : 'Auto') },
   { key: 'fov', label: 'FOV', min: 50, max: 110, fmt: (v) => `${v}` },
   { key: 'brightness', label: 'Brightness', min: 0, max: 100, step: 5, fmt: (v) => (v <= 0 ? 'Moody' : v >= 100 ? 'Bright' : `${v}%`) },
+  { key: 'shaders', label: 'Shaders', cycle: [0, 1, 2], fmt: (v) => ['OFF', 'Low', 'High'][v] ?? 'OFF' },
   { key: 'clouds', label: 'Clouds', toggle: true },
   { key: 'viewBobbing', label: 'View Bobbing', toggle: true },
   { key: 'blood', label: 'Blood Effects', toggle: true },

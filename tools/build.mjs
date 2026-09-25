@@ -25,7 +25,7 @@ function collect(entry) {
     if (seen.has(file)) return;
     seen.add(file);
     const src = readFileSync(file, 'utf8');
-    for (const m of src.matchAll(/^import\s+[^'"]*?from\s+['"](\.[^'"]+)['"];?/gm)) visit(resolve(dirname(file), m[1]));
+    for (const m of src.matchAll(/^import\s+(?:[^'"]*?from\s+)?['"](\.[^'"]+)['"];?/gm)) visit(resolve(dirname(file), m[1]));
     order.push({ file, src });
   };
   visit(resolve(root, entry));
@@ -71,6 +71,8 @@ function transform({ file, src }) {
   });
   out = out.replace(/^import\s+\*\s+as\s+([\w$]+)\s+from\s+['"]([^'"]+)['"];?/gm,
     (_, name, from) => `const ${name} = __require(${target(from)});`);
+  // Imported only for what running it does (registering textures, say).
+  out = out.replace(/^import\s+['"]([^'"]+)['"];?/gm, (_, from) => `__require(${target(from)});`);
   out = out.replace(/^export\s+(async\s+function|function|class)\s+([\w$]+)/gm, (_, kind, name) => {
     exported.push([name, name]);
     return `${kind} ${name}`;
