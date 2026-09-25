@@ -540,7 +540,7 @@ kbd {
   image-rendering: pixelated;
   pointer-events: none;
 }
-.mc-win.creative { margin-top: calc(var(--u) * 28); }
+.mc-win.creative { margin-top: calc(var(--u) * 28); margin-bottom: calc(var(--u) * 28); }
 .mc-panel > *, .mc-tabs > *, .mc-bookgrid > *, .mc-booktab > img, .mc-bookbtn > img { position: absolute; }
 .mc-label { font: 400 calc(var(--u) * 9)/1 var(--font-ui); color: #404040; text-shadow: none; white-space: nowrap; pointer-events: none; }
 .mc-label.center { transform: translateX(-50%); }
@@ -707,6 +707,9 @@ kbd {
 .mc-tab.on::before { border-bottom-width: 0; filter: none; }
 .mc-tab:not(.on):hover::before { filter: brightness(0.9); }
 .mc-tab > img { position: absolute; }
+/* (The row below the window opens upwards into it.) */
+.mc-tabs.below .mc-tab.on { top: calc(var(--u) * -1) !important; }
+.mc-tabs.below .mc-tab.on::before { border-top-width: 0; border-bottom-width: calc(var(--u) * 3); }
 #mc-cursor { position: fixed; z-index: 45; pointer-events: none; transform: translate(-50%, -50%); }
 #mc-cursor .mc-slot { position: relative; background: none; box-shadow: none; }
 #mc-cursor .mc-slot::after { display: none; }

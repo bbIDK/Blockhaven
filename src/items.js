@@ -5,6 +5,7 @@ import { TEX } from './textures.js';
 import { DYES, rgb } from './colors.js';
 import { leafDrops } from './growth.js';
 import { POTIONS, POTION_NAMES } from './potions.js';
+import { EGGS, EGG_ID, eggLabel } from './eggs.js';
 
 export const ITEMS = new Map();
 export const I = {};
@@ -146,6 +147,8 @@ item(457, 'raw_venison', { label: 'Raw Venison', food: 3, sat: 0.3 });
 item(458, 'cooked_venison', { label: 'Cooked Venison', food: 8, sat: 0.8 });
 item(459, 'raw_bear', { label: 'Raw Bear Meat', food: 3, sat: 0.3 });
 item(460, 'cooked_bear', { label: 'Bear Steak', food: 8, sat: 0.9 });
+// Spawn eggs (see eggs.js), Creative's own tab of them.
+EGGS.forEach(([type], i) => item(EGG_ID + i, `${type}_spawn_egg`, { label: `${eggLabel(type)} Spawn Egg`, spawns: type }));
 // (Only ever seen in a hand: the rod while its line is out.)
 item(1020, 'fishing_rod_cast', { label: 'Fishing Rod', stack: 1, hidden: true });
 // Dyes are one texture in sixteen colours.

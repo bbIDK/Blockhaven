@@ -247,6 +247,8 @@ export function initMob(e, type, o = {}) {
     named: o.named ?? null, leash: o.leash ?? null,
     // (Fish: the school it swims in.)
     school: o.school ?? 0,
+    // (Out of a spawn egg: a peaceful one stays about when everyone's far away, as pets do.)
+    hatched: !!o.hatched,
   });
   if ((type === 'horse' || type === 'mule') && o.health === undefined) e.health = 15 + Math.floor(Math.random() * 16);
   // (A tropical fish's shape goes with its pattern.)
@@ -1985,7 +1987,7 @@ const HERDS = {
     ['boar', 4, 3], ['brown_bear', 2, 1], ['black_bear', 2, 1]],
   taiga: [['wolf', 6, 4], ['rabbit', 6, 3], ['fox', 6, 2], ['sheep', 4, 3], ['pig', 2, 3], ['deer', 6, 3], ['moose', 3, 1], ['brown_bear', 3, 1],
     ['boar', 2, 3]],
-  snowy: [['rabbit', 10, 3], ['polar_bear', 3, 2], ['fox', 4, 2], ['moose', 2, 1], ['wolf', 3, 3]],
+  snowy: [['rabbit', 7, 3], ['polar_bear', 3, 2], ['fox', 4, 2], ['moose', 2, 1], ['wolf', 3, 3]],
   snowy_shore: [['penguin', 10, 5], ['polar_bear', 2, 1]],
   desert: [['rabbit', 8, 2], ['camel', 4, 2]],
   savanna: [['cow', 4, 3], ['sheep', 4, 3], ['chicken', 4, 3], ['horse', 4, 3], ['donkey', 2, 1], ['llama', 3, 3], ['elephant', 5, 4], ['zebra', 6, 4],
@@ -2024,6 +2026,27 @@ const WOLF_OF = (biome) => (biome === BIOME.SNOWY_SLOPES ? 5 : HERD_OF[biome] ==
   : biome === BIOME.OLD_GROWTH_TAIGA ? 3 : HERD_OF[biome] === 'forest' ? 2 : HERD_OF[biome] === 'jungle' || HERD_OF[biome] === 'savanna' ? 4 : 0);
 const RABBIT_OF = (biome) => (HERD_OF[biome] === 'snowy' ? 1 : biome === BIOME.DESERT || biome === BIOME.BADLANDS ? 3 : Math.random() < 0.15 ? 2 : 0);
 
+// What the creatures that come with a fresh chunk can stand on.
+const HERD_GROUND = new Set([B.grass_block, B.snowy_grass, B.sand, B.red_sand, B.snow_block, B.snow, B.podzol, B.coarse_dirt, B.dirt,
+  B.rooted_dirt, B.moss_block, B.stone, B.gravel, B.clay, B.calcite, B.terracotta, B.packed_ice]);
+
+// Where in a column of a chunk a land creature `tall` blocks high can stand (the y of its feet), or
+// -1: the ground under any grass, flowers or snow, and in the woods the floor under the leaves (a
+// flier may perch on the leaves instead), with room above it.
+function standAt(chunk, lx, lz, tall, flier) {
+  for (let y = HEIGHT - 2; y > 1; y--) {
+    const id = chunk.blocks[(y << 8) | (lz << 4) | lx];
+    if (!id) continue;
+    if (WATERLIKE[id]) return -1;
+    const perch = flier && LEAVES_WOOD[id] !== undefined;
+    if (!perch && (!SOLID[id] || LEAVES_WOOD[id] !== undefined)) continue;
+    if (!perch && !HERD_GROUND.has(id)) return -1;
+    for (let k = 1; k <= tall && y + k < HEIGHT; k++) if (SOLID[chunk.blocks[((y + k) << 8) | (lz << 4) | lx]]) return -1;
+    return y + 1;
+  }
+  return -1;
+}
+
 // A herd for a fresh chunk: [{ type, x, y, z, o }] or none.
 export function herdFor(chunk, seed) {
   if (hash2(chunk.cx, chunk.cz, seed ^ 0xa11) > 0.12) return [];
@@ -2033,37 +2056,49 @@ export function herdFor(chunk, seed) {
   if (!table) return [];
   let pick = hash2(chunk.cz, chunk.cx, seed) * table.reduce((a, x) => a + x[1], 0), row = table[0];
   for (const r of table) { if ((pick -= r[1]) <= 0) { row = r; break; } }
-  const [type, , n] = row, water = MOBS[type].kind === 'water', flier = !!MOBS[type].flies;
+  const [type, , n] = row, def = MOBS[type], water = def.kind === 'water', flier = !!def.flies, tall = Math.ceil(def.h);
   const out = [];
   const variant = type === 'rabbit' ? RABBIT_OF(biome) : type === 'wolf' ? WOLF_OF(biome) : type === 'fox' ? (HERD_OF[biome] === 'snowy' ? 1 : 0) : 0;
   // (A school of fish keeps together; its members share a pattern, mostly.)
-  const school = MOBS[type].schools ? 1 + Math.floor(Math.random() * 1e9) : 0, look = Math.floor(Math.random() * (MOBS[type].skins.length));
+  const school = def.schools ? 1 + Math.floor(Math.random() * 1e9) : 0, look = Math.floor(Math.random() * (def.skins.length));
   for (let i = 0; i < n + Math.floor(hash2(chunk.cx * 7, chunk.cz, 5) * 2); i++) {
     const lx = (lx0 + Math.floor((hash2(chunk.cx, i, chunk.cz) - 0.5) * 8)) & 15, lz = (lz0 + Math.floor((hash2(i, chunk.cz, chunk.cx) - 0.5) * 8)) & 15;
-    for (let y = HEIGHT - 2; y > 1; y--) {
-      const id = chunk.blocks[(y << 8) | (lz << 4) | lx];
-      if (!id) continue;
-      if (water ? WATERLIKE[id] === 1 : (id === B.grass_block || id === B.snowy_grass || id === B.sand || id === B.snow_block || id === B.podzol ||
-        id === B.stone || id === B.coarse_dirt || id === B.snow || (flier && LEAVES_WOOD[id] !== undefined))) {
-        let yy = water ? y - 1 - Math.floor(Math.random() * 2) : y + 1;
-        if (water && WATERLIKE[chunk.blocks[(yy << 8) | (lz << 4) | lx]] !== 1) break;
+    let yy = -1;
+    if (!water) yy = standAt(chunk, lx, lz, tall, flier);
+    else {
+      for (let y = HEIGHT - 2; y > 1; y--) {
+        const id = chunk.blocks[(y << 8) | (lz << 4) | lx];
+        if (!id) continue;
+        if (WATERLIKE[id] !== 1) break;
+        yy = y - 1 - Math.floor(Math.random() * 2);
+        if (WATERLIKE[chunk.blocks[(yy << 8) | (lz << 4) | lx]] !== 1) { yy = -1; break; }
         // (Whales want deep water under them, and start down in it.)
-        if (MOBS[type].deep) {
+        if (def.deep) {
           let depth = 0;
           while (yy - depth > 1 && WATERLIKE[chunk.blocks[((yy - depth) << 8) | (lz << 4) | lx]] === 1) depth++;
-          if (depth < MOBS[type].deep) break;
+          if (depth < def.deep) { yy = -1; break; }
           yy -= Math.floor(depth / 2);
         }
-        out.push({ type, x: chunk.cx * 16 + lx + 0.5, y: yy, z: chunk.cz * 16 + lz + 0.5,
-          o: { variant: school ? (Math.random() < 0.85 ? look : Math.floor(Math.random() * MOBS[type].skins.length))
-            : MOBS[type].variants ? Math.floor(Math.random() * (MOBS[type].variantCount ?? MOBS[type].skins.length))
-              : MOBS[type].sexes ? (Math.random() < 0.5 ? 1 : 0) : variant,
-            colour: type === 'sheep' ? sheepColour(Math.random()) : 0, baby: Math.random() < 0.1 && !MOBS[type].deep && type !== 'shark', school } });
+        break;
       }
-      break;
     }
+    if (yy < 0) continue;
+    out.push({ type, x: chunk.cx * 16 + lx + 0.5, y: yy, z: chunk.cz * 16 + lz + 0.5,
+      o: { variant: school ? (Math.random() < 0.85 ? look : Math.floor(Math.random() * def.skins.length))
+        : def.variants ? Math.floor(Math.random() * (def.variantCount ?? def.skins.length))
+          : def.sexes ? (Math.random() < 0.5 ? 1 : 0) : variant,
+        colour: type === 'sheep' ? sheepColour(Math.random()) : 0, baby: Math.random() < 0.1 && !def.deep && type !== 'shark', school } });
   }
   return out;
+}
+
+// How a creature out of a spawn egg looks (see eggs.js): one of its kinds, as one from where it
+// came out would be; a slime of any size.
+export function hatchling(type, biome) {
+  const def = MOBS[type];
+  const variant = type === 'rabbit' ? RABBIT_OF(biome) : type === 'wolf' ? WOLF_OF(biome) : type === 'fox' ? (HERD_OF[biome] === 'snowy' ? 1 : 0)
+    : def.variants || def.schools ? Math.floor(Math.random() * (def.variantCount ?? def.skins.length)) : def.sexes ? (Math.random() < 0.5 ? 1 : 0) : 0;
+  return { variant, colour: type === 'sheep' ? sheepColour(Math.random()) : 0, size: def.sized ? [1, 2, 4][Math.floor(Math.random() * 3)] : 1, hatched: true };
 }
 
 // Birds and insects about the land by day, by biome: [type, weight, group size]. (Flower forests

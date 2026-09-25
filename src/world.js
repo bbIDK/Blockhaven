@@ -19,7 +19,7 @@ import { columnColors, fromByte } from './biomes.js';
 export const S_REQUESTED = 1, S_READY = 2;
 // Grass, leaves and water take the average colour of the columns up to this far around them, so
 // that one biome's colours shade gradually into the next's.
-const BLEND = 5;
+const BLEND = 8;
 const QSIZE = 1 << 16, QMASK = QSIZE - 1;
 
 class Section {

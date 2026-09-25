@@ -44,6 +44,8 @@ import { isHanging } from './hangings.js';
 import { layRail } from './rails.js';
 import { ITEMS, I, itemDef, itemLabel, breakTime, dropsFor, attackDamage, attackSpeed, canHarvest } from './items.js';
 import { BIOME_NAMES, BIOME } from './biomes.js';
+import { MOBS } from './mobs.js';
+import { EGG_TYPES, eggLabel } from './eggs.js';
 import { CHUNK_VOLUME, HEIGHT, TICKS_PER_DAY, SAVE_VERSION } from './config.js';
 import { seedFromText, clamp, hashString, mat4, identity, translate, rotateX, rotateZ } from './math.js';
 
@@ -411,7 +413,7 @@ export class Game {
     const { mode, type } = this.ui.createState;
     const meta = {
       id: `w${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`,
-      name, seed, seedText, mode, type, gen: 6, created: Date.now(), lastPlayed: Date.now(), time: 1000,
+      name, seed, seedText, mode, type, gen: 7, created: Date.now(), lastPlayed: Date.now(), time: 1000,
       spawn: null, player: null, inventory: null, version: SAVE_VERSION,
     };
     await storage.saveWorld(meta);
@@ -531,7 +533,7 @@ export class Game {
     const world = w.w;
     const meta = {
       id: `mp-${session.gid}`, name: String(world.name ?? 'World').slice(0, 32), seed: world.seed >>> 0,
-      type: world.type === 'flat' ? 'flat' : 'default', gen: [2, 3, 4, 5, 6].includes(world.gen) ? world.gen : 1,
+      type: world.type === 'flat' ? 'flat' : 'default', gen: [2, 3, 4, 5, 6, 7].includes(world.gen) ? world.gen : 1,
       mode: you?.mode === 'creative' || (!you?.mode && world.mode === 'creative') ? 'creative' : 'survival',
       spawn: world.spawn && Number.isFinite(world.spawn.x) && Number.isFinite(world.spawn.z) ? { x: world.spawn.x, y: world.spawn.y ?? null, z: world.spawn.z } : { x: 0.5, y: null, z: 0.5 },
       time: Number.isFinite(world.time) ? world.time : 1000, weather: { raining: !!world.rain },
@@ -2194,6 +2196,28 @@ export class Game {
     return Math.abs(d[0]) > Math.abs(d[2]) ? (d[0] > 0 ? 0 : 1) : (d[2] > 0 ? 4 : 5);
   }
 
+  // The colour of the water at (x, z), 0-1 RGB: the blended colour the mesher gives it (see
+  // World.chunkTints; stored brightened for the pale water texture).
+  waterColourAt(x, z) {
+    const w = this.world, c = w.readyChunk(Math.floor(x) >> 4, Math.floor(z) >> 4);
+    if (!c) return [0.24, 0.34, 0.84];
+    const t = c.tints ?? w.rawTints(c), i = 1536 + (((Math.floor(z) & 15) << 4) | (Math.floor(x) & 15)) * 3;
+    return [t[i] * 0.72 / 255, t[i + 1] * 0.72 / 255, t[i + 2] * 0.72 / 255];
+  }
+
+  // A spawn egg: its creature comes out on the block looked at (into grass and the like, else beside
+  // the side pointed at), a sea creature into the water looked at.
+  useSpawnEgg(def) {
+    const w = this.world, p = this.player, d = p.lookDir(), type = def.spawns;
+    const hit = w.raycast(p.x, p.eyeY, p.z, d[0], d[1], d[2], 6, MOBS[type].kind === 'water');
+    if (!hit || (WATERLIKE[hit.id] !== 1 && !(hit.face >= 0))) return;
+    let x = hit.x, y = hit.y, z = hit.z;
+    if (WATERLIKE[hit.id] !== 1 && !REPLACEABLE[hit.id]) { const f = FACE_DIRS[hit.face]; x += f[0]; y += f[1]; z += f[2]; }
+    this.entities.hatch(type, x + 0.5, y, z + 0.5);
+    this.swingArm();
+    if (!this.creative) { this.inv.consumeHeld(); this.invChanged(); }
+  }
+
   useItem(repeat = false) {
     const held = this.inv.held, t = this.target, p = this.player, w = this.world;
     const def = held ? itemDef(held.id) : null;
@@ -2259,6 +2283,7 @@ export class Game {
     // Buckets and lily pads look for water along the line of sight themselves.
     if (held && (held.id === I.bucket || held.id === I.water_bucket || held.id === I.lava_bucket)) { if (!repeat) useBucket(this, held); return; }
     if (held?.id === B.lily_pad) { if (!repeat) placeLilyPad(this); return; }
+    if (def?.spawns) { if (!repeat) this.useSpawnEgg(def); return; }
     if (def?.boat && !t?.entity && !t?.player) { if (!repeat) placeBoat(this, held); return; }
     if (held?.id === I.fishing_rod) { if (!repeat) this.fishing.use(); return; }
     // Right-clicking with armor puts it on (swapping with what you were wearing).
@@ -2652,7 +2677,7 @@ export class Game {
     switch (lower) {
       case 'help':
         say('/time set day|noon|night|midnight|<ticks>, /time add <n>');
-        say('/gamemode creative|survival, /tp <x> <y> <z>, /give <item> [count], /weather clear|rain');
+        say('/gamemode creative|survival, /tp <x> <y> <z>, /give <item> [count], /summon <creature> [x y z], /weather clear|rain');
         say('/spawn, /setspawn, /seed, /locate village|camp|hamlet|town|kingdom, /fly, /kill, /clear');
         if (this.net) say(`/list${this.net.host ? ', /pvp on|off' : ''}`);
         break;
@@ -2700,6 +2725,16 @@ export class Game {
         const left = this.inv.add(id, count);
         say(`Gave ${count - left} × ${itemLabel(id)}`);
         this.invChanged();
+        break;
+      }
+      case 'summon': {
+        // (Where you say, or just in front of you.)
+        const type = (args[0] ?? '').toLowerCase().replace(/^minecraft:/, ''), d = p.lookDir();
+        if (!EGG_TYPES.has(type)) { say(`Unknown creature: ${args[0] ?? ''}`, '#e88a78'); break; }
+        const [x, y, z] = args.length >= 4 ? [num(args[1], p.x), num(args[2], p.y), num(args[3], p.z)] : [p.x + d[0] * 3, p.y + 0.5, p.z + d[2] * 3];
+        if ([x, y, z].some(Number.isNaN)) { say('Usage: /summon <creature> [x y z]', '#e88a78'); break; }
+        this.entities.hatch(type, x, y, z);
+        say(`Summoned a new ${eggLabel(type)}`);
         break;
       }
       case 'seed': say(`Seed: ${this.meta.seedText || this.meta.seed}`); break;
@@ -2823,8 +2858,10 @@ export class Game {
     const eyeBlock = this.world.getBlock(Math.floor(cam.x), Math.floor(cam.y), Math.floor(cam.z));
     const underwater = third ? this.inWaterAt(cam.x, cam.y, cam.z) : p.headInWater;
     if (underwater) {
-      const d = this.env.daylight;
-      fogColor = [0.04 * d + 0.01, 0.14 * d + 0.02, 0.38 * d + 0.05];
+      // The colour of the water all round, the darker the less daylight gets down: deep blue in
+      // cold seas, turquoise in warm ones, murky green in a swamp (blended from one to the next).
+      const d = this.env.daylight, wc = this.waterColourAt(cam.x, cam.z);
+      fogColor = [wc[0] * 0.2 * d + 0.01, wc[1] * 0.45 * d + 0.02, wc[2] * 0.48 * d + 0.05];
       fogStart = 0; fogEnd = 22 + 10 * d;
     } else if (WATERLIKE[eyeBlock] === 2) {
       fogColor = [0.8, 0.3, 0.05]; fogStart = 0; fogEnd = 2.5;
@@ -3001,6 +3038,11 @@ export class Game {
     this.touch.update();
     const burning = this.fire > 0 && !this.creative && (this.state === 'play' || this.state === 'chat');
     if (burning && !this._fireSet) { this._fireSet = true; $('overlay-fire').style.setProperty('--fire', `url(${this.fireStrip()})`); }
+    // (Under water the screen takes on the colour of the water there.)
+    if (p.headInWater) {
+      const c = this.waterColourAt(p.x, p.z).map((v) => Math.round(v * 150)).join(', ');
+      if (c !== this._waterTint) { this._waterTint = c; $('overlay-water').style.background = `rgba(${c}, 0.28)`; }
+    }
     ui.setFlags({
       'overlay-fire': burning,
       water: p.headInWater,

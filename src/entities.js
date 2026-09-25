@@ -6,7 +6,7 @@
 import { Body } from './body.js';
 import { boxMesh, MODEL_OFFSET } from './models.js';
 import { TEX } from './textures.js';
-import { mat4, identity, translate, rotateX, rotateY, rotateZ, scale, hash2 } from './math.js';
+import { mat4, identity, translate, rotateX, rotateY, rotateZ, scale, hash2, boxInFrustum } from './math.js';
 import { B, BLOCKS, BASE, SOLID, WATERLIKE, FILTER, REPLACEABLE, RAIL, RAIL_ID } from './blocks.js';
 import { I, itemDef, DISCS } from './items.js';
 import { rayBox } from './world.js';
@@ -14,7 +14,7 @@ import { HEIGHT, TICKS_PER_DAY, SEA_LEVEL } from './config.js';
 import { villageAt } from './villages.js';
 import { BIOME } from './biomes.js';
 import { MOBS, initMob, mobTick, mobPhysics, renderMob, provoked, mobUseEffect, applyMobUse, applyHeldUse, mobDrops, mobXp, herdFor, monsterFor, HOSTILE_TYPES, seaLifeFor, ambientFor,
-  rallyPets } from './mobs.js';
+  rallyPets, hatchling } from './mobs.js';
 import { Civilians } from './civilians.js';
 import { extras, cleanExtras } from './inventory.js';
 import { boatPhysics, boatMesh, boatModel, BOAT_WOODS } from './riding.js';
@@ -49,12 +49,19 @@ export function mobExtra(e) {
   if (e.owner) { o.ow = e.owner; o.co = e.collar; }
   if (e.sitting) o.si = 1;
   if (e.made) o.md = 1;
+  if (e.hatched) o.ht = 1;
   if (e.named) o.nm = e.named;
   if (e.leash) o.le = e.leash.uid ?? [e.leash.x, e.leash.y, e.leash.z];
   if (e.school) o.sc = e.school;
   if (e.def.kind === 'civilian') { o.r = e.rid; o.sk = e.skin; o.n = e.name; o.ro = e.role; }
   return o;
 }
+// Whether a creature is one of the wild ones about, whose number spawnHerds keeps in check: not a
+// monster, nor sea life, birds and insects (which have counts of their own), nor village folk and
+// their animals, nor anyone's pet or anything someone made.
+const isWild = (e) => !e.def.hostile && e.def.kind !== 'civilian' && e.def.kind !== 'water' && !e.def.flies && !e.pinned && !e.tame &&
+  !e.named && !e.made && !e.hatched && !e.saddled && !e.leash;
+
 // The birds and insects that come and go about the land (see trySpawnAmbient).
 const AMBIENT_TYPES = new Set(['robin', 'blue_jay', 'cardinal', 'sparrow', 'goldfinch', 'crow', 'seagull', 'eagle', 'vulture', 'butterfly', 'bee']);
 // The seas deep enough for whales.
@@ -62,7 +69,7 @@ const DEEP_SEAS = new Set([BIOME.DEEP_OCEAN, BIOME.DEEP_LUKEWARM_OCEAN, BIOME.DE
 const extraOpts = (s) => ({ variant: Number.isInteger(s.v) ? s.v : 0, colour: Number.isInteger(s.c) ? s.c : 0, size: [1, 2, 4].includes(s.s) ? s.s : 1,
   baby: !!s.b, sheared: !!s.sh, tame: !!s.tm, saddled: !!s.sd, temper: Number.isFinite(s.te) ? Math.max(0, Math.min(100, s.te)) : 0,
   owner: typeof s.ow === 'string' && s.ow ? s.ow.slice(0, 64) : null, sitting: !!s.si, collar: Number.isInteger(s.co) && s.co >= 0 && s.co < 16 ? s.co : undefined,
-  made: !!s.md, named: typeof s.nm === 'string' ? cleanTagName(s.nm) : null, school: Number.isInteger(s.sc) ? s.sc : 0,
+  made: !!s.md, hatched: !!s.ht, named: typeof s.nm === 'string' ? cleanTagName(s.nm) : null, school: Number.isInteger(s.sc) ? s.sc : 0,
   leash: typeof s.le === 'string' && s.le ? { uid: s.le.slice(0, 64) }
     : Array.isArray(s.le) && s.le.length === 3 && s.le.every(Number.isInteger) ? { x: s.le[0], y: s.le[1], z: s.le[2] } : null });
 // A name from a name tag: printable, and no longer than the original allows.
@@ -86,6 +93,7 @@ export class Entities {
     this.matIndex = 0;
     this.spawnTimer = 0;
     this.hungTimer = 0;
+    this.herdsDue = new Map(); // chunks whose wild creatures haven't come yet (see spawnHerds)
     this.detectors = new Set();
     this.arrowMesh = null;
     this.civilians = new Civilians(this);
@@ -98,6 +106,7 @@ export class Entities {
     this.list = [];
     this.byNid.clear();
     this.civilians.reset();
+    this.herdsDue.clear();
     if (!saved) return;
     for (const s of saved) {
       if (s.k === 'item' && itemDef(s.id)) this.spawnItem(s.x, s.y, s.z, s.id, s.count, s.dmg, 0, null, cleanExtras(s.ex));
@@ -105,6 +114,7 @@ export class Entities {
         const m = this.spawnMob(s.t, s.x, s.y, s.z, extraOpts(s));
         m.yaw = s.yaw ?? 0; m.health = s.hp ?? m.health;
         if (Number.isFinite(s.mh)) m.maxHealth = s.mh;
+        if (typeof s.hd === 'string' && /^-?\d+,-?\d+$/.test(s.hd)) m.herd = s.hd;
       } else if (s.k === 'boat') this.spawnBoat(s.x, s.y, s.z, BOAT_WOODS.includes(s.w) ? s.w : 'oak', s.yaw ?? 0);
       else if (s.k === 'cart') this.spawnCart(s.x, s.y, s.z, Number.isFinite(s.yaw) ? s.yaw : 0);
       else if (s.k === 'xp' && Number.isInteger(s.v) && s.v > 0) this.spawnXp(s.x, s.y, s.z, Math.min(s.v, 2477));
@@ -125,7 +135,7 @@ export class Entities {
         : e.kind === 'boat' ? { k: 'boat', x: e.x, y: e.y, z: e.z, yaw: e.yaw, w: e.wood }
           : e.kind === 'cart' ? { k: 'cart', x: e.x, y: e.y, z: e.z, yaw: e.yaw }
           : e.kind === 'xp' ? { k: 'xp', x: e.x, y: e.y, z: e.z, v: e.value }
-          : { k: 'mob', t: e.type, x: e.x, y: e.y, z: e.z, yaw: e.yaw, hp: e.health, mh: e.maxHealth, ...mobExtra(e) })));
+          : { k: 'mob', t: e.type, x: e.x, y: e.y, z: e.z, yaw: e.yaw, hp: e.health, mh: e.maxHealth, ...mobExtra(e), ...(e.herd ? { hd: e.herd } : {}) })));
   }
 
   // ---------------------------------------------------------------- things hung up
@@ -224,6 +234,12 @@ export class Entities {
     initMob(e, type, o);
     this.list.push(e);
     return e;
+  }
+
+  // A creature out of a spawn egg, its feet at (x, y, z) (a guest asks the host for it).
+  hatch(type, x, y, z) {
+    if (this.guest) { this.game.net.hatch?.(type, x, y, z); return null; }
+    return this.spawnMob(type, x, y, z, hatchling(type, this.world.biomeAt(Math.floor(x), Math.floor(z))));
   }
 
   // A boat of `wood` set down at (x, y, z) (the middle of its bottom), pointing along `yaw`.
@@ -379,10 +395,40 @@ export class Entities {
     const game = this.game;
     if (!game.meta || this.guest) return;
     this.civilians.chunkLoaded(chunk);
-    // (Sea life and the birds and insects about keep counts of their own.)
-    const passive = this.list.filter((e) => e.kind === 'mob' && !e.def.hostile && e.def.kind !== 'civilian' && e.def.kind !== 'water' && !e.def.flies).length;
-    if (passive >= 48) return;
-    for (const h of herdFor(chunk, game.meta.seed)) this.spawnMob(h.type, h.x, h.y, h.z, h.o);
+    this.herdsDue.set(`${chunk.cx},${chunk.cz}`, [chunk.cx, chunk.cz]);
+  }
+
+  // The wild creatures that come with each chunk as it loads (see mobs.js herdFor): those of the
+  // chunks nearest someone first, while there are few enough about (more the further everyone
+  // sees), the rest waiting their turn as others wander out of reach. A chunk whose herd is still
+  // about (it went out of reach and came back) keeps that one.
+  spawnHerds() {
+    if (!this.herdsDue.size || !this.players.length) return;
+    const game = this.game, w = this.world;
+    const wild = this.list.filter((e) => e.kind === 'mob' && !e.dead && isWild(e));
+    let room = Math.min(96, 16 + 8 * game.settings.renderDistance) - wild.length;
+    // (Sea life has a count of its own, as in trySpawnSea.)
+    let sea = this.list.filter((e) => e.kind === 'mob' && !e.dead && e.def.kind === 'water').length;
+    const due = [];
+    for (const [key, [cx, cz]] of this.herdsDue) {
+      if (!w.readyChunk(cx, cz)) { this.herdsDue.delete(key); continue; }
+      const x = cx * 16 + 8, z = cz * 16 + 8;
+      due.push([key, cx, cz, Math.min(...this.players.map((p) => (p.x - x) ** 2 + (p.z - z) ** 2))]);
+    }
+    if (room <= 0) return;
+    const about = new Set(this.list.filter((e) => e.herd && !e.dead).map((e) => e.herd));
+    due.sort((a, b) => a[3] - b[3]);
+    for (const [key, cx, cz] of due) {
+      if (room <= 0) break;
+      this.herdsDue.delete(key);
+      if (about.has(key)) continue;
+      const herd = herdFor(w.readyChunk(cx, cz), game.meta.seed), water = herd.length && MOBS[herd[0].type].kind === 'water';
+      if (water && sea >= 48) continue;
+      for (const h of herd) {
+        this.spawnMob(h.type, h.x, h.y, h.z, h.o).herd = key;
+        if (water) sea++; else room--;
+      }
+    }
   }
 
   // Monsters appear in the dark near a player (in Survival): zombies, skeletons, creepers,
@@ -546,6 +592,7 @@ export class Entities {
     if (this.guest) { this.remoteTick(); return; }
     // Everyone creatures can see: this player and, in multiplayer, the others.
     this.players = game.players();
+    if (this.spawnTimer % 10 === 0) this.spawnHerds();
     if (++this.spawnTimer >= 40) {
       this.spawnTimer = 0; this.trySpawnHostile();
       if (Math.random() < 0.5) this.trySpawnBat();
@@ -571,7 +618,7 @@ export class Entities {
         // animals come back when the village does). Horses someone has tamed or saddled stay,
         // waiting where they were left.
         const near = this.players.some((p) => Math.hypot(p.x - e.x, p.z - e.z) < (game.settings.renderDistance + 2) * 16);
-        const kept = e.tame || e.saddled || e.rider || e.made || e.named || e.leash;
+        const kept = e.tame || e.saddled || e.rider || e.made || e.named || e.leash || (e.hatched && !e.def.hostile);
         if ((!near && !kept && (e.def.kind !== 'civilian' || !loaded)) || e.y < -40) { e.dead = true; this.civilians.gone(e); }
       }
     }
@@ -1233,6 +1280,10 @@ export class Entities {
       } else if (e.kind === 'cart') {
         out.push({ parts: [{ mesh: cartMesh(r), model: cartModel(this.mat(), rx, ry, rz, e.yaw, e.pitch) }], light, tint: null, hurt: e.hurt > 0 });
       } else if (e.kind === 'mob') {
+        // (Not those out of sight: tested against last frame's view, with room to spare for
+        // turning, for shadows cast into view, and for the whales, much longer than they're wide.)
+        const R = (e.def.deep ? 16 : Math.max(e.hw * 2, e.h)) + 3;
+        if (!boxInFrustum(r.planes, rx - R, ry - R, rz - R, rx + R, ry + e.h + R, rz + R)) continue;
         renderMob(this, e, rx, ry, rz, light, out);
       } else if (isHanging(e)) {
         drawHanging(this, e, cam, () => this.mat(), out);

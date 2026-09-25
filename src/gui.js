@@ -125,15 +125,18 @@ const SIZES = {
   inventory: [176, 166], crafting: [176, 166], furnace: [176, 166], chest: [176, 168], large_chest: [176, 222], creative: [195, 136],
   enchanting: [176, 166], anvil: [176, 166], grindstone: [176, 166],
 };
+// The creative menu's tabs, in two rows like Minecraft's: above the window (the blocks, and
+// search at the far end) and below it (the rest, and the survival inventory at the far end).
 const TABS = [
   { id: 'building', label: 'Building Blocks', icon: 'bricks' },
   { id: 'colored', label: 'Colored Blocks', icon: 'cyan_wool' },
   { id: 'nature', label: 'Natural Blocks', icon: 'grass_block' },
   { id: 'utility', label: 'Functional Blocks', icon: 'crafting_table' },
-  { id: 'equipment', label: 'Tools & Combat', icon: 'iron_sword' },
-  { id: 'materials', label: 'Food & Materials', icon: 'apple' },
-  { id: 'search', label: 'Search Items', icon: 'book' },
-  { id: 'inventory', label: 'Survival Inventory', icon: 'chest' },
+  { id: 'search', label: 'Search Items', icon: 'book', end: true },
+  { id: 'equipment', label: 'Tools & Combat', icon: 'iron_sword', below: true },
+  { id: 'materials', label: 'Food & Materials', icon: 'apple', below: true },
+  { id: 'eggs', label: 'Spawn Eggs', icon: 'pig_spawn_egg', below: true },
+  { id: 'inventory', label: 'Survival Inventory', icon: 'chest', below: true, end: true },
 ];
 const BOOK_TABS = [
   { id: 'all', label: 'All recipes', icon: 'crafting_table' },
@@ -149,6 +152,7 @@ function creativeTab(id) {
     const cat = BLOCKS[d.block].cat;
     return cat === 'functional' ? 'utility' : cat ?? 'building';
   }
+  if (d.spawns) return 'eggs';
   if (d.tool || d.weapon || d.armor || d.boat || d.disc !== undefined || GEAR.has(d.name)) return 'equipment';
   return 'materials';
 }
@@ -323,7 +327,7 @@ export class ContainerGUI {
   // beside the window when there's room and underneath it otherwise.
   fit() {
     const [w, h0] = SIZES[this.kind];
-    const h = h0 + (this.tabbed ? 28 : 0);
+    const h = h0 + (this.tabbed ? 56 : 0);
     const vw = window.innerWidth - 20, vh = window.innerHeight - 20;
     const book = this.bookShown;
     let u = Math.min(vw / (w + (book ? 151 : 0)), vh / h), stacked = false;
@@ -485,9 +489,11 @@ export class ContainerGUI {
   }
 
   buildTabs() {
-    const bar = div('mc-tabs', this.win, 0, -28, SIZES[this.kind][0], 28);
-    TABS.forEach((t, i) => {
-      const el = div(`mc-tab${t.id === this.tab ? ' on' : ''}`, bar, i * 24 + (i > 5 ? 3 : 0), 0, 24, 30);
+    const [w, h] = SIZES[this.kind];
+    const bars = [div('mc-tabs', this.win, 0, -28, w, 28), div('mc-tabs below', this.win, 0, h - 2, w, 30)], next = [0, 0];
+    TABS.forEach((t) => {
+      const row = t.below ? 1 : 0;
+      const el = div(`mc-tab${t.id === this.tab ? ' on' : ''}`, bars[row], t.end ? w - 24 : next[row]++ * 24, 0, 24, 30);
       el.dataset.act = 'tab';
       el.dataset.tab = t.id;
       el.dataset.tip = t.label;
@@ -500,6 +506,8 @@ export class ContainerGUI {
     let ids = PALETTE;
     if (this.tab === 'search') ids = this.search ? ids.filter((id) => itemLabel(id).toLowerCase().includes(this.search)) : ids;
     else ids = ids.filter((id) => creativeTab(id) === this.tab);
+    // (The eggs by name, as in Minecraft.)
+    if (this.tab === 'eggs') ids = [...ids].sort((a, b) => itemLabel(a).localeCompare(itemLabel(b)));
     const frag = document.createDocumentFragment();
     ids.forEach((id, k) => {
       const el = slotBox(null, (k % 9) * 18, Math.floor(k / 9) * 18);

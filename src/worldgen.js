@@ -156,8 +156,9 @@ const CARVED = new Set([BIOME.JAGGED_PEAKS, BIOME.FROZEN_PEAKS, BIOME.STONY_PEAK
 export class WorldGen {
   // `version`: 2 for worlds made before villages were spread further apart, 3 since, 4 for worlds
   // with settlements of every size (camps, hamlets, villages, towns and kingdoms), 5 for those with
-  // the cave update's caves, and 6 for those with the ocean update's seas.
-  constructor(seed, type = 'default', version = 6) {
+  // the cave update's caves, 6 for those with the ocean update's seas, and 7 for those with the
+  // biome update's bigger biomes (some rare) and jungle bamboo.
+  constructor(seed, type = 'default', version = 7) {
     this.seed = seed >>> 0;
     this.type = type;
     this.version = version;
@@ -172,6 +173,7 @@ export class WorldGen {
     this.caves = version >= 5 ? new CaveGen(this.seed) : null;
     this.sea = version >= 6 ? new SeaGen(this.seed) : null;
     this.nIsle = n('islands');
+    this.nRare = n('rarity'); this.nBamboo = n('bamboo');
   }
 
   // Terrain shape and climate of one column. Returns the (fractional) surface height and fills
@@ -183,9 +185,14 @@ export class WorldGen {
     // (Since the ocean update the seas are wider and the continents further apart.)
     const c = this.version >= 6 ? this.nCont.fbm2(wx / 2300, wz / 2300, 5) * 1.75 + 0.14 : this.nCont.fbm2(wx / 1500, wz / 1500, 5) * 1.7 + 0.42;
     const e = this.nEros.fbm2(wx / 750, wz / 750, 4) * 1.7;
-    const temp = this.nTemp.fbm2(x / 1900, z / 1900, 3) * 1.7;
-    const hum = this.nHum.fbm2(x / 1500 + 91, z / 1500 - 47, 3) * 1.7;
-    const v = this.nVar.fbm2(x / 520, z / 520, 2) * 1.6;
+    // (Since the biome update the climates are wider, so biomes are bigger, and their edges are
+    // ragged rather than smooth curves, the way Minecraft's are; some biomes are rare.)
+    const wide = this.version >= 7;
+    const jx = wide ? x + this.nWarp.noise2(x / 19 + 5.3, z / 19 - 2.1) * 5 : x, jz = wide ? z + this.nWarp.noise2(z / 19 - 7.7, x / 19 + 3.9) * 5 : z;
+    const temp = wide ? this.nTemp.fbm2(jx / 3000, jz / 3000, 3) * 1.7 : this.nTemp.fbm2(x / 1900, z / 1900, 3) * 1.7;
+    const hum = wide ? this.nHum.fbm2(jx / 2400 + 91, jz / 2400 - 47, 3) * 1.7 : this.nHum.fbm2(x / 1500 + 91, z / 1500 - 47, 3) * 1.7;
+    const v = wide ? this.nVar.fbm2(jx / 780, jz / 780, 2) * 1.6 : this.nVar.fbm2(x / 520, z / 520, 2) * 1.6;
+    const rare = wide ? this.nRare.fbm2(x / 1300, z / 1300, 2) * 1.5 : 1;
     let h = spline(CONT, c);
     const land = smoothstep(-0.1, 0.06, c);
     // Rolling hills, steeper where erosion is low.
@@ -200,7 +207,7 @@ export class WorldGen {
       * smoothstep(0.35, 0.12, c) * (1 - smoothstep(0.02, 0.1, mount));
     if (swamp > 0) h = lerp(h, SEA_LEVEL + this.nSurf.noise2(x / 14, z / 14) * 1.3 - 0.2, swamp * land);
     // Badlands: stepped mesas.
-    const bad = smoothstep(0.4, 0.55, temp) * smoothstep(0, -0.25, hum) * smoothstep(-0.25, 0, v) * (1 - mount);
+    const bad = smoothstep(0.4, 0.55, temp) * smoothstep(0, -0.25, hum) * smoothstep(-0.25, 0, v) * (1 - mount) * smoothstep(0.2, 0.45, rare);
     if (bad > 0) {
       const m = Math.max(0, this.nMesa.fbm2(x / 90, z / 90, 3) * 1.8 + 0.1);
       h += Math.floor(m * 44 / 7) * 7 * smoothstep(0.3, 0.7, bad) * land;
@@ -225,7 +232,7 @@ export class WorldGen {
       col.isle = k;
     }
     col.h = Math.min(h, HEIGHT - 14);
-    col.c = c; col.e = e; col.mount = mount; col.pv = pv; col.v = v; col.river = river; col.swamp = swamp * land; col.bad = bad;
+    col.c = c; col.e = e; col.mount = mount; col.pv = pv; col.v = v; col.river = river; col.swamp = swamp * land; col.bad = bad; col.rare = rare;
     // Colder up high.
     col.temp = temp - Math.max(0, col.h - 90) * 0.011;
     col.hum = hum;
@@ -265,7 +272,7 @@ export class WorldGen {
       return hum > -0.3 ? BIOME.SPARSE_JUNGLE : BIOME.SAVANNA;
     }
     if (col.bad > 0.5) return BIOME.BADLANDS;
-    if (t < -0.45) return v > 0.45 ? BIOME.ICE_SPIKES : hum > 0 ? BIOME.SNOWY_TAIGA : BIOME.SNOWY_PLAINS;
+    if (t < -0.45) return v > 0.45 && col.rare > 0.3 ? BIOME.ICE_SPIKES : hum > 0 ? BIOME.SNOWY_TAIGA : BIOME.SNOWY_PLAINS;
     if (t < -0.15) return hum > 0.2 && v > 0.05 ? BIOME.OLD_GROWTH_TAIGA : BIOME.TAIGA;
     if (t < 0.3) {
       if (hum < -0.35) return v > 0.35 ? BIOME.SUNFLOWER_PLAINS : BIOME.PLAINS;
@@ -652,7 +659,13 @@ export class WorldGen {
           if (blocks[above] === 0) {
             const r = hash2(wx, wz, seed ^ 0x9a55), r2 = hash2(wz, wx, seed ^ 0xf10);
             const cover = COVER[biome] ?? COVER.default;
-            if (ground === B.grass_block || ground === B.podzol) {
+            // (Since the biome update: groves of bamboo in the jungle, where the pandas are.)
+            const grove = this.version >= 7 && (biome === BIOME.JUNGLE || biome === BIOME.SPARSE_JUNGLE) && (ground === B.grass_block || ground === B.podzol) &&
+              r < 0.45 && this.nBamboo.noise2(wx / 40, wz / 40) > (biome === BIOME.JUNGLE ? 0.22 : 0.42);
+            if (grove) {
+              const tall = 4 + Math.floor(r2 * 11);
+              for (let k = 0; k < tall && h + 2 + k < HEIGHT; k++) blocks[above + k * 256] = B.bamboo;
+            } else if (ground === B.grass_block || ground === B.podzol) {
               const patch = this.nSurf.noise2(wx / 36 + 11, wz / 36 - 5) > 0.3 ? 2.5 : 0.5;
               const flower = (cover.flower ?? 0) * patch, tall = cover.tall ?? 0, grass = cover.grass ?? 0, fern = cover.fern ?? 0;
               const list = FLOWERS[biome] ?? FLOWERS.default;

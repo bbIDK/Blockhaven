@@ -450,7 +450,7 @@ void main() {
   }
   col = mix(col, u_darkColor, u_dark);
 #ifndef FANCY
-  if (u_underwater > 0.5) col = vec3(0.05, 0.16, 0.42);
+  if (u_underwater > 0.5) col = u_horizon;
   o_color = vec4(col, 1.0);
 #else
   if (u_underwater > 0.5) col = pow(u_horizon, vec3(2.2));

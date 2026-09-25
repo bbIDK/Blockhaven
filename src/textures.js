@@ -23,6 +23,7 @@ import './tex/rails.js';
 import './tex/caves.js';
 import './tex/sea.js';
 import './tex/wild.js';
+import './tex/eggs.js';
 
 export const ARRAY_LAYERS = 256;
 

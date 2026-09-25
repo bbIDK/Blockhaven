@@ -3,6 +3,7 @@
 // by that name; null keeps it drawn in code. A source is a picture ('block/stone' in Pixel
 // Perfection, 'mcl:mods/...' in Mineclonia; the first frame of an animation strip), or a function
 // that makes the 16x16 picture from others with the helpers in H (load, crop, paste, rot, ...).
+import { EGGS } from '../src/eggs.js';
 
 const MCL = {
   deepslate: 'mcl:mods/ITEMS/mcl_deepslate/textures/mcl_deepslate',
@@ -122,6 +123,11 @@ const PAINTINGS = {
   islands: 'skeleton', deep: 'pointer',
 };
 const paintingTile = (art, x, y) => (H) => H.crop(H.load(`painting/${art}`), x * 16, y * 16, 16, 16);
+
+// Spawn eggs: Pixel Perfection's egg (one colour) and its speckles (the other), in each
+// creature's two colours.
+const rgb = (c) => [(c >> 16) & 255, (c >> 8) & 255, c & 255];
+const spawnEgg = (a, b) => (H) => H.paste(H.tint(H.load('item/spawn_egg'), rgb(a)), H.tint(H.load('item/spawn_egg_overlay'), rgb(b)));
 
 // Music discs: Pixel Perfection's discs with labels of about the game's colours.
 const DISCS = ['cat', 'mall', 'blocks', 'wait', '13', 'mellohi', 'ward', 'strad'];
@@ -284,6 +290,7 @@ export const SOURCES = {
   cake_item: 'item/cake',
   ...Object.fromEntries(Object.entries(POTION_COLOURS).flatMap(([name, c]) => [[`potion_${name}`, potion('potion', c)], [`splash_potion_${name}`, potion('splash_potion', c)]])),
   ...Object.fromEntries(DISCS.map((d, k) => [`music_disc_${k}`, `item/music_disc_${d}`])),
+  ...Object.fromEntries(EGGS.map(([type, a, b]) => [`${type}_spawn_egg`, spawnEgg(a, b)])),
 
   // ---------------------------------------------------------------- particles and the like
   heart: particle('heart'),

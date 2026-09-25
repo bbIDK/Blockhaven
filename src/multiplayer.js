@@ -21,6 +21,7 @@ import { S_READY, rayBox } from './world.js';
 import { clamp, hashString } from './math.js';
 import { startRide, seatY, BOAT_WOODS } from './riding.js';
 import { POTIONS, EFFECTS } from './potions.js';
+import { EGG_TYPES } from './eggs.js';
 
 const MAX_GUESTS = 7;
 const KEEP_RADIUS = 4;   // chunks the host keeps loaded (and mobs going) around each guest
@@ -394,6 +395,12 @@ export class HostSession extends Session {
     e.vx = e.vy = e.vz = 0;
   }
 
+  // A creature out of a guest's spawn egg, where they used it.
+  hatchFor(g, m) {
+    if (!EGG_TYPES.has(m.m) || ![m.x, m.y, m.z].every(num) || g.x === null || Math.hypot(m.x - g.x, m.y - g.y, m.z - g.z) > 8) return;
+    this.game.entities.hatch(m.m, m.x, m.y, m.z);
+  }
+
   // A guest's boat, set down where they pointed.
   placeBoatFor(g, m) {
     if (![m.x, m.y, m.z, m.a].every(num) || !BOAT_WOODS.includes(m.w) || g.x === null || Math.hypot(m.x - g.x, m.y - g.y, m.z - g.z) > 8) return;
@@ -423,6 +430,7 @@ export class HostSession extends Session {
       case 'hit': this.hit(g, msg); break;
       case 'ride': if (int(msg.e)) this.rideRequest(g, msg); break;
       case 'boat': this.placeBoatFor(g, msg); break;
+      case 'egg': this.hatchFor(g, msg); break;
       case 'cart':
         // A guest's minecart, on the rail they pointed at.
         if ([msg.x, msg.y, msg.z, msg.a].every(num) && g.x !== null && Math.hypot(msg.x - g.x, msg.y - g.y, msg.z - g.z) < 8 &&
@@ -1120,6 +1128,7 @@ export class GuestSession extends Session {
 
   primeTNT(x, y, z, fuse) { this.toHost({ t: 'tnt', x, y, z, f: fuse }); }
   placeBoat(x, y, z, wood, yaw) { this.toHost({ t: 'boat', x: r2(x), y: r2(y), z: r2(z), w: wood, a: r2(yaw) }); }
+  hatch(type, x, y, z) { this.toHost({ t: 'egg', m: type, x: r2(x), y: r2(y), z: r2(z) }); }
   placeCart(x, y, z, yaw) { this.toHost({ t: 'cart', x: r2(x), y: r2(y), z: r2(z), a: r2(yaw) }); }
   dropXp(x, y, z, n) { this.toHost({ t: 'orb', x: r2(x), y: r2(y), z: r2(z), n }); }
   ride(e, on) { if (e.nid) this.toHost({ t: 'ride', e: e.nid, on: on ? 1 : 0 }); }
