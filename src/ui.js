@@ -14,7 +14,7 @@ function canvas(w, h) {
 
 function sprite(rows, colors) {
   const c = canvas(rows[0].length, rows.length);
-  const g = c.getContext('2d');
+  const g = c.getContext('2d', { willReadFrequently: true });
   rows.forEach((row, y) => [...row].forEach((ch, x) => {
     if (colors[ch]) { g.fillStyle = colors[ch]; g.fillRect(x, y, 1, 1); }
   }));
@@ -42,7 +42,7 @@ const SPRITES = {
 
 // The hotbar: nine 20x20 cells in a translucent bar, and the frame around the selected one.
 function hotbarSprite() {
-  const c = canvas(182, 22), g = c.getContext('2d');
+  const c = canvas(182, 22), g = c.getContext('2d', { willReadFrequently: true });
   g.fillStyle = 'rgba(0, 0, 0, 0.8)';
   g.fillRect(0, 0, 182, 22);
   g.clearRect(1, 1, 180, 20);
@@ -60,7 +60,7 @@ function hotbarSprite() {
   return c.toDataURL();
 }
 function selectionSprite() {
-  const c = canvas(24, 24), g = c.getContext('2d');
+  const c = canvas(24, 24), g = c.getContext('2d', { willReadFrequently: true });
   const ring = (inset, color) => {
     g.fillStyle = color;
     g.fillRect(inset, inset, 24 - inset * 2, 24 - inset * 2);
@@ -202,7 +202,10 @@ const SPLASHES = [
 
 // ---------------------------------------------------------------- options
 const pct = (v) => (v ? `${v}%` : 'OFF');
+const LOOKS = ['Teal', 'Red', 'Green', 'Purple', 'Amber', 'Blue', 'Rose', 'Grey'];
 export const OPTIONS = [
+  { section: 'Player' },
+  { key: 'look', label: 'Skin', cycle: [-1, ...LOOKS.keys()], fmt: (v) => (v < 0 ? 'Picked by Name' : LOOKS[v]) },
   { section: 'Video' },
   { key: 'renderDistance', label: 'Render Distance', min: 2, max: 16, fmt: (v) => `${v} chunks` },
   { key: 'resolution', label: 'Resolution', min: 0, max: 6, fmt: (v) => (v ? `${40 + v * 10}%` : 'Auto') },
@@ -410,6 +413,22 @@ export class UI {
       this.lastSel = inv.selected;
       $('hotbar-sel').style.left = `calc(var(--u) * ${inv.selected * 20 - 1})`;
     }
+  }
+
+  // A place's name in big letters (walking into a village), fading after a few seconds.
+  showTitle(title, subtitle = '') {
+    let el = $('place-title');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'place-title';
+      el.innerHTML = '<div class="big"></div><div class="small"></div>';
+      $('item-name').parentNode.appendChild(el);
+    }
+    el.firstChild.textContent = title;
+    el.lastChild.textContent = subtitle;
+    el.classList.add('show');
+    clearTimeout(this.titleTimer);
+    this.titleTimer = setTimeout(() => el.classList.remove('show'), 3500);
   }
 
   showItemName(text) {
@@ -664,6 +683,21 @@ export class UI {
         const h = document.createElement('h3');
         h.textContent = o.section;
         root.appendChild(h);
+        continue;
+      }
+      if (o.cycle) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'btn';
+        const label = () => { b.textContent = `${o.label}: ${o.fmt(settings[o.key])}`; };
+        label();
+        b.addEventListener('click', () => {
+          const i = o.cycle.indexOf(settings[o.key]);
+          settings[o.key] = o.cycle[(i + 1) % o.cycle.length];
+          label();
+          onChange(o.key);
+        });
+        root.appendChild(b);
         continue;
       }
       if (o.toggle) {

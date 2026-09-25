@@ -1,132 +1,20 @@
-// Textures for things that aren't blocks or items: the player's arm, other players, creatures,
-// particles, weather, flames and the cracks that spread over a block being broken.
+// Textures for things that aren't blocks or items: arrows, particles, weather, flames and the
+// cracks that spread over a block being broken. (Players and creatures wear skins: see
+// tex/mobskins.js.)
 import { mulberry32 } from '../math.js';
-import { def, Tex, pick, quantize } from './core.js';
+import { def, Tex, pick } from './core.js';
 
-// ---------------------------------------------------------------- player hand
-const SKIN = [0xb77e5a, 0xc68e6a, 0xcf9874, 0xd6a07c];
-def('player_skin', (t) => quantize(t, t.field([[4, 4, 0.5], [2, 2, 0.2]], 0.3), SKIN, [0.1, 0.35, 0.4, 0.15]));
-def('player_sleeve', (t) => quantize(t, t.field([[2, 2, 0.5], [4, 4, 0.2]], 0.3), [0x28707e, 0x2f7d8c, 0x348a9a, 0x3a96a6], [0.1, 0.35, 0.4, 0.15]));
-
-// ---------------------------------------------------------------- other players
-// A 64x32 skin in the classic layout (head at the top left, legs, body and arms below), cut into
-// the 16x16 tiles the model uses. The shirt and trousers are grey so that each player's own
-// colours can be tinted in (see avatars.js).
-let avatarSkin = null;
-function avatarSkinPixels() {
-  if (avatarSkin) return avatarSkin;
-  const px = new Int32Array(64 * 32).fill(-1);
-  const rnd = mulberry32(911);
-  const from = (pal) => pal[Math.floor(rnd() * pal.length)];
-  const HAIR = [0x3b2414, 0x46291a, 0x33200f];
-  const SHIRT = [0xd2d2d2, 0xdcdcdc, 0xe6e6e6], PANTS = [0xc4c4c4, 0xcecece, 0xbababa], SHOES = [0x4a4a4a, 0x3e3e3e];
-  const regions = (u, v, w, h, d) => ({
-    top: [u + d, v, w, d], bottom: [u + d + w, v, w, d],
-    right: [u, v + d, d, h], front: [u + d, v + d, w, h], left: [u + d + w, v + d, d, h], back: [u + 2 * d + w, v + d, w, h],
-  });
-  const paint = ([x0, y0, w, h], pick) => {
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) px[(y0 + y) * 64 + x0 + x] = pick(x, y);
-  };
-  const head = regions(0, 0, 8, 8, 8);
-  const skin = SKIN.slice(1);
-  paint(head.top, () => from(HAIR));
-  paint(head.bottom, () => from(skin));
-  paint(head.back, (x, y) => (y < 6 || (y === 6 && rnd() < 0.5) ? from(HAIR) : from(skin)));
-  for (const side of [head.right, head.left]) paint(side, (x, y) => (y < 2 || (y < 4 && (x < 5 || rnd() < 0.3)) ? from(HAIR) : from(skin)));
-  paint(head.front, (x, y) => {
-    if (y < 2 || (y === 2 && (x === 0 || x === 7 || x === 3))) return from(HAIR);
-    if (y === 4 && (x === 1 || x === 6)) return 0xf4f4f4;
-    if (y === 4 && (x === 2 || x === 5)) return 0x3a2a60;
-    if (y === 3 && x > 0 && x < 7 && x !== 3 && x !== 4) return 0x7a5238;
-    if (y === 5 && (x === 3 || x === 4)) return 0xb07a58;
-    if (y === 6 && x > 1 && x < 6) return x === 2 || x === 5 ? 0x9a6448 : 0x6e3c2c;
-    return from(skin);
-  });
-  for (const [name, r] of Object.entries(regions(16, 16, 8, 12, 4))) {
-    paint(r, (x, y) => (y === 11 && name !== 'top' && name !== 'bottom' ? 0x3a3a3a : from(SHIRT)));
-  }
-  for (const [name, r] of Object.entries(regions(40, 16, 4, 12, 4))) {
-    paint(r, (x, y) => (name === 'top' || (name !== 'bottom' && y < 4) ? (y === 3 && name !== 'top' ? 0xb0b0b0 : from(SHIRT)) : from(skin)));
-  }
-  for (const [name, r] of Object.entries(regions(0, 16, 4, 12, 4))) {
-    paint(r, (x, y) => (name === 'bottom' || (name !== 'top' && y >= 10) ? from(SHOES) : from(PANTS)));
-  }
-  avatarSkin = px;
-  return px;
-}
-for (const tile of [0, 1, 4, 5, 6, 7]) {
-  def(`avatar_${tile}`, (t) => {
-    const px = avatarSkinPixels(), ox = (tile % 4) * 16, oy = (tile >> 2) * 16;
-    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
-      const c = px[(oy + y) * 64 + ox + x];
-      if (c < 0) t.set(x, y, 0, 0); else t.set(x, y, c);
-    }
-  });
-}
-// Armour worn by other players: plain brushed metal, tinted by material.
-def('avatar_armor', (t) => {
-  const n = t.noise(2);
-  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
-    const v = 0xc8 + Math.round((n[y * 16 + x] - 0.5) * 40 + (t.r() - 0.5) * 16);
-    t.set(x, y, (v << 16) | (v << 8) | v);
-  }
+// ---------------------------------------------------------------- arrows
+// An arrow in flight, lying along the texture: flint head on the right, fletching on the left
+// (rows 5-9; the entity shows it on two crossed strips).
+def('arrow_entity', (t) => {
+  t.clear();
+  for (let x = 3; x < 13; x++) { t.set(x, 7, x % 3 ? 0x8a6a3a : 0x6e522c); t.set(x, 6, 0x9e7c48); }
+  for (const [x, y, c] of [[13, 5, 0x5a5a5a], [13, 6, 0x9a9a9a], [14, 6, 0x7a7a7a], [13, 7, 0xb4b4b4], [14, 7, 0x9a9a9a], [15, 7, 0x6a6a6a],
+    [13, 8, 0x7a7a7a], [14, 8, 0x5a5a5a], [13, 9, 0x4a4a4a]]) t.set(x, y, c);
+  for (const [x, y] of [[0, 5], [1, 5], [0, 6], [1, 6], [2, 6], [0, 8], [1, 8], [2, 8], [0, 9], [1, 9]]) t.set(x, y, (x + y) % 2 ? 0xe8e8e8 : 0xc8c8c8);
+  t.set(2, 7, 0xd8d8d8); t.set(1, 7, 0xb8b8b8); t.set(0, 7, 0xa0a0a0);
 });
-
-// ---------------------------------------------------------------- creatures
-function furry(t, pal, cell = 2) { quantize(t, t.field([[cell, cell, 0.5], [1, 1, 0.2]], 0.35), pal); }
-function eyes(t, y, white, pupil, gap = 4) {
-  const l = 8 - gap / 2 - 2, r = 8 + gap / 2;
-  t.set(l, y, white); t.set(l + 1, y, pupil); t.set(r, y, pupil); t.set(r + 1, y, white);
-}
-const PIG = [0xe08780, 0xe9918c, 0xf0a19b, 0xf5aea8];
-def('pig_skin', (t) => furry(t, PIG, 4));
-def('pig_face', (t) => {
-  furry(t, PIG, 4);
-  eyes(t, 5, 0xffffff, 0x1a1a1a, 6);
-  for (let y = 9; y < 13; y++) for (let x = 5; x < 11; x++) t.set(x, y, y === 9 || y === 12 ? 0xd9807a : 0xf2b8b2);
-  t.set(6, 10, 0x8a4a46); t.set(9, 10, 0x8a4a46); t.set(6, 11, 0x8a4a46); t.set(9, 11, 0x8a4a46);
-});
-const WOOL = [0xd6d3cc, 0xe2e0da, 0xecebe6, 0xf6f5f2];
-def('sheep_wool', (t) => furry(t, WOOL, 2));
-def('sheep_face', (t) => {
-  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, y < 3 ? pick(WOOL, t.r()) : pick([0xcbb49c, 0xd4bea6, 0xc2aa90], t.r()));
-  eyes(t, 7, 0xffffff, 0x1a1a1a, 6);
-  for (let x = 6; x < 10; x++) t.set(x, 11, 0xe6a0a0);
-  t.set(7, 12, 0x6b4a3a); t.set(8, 12, 0x6b4a3a);
-});
-const ZOMBIE = [0x3a6530, 0x457437, 0x507f40, 0x5a8a49];
-def('zombie_skin', (t) => furry(t, ZOMBIE, 4));
-def('zombie_face', (t) => {
-  furry(t, ZOMBIE, 4);
-  for (const x of [4, 5, 10, 11]) { t.set(x, 7, 0x0e1a0c); t.set(x, 8, 0x1e3a18); }
-  for (let x = 6; x < 10; x++) t.set(x, 11, 0x24391e);
-  t.set(7, 10, 0x2d4a25);
-});
-def('zombie_shirt', (t) => furry(t, [0x28767d, 0x2a7f86, 0x2f8b92, 0x35979e], 4));
-def('zombie_pants', (t) => furry(t, [0x2e3378, 0x353a86, 0x3d4292, 0x454a9c], 4));
-const COW = [0x36261a, 0x3f2d20, 0x46321f, 0x4f3a26];
-const CREAM = [0xddd6c8, 0xe8e2d6, 0xf0ebe0];
-def('cow_hide', (t) => {
-  furry(t, COW, 4);
-  const n = t.noise(4);
-  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if (n[y * 16 + x] > 0.56) t.set(x, y, pick(CREAM, t.r()));
-});
-def('cow_face', (t) => {
-  furry(t, COW, 4);
-  for (let y = 0; y < 9; y++) for (let x = 6; x < 10; x++) t.set(x, y, pick(CREAM, t.r()));
-  eyes(t, 6, 0xffffff, 0x1a1a1a, 6);
-  for (let y = 10; y < 15; y++) for (let x = 4; x < 12; x++) t.set(x, y, pick([0xb89a86, 0xc4a690, 0xae907c], t.r()));
-  t.set(5, 12, 0x3a2a24); t.set(10, 12, 0x3a2a24);
-});
-const FEATHERS = [0xdcdcd6, 0xe8e8e4, 0xf2f2f0, 0xfbfbf9];
-def('chicken_feathers', (t) => furry(t, FEATHERS, 2));
-def('chicken_face', (t) => {
-  furry(t, FEATHERS, 2);
-  t.set(3, 6, 0x111111); t.set(4, 6, 0x111111); t.set(11, 6, 0x111111); t.set(12, 6, 0x111111);
-});
-def('chicken_beak', (t) => furry(t, [0xd8932a, 0xe8a33a, 0xf0b44a], 4));
-def('chicken_wattle', (t) => furry(t, [0xb82018, 0xc8281e, 0xd83a2e], 4));
-def('chicken_legs', (t) => furry(t, [0xd8932a, 0xe8a33a], 4));
 
 // ---------------------------------------------------------------- particles and weather
 // Falling rain and snow, drawn in vertical sheets that scroll downwards, and rain splashes.
@@ -153,6 +41,8 @@ def('crit', (t) => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t
 def('heart', (t) => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, pick([0xd01830, 0xf03048, 0xff6a80], t.r())); });
 def('happy', (t) => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, pick([0x2aa84a, 0x4ad86a, 0x9af8b0], t.r())); });
 def('angry', (t) => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, pick([0x3a3a3a, 0x505050, 0x6a6a6a], t.r())); });
+// Endermen leave a trail of purple sparks when they blink away.
+def('portal', (t) => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, pick([0x7a1ac8, 0xa040e8, 0xd08cff, 0x4a0a8a], t.r())); });
 def('bubble', (t) => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, pick([0xa8d0ff, 0xd8ecff, 0xffffff], t.r()), 200); });
 // A puff of smoke (mob deaths, burning zombies, water on lava).
 def('smoke', (t) => {

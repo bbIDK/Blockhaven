@@ -8,16 +8,16 @@ import { UI, $ } from './ui.js';
 import { Audio } from './audio.js';
 import { Inventory } from './inventory.js';
 import { InventoryMenu, CraftingTableMenu, FurnaceMenu, ChestMenu, CreativeMenu } from './containers.js';
-import { ContainerGUI } from './gui.js';
+import { ContainerGUI, sprites } from './gui.js';
 import { Furnace } from './furnace.js';
-import { initIcons } from './icons.js';
+import { initIcons, warmIcons } from './icons.js';
 import { TEX } from './textures.js';
 import { Particles } from './particles.js';
 import { Weather } from './weather.js';
 import { Entities } from './entities.js';
 import { TouchControls } from './touch.js';
 import { HostSession, GuestSession, openRoom, openGames, cleanName, COLORS } from './multiplayer.js';
-import { Avatars } from './avatars.js';
+import { Avatars, playerSkin } from './avatars.js';
 import * as storage from './storage.js';
 import { makeEnvironment, updateEnvironment, clockText } from './sky.js';
 import {
@@ -29,6 +29,7 @@ import {
 import { rollLoot } from './loot.js';
 import { useItemOnBlock, useBucket, placeLilyPad, useWorkstation } from './behaviors.js';
 import { nearestVillage } from './villages.js';
+import { TalkScreen } from './tradeui.js';
 import { ITEMS, I, itemDef, itemLabel, breakTime, dropsFor, attackDamage, attackSpeed } from './items.js';
 import { BIOME_NAMES } from './biomes.js';
 import { CHUNK_VOLUME, HEIGHT, TICKS_PER_DAY, SAVE_VERSION } from './config.js';
@@ -41,7 +42,7 @@ const REDUCED_MOTION = typeof matchMedia === 'function' && matchMedia('(prefers-
 const DEFAULT_SETTINGS = {
   renderDistance: COARSE ? 5 : 8, resolution: 0, fov: 75, sensitivity: 100, brightness: 50, volume: 60, music: 40,
   viewBobbing: !REDUCED_MOTION, clouds: true, invertMouse: false, showFps: false, recipeBook: true, guiScale: 0, mix: 3,
-  name: '', blood: true,
+  name: '', look: -1, blood: true,
 };
 const FACE_NAMES = ['east (+X)', 'west (-X)', 'up', 'down', 'south (+Z)', 'north (-Z)'];
 const TIPS = [
@@ -75,6 +76,8 @@ export class Game {
     this.ui = new UI();
     this.renderer = new Renderer(this.canvas);
     initIcons(this.renderer.pixels);
+    warmIcons();
+    (globalThis.requestIdleCallback ?? setTimeout)(() => sprites());
     this.ui.drawLogo(this.renderer.pixels, TEX);
     this.input = new Input(this.canvas);
     this.touch = new TouchControls(this);
@@ -159,6 +162,7 @@ export class Game {
     this.slowTime = 0;
     this.fastTime = 0;
     this.gui = new ContainerGUI(this);
+    this.talk = new TalkScreen(this);
     this.applySettings();
     this.bindUI();
     this.bindInput();
@@ -170,12 +174,16 @@ export class Game {
       }
       this.lastBackground = performance.now();
     });
-    // Browsers stop drawing frames in a hidden tab. In multiplayer the world must go on for the
-    // others, so a timer keeps it running (without drawing) until the tab is back.
+    // Browsers stop drawing frames in a hidden tab (and in a window that's covered up). In
+    // multiplayer the world must go on for the others, so a timer keeps it running (without
+    // drawing) whenever the frames stop, until they're back.
     this.lastBackground = performance.now();
+    this.lastFrame = performance.now();
     setInterval(() => {
-      if (!document.hidden || !this.net || !this.world || this.state === 'loading') return;
-      const now = performance.now(), dt = Math.min(1, (now - this.lastBackground) / 1000);
+      if (!this.net || !this.world || this.state === 'loading') return;
+      const now = performance.now();
+      if (!document.hidden && now - this.lastFrame < 300) return;
+      const dt = Math.min(1, (now - Math.max(this.lastFrame, this.lastBackground)) / 1000);
       this.lastBackground = now;
       try { this.updateGame(dt, false); } catch (err) { console.error(err); }
     }, 100);
@@ -225,6 +233,7 @@ export class Game {
   get mode() { return this.creative ? 'creative' : 'survival'; }
 
   applySettings() {
+    this.renderer?.setPlayerSkin(this.skinName);
     this.audio.setVolume(this.settings.volume / 100);
     this.audio.setMusicVolume(this.settings.music / 100);
     this.ui.applyScale(this.settings.guiScale);
@@ -232,6 +241,9 @@ export class Game {
   }
 
   saveSettings() { storage.savePrefs(SETTINGS_KEY, this.settings); }
+
+  // The skin this player wears: the one they picked, or one chosen by their name.
+  get skinName() { return playerSkin(this.settings.name, this.settings.look); }
 
   // ---------------------------------------------------------------- UI wiring
   bindUI() {
@@ -271,7 +283,7 @@ export class Game {
     ui.on('multiplayer', () => this.openMultiplayer());
     ui.on('mp-join', () => { if (ui.selectedGame) this.join({ kind: 'room', addr: ui.selectedGame }); });
     ui.on('mp-code', (code) => this.join({ kind: 'code', code }));
-    ui.on('mp-name', (name) => { this.settings.name = cleanName(name); this.saveSettings(); });
+    ui.on('mp-name', (name) => { this.settings.name = cleanName(name); this.saveSettings(); this.applySettings(); });
     ui.on('share', () => this.openShare());
     ui.on('share-room', () => this.openToFriends('room'));
     ui.on('share-code', () => this.openToFriends('code'));
@@ -527,7 +539,8 @@ export class Game {
   // Everyone in the world (for mobs and explosions): this player and, in multiplayer, the rest.
   players() {
     const p = this.player;
-    const me = { x: p.x, y: p.y, z: p.z, addr: null, creative: this.creative, dead: this.state === 'dead' };
+    const me = { x: p.x, y: p.y, z: p.z, addr: null, creative: this.creative, dead: this.state === 'dead', held: this.inv.heldId,
+      look: p.lookDir(), sneaking: p.sneaking };
     return this.net ? [me, ...this.net.others()] : [me];
   }
 
@@ -559,7 +572,7 @@ export class Game {
     if (this._fireStrip) return this._fireStrip;
     const c = document.createElement('canvas');
     c.width = 16; c.height = 128;
-    const g = c.getContext('2d');
+    const g = c.getContext('2d', { willReadFrequently: true });
     for (let f = 0; f < 8; f++) {
       const i = TEX[`fire_${f}`];
       g.putImageData(new ImageData(new Uint8ClampedArray(this.renderer.pixels.subarray(i * 1024, i * 1024 + 1024)), 16, 16), 0, f * 16);
@@ -573,7 +586,7 @@ export class Game {
     const c = document.createElement('canvas');
     c.width = c.height = 16;
     const i = TEX.dirt;
-    c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(this.renderer.pixels.subarray(i * 1024, i * 1024 + 1024)), 16, 16), 0, 0);
+    c.getContext('2d', { willReadFrequently: true }).putImageData(new ImageData(new Uint8ClampedArray(this.renderer.pixels.subarray(i * 1024, i * 1024 + 1024)), 16, 16), 0, 0);
     this._dirt = c.toDataURL();
     return this._dirt;
   }
@@ -689,6 +702,7 @@ export class Game {
   }
 
   async quitToTitle() {
+    this.closeTalk();
     await this.save();
     if (this.net) { const net = this.net; this.net = null; await net.leave(); }
     this.avatars.clearTags();
@@ -754,6 +768,40 @@ export class Game {
   // ---------------------------------------------------------------- container screens
   openInventory() {
     this.openMenu(this.creative && this.gui.tab !== 'inventory' ? new CreativeMenu(this) : new InventoryMenu(this));
+  }
+
+  // Talking to a villager (see tradeui.js): the world carries on while the window is open.
+  openTalk(e) {
+    if (this.state !== 'play') return;
+    this.state = 'talk';
+    this.releasePointer();
+    this.mining = null;
+    this.eating = null;
+    this.talk.show(e);
+  }
+
+  closeTalk() {
+    if (!this.talk.open) return;
+    const e = this.talk.who;
+    if (e) e.talking = null;
+    this.talk.hide();
+    if (this.state === 'talk') {
+      this.state = 'play';
+      this.input.capture = true;
+      if (!this.touch.enabled) this.input.lock();
+    }
+  }
+
+  // Swaps one of the held item for another (a bucket filled with milk).
+  swapHeldTo(id) {
+    const inv = this.inv, held = inv.held;
+    if (this.creative || !held) return;
+    if (held.count > 1) {
+      held.count--;
+      if (inv.add(id, 1)) this.entities.dropItem(this.player, { id, count: 1, dmg: 0 });
+    } else inv.slots[inv.selected] = { id, count: 1, dmg: 0 };
+    this.swingArm();
+    this.invChanged();
   }
 
   // Shows a container screen. `block` is the chest, table or furnace it belongs to, if any.
@@ -1066,6 +1114,7 @@ export class Game {
   }
 
   die(cause) {
+    this.closeTalk();
     this.state = 'dead';
     this.closeMenu();
     this.health = 0;
@@ -1126,6 +1175,8 @@ export class Game {
         else if (e.code === 'F3') { this.showDebug = !this.showDebug; }
         else if (e.code === 'F1') { this.hideHud = !this.hideHud; }
         else if (e.code === 'Escape' && !this.input.locked) this.pause();
+      } else if (s === 'talk') {
+        if (e.code === 'KeyE' || e.code === 'Escape') this.closeTalk();
       } else if (s === 'container') {
         if (e.code === 'KeyE' || e.code === 'Escape') this.closeMenu();
         else if (/^Digit[1-9]$/.test(e.code)) this.hotbarKey(Number(e.code.slice(5)) - 1);
@@ -1159,7 +1210,7 @@ export class Game {
     }
     if (forward <= 0) this.sprintLatch = false;
     let sprint = (k.isDown('ControlLeft') || k.isDown('ControlRight') || this.sprintLatch || t.sprint) && (this.creative || this.food > 6);
-    if (this.eating) { forward *= 0.3; right *= 0.3; sprint = false; }
+    if (this.eating || this.drawing) { forward *= 0.3; right *= 0.3; sprint = false; }
     if (k.wasPressed('Space') && this.creative) {
       if (now - this.lastSpace < 300) { this.player.flying = !this.player.flying; this.lastSpace = 0; } else this.lastSpace = now;
     }
@@ -1180,7 +1231,9 @@ export class Game {
   // ---------------------------------------------------------------- main loop
   frame(now) {
     requestAnimationFrame(this.frame);
-    const dt = Math.min(0.1, Math.max(0, (now - this.last) / 1000));
+    this.lastFrame = performance.now();
+    // (Time the background timer already stepped through isn't counted again.)
+    const dt = Math.min(0.1, Math.max(0, (now - Math.max(this.last, this.lastBackground)) / 1000));
     this.last = now;
     this.frameMs += ((dt * 1000) - this.frameMs) * 0.05;
     this.fps = 1000 / Math.max(1, this.frameMs);
@@ -1497,6 +1550,19 @@ export class Game {
     const usable = target && !target.entity && !target.player && !this.player.sneaking && this.interactive(target.id);
     // (On touch screens a tap starts eating and it carries on by itself.)
     const eatInput = use || useClick || (this.eating?.touch && !useClick);
+    // Holding right click with a bow draws it; letting go shoots (a tap on touch screens starts
+    // the draw and the next one shoots).
+    if (held?.id === I.bow && !usable) {
+      const ready = this.creative || this.inv.count(I.arrow) > 0;
+      const holding = touchTap ? !this.drawing : use || (this.drawing?.touch && !useClick);
+      if (holding && ready) {
+        this.drawing ??= { t: 0, touch: touchTap };
+        this.drawing.t += dt;
+      } else if (this.drawing) { this.shootBow(this.drawing.t); this.drawing = null; }
+      this.useCooldown -= dt;
+      return;
+    }
+    this.drawing = null;
     if ((hdef?.food || hdef?.drink) && !this.creative && (this.food < 20 || hdef.always || hdef.drink) && eatInput && !usable) {
       if (!this.eating || this.eating.id !== held.id || this.eating.slot !== this.inv.selected) {
         this.eating = { id: held.id, slot: this.inv.selected, left: 32, touch: touchTap };
@@ -1508,7 +1574,25 @@ export class Game {
     if ((k.clicked & 4)) this.pickBlock();
   }
 
-  swingArm() { this.swing = 0; this.swinging = true; this.swingCount++; }
+  swingArm() { this.swing = 0; this.swingCount++; this.swinging = true; }
+
+  // Lets an arrow fly: the longer the draw (up to a second), the faster and harder it hits.
+  shootBow(t) {
+    if (t < 0.1) return;
+    const f = Math.min(1, t), power = (f * f + f * 2) / 3;
+    if (power < 0.1) return;
+    const p = this.player, d = p.lookDir(), v = power * 55;
+    const crit = power >= 1;
+    const dmg = Math.round(power * 5) + 1 + (crit ? Math.floor(Math.random() * 3) : 0);
+    const me = this.players()[0];
+    this.entities.spawnArrow(p.x + d[0] * 0.4, p.eyeY - 0.1 + d[1] * 0.4, p.z + d[2] * 0.4, d[0] * v + p.vx, d[1] * v, d[2] * v + p.vz, me, dmg, !this.creative);
+    this.audio.bow({ x: p.x, y: p.eyeY, z: p.z });
+    if (!this.creative) {
+      this.inv.take(I.arrow, 1);
+      if (this.inv.damageHeld(1)) this.audio.toolBreak();
+      this.invChanged();
+    }
+  }
 
   // Minecraft 1.9 combat: a weapon winds up again after every swing (faster for swords, slower
   // for axes), and a hit only does full damage, knockback and critical hits once it has.
@@ -2056,7 +2140,8 @@ export class Game {
     }
     const cam = { x: p.x, y: p.eyeY, z: p.z, yaw: p.yaw, pitch: p.pitch, pre };
     this.lastCam = cam;
-    const fovTarget = (p.sprinting ? 1.12 : 1) * (p.flying && p.sprinting ? 1.08 : 1) * (p.headInWater ? 0.9 : 1);
+    const draw = this.drawing ? Math.min(1, this.drawing.t) : 0;
+    const fovTarget = (p.sprinting ? 1.12 : 1) * (p.flying && p.sprinting ? 1.08 : 1) * (p.headInWater ? 0.9 : 1) * (1 - draw * draw * 0.15);
     this.fovMul += (fovTarget - this.fovMul) * Math.min(1, dt * 8);
     const rd = s.renderDistance;
     let fogColor = this.env.fogColor, fogStart = rd * 16 * 0.55, fogEnd = rd * 16 * 0.95;

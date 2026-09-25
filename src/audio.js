@@ -19,6 +19,8 @@ const MATERIALS = {
 
 // Mob sound fallbacks: hurt reuses the idle sound pitched up, death reuses hurt pitched down.
 const MOB_PITCH = { chicken: 1.1 };
+const BORROW = { goat: ['sheep', 0.78], bear: ['cow', 0.55], husk: ['zombie', 0.8] };
+const SYNTH = new Set(['rabbit', 'fox', 'wolf', 'fish', 'skeleton', 'creeper', 'spider', 'enderman', 'slime']);
 
 // A low thump layered under breaking and placing, by block material: [start Hz, end Hz, gain].
 const THUMP = {
@@ -321,6 +323,118 @@ export class Audio {
   }
   lavaPop(at) { this.play('lava.pop', { volume: 0.35, at }); }
 
+  // ---- made-up sounds
+  // A tone from `f0` to `f1` Hz over `time`, shaped by `type` and an envelope; optional vibrato.
+  tone(at, { type = 'sine', f0, f1 = f0, time = 0.2, volume = 0.3, attack = 0.01, vibrato = 0, vibratoRate = 0, filter = null, delay = 0 }) {
+    if (!this.ready) return;
+    const sp = this.spatial(at, 1);
+    if (!sp) return;
+    const ctx = this.ctx, t = ctx.currentTime + delay;
+    const osc = ctx.createOscillator();
+    osc.type = type;
+    osc.frequency.setValueAtTime(f0, t);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + time);
+    if (vibrato) {
+      const lfo = ctx.createOscillator(), lg = ctx.createGain();
+      lfo.frequency.value = vibratoRate; lg.gain.value = vibrato;
+      lfo.connect(lg).connect(osc.frequency);
+      lfo.start(t); lfo.stop(t + time + 0.05);
+    }
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(volume * sp.gain, t + attack);
+    g.gain.exponentialRampToValueAtTime(0.0005, t + time);
+    let node = osc;
+    if (filter) {
+      const f = ctx.createBiquadFilter();
+      f.type = filter.type ?? 'bandpass'; f.frequency.value = filter.f; f.Q.value = filter.q ?? 1;
+      node = osc.connect(f);
+    }
+    this.output(node, g, sp.pan);
+    osc.start(t);
+    osc.stop(t + time + 0.05);
+  }
+  // A burst of filtered noise (rattles, hisses, squelches).
+  hiss(at, { f = 3000, q = 1, time = 0.15, volume = 0.3, sweep = null, delay = 0, type = 'bandpass' }) {
+    if (!this.ready) return;
+    const sp = this.spatial(at, 1);
+    if (!sp) return;
+    const ctx = this.ctx, t = ctx.currentTime + delay;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseLong ??= (() => {
+      const b = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate), d = b.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      return b;
+    })();
+    const fl = ctx.createBiquadFilter();
+    fl.type = type; fl.frequency.setValueAtTime(f, t); fl.Q.value = q;
+    if (sweep) fl.frequency.exponentialRampToValueAtTime(sweep, t + time);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(volume * sp.gain, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0005, t + time);
+    src.connect(fl);
+    this.output(fl, g, sp.pan);
+    src.start(t, Math.random() * 0.5);
+    src.stop(t + time + 0.05);
+  }
+  synth(kind, event, at, pitch = 1) {
+    const hurt = event === 'hurt', death = event === 'death', r = () => 0.9 + Math.random() * 0.2;
+    switch (kind) {
+      case 'skeleton':
+        for (let i = 0; i < (death ? 7 : 4); i++) this.hiss(at, { f: 2600 * r() * pitch, q: 6, time: 0.05, volume: 0.35, delay: i * (0.05 + Math.random() * 0.04) });
+        if (hurt || death) this.tone(at, { type: 'square', f0: 300 * pitch, f1: 160, time: 0.18, volume: 0.06, filter: { f: 900, q: 2 } });
+        break;
+      case 'spider':
+        if (hurt || death) this.tone(at, { type: 'sawtooth', f0: 900 * r(), f1: 400, time: 0.25, volume: 0.1, filter: { f: 1800, q: 3 } });
+        this.hiss(at, { f: 3200 * r(), q: 2, time: hurt ? 0.2 : 0.4, volume: 0.22, sweep: 2000 });
+        break;
+      case 'enderman':
+        if (event === 'teleport') { this.hiss(at, { f: 400, q: 1, time: 0.5, volume: 0.35, sweep: 3000, type: 'bandpass' }); this.tone(at, { f0: 220, f1: 880, time: 0.4, volume: 0.12, vibrato: 30, vibratoRate: 12 }); }
+        else if (hurt || death) this.tone(at, { type: 'sawtooth', f0: 520 * pitch, f1: 180, time: 0.6, volume: 0.12, vibrato: 60, vibratoRate: 18, filter: { f: 1400, q: 1.5 } });
+        else this.tone(at, { type: 'sine', f0: 110 * r(), f1: 70, time: 0.9, volume: 0.14, vibrato: 8, vibratoRate: 6 });
+        break;
+      case 'slime':
+        this.hiss(at, { f: 500 * pitch * r(), q: 3, time: 0.14, volume: 0.35, sweep: 200, type: 'lowpass' });
+        this.tone(at, { f0: 180 * pitch * r(), f1: 90, time: 0.12, volume: 0.25 });
+        break;
+      case 'creeper':
+        if (hurt || death) this.hiss(at, { f: 1200, q: 1, time: 0.25, volume: 0.3, sweep: 500 });
+        break;
+      case 'wolf':
+        if (hurt || death) this.tone(at, { type: 'triangle', f0: 900 * r(), f1: death ? 300 : 600, time: death ? 0.7 : 0.25, volume: 0.25, vibrato: 20, vibratoRate: 9 });
+        else { this.hiss(at, { f: 700, q: 2, time: 0.12, volume: 0.2 }); this.tone(at, { type: 'sawtooth', f0: 260 * r(), f1: 180, time: 0.14, volume: 0.1, filter: { f: 800, q: 2 }, delay: 0.02 }); }
+        break;
+      case 'fox':
+        this.tone(at, { type: 'triangle', f0: 1200 * r(), f1: hurt ? 700 : 1600, time: 0.12, volume: 0.18 });
+        break;
+      case 'rabbit':
+        if (hurt || death) this.tone(at, { type: 'sine', f0: 1800 * r(), f1: 1200, time: 0.12, volume: 0.2 });
+        break;
+      case 'fish':
+        if (hurt || death) this.hiss(at, { f: 900, q: 1, time: 0.08, volume: 0.25, type: 'lowpass' });
+        break;
+      default:
+    }
+  }
+  // A villager's murmur: a buzzy voice through two vowel formants, rising or falling.
+  voice(at, pitch = 1) {
+    if (!this.ready) return;
+    const f = 150 * pitch * (0.9 + Math.random() * 0.2), up = Math.random() < 0.5;
+    const formants = [[500 + Math.random() * 300, 5], [1100 + Math.random() * 500, 7]];
+    for (const [ff, q] of formants) {
+      this.tone(at, { type: 'sawtooth', f0: f * (up ? 0.92 : 1.08), f1: f * (up ? 1.1 : 0.85), time: 0.32 + Math.random() * 0.15, volume: 0.16,
+        attack: 0.04, filter: { f: ff, q }, vibrato: 3, vibratoRate: 7 });
+    }
+  }
+  bow(at) { this.hiss(at, { f: 1500, q: 1.5, time: 0.12, volume: 0.35, sweep: 600 }); this.tone(at, { type: 'triangle', f0: 180, f1: 90, time: 0.15, volume: 0.2 }); }
+  arrowHit(flesh, at) {
+    if (flesh) this.thump(at, 220, 90, 0.4, 0.08);
+    else { this.tick(at, 0.5, 1800); this.thump(at, 400, 200, 0.25, 0.05); }
+  }
+  shear(at) { for (let i = 0; i < 2; i++) this.hiss(at, { f: 5000, q: 4, time: 0.06, volume: 0.3, delay: i * 0.09 }); }
+  trade() { this.tone(null, { type: 'triangle', f0: 880, time: 0.12, volume: 0.12 }); this.tone(null, { type: 'triangle', f0: 1320, time: 0.2, volume: 0.1, delay: 0.08 }); }
+
   // The steady sound of rain, faded towards `volume` (0 lets it die away).
   setRain(volume) {
     const ctx = this.ctx, list = this.buffers['weather.rain'];
@@ -343,8 +457,14 @@ export class Audio {
   }
 
   // Animal and monster voices: event is 'say', 'hurt' or 'death'.
-  mob(kind, event = 'say', at = null) {
-    const base = MOB_PITCH[kind] ?? 1;
+  mob(kind, event = 'say', at = null, pitch = 1) {
+    if (!kind) return;
+    // Creatures without recordings of their own: some borrow another's voice, the rest are made
+    // up from oscillators and noise.
+    const borrow = BORROW[kind];
+    if (borrow) { const [k, p] = borrow; this.mob(k, event === 'death' ? 'hurt' : event, at, p * pitch); return; }
+    if (SYNTH.has(kind)) { this.synth(kind, event, at, pitch); return; }
+    const base = (MOB_PITCH[kind] ?? 1) * pitch;
     if (this.buffers[`${kind}.${event}`]?.length) {
       this.play(`${kind}.${event}`, { volume: event === 'say' ? 0.8 : 1, pitch: base, at });
     } else if (event === 'death' && this.buffers[`${kind}.hurt`]?.length) {

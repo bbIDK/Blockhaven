@@ -1,80 +1,18 @@
 // Everything that moves besides the player: dropped items, lit TNT, falling sand and gravel,
-// animals and zombies.
+// arrows, and creatures (whose particulars live in mobs.js; village people in civilians.js).
 // In multiplayer the host simulates them all; a guest's entities are copies of the host's (see
 // the end of this file), and what a guest does to them is sent to the host.
 import { Body } from './body.js';
 import { boxMesh, MODEL_OFFSET } from './models.js';
 import { TEX } from './textures.js';
-import { mat4, identity, translate, rotateX, rotateY, rotateZ, scale, hash2 } from './math.js';
+import { mat4, identity, translate, rotateX, rotateY, scale, hash2 } from './math.js';
 import { B, BLOCKS, BASE, SOLID, WATERLIKE, FILTER, REPLACEABLE } from './blocks.js';
 import { I, itemDef } from './items.js';
 import { rayBox } from './world.js';
-import { BIOME } from './biomes.js';
 import { HEIGHT } from './config.js';
 import { villageAt } from './villages.js';
-
-const faces = (all, front) => [all, all, all, all, all, front ?? all].map((layer) => ({ layer }));
-const box = (from, to, f, pivot = null, anim = null) => ({ from, to, faces: f, pivot, anim });
-
-function legs(x, z, y1, layer, w = 0.125) {
-  return [[x, z, 'legA'], [-x, z, 'legB'], [x, -z, 'legB'], [-x, -z, 'legA']].map(([lx, lz, anim]) =>
-    box([lx - w, 0, lz - w], [lx + w, y1, lz + w], faces(layer), [lx, y1, lz], anim));
-}
-
-const MOB_TYPES = {
-  pig: {
-    label: 'Pig', hw: 0.45, h: 0.9, health: 10, speed: 1.2, drops: [[I.raw_porkchop, 1, 3]],
-    parts: () => [
-      box([-0.3125, 0.375, -0.5], [0.3125, 0.875, 0.5], faces(TEX.pig_skin)),
-      box([-0.25, 0.45, -0.95], [0.25, 0.95, -0.45], faces(TEX.pig_skin, TEX.pig_face), [0, 0.7, -0.45], 'head'),
-      ...legs(0.1875, 0.3125, 0.375, TEX.pig_skin),
-    ],
-  },
-  sheep: {
-    label: 'Sheep', hw: 0.45, h: 1.3, health: 8, speed: 1.1, drops: [[B.white_wool, 1, 2]],
-    parts: () => [
-      box([-0.35, 0.6, -0.55], [0.35, 1.2, 0.55], faces(TEX.sheep_wool)),
-      box([-0.2, 0.85, -0.95], [0.2, 1.3, -0.5], faces(TEX.sheep_wool, TEX.sheep_face), [0, 1.05, -0.5], 'head'),
-      ...legs(0.2, 0.35, 0.65, TEX.sheep_wool, 0.11),
-    ],
-  },
-  cow: {
-    label: 'Cow', hw: 0.45, h: 1.4, health: 10, speed: 1.0, drops: [[I.raw_beef, 1, 3], [I.leather, 0, 2]],
-    parts: () => [
-      box([-0.375, 0.75, -0.5625], [0.375, 1.375, 0.5625], faces(TEX.cow_hide)),
-      box([-0.25, 1.0, -0.9375], [0.25, 1.5, -0.5625], faces(TEX.cow_hide, TEX.cow_face), [0, 1.25, -0.5625], 'head'),
-      box([-0.3125, 1.4375, -0.8125], [-0.25, 1.5625, -0.75], faces(TEX.chicken_feathers), [0, 1.25, -0.5625], 'head'),
-      box([0.25, 1.4375, -0.8125], [0.3125, 1.5625, -0.75], faces(TEX.chicken_feathers), [0, 1.25, -0.5625], 'head'),
-      box([-0.125, 0.6875, 0.125], [0.125, 0.75, 0.375], faces(TEX.pig_skin)),
-      ...legs(0.25, 0.4375, 0.75, TEX.cow_hide),
-    ],
-  },
-  chicken: {
-    label: 'Chicken', hw: 0.2, h: 0.7, health: 4, speed: 1.1, drops: [[I.raw_chicken, 1, 1], [I.feather, 0, 2]], flutter: true,
-    parts: () => [
-      box([-0.1875, 0.3125, -0.25], [0.1875, 0.6875, 0.25], faces(TEX.chicken_feathers)),
-      box([-0.125, 0.5625, -0.4375], [0.125, 0.9375, -0.25], faces(TEX.chicken_feathers, TEX.chicken_face), [0, 0.6875, -0.25], 'head'),
-      box([-0.125, 0.75, -0.5625], [0.125, 0.875, -0.4375], faces(TEX.chicken_beak), [0, 0.6875, -0.25], 'head'),
-      box([-0.0625, 0.625, -0.5], [0.0625, 0.75, -0.4375], faces(TEX.chicken_wattle), [0, 0.6875, -0.25], 'head'),
-      box([-0.25, 0.4375, -0.1875], [-0.1875, 0.625, 0.1875], faces(TEX.chicken_feathers), [-0.1875, 0.625, 0], 'wingA'),
-      box([0.1875, 0.4375, -0.1875], [0.25, 0.625, 0.1875], faces(TEX.chicken_feathers), [0.1875, 0.625, 0], 'wingB'),
-      box([-0.125, 0, -0.0625], [-0.0625, 0.3125, 0], faces(TEX.chicken_legs), [-0.09375, 0.3125, -0.03125], 'legA'),
-      box([0.0625, 0, -0.0625], [0.125, 0.3125, 0], faces(TEX.chicken_legs), [0.09375, 0.3125, -0.03125], 'legB'),
-    ],
-  },
-  zombie: {
-    label: 'Zombie', hw: 0.3, h: 1.95, health: 20, speed: 2.3, hostile: true, drops: [[I.rotten_flesh, 0, 2]],
-    parts: () => [
-      box([-0.25, 0, -0.125], [0, 0.75, 0.125], faces(TEX.zombie_pants), [-0.125, 0.75, 0], 'legA'),
-      box([0, 0, -0.125], [0.25, 0.75, 0.125], faces(TEX.zombie_pants), [0.125, 0.75, 0], 'legB'),
-      box([-0.25, 0.75, -0.125], [0.25, 1.5, 0.125], faces(TEX.zombie_shirt)),
-      box([-0.5, 0.75, -0.125], [-0.25, 1.5, 0.125], faces(TEX.zombie_skin), [-0.375, 1.375, 0], 'armA'),
-      box([0.25, 0.75, -0.125], [0.5, 1.5, 0.125], faces(TEX.zombie_skin), [0.375, 1.375, 0], 'armB'),
-      box([-0.25, 1.5, -0.25], [0.25, 2.0, 0.25], faces(TEX.zombie_skin, TEX.zombie_face), [0, 1.5, 0], 'head'),
-    ],
-  },
-};
-const PASSIVE_BIOMES = new Set([BIOME.PLAINS, BIOME.FOREST, BIOME.BIRCH_FOREST, BIOME.TAIGA, BIOME.MOUNTAINS, BIOME.FLAT]);
+import { MOBS, initMob, mobTick, mobPhysics, renderMob, provoked, mobUseEffect, applyMobUse, applyHeldUse, mobDrops, herdFor, monsterFor, HOSTILE_TYPES } from './mobs.js';
+import { Civilians } from './civilians.js';
 
 class Entity extends Body {
   constructor(kind, hw, h, x, y, z) {
@@ -86,16 +24,37 @@ class Entity extends Body {
   }
 }
 
+// What of a creature is saved (and sent to guests) beyond its position.
+export function mobExtra(e) {
+  const o = {};
+  if (e.variant) o.v = e.variant;
+  if (e.colour) o.c = e.colour;
+  if (e.size !== 1) o.s = e.size;
+  if (e.baby) o.b = 1;
+  if (e.sheared) o.sh = 1;
+  if (e.def.kind === 'civilian') { o.r = e.rid; o.sk = e.skin; o.n = e.name; o.ro = e.role; }
+  return o;
+}
+const extraOpts = (s) => ({ variant: Number.isInteger(s.v) ? s.v : 0, colour: Number.isInteger(s.c) ? s.c : 0, size: [1, 2, 4].includes(s.s) ? s.s : 1,
+  baby: !!s.b, sheared: !!s.sh });
+// Flags sent with each creature update: 1 hurt, 2 dying, 4 swinging, 8 burning, 16 shorn, 32 angry,
+// 64 about to explode, 128 drawing a bow, 256 asleep.
+export function mobFlags(e) {
+  return (e.hurt > 0 ? 1 : 0) | (e.dying ? 2 : 0) | (e.swing > 0.3 ? 4 : 0) | (e.burning ? 8 : 0) | (e.sheared ? 16 : 0) | (e.angry > 0 ? 32 : 0) |
+    (e.fuse > 0 ? 64 : 0) | (e.aim > 0 ? 128 : 0) | (e.pose === 'sleep' ? 256 : 0);
+}
+
 export class Entities {
   constructor(game) {
     this.game = game;
     this.list = [];
     this.byNid = new Map(); // guests: the host's entity id -> our copy
     this.players = [];
-    this.models = {};
     this.mats = [];
     this.matIndex = 0;
     this.spawnTimer = 0;
+    this.arrowMesh = null;
+    this.civilians = new Civilians(this);
   }
 
   get world() { return this.game.world; }
@@ -104,17 +63,22 @@ export class Entities {
   reset(saved) {
     this.list = [];
     this.byNid.clear();
+    this.civilians.reset();
     if (!saved) return;
     for (const s of saved) {
       if (s.k === 'item' && itemDef(s.id)) this.spawnItem(s.x, s.y, s.z, s.id, s.count, s.dmg, 0);
-      else if (s.k === 'mob' && MOB_TYPES[s.t]) { const m = this.spawnMob(s.t, s.x, s.y, s.z); m.yaw = s.yaw ?? 0; m.health = s.hp ?? m.health; }
+      else if (s.k === 'mob' && MOBS[s.t] && MOBS[s.t].kind !== 'civilian') {
+        const m = this.spawnMob(s.t, s.x, s.y, s.z, extraOpts(s));
+        m.yaw = s.yaw ?? 0; m.health = s.hp ?? m.health;
+      }
     }
   }
 
   serialize() {
-    return this.list.filter((e) => !e.dead && (e.kind === 'item' || e.kind === 'mob')).slice(0, 300).map((e) => (e.kind === 'item'
-      ? { k: 'item', x: e.x, y: e.y, z: e.z, id: e.id, count: e.count, dmg: e.dmg }
-      : { k: 'mob', t: e.type, x: e.x, y: e.y, z: e.z, yaw: e.yaw, hp: e.health }));
+    return this.list.filter((e) => !e.dead && (e.kind === 'item' || (e.kind === 'mob' && e.def.kind !== 'civilian' && !e.pinned))).slice(0, 300)
+      .map((e) => (e.kind === 'item'
+        ? { k: 'item', x: e.x, y: e.y, z: e.z, id: e.id, count: e.count, dmg: e.dmg }
+        : { k: 'mob', t: e.type, x: e.x, y: e.y, z: e.z, yaw: e.yaw, hp: e.health, ...mobExtra(e) }));
   }
 
   // ---------------------------------------------------------------- spawning
@@ -158,13 +122,20 @@ export class Entities {
     return e;
   }
 
-  spawnMob(type, x, y, z) {
-    const t = MOB_TYPES[type];
+  spawnMob(type, x, y, z, o = {}) {
+    const t = MOBS[type];
     const e = new Entity('mob', t.hw, t.h, x, y, z);
-    Object.assign(e, {
-      type, label: t.label, def: t, health: t.health, yaw: Math.random() * 6.28, walk: 0, walkPhase: 0,
-      wander: 0, moving: false, panic: 0, hurt: 0, lastDamage: 0, dying: 0, attackCd: 0, swing: 0, burnCd: 0, flap: 0, onFire: 0,
-    });
+    initMob(e, type, o);
+    this.list.push(e);
+    return e;
+  }
+
+  // An arrow flying from (x, y, z). `owner`: who shot it (not hit by it at first); `pickup`:
+  // whether it can be collected where it lands.
+  spawnArrow(x, y, z, vx, vy, vz, owner, damage, pickup) {
+    if (this.guest) { this.game.net.shootArrow?.(x, y, z, vx, vy, vz, damage, pickup); return null; }
+    const e = new Entity('arrow', 0.05, 0.1, x, y, z);
+    Object.assign(e, { vx, vy, vz, owner, damage, pickup, stuck: false, life: 0 });
     this.list.push(e);
     return e;
   }
@@ -172,46 +143,44 @@ export class Entities {
   chunkLoaded(chunk) {
     const game = this.game;
     if (!game.meta || this.guest) return;
-    const passive = this.list.filter((e) => e.kind === 'mob' && !e.def.hostile).length;
-    if (passive >= 24 || hash2(chunk.cx, chunk.cz, game.meta.seed ^ 0xa11) > 0.1) return;
-    const roll = hash2(chunk.cz, chunk.cx, game.meta.seed);
-    const type = roll < 0.3 ? 'pig' : roll < 0.58 ? 'sheep' : roll < 0.84 ? 'cow' : 'chicken';
-    const n = 2 + Math.floor(hash2(chunk.cx * 7, chunk.cz, 5) * 3) + (type === 'chicken' ? 1 : 0);
-    for (let i = 0; i < n; i++) {
-      const lx = Math.floor(hash2(chunk.cx, i, chunk.cz) * 16), lz = Math.floor(hash2(i, chunk.cz, chunk.cx) * 16);
-      if (!PASSIVE_BIOMES.has(chunk.biomes[lz * 16 + lx])) continue;
-      for (let y = HEIGHT - 2; y > 1; y--) {
-        const id = chunk.blocks[(y << 8) | (lz << 4) | lx];
-        if (!id) continue;
-        if (id === B.grass_block) this.spawnMob(type, chunk.cx * 16 + lx + 0.5, y + 1, chunk.cz * 16 + lz + 0.5);
-        break;
-      }
-    }
+    this.civilians.chunkLoaded(chunk);
+    const passive = this.list.filter((e) => e.kind === 'mob' && !e.def.hostile && e.def.kind !== 'civilian').length;
+    if (passive >= 40) return;
+    for (const h of herdFor(chunk, game.meta.seed)) this.spawnMob(h.type, h.x, h.y, h.z, h.o);
   }
 
-  // Zombies appear in the dark near a player (in Survival).
+  // Monsters appear in the dark near a player (in Survival): zombies, skeletons, creepers,
+  // spiders, now and then an enderman, and slimes in swamps and deep in "slime chunks".
   trySpawnHostile() {
     const game = this.game, w = this.world;
     const targets = this.players.filter((t) => !t.creative && !t.dead);
     if (!targets.length) return;
     const p = targets[Math.floor(Math.random() * targets.length)];
-    const zombies = this.list.filter((e) => e.type === 'zombie' && !e.dead).length;
-    if (zombies >= 4 + targets.length * 2) return;
+    const hostiles = this.list.filter((e) => e.kind === 'mob' && e.def.hostile && !e.dead).length;
+    if (hostiles >= 8 + targets.length * 4) return;
     const day = game.env.daylight;
     for (let attempt = 0; attempt < 6; attempt++) {
-      const a = Math.random() * Math.PI * 2, d = 18 + Math.random() * 22;
+      const a = Math.random() * Math.PI * 2, d = 20 + Math.random() * 24;
       const x = Math.floor(p.x + Math.cos(a) * d), z = Math.floor(p.z + Math.sin(a) * d);
       if (!w.isLoaded(x, z) || villageAt(w.gen, x, z, 6)) continue;
-      for (let y = Math.min(HEIGHT - 3, Math.floor(p.y) + 14); y > Math.max(1, Math.floor(p.y) - 20); y--) {
+      for (let y = Math.min(HEIGHT - 4, Math.floor(p.y) + 14); y > Math.max(1, Math.floor(p.y) - 24); y--) {
         const below = w.getBlock(x, y - 1, z);
         if (!SOLID[below] || BLOCKS[below].name.endsWith('leaves') || SOLID[w.getBlock(x, y, z)] || SOLID[w.getBlock(x, y + 1, z)]) continue;
-        if (WATERLIKE[w.getBlock(x, y, z)] || FILTER[w.getBlock(x, y, z)]) continue;
+        if (WATERLIKE[w.getBlock(x, y, z)] || FILTER[w.getBlock(x, y, z)]) break;
         const l = w.getLight(x, y, z);
-        if ((l & 15) <= 7 && (l >> 4) * day <= 7) {
-          this.spawnMob('zombie', x + 0.5, y, z + 0.5);
-          return;
-        }
-        break;
+        if ((l & 15) > 7 || (l >> 4) * day > 7) break;
+        const biome = w.biomeAt?.(x, z) ?? 0;
+        const slimeChunk = hash2(x >> 4, z >> 4, (game.meta.seed ^ 0x51e) >>> 0) < 0.1;
+        const pick = monsterFor(biome, y, slimeChunk);
+        const t = MOBS[pick.type];
+        // Room to stand (endermen are tall).
+        const need = Math.ceil(t.h * (pick.size ?? 1));
+        let room = true;
+        for (let k = 0; k < need; k++) if (SOLID[w.getBlock(x, y + k, z)]) room = false;
+        if (!room) break;
+        if (t.sized && y > 40 && biome !== 12 && !slimeChunk && pick.type === 'slime' && (l >> 4) > 0) break;
+        this.spawnMob(pick.type, x + 0.5, y, z + 0.5, { size: pick.size });
+        return;
       }
     }
   }
@@ -220,14 +189,21 @@ export class Entities {
   tick() {
     const game = this.game;
     if (this.guest) { this.remoteTick(); return; }
-    // Everyone mobs can see: this player and, in multiplayer, the others.
+    // Everyone creatures can see: this player and, in multiplayer, the others.
     this.players = game.players();
     if (++this.spawnTimer >= 40) { this.spawnTimer = 0; this.trySpawnHostile(); }
+    this.civilians.tick();
     for (const e of this.list) {
       if (e.dead) continue;
       if (e.kind === 'tnt') {
         if (--e.fuse <= 0) { e.dead = true; this.explode(e.x, e.y + 0.5, e.z, 4); }
-      } else if (e.kind === 'mob') this.mobTick(e);
+      } else if (e.kind === 'mob') {
+        mobTick(this, e);
+        // Out of sight, out of mind: creatures far from everyone go (village folk and penned
+        // animals come back when the village does).
+        const near = this.players.some((p) => Math.hypot(p.x - e.x, p.z - e.z) < (game.settings.renderDistance + 2) * 16);
+        if ((!near && (e.def.kind !== 'civilian' || !this.world.isLoaded(e.x, e.z))) || e.y < -40) { e.dead = true; this.civilians.gone(e); }
+      }
     }
     // Merge nearby identical items.
     const items = this.list.filter((e) => e.kind === 'item' && !e.dead);
@@ -242,70 +218,6 @@ export class Entities {
         if (!b.count) b.dead = true;
       }
     }
-    void game;
-  }
-
-  // The nearest player (any), and the nearest one a zombie could go after.
-  nearest(e) {
-    let near = null, prey = null, nd = Infinity, pd = Infinity;
-    for (const t of this.players) {
-      const d = Math.hypot(t.x - e.x, t.z - e.z);
-      if (d < nd) { nd = d; near = t; }
-      if (!t.creative && !t.dead && Math.abs(t.y - e.y) < 10 && d < pd) { pd = d; prey = t; }
-    }
-    return { near, nd, prey, pd };
-  }
-
-  mobTick(e) {
-    const game = this.game, w = this.world;
-    if (e.dying) return;
-    e.hurt = Math.max(0, e.hurt - 1);
-    e.attackCd = Math.max(0, e.attackCd - 1);
-    const { nd: dist, prey, pd } = this.nearest(e);
-    // Standing in fire or lava burns.
-    const feet = w.getBlock(Math.floor(e.x), Math.floor(e.y + 0.2), Math.floor(e.z));
-    if (feet === B.fire || WATERLIKE[feet] === 2) { e.onFire = 160; if (WATERLIKE[feet] === 2 && ++e.burnCd >= 10) { e.burnCd = 0; this.hurtMob(e, 4, null); } }
-    if (e.onFire > 0) {
-      e.onFire = WATERLIKE[w.getBlock(Math.floor(e.x), Math.floor(e.y + 0.3), Math.floor(e.z))] === 1 ? 0 : e.onFire - 1;
-      if (e.onFire % 20 === 0 && e.onFire > 0) this.hurtMob(e, 1, null);
-      if (Math.random() < 0.3) game.particles.smoke(e.x, e.y + Math.random() * e.h, e.z, 1, e.hw);
-    }
-    if (e.def.hostile) {
-      // Burn in daylight.
-      const l = w.getLight(Math.floor(e.x), Math.floor(e.y + 1.6), Math.floor(e.z));
-      const burning = game.env.daylight > 0.75 && (l >> 4) >= 12 && game.weather.rain < 0.3;
-      e.burning = burning;
-      if (burning && Math.random() < 0.25) game.particles.smoke(e.x, e.y + 1 + Math.random() * 0.9, e.z, 1, 0.3);
-      if (burning && ++e.burnCd >= 20) { e.burnCd = 0; this.hurtMob(e, 2, null); }
-      if (prey && pd < 24) {
-        const dx = prey.x - e.x, dz = prey.z - e.z;
-        e.yaw = Math.atan2(-dx, -dz);
-        e.moving = pd > 0.9;
-        if (pd < 1.35 && Math.abs(prey.y - e.y) < 1.6 && e.attackCd === 0) {
-          e.attackCd = 20;
-          e.swing = 1;
-          const k = 5 / Math.max(0.1, pd);
-          game.hurtPlayer(prey, 3, 'You were slain by a zombie', [dx * k * 0.3, 4.5, dz * k * 0.3], true);
-        }
-      } else this.wanderTick(e);
-      if (Math.random() < 0.005) game.audio.mob('zombie', 'say', { x: e.x, y: e.y + 1.6, z: e.z });
-    } else {
-      if (e.panic > 0) {
-        e.panic--;
-        if (e.panic % 20 === 0) e.yaw = Math.random() * 6.28;
-        e.moving = true;
-      } else this.wanderTick(e);
-      if (Math.random() < 0.004) game.audio.mob(e.type, 'say', { x: e.x, y: e.y + e.h * 0.8, z: e.z });
-    }
-    // Despawn when far away.
-    const lim = (game.settings.renderDistance + 2) * 16;
-    if (dist > lim || e.y < -40) e.dead = true;
-  }
-
-  wanderTick(e) {
-    if (--e.wander > 0) return;
-    if (e.moving || Math.random() < 0.4) { e.moving = false; e.wander = 40 + Math.floor(Math.random() * 80); }
-    else { e.moving = true; e.yaw = Math.random() * Math.PI * 2; e.wander = 30 + Math.floor(Math.random() * 70); }
   }
 
   update(dt) {
@@ -338,51 +250,63 @@ export class Entities {
         e.vy = Math.max(-40, e.vy - 32 * dt);
         e.move(w, 0, e.vy * dt, 0);
         if (e.onGround || e.age > 30 || e.y < 0) this.land(e);
+      } else if (e.kind === 'arrow') {
+        this.arrowPhysics(e, dt, fluid);
       } else if (e.kind === 'mob') {
-        this.mobPhysics(e, dt, fluid);
+        mobPhysics(this, e, dt, fluid);
       }
     }
     this.list = this.list.filter((e) => !e.dead);
   }
 
-  mobPhysics(e, dt, fluid) {
-    const w = this.world;
-    if (e.dying) {
-      e.dying += dt;
-      if (e.dying >= 1) this.finishDeath(e);
-      e.vy -= 20 * dt;
-      e.move(w, 0, e.vy * dt, 0);
+  // Arrows fly under gravity and drag, stick in what they hit, and hurt whoever they strike.
+  arrowPhysics(e, dt, fluid) {
+    const w = this.world, game = this.game;
+    if (e.stuck) {
+      e.life += dt;
+      if (e.life > 60 || !SOLID[w.getBlock(e.bx, e.by, e.bz)]) e.dead = true;
+      else if (e.pickup && game.state !== 'dead') {
+        const p = game.player;
+        if (Math.hypot(p.x - e.x, p.y + 0.9 - e.y, p.z - e.z) < 1.4 && game.pickup(I.arrow, 1, 0) === 0) { e.dead = true; game.audio.pop(); }
+      }
       return;
     }
-    let speed = e.moving ? e.def.speed * (e.panic ? 2 : 1) : 0;
-    const fx = -Math.sin(e.yaw), fz = -Math.cos(e.yaw);
-    // Passive animals avoid cliffs and water.
-    if (speed && !e.def.hostile && e.onGround) {
-      const ax = Math.floor(e.x + fx * (e.hw + 0.4)), az = Math.floor(e.z + fz * (e.hw + 0.4)), y = Math.floor(e.y + 0.1);
-      const ahead = w.getBlock(ax, y - 1, az), ahead2 = w.getBlock(ax, y - 2, az);
-      if ((!SOLID[ahead] && !SOLID[ahead2]) || WATERLIKE[ahead] || WATERLIKE[w.getBlock(ax, y, az)]) {
-        e.yaw += Math.PI * (0.5 + Math.random());
-        speed = 0;
-      }
+    e.life += dt;
+    const drag = Math.exp(-(fluid ? 3 : 0.2) * dt);
+    e.vx *= drag; e.vy = e.vy * drag - 20 * dt; e.vz *= drag;
+    const sp = Math.hypot(e.vx, e.vy, e.vz), step = sp * dt;
+    if (step < 1e-6) return;
+    const dx = e.vx / sp, dy = e.vy / sp, dz = e.vz / sp;
+    const hit = w.raycast(e.x, e.y, e.z, dx, dy, dz, step);
+    let len = hit ? hit.t : step;
+    // Creatures and players along the way.
+    let victim = null;
+    for (const o of this.list) {
+      if (o.kind !== 'mob' || o.dead || o.dying || (o === e.owner && e.life < 0.5)) continue;
+      const r = rayBox(e.x - o.x, e.y - o.y, e.z - o.z, dx, dy, dz, [-o.hw - 0.1, 0, -o.hw - 0.1, o.hw + 0.1, o.h, o.hw + 0.1]);
+      if (r && r.t <= len) { len = r.t; victim = o; }
     }
-    const k = 1 - Math.exp(-(e.onGround ? 10 : 2) * dt);
-    e.vx += (fx * speed - e.vx) * k;
-    e.vz += (fz * speed - e.vz) * k;
-    if (fluid) {
-      e.vy += (2.2 - e.vy) * Math.min(1, dt * 4);
-    } else {
-      e.vy -= 32 * dt;
-      e.vy = Math.max(e.vy, e.def.flutter ? -3 : -60);
+    for (const q of this.players) {
+      if (q.dead || (e.owner?.addr === q.addr && e.owner && e.life < 0.5) || (!e.owner?.kind && e.owner?.addr === q.addr)) continue;
+      const r = rayBox(e.x - q.x, e.y - q.y, e.z - q.z, dx, dy, dz, [-0.4, 0, -0.4, 0.4, 1.8, 0.4]);
+      if (r && r.t <= len) { len = r.t; victim = q; }
     }
-    // Wings flap while a chicken is in the air.
-    e.flap = !e.onGround && e.def.flutter ? e.flap + dt * 30 : 0;
-    const wasGround = e.onGround;
-    e.move(w, e.vx * dt, e.vy * dt, e.vz * dt);
-    if (e.hitWall && (e.onGround || wasGround) && speed) e.vy = 8.6;
-    const moved = Math.hypot(e.vx, e.vz);
-    e.walk += (Math.min(1, moved / 1.5) - e.walk) * Math.min(1, dt * 8);
-    e.walkPhase += moved * dt * 5;
-    e.swing = Math.max(0, e.swing - dt * 3);
+    if (victim) {
+      const dmg = Math.max(1, Math.round(e.damage * Math.min(1.5, sp / 25)));
+      const at = { x: e.x, y: e.y, z: e.z };
+      if (victim.kind === 'mob') this.hurtMob(victim, dmg, e.owner ?? at, 0);
+      else game.hurtPlayer(victim, dmg, e.owner?.label ? `You were shot by a ${e.owner.label.toLowerCase()}` : 'You were shot', [dx * 3, 2, dz * 3], true);
+      game.audio.arrowHit?.(true, at);
+      e.dead = true;
+      return;
+    }
+    e.x += dx * len; e.y += dy * len; e.z += dz * len;
+    if (hit) {
+      e.stuck = true; e.life = 0; e.bx = hit.x; e.by = hit.y; e.bz = hit.z;
+      e.x -= dx * 0.05; e.y -= dy * 0.05; e.z -= dz * 0.05;
+      game.audio.arrowHit?.(false, { x: e.x, y: e.y, z: e.z });
+    }
+    if (e.life > 30 || e.y < -20) e.dead = true;
   }
 
   // A falling block lands: it becomes a block again where there's room, or breaks into an item.
@@ -400,8 +324,8 @@ export class Entities {
 
   hurtMob(e, amount, from, bonus = 0) {
     if (e.dying || e.dead) return;
-    // Like the original, a mob that was just hurt only takes the part of a new hit that's stronger
-    // than the last one, so spam-clicking doesn't help.
+    // Like the original, a creature that was just hurt only takes the part of a new hit that's
+    // stronger than the last one, so spam-clicking doesn't help.
     if (e.hurt > 0) {
       if (amount <= e.lastDamage) return;
       const extra = amount - e.lastDamage;
@@ -410,16 +334,18 @@ export class Entities {
     } else e.lastDamage = amount;
     e.health -= amount;
     e.hurt = 10;
-    this.game.audio.mob(e.type, e.health <= 0 ? 'death' : 'hurt', { x: e.x, y: e.y + e.h * 0.8, z: e.z });
-    this.game.bleed(e.x, e.y + e.h * 0.6, e.z, Math.min(14, 4 + Math.round(amount * 1.5)));
+    const t = e.def;
+    this.game.audio.mob(t.sound ?? e.type, e.health <= 0 ? 'death' : 'hurt', { x: e.x, y: e.y + e.h * 0.8, z: e.z }, t.pitch);
+    if (t.kind !== 'water' && t.type !== 'skeleton' && t.type !== 'stray' && t.type !== 'slime') this.game.bleed(e.x, e.y + e.h * 0.6, e.z, Math.min(14, 4 + Math.round(amount * 1.5)));
     if (from) {
       // Knocked back with a little hop.
       const dx = e.x - from.x, dz = e.z - from.z, d = Math.hypot(dx, dz) || 1;
-      const k = 7 * (1 + bonus * 0.9);
+      const k = (t.type === 'enderman' || t.type === 'polar_bear' ? 4 : 7) * (1 + bonus * 0.9);
       e.vx = e.vx / 2 + (dx / d) * k; e.vz = e.vz / 2 + (dz / d) * k;
       if (e.onGround) e.vy = 7 + bonus * 1.5;
     }
-    if (!e.def.hostile) { e.panic = 80; e.yaw = Math.atan2(e.x - (from?.x ?? e.x), e.z - (from?.z ?? e.z)) + Math.PI; }
+    provoked(this, e, from && (from.addr !== undefined || from.kind === 'mob') ? from : from === this.game.player ? this.players[0] : null);
+    if (t.kind === 'civilian') this.civilians.hurt(e, from);
     if (e.health <= 0) e.dying = 0.001;
   }
 
@@ -429,21 +355,40 @@ export class Entities {
     game.net?.entityGone(e, 'd');
     // The body disappears in a puff of smoke.
     game.particles.smoke(e.x, e.y + e.h * 0.4, e.z, 10 + Math.round(e.h * 6), e.hw + 0.25);
-    if (game.creative) return;
-    for (const [id, min, max] of e.def.drops) {
-      const n = min + Math.floor(Math.random() * (max - min + 1));
-      if (n) this.spawnItem(e.x, e.y + 0.4, e.z, id, n);
+    this.civilians.died(e);
+    // Big slimes break into smaller ones.
+    if (e.def.sized && e.size > 1) {
+      const n = 2 + Math.floor(Math.random() * 3);
+      for (let k = 0; k < n; k++) {
+        const s = this.spawnMob('slime', e.x + (Math.random() - 0.5) * e.hw, e.y + 0.3, e.z + (Math.random() - 0.5) * e.hw, { size: e.size / 2 });
+        s.vy = 4; s.vx = (Math.random() - 0.5) * 3; s.vz = (Math.random() - 0.5) * 3;
+      }
     }
+    if (game.creative) return;
+    for (const [id, n] of mobDrops(e)) this.spawnItem(e.x, e.y + 0.4, e.z, id, n);
   }
 
-  // The player hits a mob. `bonus` adds knockback (a sprinting, full-strength hit).
+  // The player hits a creature. `bonus` adds knockback (a sprinting, full-strength hit).
   attack(e, amount, bonus = 0) {
     const n = this.game.creative ? 100 : amount;
     if (e.remote) this.game.net.hitMob(e, n, bonus);
     else this.hurtMob(e, n, this.game.player, bonus);
   }
 
-  interact() { /* nothing to interact with yet */ }
+  // Right-click on a creature: feeding, shearing, milking; talking to villagers.
+  interact(e, held) {
+    if (e.def.kind === 'civilian') { this.civilians.talk(e); return; }
+    const effect = mobUseEffect(e, held?.id);
+    if (!effect) return;
+    applyHeldUse(this.game, effect);
+    if (e.remote) this.game.net.useMob(e, held.id, effect);
+    else applyMobUse(this, e, held.id, effect);
+  }
+  // A guest used something on a creature (checked again here).
+  remoteUse(nid, id, effect) {
+    const e = this.list.find((x) => x.nid === nid && x.kind === 'mob' && !x.dead);
+    if (e && mobUseEffect(e, id) === effect) applyMobUse(this, e, id, effect);
+  }
 
   // Explosion: carve a rough sphere, hurt anything nearby, set off other TNT.
   explode(x, y, z, power) {
@@ -492,7 +437,7 @@ export class Entities {
   }
 
   // ---------------------------------------------------------------- copies of the host's entities
-  // The host sends each entity in full once ({ i: id, k: 'i'|'t'|'m', x, y, z, ... }), then
+  // The host sends each entity in full once ({ i: id, k: 'i'|'t'|'f'|'a'|'m', x, y, z, ... }), then
   // [id, x, y, z, yaw, flags, count] when something about it changes, and [id, how] when it's gone.
   addRemote(s) {
     if (!s || !Number.isInteger(s.i) || ![s.x, s.y, s.z].every(Number.isFinite)) return;
@@ -509,9 +454,14 @@ export class Entities {
       } else if (s.k === 'f' && BLOCKS[s.b]) {
         e = new Entity('falling', 0.49, 0.98, s.x, s.y, s.z);
         e.block = s.b;
-      } else if (s.k === 'm' && MOB_TYPES[s.ty]) {
-        e = this.spawnMob(s.ty, s.x, s.y, s.z);
-        this.list.pop();
+      } else if (s.k === 'a') {
+        e = new Entity('arrow', 0.05, 0.1, s.x, s.y, s.z);
+        Object.assign(e, { stuck: false, life: 0, ayaw: Number.isFinite(s.a) ? s.a : 0, apitch: Number.isFinite(s.p) ? s.p : 0 });
+      } else if (s.k === 'm' && MOBS[s.ty]) {
+        const t = MOBS[s.ty];
+        e = new Entity('mob', t.hw, t.h, s.x, s.y, s.z);
+        initMob(e, s.ty, extraOpts(s));
+        if (t.kind === 'civilian') this.civilians.remoteLooks(e, s);
         e.yaw = Number.isFinite(s.a) ? s.a : 0;
       } else return;
       e.nid = s.i;
@@ -526,8 +476,9 @@ export class Entities {
       e.pickupDelay = Number.isFinite(s.pd) ? s.pd : 0;
     } else if (s.k === 't') {
       if (Number.isInteger(s.f)) e.fuse = s.f;
-    } else {
+    } else if (s.k === 'm') {
       e.tyaw = Number.isFinite(s.a) ? s.a : e.yaw;
+      if (Number.isInteger(s.c)) e.colour = s.c;
       this.remoteFlags(e, Number.isInteger(s.f) ? s.f : 0);
     }
   }
@@ -540,16 +491,26 @@ export class Entities {
     if (e.kind === 'mob') {
       if (Number.isFinite(u[4])) e.tyaw = u[4];
       this.remoteFlags(e, Number.isInteger(u[5]) ? u[5] : 0);
-    } else if (e.kind === 'item' && Number.isInteger(u[6]) && u[6] > 0) e.count = u[6];
+    } else if (e.kind === 'arrow' && Number.isFinite(u[4])) { e.ayaw = u[4]; e.apitch = Number.isFinite(u[5]) ? u[5] / 100 : e.apitch; }
+    else if (e.kind === 'item' && Number.isInteger(u[6]) && u[6] > 0) e.count = u[6];
   }
 
-  // Mob flags: 1 hurt, 2 dying, 4 swinging its arms, 8 burning.
   remoteFlags(e, f) {
-    const at = { x: e.x, y: e.y + e.h * 0.8, z: e.z };
-    if ((f & 2) && !e.dying) { e.dying = 0.001; e.hurt = 10; this.game.audio.mob(e.type, 'death', at); }
-    else if ((f & 1) && !(e.flags & 1) && !e.dying) { e.hurt = 10; this.game.audio.mob(e.type, 'hurt', at); this.game.bleed(e.x, e.y + e.h * 0.6, e.z, 8); }
+    const at = { x: e.x, y: e.y + e.h * 0.8, z: e.z }, snd = e.def.sound ?? e.type;
+    if ((f & 2) && !e.dying) { e.dying = 0.001; e.hurt = 10; this.game.audio.mob(snd, 'death', at, e.def.pitch); }
+    else if ((f & 1) && !(e.flags & 1) && !e.dying) {
+      e.hurt = 10;
+      this.game.audio.mob(snd, 'hurt', at, e.def.pitch);
+      if (e.def.kind !== 'water' && e.def.type !== 'skeleton' && e.def.type !== 'stray') this.game.bleed(e.x, e.y + e.h * 0.6, e.z, 8);
+    }
     if (f & 4) e.swing = 1;
     e.burning = !!(f & 8);
+    e.sheared = !!(f & 16);
+    e.angry = f & 32 ? 1 : 0;
+    if ((f & 64) && !e.fuse) this.game.audio.fuse({ x: e.x, y: e.y + 1, z: e.z });
+    e.fuseOn = !!(f & 64);
+    e.aim = f & 128 ? 1 : 0;
+    e.pose = f & 256 ? 'sleep' : null;
     e.flags = f;
   }
 
@@ -562,7 +523,7 @@ export class Entities {
     if (r[1] === 'd' && e.kind === 'mob') this.game.particles.smoke(e.x, e.y + e.h * 0.4, e.z, 10 + Math.round(e.h * 6), e.hw + 0.25);
   }
 
-  // Per game tick on a guest: fuses burn down, animals and zombies make their noises.
+  // Per game tick on a guest: fuses burn down, creatures make their noises.
   remoteTick() {
     const game = this.game;
     for (const e of this.list) {
@@ -570,8 +531,9 @@ export class Entities {
       if (e.kind === 'tnt') e.fuse = Math.max(0, e.fuse - 1);
       else if (e.kind === 'mob' && !e.dying) {
         e.hurt = Math.max(0, e.hurt - 1);
+        e.fuse = e.fuseOn ? e.fuse + 1 : 0;
         if (e.burning && Math.random() < 0.25) game.particles.smoke(e.x, e.y + 1 + Math.random() * 0.9, e.z, 1, 0.3);
-        if (Math.random() < (e.def.hostile ? 0.005 : 0.004)) game.audio.mob(e.type, 'say', { x: e.x, y: e.y + e.h * 0.8, z: e.z });
+        if (e.def.sound && Math.random() < (e.def.hostile ? 0.005 : 0.003)) game.audio.mob(e.def.sound, 'say', { x: e.x, y: e.y + e.h * 0.8, z: e.z }, e.def.pitch);
       }
     }
   }
@@ -599,7 +561,9 @@ export class Entities {
         e.walk += (Math.min(1, speed / 1.5) - e.walk) * Math.min(1, dt * 8);
         e.walkPhase += speed * dt * 5;
         e.swing = Math.max(0, e.swing - dt * 3);
-        e.flap = e.def.flutter && Math.abs(e.y - oy) > dt * 0.5 ? e.flap + dt * 30 : 0;
+        e.onGround = Math.abs(e.y - oy) < dt * 0.5;
+        e.inWater = WATERLIKE[this.world.getBlock(Math.floor(e.x), Math.floor(e.y + 0.3), Math.floor(e.z))] === 1;
+        e.flap = e.def.flutter && !e.onGround ? e.flap + dt * 30 : 0;
         if (e.dying) e.dying += dt;
       }
     }
@@ -623,18 +587,26 @@ export class Entities {
       e.x - e.hw < x + 1 && e.x + e.hw > x && e.y < y + 1 && e.y + e.h > y && e.z - e.hw < z + 1 && e.z + e.hw > z);
   }
 
+  hostileNear(x, y, z, r) {
+    return this.list.some((e) => e.kind === 'mob' && HOSTILE_TYPES.has(e.type) && !e.dead && Math.hypot(e.x - x, e.y - y, e.z - z) < r);
+  }
+
   // ---------------------------------------------------------------- rendering
   mat() {
     if (this.matIndex >= this.mats.length) this.mats.push(mat4());
     return this.mats[this.matIndex++];
   }
 
-  model(type) {
-    if (!this.models[type]) {
-      const r = this.game.renderer;
-      this.models[type] = MOB_TYPES[type].parts().map((p) => ({ ...p, mesh: r.createMesh(boxMesh([p])) }));
+  // An arrow: two crossed strips along -z (the point at the front).
+  arrowModel() {
+    if (!this.arrowMesh) {
+      const L = TEX.arrow_entity;
+      this.arrowMesh = this.game.renderer.createMesh(boxMesh([
+        { from: [0, -0.16, -0.5], to: [0, 0.16, 0.5], faces: [{ layer: L, uv: [0, 5, 16, 10] }, { layer: L, uv: [16, 5, 0, 10] }, null, null, null, null] },
+        { from: [-0.16, 0, -0.5], to: [0.16, 0, 0.5], faces: [null, null, { layer: L, uv: [0, 5, 16, 10] }, { layer: L, uv: [16, 5, 0, 10] }, null, null] },
+      ]));
     }
-    return this.models[type];
+    return this.arrowMesh;
   }
 
   renderList(cam) {
@@ -656,7 +628,7 @@ export class Entities {
         rotateY(m, m, e.spin);
         const s = mesh.kind === 'block' ? 0.25 : 0.4;
         scale(m, m, s, s, s);
-        translate(m, m, -0.5 - MODEL_OFFSET, (mesh.kind === 'block' ? 0 : 0) - MODEL_OFFSET, -0.5 - MODEL_OFFSET);
+        translate(m, m, -0.5 - MODEL_OFFSET, -MODEL_OFFSET, -0.5 - MODEL_OFFSET);
         out.push({ parts: [{ mesh, model: m }], light, tint: null });
       } else if (e.kind === 'tnt') {
         const mesh = r.itemMesh(B.tnt);
@@ -674,34 +646,17 @@ export class Entities {
         translate(m, m, rx, ry, rz);
         translate(m, m, -0.5 - MODEL_OFFSET, -MODEL_OFFSET, -0.5 - MODEL_OFFSET);
         out.push({ parts: [{ mesh, model: m }], light, tint: null });
+      } else if (e.kind === 'arrow') {
+        if (!e.stuck && !e.remote) { e.ayaw = Math.atan2(-e.vx, -e.vz); e.apitch = Math.atan2(e.vy, Math.hypot(e.vx, e.vz)); }
+        const m = identity(this.mat());
+        translate(m, m, rx, ry, rz);
+        rotateY(m, m, e.ayaw ?? 0);
+        rotateX(m, m, e.apitch ?? 0);
+        scale(m, m, 0.5, 0.5, 0.5);
+        translate(m, m, -MODEL_OFFSET, -MODEL_OFFSET, -MODEL_OFFSET);
+        out.push({ parts: [{ mesh: this.arrowModel(), model: m }], light, tint: null });
       } else if (e.kind === 'mob') {
-        const parts = [];
-        const swingA = Math.sin(e.walkPhase) * 0.9 * e.walk;
-        for (const p of this.model(e.type)) {
-          const m = identity(this.mat());
-          translate(m, m, rx, ry, rz);
-          rotateY(m, m, e.yaw);
-          // Falls over sideways when it dies, quickly at first.
-          if (e.dying) rotateZ(m, m, Math.min(1, Math.sqrt(e.dying * 1.6)) * Math.PI / 2);
-          if (p.pivot) {
-            let a = 0;
-            if (p.anim === 'wingA' || p.anim === 'wingB') {
-              const f = (Math.sin(e.flap) * 0.5 + 0.5) * (e.flap ? 1.2 : 0);
-              translate(m, m, p.pivot[0], p.pivot[1], p.pivot[2]);
-              rotateZ(m, m, p.anim === 'wingA' ? -f : f);
-              translate(m, m, -p.pivot[0], -p.pivot[1], -p.pivot[2]);
-            } else if (p.anim === 'legA') a = swingA;
-            else if (p.anim === 'legB') a = -swingA;
-            else if (p.anim === 'armA' || p.anim === 'armB') a = Math.PI / 2 * 0.95 - (p.anim === 'armA' ? swingA : -swingA) * 0.3 - e.swing * 0.6;
-            else if (p.anim === 'head') a = Math.sin(e.age * 0.7) * 0.08;
-            translate(m, m, p.pivot[0], p.pivot[1], p.pivot[2]);
-            rotateX(m, m, a);
-            translate(m, m, -p.pivot[0], -p.pivot[1], -p.pivot[2]);
-          }
-          translate(m, m, -MODEL_OFFSET, -MODEL_OFFSET, -MODEL_OFFSET);
-          parts.push({ mesh: p.mesh, model: m });
-        }
-        out.push({ parts, light, tint: null, hurt: e.hurt > 0 || e.dying > 0 });
+        renderMob(this, e, rx, ry, rz, light, out);
       }
     }
     return out;

@@ -9,6 +9,7 @@
 // which is also how open games are listed in the claude.ai room.
 import { Link, RoomTransport, PeerTransport, PROTOCOL, cleanCode } from './net.js';
 import { RemotePlayer } from './avatars.js';
+import { mobFlags, mobExtra } from './entities.js';
 import { encodeRLE16, decodeRLE16 } from './storage.js';
 import { B, BLOCKS, REPLACEABLE, CHEST, FURNACE_IDS } from './blocks.js';
 import { itemDef, maxStack } from './items.js';
@@ -179,6 +180,7 @@ class Session {
         (g.state === 'dead' ? 16 : 0) | (g.state === 'sleeping' ? 32 : 0) | (g.creative ? 64 : 0);
       pres.i = g.inv.heldId;
       pres.a = g.inv.armor.map((s) => s?.id ?? 0);
+      pres.k = g.settings.look;
       pres.s = g.swingCount;
       pres.u = g.hurtCount;
     }
@@ -317,7 +319,14 @@ export class HostSession extends Session {
     if (!g || pres.g !== this.gid) return;
     g.name = cleanName(pres.n);
     if (Array.isArray(pres.p) && pres.p.length >= 3 && pres.p.slice(0, 3).every(num)) [g.x, g.y, g.z] = pres.p;
+    // Where they look and what they hold (animals follow food; endermen mind being stared at).
+    if (Array.isArray(pres.p) && pres.p.length >= 5 && num(pres.p[3]) && num(pres.p[4])) {
+      const yaw = pres.p[3], pitch = clamp(pres.p[4], -1.6, 1.6), cp = Math.cos(pitch);
+      g.look = [-Math.sin(yaw) * cp, Math.sin(pitch), -Math.cos(yaw) * cp];
+    }
+    g.held = int(pres.i) ? pres.i : 0;
     const f = int(pres.f) ? pres.f : 0;
+    g.sneaking = !!(f & 1);
     g.dead = !!(f & 16);
     g.sleeping = !!(f & 32);
     g.creative = !!(f & 64);
@@ -343,6 +352,8 @@ export class HostSession extends Session {
       case 'drop': this.drop(msg); break;
       case 'take': this.take(g, msg); break;
       case 'hit': this.hit(msg); break;
+      case 'um': if (int(msg.e) && int(msg.i) && typeof msg.f === 'string') this.game.entities.remoteUse(msg.e, msg.i, msg.f); break;
+      case 'arw': this.arrow(g, msg); break;
       case 'pvp': this.pvpHit(g, msg); break;
       case 'tnt': if ([msg.x, msg.y, msg.z].every(int) && int(msg.f)) this.game.entities.primeTNT(msg.x, msg.y, msg.z, clamp(msg.f, 1, 200)); break;
       case 'chat': {
@@ -474,6 +485,15 @@ export class HostSession extends Session {
     this.game.entities.hurtMob(e, clamp(m.a, 0, 100), { x: m.x, z: m.z }, num(m.b) ? clamp(m.b, 0, 1) : 0);
   }
 
+  // A guest's arrow: shot from where they stand.
+  arrow(g, m) {
+    const v = [m.vx, m.vy, m.vz], at = [m.x, m.y, m.z];
+    if (![...v, ...at].every(num) || g.x === null || Math.hypot(m.x - g.x, m.y - g.y - 1.5, m.z - g.z) > 3) return;
+    const owner = this.others().find((o) => o.addr === g.addr) ?? { x: g.x, y: g.y, z: g.z, addr: g.addr };
+    this.game.entities.spawnArrow(m.x, m.y, m.z, clamp(m.vx, -80, 80), clamp(m.vy, -80, 80), clamp(m.vz, -80, 80), owner,
+      clamp(num(m.d) ? m.d : 2, 0, 12), !!m.p);
+  }
+
   // One player hits another.
   pvpHit(g, m) {
     if (!this.pvp || !num(m.a) || !num(m.x) || !num(m.z)) return;
@@ -560,7 +580,9 @@ export class HostSession extends Session {
       if (!e.nid) e.nid = this.nextNid++;
       seen.add(e.nid);
       const x = r2(e.x), y = r2(e.y), z = r2(e.z);
-      const a = e.kind === 'mob' ? r2(e.yaw) : 0, f = e.kind === 'mob' ? mobFlags(e) : 0, n = e.kind === 'item' ? e.count : 0;
+      const arrow = e.kind === 'arrow';
+      const a = e.kind === 'mob' ? r2(e.yaw) : arrow ? r2(e.ayaw ?? 0) : 0;
+      const f = e.kind === 'mob' ? mobFlags(e) : arrow ? Math.round((e.apitch ?? 0) * 100) : 0, n = e.kind === 'item' ? e.count : 0;
       const prev = this.sentEnts.get(e.nid);
       if (!prev) { adds.push(entityState(e)); this.sentEnts.set(e.nid, [x, y, z, a, f, n]); continue; }
       if (prev[0] !== x || prev[1] !== y || prev[2] !== z || prev[3] !== a || prev[4] !== f || prev[5] !== n) {
@@ -591,7 +613,9 @@ export class HostSession extends Session {
   // Game hooks.
   others() {
     const out = [];
-    for (const g of this.guests.values()) if (g.x !== null) out.push({ x: g.x, y: g.y, z: g.z, addr: g.addr, creative: g.creative, dead: g.dead, name: g.name });
+    for (const g of this.guests.values()) {
+      if (g.x !== null) out.push({ x: g.x, y: g.y, z: g.z, addr: g.addr, creative: g.creative, dead: g.dead, name: g.name, look: g.look, held: g.held, sneaking: g.sneaking });
+    }
     return out;
   }
 
@@ -625,14 +649,14 @@ export class HostSession extends Session {
   }
 }
 
-function mobFlags(e) { return (e.hurt > 0 ? 1 : 0) | (e.dying ? 2 : 0) | (e.swing > 0.3 ? 4 : 0) | (e.burning ? 8 : 0); }
 
 function entityState(e) {
   const s = { i: e.nid, x: r2(e.x), y: r2(e.y), z: r2(e.z) };
   if (e.kind === 'item') return Object.assign(s, { k: 'i', id: e.id, n: e.count, d: e.dmg ?? 0, pd: r2(Math.max(0, e.pickupDelay)) });
   if (e.kind === 'tnt') return Object.assign(s, { k: 't', f: e.fuse });
   if (e.kind === 'falling') return Object.assign(s, { k: 'f', b: e.block });
-  return Object.assign(s, { k: 'm', ty: e.type, a: r2(e.yaw), f: mobFlags(e) });
+  if (e.kind === 'arrow') return Object.assign(s, { k: 'a', a: r2(e.ayaw ?? Math.atan2(-e.vx, -e.vz)), p: r2(e.apitch ?? 0) });
+  return Object.assign(s, { k: 'm', ty: e.type, a: r2(e.yaw), f: mobFlags(e), ...mobExtra(e) });
 }
 
 // ---------------------------------------------------------------- guest
@@ -759,6 +783,7 @@ export class GuestSession extends Session {
 
   message(from, msg, b) {
     if (from !== this.hostAddr) return;
+    this.hostSeen = performance.now();
     const game = this.game;
     switch (msg.t) {
       case 'welcome': this.welcome(msg); break;
@@ -924,6 +949,10 @@ export class GuestSession extends Session {
   }
 
   primeTNT(x, y, z, fuse) { this.toHost({ t: 'tnt', x, y, z, f: fuse }); }
+  useMob(e, id, effect) { this.toHost({ t: 'um', e: e.nid, i: id, f: effect }); }
+  shootArrow(x, y, z, vx, vy, vz, damage, pickup) {
+    this.toHost({ t: 'arw', x: r2(x), y: r2(y), z: r2(z), vx: r2(vx), vy: r2(vy), vz: r2(vz), d: damage, p: pickup ? 1 : 0 });
+  }
 
   hitMob(e, amount, bonus) {
     const p = this.game.player;

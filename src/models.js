@@ -1,6 +1,7 @@
 // Small meshes in the terrain vertex format: boxes (hand, cracks, mobs) and extruded item sprites.
 // Positions are stored with a +MODEL_OFFSET block shift so they stay unsigned; model matrices undo it.
 import { STRIDE, FACE_CORNERS } from './mesher.js';
+import { boxRegions } from './skins.js';
 
 export const MODEL_OFFSET = 8;
 const U = 256;
@@ -72,6 +73,49 @@ export function spriteMesh(layer, pixels, flags = 0, tint = null) {
     if (!opaque(x + 1, y)) w.quad([[x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1]], uv, layer, 0, flags, tint);
     if (!opaque(x, y - 1)) w.quad([[x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0]], uv, layer, 2, flags, tint);
     if (!opaque(x, y + 1)) w.quad([[x1, y0, z1], [x0, y0, z1], [x0, y0, z0], [x1, y0, z0]], uv, layer, 3, flags, tint);
+  }
+  return w.bytes();
+}
+
+// Boxes cut from a creature skin (see skins.js). Each cube is { from: [x, y, z], size: [w, h, d] }
+// in pixels, `uv` its corner in the skin, `mirror` to flip it (a left limb sharing the right one's
+// picture) and `inflate` to grow it (a hat, a coat of wool) without changing its picture; `layer`
+// overrides the skin for that cube. Positions are taken relative to `origin` (the bone's pivot).
+// A part with no thickness (a fin, an ear) shows its two broad faces.
+const SKIN_FACE = ['right', 'left', 'top', 'bottom', 'back', 'front'];
+export function skinMesh(cubes, layer, origin = [0, 0, 0], tint = null) {
+  const w = new Writer(cubes.length * 6);
+  for (const c of cubes) {
+    const g = c.inflate ?? 0, L = c.layer ?? layer;
+    const from = [0, 1, 2].map((i) => (c.from[i] - g - origin[i]) / 16);
+    const to = [0, 1, 2].map((i) => (c.from[i] + c.size[i] + g - origin[i]) / 16);
+    const R = boxRegions(c.uv[0], c.uv[1], c.size[0], c.size[1], c.size[2]);
+    for (let f = 0; f < 6; f++) {
+      // (A face with no area - the edge of a flat part - is left out.)
+      const axis = f >> 1;
+      if (c.size[(axis + 1) % 3] === 0 || c.size[(axis + 2) % 3] === 0) continue;
+      let name = SKIN_FACE[f];
+      if (c.mirror && (f === 0 || f === 1)) name = SKIN_FACE[f ^ 1];
+      const [rx, ry, rw, rh] = R[name];
+      const uvAt = (cc) => {
+        let s, t;
+        switch (f) {
+          case 0: s = 1 - cc[2]; t = 1 - cc[1]; break;
+          case 1: s = cc[2]; t = 1 - cc[1]; break;
+          case 2: s = 1 - cc[0]; t = 1 - cc[2]; break;
+          case 3: s = 1 - cc[0]; t = cc[2]; break;
+          case 4: s = cc[0]; t = 1 - cc[1]; break;
+          default: s = 1 - cc[0]; t = 1 - cc[1];
+        }
+        if (c.mirror) s = 1 - s;
+        return [rx + s * rw, ry + t * rh];
+      };
+      for (let k = 0; k < 4; k++) {
+        const cc = FACE_CORNERS[f][k];
+        const [u, v] = uvAt(cc);
+        w.vertex(cc[0] ? to[0] : from[0], cc[1] ? to[1] : from[1], cc[2] ? to[2] : from[2], u, v, L, f, tint ? 1 : 0, tint);
+      }
+    }
   }
   return w.bytes();
 }

@@ -1,33 +1,19 @@
-// The player in the inventory screen, drawn with the 2D canvas: a figure with Minecraft's
-// proportions (8x8x8 head, 8x12x4 body, 4x12x4 arms and legs) in orthographic view, turning to
-// look at the mouse and wearing whatever armor is equipped. Skins use the classic 64x32 layout.
-import { mulberry32 } from './math.js';
+// The player in the inventory screen, drawn with the 2D canvas: the player model in orthographic
+// view, turning to look at the mouse, in the player's own skin and whatever armour is equipped
+// (the same skins the world draws everyone with; see tex/mobskins.js and avatars.js).
+import { SKIN_INDEX, SKIN_SIZE } from './skins.js';
+import { WEAR, ARMOR_UV } from './avatars.js';
 
 // Parts in model units (1 unit = 1/16 block). The model faces +Z (towards the viewer); its right
-// side is -X. uv: texture offset in the skin; mirror: the left limbs reuse the right ones' skin.
+// side is -X. Each part has its skin box and the second layer over it (hat, jacket, sleeves, trousers).
 const PARTS = {
-  head: { box: [-4, 24, -4, 4, 32, 4], uv: [0, 0], pivot: [0, 24, 0] },
-  body: { box: [-4, 12, -2, 4, 24, 2], uv: [16, 16], pivot: [0, 24, 0] },
-  rightArm: { box: [-8, 12, -2, -4, 24, 2], uv: [40, 16], pivot: [-5, 22, 0] },
-  leftArm: { box: [4, 12, -2, 8, 24, 2], uv: [40, 16], pivot: [5, 22, 0], mirror: true },
-  rightLeg: { box: [-4, 0, -2, 0, 12, 2], uv: [0, 16], pivot: [-2, 12, 0] },
-  leftLeg: { box: [0, 0, -2, 4, 12, 2], uv: [0, 16], pivot: [2, 12, 0], mirror: true },
+  head: { box: [-4, 24, -4, 4, 32, 4], pivot: [0, 24, 0], uv: [0, 0], over: [32, 0], grow: 0.5 },
+  body: { box: [-4, 12, -2, 4, 24, 2], pivot: [0, 24, 0], uv: [16, 16], over: [16, 32] },
+  rightArm: { box: [-8, 12, -2, -4, 24, 2], pivot: [-5, 22, 0], uv: [40, 16], over: [40, 32] },
+  leftArm: { box: [4, 12, -2, 8, 24, 2], pivot: [5, 22, 0], uv: [32, 48], over: [48, 48] },
+  rightLeg: { box: [-4, 0, -2, 0, 12, 2], pivot: [-2, 12, 0], uv: [0, 16], over: [0, 32] },
+  leftLeg: { box: [0, 0, -2, 4, 12, 2], pivot: [2, 12, 0], uv: [16, 48], over: [0, 48] },
 };
-// Which parts each armor piece covers, and how far it stands out from them.
-const ARMOR_PARTS = [
-  { parts: ['head'], grow: 1 },
-  { parts: ['body', 'rightArm', 'leftArm'], grow: 1 },
-  { parts: ['body', 'rightLeg', 'leftLeg'], grow: 0.5 },
-  { parts: ['rightLeg', 'leftLeg'], grow: 1 },
-];
-const ARMOR_COLORS = {
-  leather: [0x2c1a0c, 0x6a4020, 0x8c5a30, 0xa66e3c, 0xc48a58],
-  iron: [0x3a3a3a, 0x8a8a8a, 0xbcbcbc, 0xdedede, 0xffffff],
-  golden: [0x5a3e06, 0xc48d0f, 0xeab62a, 0xf7d65a, 0xfff5b0],
-  diamond: [0x0c3a3e, 0x1f8f95, 0x33c3cb, 0x71e6ea, 0xd2fdff],
-};
-
-const hex = (c) => `#${c.toString(16).padStart(6, '0')}`;
 
 function canvas(w, h) {
   const c = document.createElement('canvas');
@@ -36,109 +22,12 @@ function canvas(w, h) {
   return c;
 }
 
-// Texture rectangles [sx, sy, w, h] of a box's faces in the classic skin layout.
+// Texture rectangles [sx, sy, w, h] of a box's faces in the skin layout.
 function regions(u, v, w, h, d) {
   return {
     top: [u + d, v, w, d], bottom: [u + d + w, v, w, d],
     right: [u, v + d, d, h], front: [u + d, v + d, w, h], left: [u + d + w, v + d, d, h], back: [u + 2 * d + w, v + d, w, h],
   };
-}
-
-function paint(g, rect, pick) {
-  const [x0, y0, w, h] = rect;
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const c = pick(x, y, w, h);
-    if (c === null) continue;
-    g.fillStyle = hex(c);
-    g.fillRect(x0 + x, y0 + y, 1, 1);
-  }
-}
-
-// The player's skin, drawn from code: brown hair, a teal shirt (matching the arm you see in first
-// person), dark jeans and grey shoes.
-function makeSkin() {
-  const c = canvas(64, 32), g = c.getContext('2d'), rnd = mulberry32(7);
-  const from = (pal) => pal[Math.floor(rnd() * pal.length)];
-  const SKIN = [0xc68e6a, 0xcf9874, 0xd6a07c], HAIR = [0x3b2414, 0x46291a, 0x33200f];
-  const SHIRT = [0x2f7d8c, 0x348a9a, 0x3a96a6], PANTS = [0x2e3a66, 0x34427a, 0x2a3560], SHOES = [0x4a4a4a, 0x3e3e3e];
-  const head = regions(0, 0, 8, 8, 8);
-  paint(g, head.top, () => from(HAIR));
-  paint(g, head.bottom, () => from(SKIN));
-  paint(g, head.back, (x, y) => (y < 6 || (y === 6 && rnd() < 0.5) ? from(HAIR) : from(SKIN)));
-  for (const side of [head.right, head.left]) paint(g, side, (x, y) => (y < 2 || (y < 4 && (x < 5 || rnd() < 0.3)) ? from(HAIR) : from(SKIN)));
-  paint(g, head.front, (x, y) => {
-    if (y < 2 || (y === 2 && (x === 0 || x === 7 || x === 3))) return from(HAIR);
-    if (y === 4 && (x === 1 || x === 6)) return 0xf4f4f4;
-    if (y === 4 && (x === 2 || x === 5)) return 0x3a2a60;
-    if (y === 3 && x > 0 && x < 7 && x !== 3 && x !== 4) return 0x7a5238; // brows
-    if (y === 5 && (x === 3 || x === 4)) return 0xb07a58;
-    if (y === 6 && x > 1 && x < 6) return x === 2 || x === 5 ? 0x9a6448 : 0x6e3c2c;
-    return from(SKIN);
-  });
-  const body = regions(16, 16, 8, 12, 4);
-  for (const [name, r] of Object.entries(body)) {
-    paint(g, r, (x, y) => {
-      if (name === 'front' && y === 0 && x > 2 && x < 5) return from(SKIN);
-      if (y === 11 && name !== 'top' && name !== 'bottom') return 0x2a2a2a; // belt
-      return name === 'bottom' ? from(PANTS) : from(SHIRT);
-    });
-  }
-  const arm = regions(40, 16, 4, 12, 4);
-  for (const [name, r] of Object.entries(arm)) {
-    paint(g, r, (x, y) => (name === 'top' || (name !== 'bottom' && y < 4) ? (y === 3 && name !== 'top' ? 0x276a78 : from(SHIRT)) : from(SKIN)));
-  }
-  const leg = regions(0, 16, 4, 12, 4);
-  for (const [name, r] of Object.entries(leg)) {
-    paint(g, r, (x, y) => (name === 'bottom' || (name !== 'top' && y >= 10) ? from(SHOES) : from(PANTS)));
-  }
-  return c;
-}
-
-// Armor "skins" in the same layout. Pieces: 0 helmet, 1 chestplate, 2 leggings, 3 boots.
-function makeArmorSkin(material, piece) {
-  const c = canvas(64, 32), g = c.getContext('2d'), rnd = mulberry32(31 + piece);
-  const pal = ARMOR_COLORS[material];
-  const metal = (x, y, w, h) => {
-    if (y === 0 || x === 0) return pal[3];
-    if (y === h - 1 || x === w - 1) return pal[1];
-    return rnd() < 0.18 ? pal[material === 'leather' ? 1 : 3] : pal[2];
-  };
-  const body = (name) => name !== 'top' && name !== 'bottom';
-  if (piece === 0) {
-    const head = regions(0, 0, 8, 8, 8);
-    for (const [name, r] of Object.entries(head)) {
-      if (name === 'bottom') continue;
-      paint(g, r, (x, y, w, h) => {
-        if (name === 'front' && y >= 3 && x > 0 && x < 7) return null; // open face
-        if (name !== 'top' && name !== 'back' && y >= 6) return null;
-        return metal(x, y, w, h);
-      });
-    }
-  } else if (piece === 1) {
-    for (const [name, r] of Object.entries(regions(16, 16, 8, 12, 4))) {
-      if (name === 'bottom') continue;
-      paint(g, r, (x, y, w, h) => (body(name) && y > 9 ? null : metal(x, y, w, h)));
-    }
-    for (const [name, r] of Object.entries(regions(40, 16, 4, 12, 4))) {
-      if (name === 'bottom') continue;
-      paint(g, r, (x, y, w, h) => (body(name) && y > 4 ? null : metal(x, y, w, h)));
-    }
-  } else if (piece === 2) {
-    for (const [name, r] of Object.entries(regions(16, 16, 8, 12, 4))) {
-      if (!body(name)) continue;
-      paint(g, r, (x, y, w, h) => (y < 9 ? null : metal(x, y, w, h)));
-    }
-    for (const [name, r] of Object.entries(regions(0, 16, 4, 12, 4))) {
-      if (name === 'bottom') continue;
-      paint(g, r, (x, y, w, h) => (body(name) && y > 8 ? null : metal(x, y, w, h)));
-    }
-  } else {
-    for (const [name, r] of Object.entries(regions(0, 16, 4, 12, 4))) {
-      if (name === 'top') continue;
-      paint(g, r, (x, y, w, h) => (body(name) && y < 8 ? null : metal(x, y, w, h)));
-    }
-  }
-  return c;
 }
 
 // 3x3 rotation matrices (row-major).
@@ -156,19 +45,24 @@ const LIGHT = (() => { const l = [-0.35, 0.55, 0.76], n = Math.hypot(...l); retu
 const SHADES = 12;
 
 export class PlayerPreview {
-  constructor() {
-    this.skin = null;
-    this.armorSkins = new Map();
+  // pixels(): every skin's RGBA pixels (the renderer's), or null before there are any.
+  constructor(pixels) {
+    this.pixels = pixels;
+    this.skins = new Map();
     this.shaded = new Map();
   }
 
-  skinFor(key) {
-    if (key === 'player') return (this.skin ??= makeSkin());
-    if (!this.armorSkins.has(key)) {
-      const [material, piece] = key.split(':');
-      this.armorSkins.set(key, makeArmorSkin(material, Number(piece)));
+  skinFor(name) {
+    let c = this.skins.get(name);
+    if (!c) {
+      const px = this.pixels(), idx = SKIN_INDEX[name];
+      if (!px || idx === undefined) return null;
+      c = canvas(SKIN_SIZE, SKIN_SIZE);
+      const size = SKIN_SIZE * SKIN_SIZE * 4;
+      c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(px.buffer, px.byteOffset + idx * size, size).slice(), SKIN_SIZE, SKIN_SIZE), 0, 0);
+      this.skins.set(name, c);
     }
-    return this.armorSkins.get(key);
+    return c;
   }
 
   // The skin darkened to one of a few light levels, so faces can be shaded without darkening
@@ -178,6 +72,7 @@ export class PlayerPreview {
     let c = this.shaded.get(k);
     if (!c) {
       const src = this.skinFor(key);
+      if (!src) return null;
       c = canvas(src.width, src.height);
       const g = c.getContext('2d');
       g.drawImage(src, 0, 0);
@@ -192,8 +87,8 @@ export class PlayerPreview {
 
   // Draws the player into `cv` (a canvas already sized in device pixels).
   // look: { x, y } is where the mouse is relative to the model's eyes, in model units.
-  // armor: [material or null] x4. time: seconds, for idle movement.
-  draw(cv, { look = { x: 0, y: 0 }, armor = [], time = 0, hurt = false } = {}) {
+  // skin: the player's skin. armor: [material or null] x4. time: seconds, for idle movement.
+  draw(cv, { look = { x: 0, y: 0 }, skin = 'player_0', armor = [], time = 0, hurt = false } = {}) {
     const g = cv.getContext('2d');
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.clearRect(0, 0, cv.width, cv.height);
@@ -217,13 +112,13 @@ export class PlayerPreview {
       rightLeg: rotY(0),
       leftLeg: rotY(0),
     };
-    // Everything to draw: each part, then the armor layers over it (outermost last).
+    // Everything to draw: each part, its second layer, then the armour over it (outermost last).
     const layers = [];
     for (const [name, part] of Object.entries(PARTS)) {
-      const list = [{ key: 'player', grow: 0 }];
-      [2, 3, 0, 1].forEach((piece) => {
-        const mat = armor[piece];
-        if (mat && ARMOR_PARTS[piece].parts.includes(name)) list.push({ key: `${mat}:${piece}`, grow: ARMOR_PARTS[piece].grow });
+      const list = [{ key: skin, uv: part.uv, grow: 0 }, { key: skin, uv: part.over, grow: part.grow ?? 0.25 }];
+      armor.forEach((mat, slot) => {
+        const key = `armor_${mat}${WEAR[slot].skin}`;
+        if (mat && WEAR[slot].bones.includes(name) && key in SKIN_INDEX) list.push({ key, uv: ARMOR_UV[name], grow: WEAR[slot].grow, mirror: name.startsWith('left') });
       });
       list.sort((a, b) => a.grow - b.grow);
       const rot = poses[name], pv = part.pivot;
@@ -241,8 +136,8 @@ export class PlayerPreview {
     const [bx0, by0, bz0, bx1, by1, bz1] = part.box, e = layer.grow;
     const x0 = bx0 - e, y0 = by0 - e, z0 = bz0 - e, x1 = bx1 + e, y1 = by1 + e, z1 = bz1 + e;
     const w = bx1 - bx0, h = by1 - by0, d = bz1 - bz0;
-    const r = regions(part.uv[0], part.uv[1], w, h, d);
-    const m = part.mirror;
+    const r = regions(layer.uv[0], layer.uv[1], w, h, d);
+    const m = layer.mirror;
     const faces = [
       [[0, 0, 1], [x0, y1, z1], [x1, y1, z1], [x0, y0, z1], r.front],
       [[0, 0, -1], [x1, y1, z0], [x0, y1, z0], [x1, y0, z0], r.back],
@@ -262,11 +157,13 @@ export class PlayerPreview {
         const br = [tr[0] + bl[0] - tl[0], tr[1] + bl[1] - tl[1]];
         [tl, tr, bl] = [tr, tl, br];
       }
+      const img = this.shadedSkin(layer.key, level, hurt);
+      if (!img) continue;
       const [sx, sy, sw, sh] = rect;
       g.setTransform((tr[0] - tl[0]) / sw, (tr[1] - tl[1]) / sw, (bl[0] - tl[0]) / sh, (bl[1] - tl[1]) / sh, tl[0], tl[1]);
       // Drawn a hair larger than the face so neighbouring faces meet without seams.
       const pad = 0.06;
-      g.drawImage(this.shadedSkin(layer.key, level, hurt), sx, sy, sw, sh, -pad, -pad, sw + pad * 2, sh + pad * 2);
+      g.drawImage(img, sx, sy, sw, sh, -pad, -pad, sw + pad * 2, sh + pad * 2);
     }
     g.setTransform(1, 0, 0, 1, 0, 0);
   }

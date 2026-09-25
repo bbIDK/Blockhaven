@@ -5,7 +5,10 @@ import {
 } from './math.js';
 import { generateTextures, TEXTURE_NAMES, TEX, ARRAY_LAYERS } from './textures.js';
 import { STRIDE, meshBlockItem, SECTION_OFFSET, FACE_PAIR, ALL_OPEN } from './mesher.js';
-import { boxMesh, spriteMesh, MODEL_OFFSET } from './models.js';
+import { boxMesh, spriteMesh, skinMesh, MODEL_OFFSET } from './models.js';
+import { generateSkins, SKINS, SKIN_SIZE, skinLayer } from './skins.js';
+import { RIGS } from './rigs.js';
+import './tex/mobskins.js';
 import { RENDER, R, TEXL, FFLAGS, TINT, TINT_RGB, SHAPE, ICON_SHAPE, boxFaceUV, boxLayer, spriteOf } from './blocks.js';
 import { ITEMS } from './items.js';
 import { SECTIONS } from './config.js';
@@ -63,6 +66,8 @@ precision highp int;
 precision highp sampler2DArray;
 // Textures live in up to four arrays of 256 layers (every WebGL 2 device has at least that many).
 uniform sampler2DArray u_tex0, u_tex1, u_tex2, u_tex3;
+// Creature skins (64x64), for layer numbers from 1024 up.
+uniform sampler2DArray u_skin;
 uniform float u_time;
 uniform float u_daylight;
 uniform vec3 u_skyLight;
@@ -115,7 +120,7 @@ void main() {
   // (Derivatives are taken here, outside any branch, so mipmapping works inside texel().)
   vec2 dx = dFdx(uv), dy = dFdy(uv);
   float layer = floor(v_uv.z + 0.5);
-  vec4 tex = texel(uv, layer, dx, dy);
+  vec4 tex = layer > 1023.5 ? textureGrad(u_skin, vec3(uv * 0.25, layer - 1024.0), dx * 0.25, dy * 0.25) : texel(uv, layer, dx, dy);
   vec3 col = tex.rgb;
   if ((v_flags & 2u) != 0u) {
     vec4 ov = texel(uv, layer + 1.0, dx, dy);
@@ -327,6 +332,18 @@ export class Renderer {
       this.textures.push(tex);
     }
 
+    // Creature skins.
+    this.skinPixels = generateSkins();
+    this.skinTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.skinTex);
+    gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA8, SKIN_SIZE, SKIN_SIZE, Math.max(1, SKINS.length), 0, gl.RGBA, gl.UNSIGNED_BYTE, this.skinPixels);
+    gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAX_LEVEL, 3);
+
     this.quadIndex = gl.createBuffer();
     this.indexQuads = 0;
     this.ensureIndices(1 << 15);
@@ -359,13 +376,17 @@ export class Renderer {
       const layer = TEX[`destroy_${i}`];
       this.cracks.push(this.createMesh(boxMesh([{ from: [0, 0, 0], to: [1, 1, 1], faces: { layer } }])));
     }
-    // The first-person arm, shaped like the original player model's right arm (4x12x4 pixels
-    // around the shoulder pivot; the model's y axis points down the arm).
-    const skin = TEX.player_skin, sleeve = TEX.player_sleeve, px = 1 / 16;
-    this.handMesh = this.createMesh(boxMesh([
-      { from: [-3 * px, -2 * px, -2 * px], to: [1 * px, 10 * px, 2 * px], faces: { layer: skin, uv: [0, 0, 4, 12] } },
-      { from: [-3.25 * px, -2.25 * px, -2.25 * px], to: [1.25 * px, 3 * px, 2.25 * px], faces: { layer: sleeve, uv: [0, 0, 4, 5] } },
-    ]));
+    this.setPlayerSkin('player_0');
+  }
+
+  // The first-person arm, cut from the player's skin: the model's right arm and sleeve around the
+  // shoulder. (drawHand turns it into the original's model space, where y points down the arm.)
+  setPlayerSkin(name) {
+    if (this.handSkin === name) return;
+    this.handSkin = name;
+    const arm = RIGS.humanoid.bones.rightArm;
+    if (this.handMesh) this.deleteMesh(this.handMesh);
+    this.handMesh = this.createMesh(skinMesh(arm.cubes, skinLayer(name), arm.pivot));
   }
 
   ensureIndices(quads) {
@@ -501,6 +522,7 @@ export class Renderer {
     gl.uniform1f(u.u_time, f.time);
     gl.uniform1f(u.u_wave, f.wave ? 1 : 0);
     for (let i = 0; i < 4; i++) gl.uniform1i(u[`u_tex${i}`], i);
+    gl.uniform1i(u.u_skin, 4);
     gl.uniform1f(u.u_daylight, f.env.daylight);
     gl.uniform3fv(u.u_skyLight, f.env.skyLight);
     gl.uniform3fv(u.u_fogColor, f.fogColor);
@@ -639,6 +661,8 @@ export class Renderer {
       gl.activeTexture(gl.TEXTURE0 + i);
       gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.textures[Math.min(i, this.textures.length - 1)]);
     }
+    gl.activeTexture(gl.TEXTURE4);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.skinTex);
     gl.activeTexture(gl.TEXTURE0);
 
     // Sky
@@ -876,6 +900,7 @@ export class Renderer {
       rotateY(m, m, -135 * deg);
       translate(m, m, 5.6, 0, 0);
       translate(m, m, -5 / 16, 2 / 16, 0);
+      rotateZ(m, m, Math.PI);
       translate(m, m, -MODEL_OFFSET, -MODEL_OFFSET, -MODEL_OFFSET);
       gl.disable(gl.CULL_FACE);
       this.drawModel(this.handMesh, m);

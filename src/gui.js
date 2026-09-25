@@ -15,7 +15,7 @@ function pix(rows, colors) {
   const c = document.createElement('canvas');
   c.width = rows[0].length;
   c.height = rows.length;
-  const g = c.getContext('2d');
+  const g = c.getContext('2d', { willReadFrequently: true }); // (kept in memory: see icons.js)
   rows.forEach((row, y) => [...row].forEach((ch, x) => {
     if (colors[ch]) { g.fillStyle = colors[ch]; g.fillRect(x, y, 1, 1); }
   }));
@@ -67,7 +67,7 @@ const TRASH = ['................', '................', '......aaaa......', '..aa
   '...aaaaaaaaaa...', '................', '................', '................'];
 
 let SPR = null;
-function sprites() {
+export function sprites() {
   if (SPR) return SPR;
   SPR = {
     window: pix(WINDOW, { k: '#000', w: '#fff', c: '#c6c6c6', s: '#555' }),
@@ -125,14 +125,14 @@ function place(el, x, y, w, h) {
   if (h !== undefined) el.style.height = px(h);
   return el;
 }
-function div(cls, parent, x, y, w, h) {
+export function div(cls, parent, x, y, w, h) {
   const el = document.createElement('div');
   el.className = cls;
   if (x !== undefined) place(el, x, y, w, h);
   parent?.appendChild(el);
   return el;
 }
-function label(text, parent, x, y, center = false) {
+export function label(text, parent, x, y, center = false) {
   const el = div(`mc-label${center ? ' center' : ''}`, parent, x, y);
   el.textContent = text;
   return el;
@@ -147,13 +147,13 @@ function image(src, parent, x, y, w, h, cls = 'mc-img') {
   parent.appendChild(el);
   return el;
 }
-function slotBox(parent, x, y, big = false) {
+export function slotBox(parent, x, y, big = false) {
   const el = div(`mc-slot${big ? ' big' : ''}`, parent, x, y);
   el.innerHTML = '<img alt="" draggable="false"><b></b><i class="dur" hidden><i></i></i>';
   return el;
 }
 
-function fillSlot(el, stack, count = stack?.count) {
+export function fillSlot(el, stack, count = stack?.count) {
   const img = el.firstChild, n = img.nextSibling, dur = n.nextSibling;
   if (!stack) {
     if (img.getAttribute('src')) img.removeAttribute('src');
@@ -222,7 +222,7 @@ export class ContainerGUI {
     this.bookEl = $('mc-book');
     this.cursorEl = $('mc-cursor');
     this.tipEl = $('mc-tip');
-    this.preview = new PlayerPreview();
+    this.preview = new PlayerPreview(() => this.game.renderer?.skinPixels ?? null);
     this.menu = null;
     this.kind = null;
     this.slotEls = new Map();
@@ -601,10 +601,11 @@ export class ContainerGUI {
     const look = this.pointer.x < 0 ? { x: 0, y: 0 } : { x: (this.pointer.x - eyeX) / unit, y: (eyeY - this.pointer.y) / unit };
     const armor = this.game.inv.armor.map((s) => (s ? itemDef(s.id).armor.material : null));
     const hurt = this.game.hurtTime > 0.25;
-    const key = `${look.x.toFixed(1)},${look.y.toFixed(1)},${armor.join()},${hurt},${Math.floor(performance.now() / 50)}`;
+    const skin = this.game.skinName;
+    const key = `${look.x.toFixed(1)},${look.y.toFixed(1)},${skin},${armor.join()},${hurt},${Math.floor(performance.now() / 50)}`;
     if (key === this.previewKey && !force) return;
     this.previewKey = key;
-    this.preview.draw(cv, { look, armor, time: performance.now() / 1000, hurt });
+    this.preview.draw(cv, { look, skin, armor, time: performance.now() / 1000, hurt });
   }
 
   updateTip() {

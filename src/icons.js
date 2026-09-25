@@ -10,8 +10,25 @@ const DEFAULT_WATER = [88, 164, 255];
 
 let pixels = null;
 const cache = new Map();
+// Icons are drawn on canvases kept in main memory: reading a picture back from the graphics card
+// (toDataURL) would make the page wait for the frame being drawn.
+const CPU = { willReadFrequently: true };
 
 export function initIcons(texturePixels) { pixels = texturePixels; }
+
+// Draws every icon ahead of time, a few at a time while the browser is idle, so that the first
+// look in the inventory (hundreds of icons at once) doesn't stall the game.
+export function warmIcons() {
+  const ids = [...ITEMS.keys()].filter((id) => !cache.has(id)).reverse();
+  const idle = globalThis.requestIdleCallback ?? ((fn) => setTimeout(() => fn({ timeRemaining: () => 6 }), 40));
+  const step = (deadline) => {
+    // (A few milliseconds' worth even when the page is never idle.)
+    const end = performance.now() + Math.max(6, deadline.timeRemaining() - 1);
+    while (ids.length && performance.now() < end) iconFor(ids.pop());
+    if (ids.length) idle(step, { timeout: 250 });
+  };
+  idle(step, { timeout: 250 });
+}
 
 function layerImage(layer, tint, overlayTint, shade) {
   const d = new Uint8ClampedArray(1024);
@@ -31,7 +48,7 @@ function layerImage(layer, tint, overlayTint, shade) {
   }
   const c = document.createElement('canvas');
   c.width = c.height = 16;
-  c.getContext('2d').putImageData(new ImageData(d, 16, 16), 0, 0);
+  c.getContext('2d', CPU).putImageData(new ImageData(d, 16, 16), 0, 0);
   return c;
 }
 
@@ -98,7 +115,7 @@ export function iconFor(id) {
   if (!def || !pixels) return '';
   const c = document.createElement('canvas');
   c.width = c.height = S;
-  const ctx = c.getContext('2d');
+  const ctx = c.getContext('2d', CPU);
   ctx.imageSmoothingEnabled = false;
   const block = def.block;
   const sprite = block !== null ? spriteOf(block) : -1;

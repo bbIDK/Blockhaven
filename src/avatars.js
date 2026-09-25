@@ -1,26 +1,16 @@
-// Other players in the world. Each one is drawn with the player model (Minecraft's proportions,
-// skinned from the avatar tiles in textures.js) in their own shirt and trouser colours, with the
-// armour they wear and the item in their hand, animated from what their presence reports: where
-// they are and look, walking, sneaking, swinging and getting hurt. A name tag floats above.
-import { boxMesh, MODEL_OFFSET } from './models.js';
-import { TEX } from './textures.js';
+// Other players in the world. Each one is drawn with the player model (Minecraft's proportions)
+// in the look they picked, with the armour they wear and the item in their hand, animated from
+// what their presence reports: where they are and look, walking, sneaking, swinging and getting
+// hurt. A name tag floats above.
+import { skinMesh, MODEL_OFFSET } from './models.js';
+import { RIGS } from './rigs.js';
+import { skinLayer, SKIN_INDEX } from './skins.js';
 import { itemDef } from './items.js';
 import { hashString, mat4, identity, translate, rotateX, rotateY, rotateZ, scale, clamp } from './math.js';
 
 const PX = 1 / 16;
 const TAU = Math.PI * 2;
-const SHIRTS = [
-  [47, 125, 140], [196, 62, 52], [62, 150, 72], [138, 82, 172], [224, 150, 42],
-  [58, 102, 196], [206, 92, 150], [236, 236, 236], [34, 162, 160], [120, 120, 124],
-];
-const TROUSERS = [[46, 58, 102], [62, 62, 68], [84, 58, 40], [36, 36, 44], [52, 84, 60]];
-const ARMOR_TINT = { leather: [150, 96, 58], iron: [226, 226, 226], golden: [250, 206, 62], diamond: [96, 226, 220] };
 const INTERP_DELAY = 120; // ms behind the newest position, to smooth out uneven arrival
-
-export function playerColors(name) {
-  const h = hashString(name || 'Player');
-  return { shirt: SHIRTS[h % SHIRTS.length], trousers: TROUSERS[(h >>> 8) % TROUSERS.length] };
-}
 
 const num = (v) => typeof v === 'number' && Number.isFinite(v);
 const wrap = (a) => a - Math.round(a / TAU) * TAU;
@@ -36,6 +26,7 @@ export class RemotePlayer {
     this.x = 0; this.y = 0; this.z = 0; this.yaw = 0; this.pitch = 0; this.bodyYaw = 0;
     this.flags = 0;
     this.held = 0;
+    this.look = -1;
     this.armor = [0, 0, 0, 0];
     this.swingN = null; this.swing = 0;
     this.hurtN = null; this.hurt = 0;
@@ -48,7 +39,8 @@ export class RemotePlayer {
   get sleeping() { return !!(this.flags & 32); }
   get creative() { return !!(this.flags & 64); }
 
-  // Presence: { n: name, p: [x, y, z, yaw, pitch], f: flags, i: held item, a: armour, s: swings, u: hurts }.
+  // Presence: { n: name, p: [x, y, z, yaw, pitch], f: flags, i: held item, a: armour, k: look,
+  // s: swings, u: hurts }.
   update(pres, name, now) {
     this.name = name;
     const p = pres.p;
@@ -64,6 +56,7 @@ export class RemotePlayer {
     }
     this.flags = Number.isInteger(pres.f) ? pres.f : 0;
     this.held = Number.isInteger(pres.i) && itemDef(pres.i) ? pres.i : 0;
+    this.look = Number.isInteger(pres.k) ? pres.k : -1;
     const a = Array.isArray(pres.a) ? pres.a : [];
     this.armor = [0, 1, 2, 3].map((i) => (Number.isInteger(a[i]) && itemDef(a[i])?.armor?.slot === i ? a[i] : 0));
     // Counters that go up with every swing and every hit taken.
@@ -109,82 +102,38 @@ export class RemotePlayer {
 }
 
 // ---------------------------------------------------------------- model
-const regions = (u, v, w, h, d) => ({
-  top: [u + d, v, w, d], bottom: [u + d + w, v, w, d],
-  right: [u, v + d, d, h], front: [u + d, v + d, w, h], left: [u + d + w, v + d, d, h], back: [u + 2 * d + w, v + d, w, h],
-});
-const HEAD = regions(0, 0, 8, 8, 8);
-const BODY = { ...regions(16, 16, 8, 12, 4) };
-BODY.bottom = BODY.top; // (never seen; the real one straddles two tiles)
-const ARM = regions(40, 16, 4, 12, 4);
-const LEG = regions(0, 16, 4, 12, 4);
-
-// A rectangle of the 64x32 skin as a face: the texture tile it lies in, and where in the tile.
-// The top face is turned around so the front edge of the texture meets the front face.
-function skinFace([sx, sy, w, h], turn = false) {
-  const tile = (sy >> 4) * 4 + (sx >> 4);
-  const u0 = sx & 15, v0 = sy & 15;
-  return { layer: TEX[`avatar_${tile}`], uv: turn ? [u0 + w, v0 + h, u0, v0] : [u0, v0, u0 + w, v0 + h] };
+// Players are drawn like everyone else in the world: the humanoid model (rigs.js) cut from one of
+// the player skins (tex/mobskins.js), with armour worn over it the way Minecraft wears it (the
+// material's own skins on boxes a little larger than the body).
+export const PLAYER_LOOKS = 8;
+export function playerSkin(name, look = -1) {
+  const i = Number.isInteger(look) && look >= 0 && look < PLAYER_LOOKS ? look : hashString(name || 'Player') % PLAYER_LOOKS;
+  return `player_${i}`;
 }
 
-// A box (in pixels) skinned from `reg`. `rows` takes part of the side faces (a sleeve, a shoe).
-function part(from, to, reg, { rows = null, top = true, bottom = true, tint = null } = {}) {
-  const [r0, r1] = rows ?? [0, reg.front[3]];
-  const side = (r) => skinFace([r[0], r[1] + r0, r[2], r1 - r0]);
-  return {
-    from: from.map((v) => v * PX), to: to.map((v) => v * PX), tint, flags: tint ? 1 : 0, // (flag 1: the shader applies the tint)
-    faces: [side(reg.right), side(reg.left), top ? skinFace(reg.top, true) : null, bottom ? skinFace(reg.bottom) : null, side(reg.back), side(reg.front)],
-  };
-}
+// Which bones each piece covers (helmet, chestplate, leggings, boots), from which of the
+// material's two skins, and how far it stands out: the leggings sit under the chestplate and boots.
+export const WEAR = [
+  { bones: ['head'], grow: 1, skin: '' },
+  { bones: ['body', 'rightArm', 'leftArm'], grow: 1, skin: '' },
+  { bones: ['body', 'rightLeg', 'leftLeg'], grow: 0.5, skin: '_legs' },
+  { bones: ['rightLeg', 'leftLeg'], grow: 1, skin: '' },
+];
+// Armour skins use the classic layout, where the left limbs mirror the right.
+export const ARMOR_UV = { head: [0, 0], body: [16, 16], rightArm: [40, 16], leftArm: [40, 16], rightLeg: [0, 16], leftLeg: [0, 16] };
 
-// An armour plate: the box grown by `grow` pixels, in the material's colour. A helmet leaves
-// the face open (no front and no bottom).
-function plate(from, to, grow, tint, helmet = false) {
-  const face = { layer: TEX.avatar_armor, uv: [0, 0, 16, 16] };
-  return {
-    from: from.map((v) => (v - grow) * PX), to: to.map((v) => (v + grow) * PX), tint, flags: 1,
-    faces: [face, face, face, helmet ? null : face, face, helmet ? null : face],
-  };
+// The armour boxes over one bone, for `materials` ([material or null] per slot).
+export function armorCubes(bone, materials) {
+  const out = [];
+  materials.forEach((mat, slot) => {
+    const skinName = `armor_${mat}${WEAR[slot].skin}`;
+    if (!mat || !WEAR[slot].bones.includes(bone) || !(skinName in SKIN_INDEX)) return;
+    const base = RIGS.humanoid.bones[bone].cubes[0];
+    out.push({ ...base, uv: ARMOR_UV[bone], inflate: WEAR[slot].grow, mirror: bone.startsWith('left'), layer: skinLayer(skinName) });
+  });
+  return out;
 }
-
-// Model parts in pixels. The model faces -Z; its right side is +X. Pivots are the joints.
-function modelParts(colors, armor) {
-  const { shirt, trousers } = colors;
-  const mat = armor.map((id) => (id ? ARMOR_TINT[itemDef(id).armor.material] ?? ARMOR_TINT.iron : null));
-  const arm = (x0, x1) => [
-    part([x0, 20, -2], [x1, 24, 2], ARM, { rows: [0, 4], bottom: false, tint: shirt }),
-    part([x0, 12, -2], [x1, 20, 2], ARM, { rows: [4, 12], top: false }),
-    ...(mat[1] ? [plate([x0, 19, -2], [x1, 24, 2], 1, mat[1])] : []),
-  ];
-  const leg = (x0, x1) => [
-    part([x0, 2, -2], [x1, 12, 2], LEG, { rows: [0, 10], bottom: false, tint: trousers }),
-    part([x0, 0, -2], [x1, 2, 2], LEG, { rows: [10, 12], top: false }),
-    ...(mat[2] ? [plate([x0, 4, -2], [x1, 12, 2], 0.5, mat[2])] : []),
-    ...(mat[3] ? [plate([x0, 0, -2], [x1, 4, 2], 1, mat[3])] : []),
-  ];
-  return {
-    head: {
-      pivot: [0, 24, 0],
-      boxes: [
-        part([-4, 24, -4], [4, 32, 4], HEAD),
-        // A helmet: a shell open at the face, with a brow across the forehead.
-        ...(mat[0] ? [plate([-4, 26, -4], [4, 32, 4], 1, mat[0], true), plate([-4, 30, -4], [4, 32, -3.5], 1, mat[0])] : []),
-      ],
-    },
-    body: {
-      pivot: [0, 12, 0],
-      boxes: [
-        part([-4, 12, -2], [4, 24, 2], BODY, { tint: shirt }),
-        ...(mat[1] ? [plate([-4, 14, -2], [4, 24, 2], 1, mat[1])] : []),
-        ...(mat[2] ? [plate([-4, 12, -2], [4, 15, 2], 0.5, mat[2])] : []),
-      ],
-    },
-    rightArm: { pivot: [6, 22, 0], boxes: arm(4, 8) },
-    leftArm: { pivot: [-6, 22, 0], boxes: arm(-8, -4) },
-    rightLeg: { pivot: [2, 12, 0], boxes: leg(0, 4) },
-    leftLeg: { pivot: [-2, 12, 0], boxes: leg(-4, 0) },
-  };
-}
+const materialsOf = (armor) => armor.map((id) => (id ? itemDef(id)?.armor?.material ?? null : null));
 
 export class Avatars {
   constructor(renderer) {
@@ -196,14 +145,16 @@ export class Avatars {
     this.tagRoot = null;
   }
 
-  model(name, armor) {
-    const key = `${name}|${armor.join(',')}`;
+  model(skin, armor) {
+    const mats = materialsOf(armor);
+    const key = `${skin}|${mats.join(',')}`;
     let m = this.models.get(key);
     if (!m) {
       if (this.models.size > 48) this.models.clear(); // (rare: many armour changes in a long game)
       m = {};
-      for (const [k, g] of Object.entries(modelParts(playerColors(name), armor))) {
-        m[k] = { pivot: g.pivot.map((v) => v * PX), mesh: this.renderer.createMesh(boxMesh(g.boxes)) };
+      for (const [k, bone] of Object.entries(RIGS.humanoid.bones)) {
+        const cubes = [...bone.cubes, ...armorCubes(k, mats)];
+        m[k] = { pivot: bone.pivot.map((v) => v * PX), mesh: this.renderer.createMesh(skinMesh(cubes, skinLayer(skin))) };
       }
       this.models.set(key, m);
     }
@@ -223,7 +174,7 @@ export class Avatars {
       const rx = rp.x - cam.x, ry = rp.y - cam.y, rz = rp.z - cam.z;
       if (rx * rx + rz * rz > maxDist * maxDist) continue;
       const l = world.getLight(Math.floor(rp.x), Math.floor(rp.y + 1.2), Math.floor(rp.z));
-      const m = this.model(rp.name, rp.armor);
+      const m = this.model(playerSkin(rp.name, rp.look), rp.armor);
       const sneak = rp.sneaking;
       const walkA = Math.sin(rp.walkPhase) * 0.9 * rp.walk;
       const attack = rp.swing > 0 ? Math.sin(rp.swing * Math.PI) : 0;
