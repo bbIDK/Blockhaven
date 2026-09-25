@@ -7,7 +7,7 @@ import { B, CROP, SAPLING, FACE_DIRS, WATERLIKE, REPLACEABLE, waterLevel, lavaLe
 import { I, itemDef } from './items.js';
 import { TEX } from './textures.js';
 import { growCrop, growSapling } from './growth.js';
-import { HEIGHT, inNether } from './config.js';
+import { HEIGHT } from './config.js';
 
 const TILLABLE = new Set([B.grass_block, B.dirt, B.dirt_path, B.coarse_dirt, B.snowy_grass]);
 const FLOWERS = ['dandelion', 'poppy', 'cornflower', 'oxeye_daisy', 'azure_bluet'];
@@ -153,13 +153,6 @@ export function useBucket(game, held) {
   const cur = w.getBlock(x, y, z);
   if (cur && !REPLACEABLE[cur] && !WATERLIKE[cur]) return false;
   if (DOUBLE[cur]) return false;
-  if (liquid === B.water && inNether(x)) {
-    // Water boils away in the Nether's heat.
-    game.fizz(x, y, z);
-    if (!game.creative) swapHeld(game, I.bucket);
-    game.swingArm();
-    return true;
-  }
   w.setBlock(x, y, z, liquid);
   game.audio.bucket(liquid === B.lava ? 'empty_lava' : 'empty', { x: x + 0.5, y: y + 0.5, z: z + 0.5 });
   if (!game.creative) swapHeld(game, I.bucket);

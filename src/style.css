@@ -321,16 +321,6 @@ kbd {
 #overlay-hurt { position: absolute; inset: 0; box-shadow: inset 0 0 120px 30px rgba(200, 20, 10, 0.55); opacity: 0; }
 #overlay-sleep { position: absolute; inset: 0; background: #05070a; opacity: 0; transition: opacity 900ms ease; }
 #overlay-sleep.on { opacity: 1; }
-/* A Nether portal: its swirl creeps over the view while you stand in it, and fills it while
-   you're taken through. */
-#portal-veil {
-  position: absolute; inset: 0; z-index: 4; pointer-events: none; display: flex; align-items: center; justify-content: center;
-  background-color: rgba(70, 12, 140, 0.35); background-size: 100% 800%; background-repeat: no-repeat; image-rendering: pixelated;
-}
-#portal-veil.through { z-index: 7; background-color: #12051f; }
-#portal-veil.through::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse at center, rgba(18, 5, 31, 0.25), rgba(8, 2, 14, 0.8)); }
-#portal-veil .loading { position: relative; }
-#portal-veil p { text-shadow: var(--u) var(--u) 0 #2a0a44; }
 
 /* Hotbar (182 x 22) at the bottom edge, with health and armor above its left end and hunger and
    air above its right end. */

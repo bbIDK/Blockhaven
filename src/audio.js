@@ -20,10 +20,9 @@ const MATERIALS = {
 
 // Mob sound fallbacks: hurt reuses the idle sound pitched up, death reuses hurt pitched down.
 const MOB_PITCH = { chicken: 1.1 };
-const BORROW = { goat: ['sheep', 0.78], bear: ['cow', 0.55], husk: ['zombie', 0.8], llama: ['sheep', 0.62],
-  zombified_piglin: ['pig', 0.55], piglin: ['pig', 0.78], hoglin: ['pig', 0.42], magma_cube: ['slime', 0.62], wither_skeleton: ['skeleton', 0.7] };
+const BORROW = { goat: ['sheep', 0.78], bear: ['cow', 0.55], husk: ['zombie', 0.8], llama: ['sheep', 0.62] };
 const SYNTH = new Set(['rabbit', 'fox', 'wolf', 'fish', 'skeleton', 'creeper', 'spider', 'enderman', 'slime', 'horse', 'golem', 'cat', 'bat',
-  'donkey', 'witch', 'phantom', 'parrot', 'dolphin', 'turtle', 'snow_golem', 'ghast', 'blaze', 'strider']);
+  'donkey', 'witch', 'phantom', 'parrot', 'dolphin', 'turtle', 'snow_golem']);
 
 // A low thump layered under breaking and placing, by block material: [start Hz, end Hz, gain].
 const THUMP = {
@@ -519,41 +518,6 @@ export class Audio {
       case 'fish':
         if (hurt || death) this.hiss(at, { f: 900, q: 1, time: 0.08, volume: 0.25, type: 'lowpass' });
         break;
-      case 'ghast':
-        // An eerie, high moan; a shriek as it's about to spit fire; the whoosh of the fireball; a
-        // cry when hurt, and a long falling wail as it dies. (Heard from far off: it's big.)
-        if (event === 'warn') {
-          this.tone(at, { type: 'sawtooth', f0: 700, f1: 1500, time: 0.4, volume: 0.1, attack: 0.05, filter: { f: 1800, q: 3 }, vibrato: 40, vibratoRate: 14 });
-          this.hiss(at, { f: 2400, q: 1.5, time: 0.35, volume: 0.1, sweep: 3600 });
-        } else if (event === 'shoot') {
-          this.hiss(at, { f: 900, q: 0.8, time: 0.55, volume: 0.35, sweep: 220 });
-          this.thump(at, 160, 60, 0.3, 0.15);
-        } else {
-          const f = (hurt ? 1100 : death ? 950 : 640) * pitch * r(), time = death ? 1.6 : hurt ? 0.45 : 1.4;
-          this.tone(at, { f0: f, f1: f * (death ? 0.22 : hurt ? 0.65 : 0.82), time, volume: 0.13, attack: 0.12, vibrato: f * 0.03, vibratoRate: 7 });
-          this.tone(at, { f0: f * 2, f1: f * (death ? 0.44 : 1.5), time: time * 0.8, volume: 0.035, attack: 0.15, vibrato: f * 0.05, vibratoRate: 7 });
-        }
-        break;
-      case 'blaze':
-        // Breathing like a bellows, crackling; a whoosh as each fireball goes; a metallic rattle
-        // when struck.
-        if (event === 'shoot') {
-          this.hiss(at, { f: 1500, q: 0.9, time: 0.3, volume: 0.3, sweep: 500 });
-          for (let i = 0; i < 3; i++) this.hiss(at, { f: 3000 + Math.random() * 2000, q: 5, time: 0.02, volume: 0.2, delay: 0.05 + i * 0.05 });
-        } else if (hurt || death) {
-          const n = death ? 6 : 3;
-          for (let i = 0; i < n; i++) this.tone(at, { type: 'square', f0: 340 * r() * pitch, f1: 220, time: 0.08, volume: 0.05, filter: { f: 1200, q: 6 }, delay: i * 0.06 });
-          this.hiss(at, { f: 900, q: 1, time: death ? 0.9 : 0.3, volume: 0.2, sweep: 200, type: 'lowpass' });
-        } else {
-          this.hiss(at, { f: 500, q: 0.6, time: 0.9, volume: 0.22, sweep: 900, type: 'lowpass' });
-          for (let i = 0; i < 4; i++) this.hiss(at, { f: 2500 + Math.random() * 2500, q: 6, time: 0.015, volume: 0.15, delay: 0.2 + Math.random() * 0.6 });
-        }
-        break;
-      case 'strider':
-        // A warbling chirp (a squeal when hurt).
-        if (hurt || death) this.tone(at, { type: 'sawtooth', f0: 950 * r() * pitch, f1: death ? 300 : 520, time: death ? 0.7 : 0.25, volume: 0.07, filter: { f: 1600, q: 3 } });
-        else for (let i = 0; i < 2; i++) this.tone(at, { type: 'triangle', f0: 620 * r() * pitch, f1: 880, time: 0.16, volume: 0.1, vibrato: 60, vibratoRate: 24, delay: i * 0.2 });
-        break;
       default:
     }
   }
@@ -597,53 +561,6 @@ export class Audio {
     this.tone(at, { type: 'square', f0: 1760, f1: 1700, time: 0.5, volume: 0.05, filter: { f: 2400, q: 6 } });
     this.tone(at, { type: 'triangle', f0: 880, time: 0.6, volume: 0.08 });
     this.thump(at, 300, 120, 0.3, 0.06);
-  }
-
-  // A Nether portal: 'trigger' as you step in (a rising, wavering rush that swells over the
-  // seconds it takes), 'travel' as you come out the other side (a rush falling away), 'ambient'
-  // the breathy whoosh of one close by. Returns a function that cuts the sound short.
-  portal(kind, at = null) {
-    if (!this.ready) return () => {};
-    const sp = this.spatial(at, kind === 'ambient' ? 0.6 : 1);
-    if (!sp) return () => {};
-    const ctx = this.ctx, t = ctx.currentTime;
-    const [len, f0, f1, vol] = { trigger: [4.2, 220, 1500, 0.3], travel: [2.4, 1700, 160, 0.34], ambient: [1.8, 380, 760, 0.1] }[kind];
-    const src = ctx.createBufferSource();
-    src.buffer = this.noiseLong ??= (() => {
-      const b = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate), d = b.getChannelData(0);
-      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-      return b;
-    })();
-    src.loop = true;
-    const fl = ctx.createBiquadFilter();
-    fl.type = 'bandpass'; fl.Q.value = 2.5;
-    fl.frequency.setValueAtTime(f0, t); fl.frequency.exponentialRampToValueAtTime(f1, t + len);
-    // A slow waver in the rush.
-    const lfo = ctx.createOscillator(), lg = ctx.createGain();
-    lfo.frequency.value = kind === 'ambient' ? 1.4 : 3.1; lg.gain.value = f0 * 0.35;
-    lfo.connect(lg).connect(fl.frequency);
-    const g = ctx.createGain(), peak = vol * sp.gain;
-    g.gain.setValueAtTime(0.0001, t);
-    if (kind === 'trigger') { g.gain.exponentialRampToValueAtTime(peak, t + len * 0.9); g.gain.linearRampToValueAtTime(0.0001, t + len); }
-    else { g.gain.exponentialRampToValueAtTime(peak, t + 0.12); g.gain.exponentialRampToValueAtTime(0.0001, t + len); }
-    src.connect(fl);
-    this.output(fl, g, sp.pan);
-    // Under it, a drone that climbs (or sinks) with it.
-    const osc = ctx.createOscillator(), og = ctx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(kind === 'travel' ? 180 : 70, t);
-    osc.frequency.exponentialRampToValueAtTime(kind === 'travel' ? 55 : 150, t + len);
-    og.gain.setValueAtTime(0.0001, t);
-    og.gain.exponentialRampToValueAtTime(peak * 0.5, t + (kind === 'trigger' ? len * 0.9 : 0.2));
-    og.gain.exponentialRampToValueAtTime(0.0001, t + len);
-    this.output(osc, og, sp.pan);
-    const nodes = [src, lfo, osc];
-    for (const n of nodes) { n.start(t); n.stop(t + len + 0.05); }
-    return () => {
-      const now = ctx.currentTime;
-      for (const gn of [g, og]) { gn.gain.cancelScheduledValues(now); gn.gain.setValueAtTime(gn.gain.value, now); gn.gain.linearRampToValueAtTime(0, now + 0.15); }
-      for (const n of nodes) { try { n.stop(now + 0.2); } catch { /* already stopped */ } }
-    };
   }
 
   // The steady sound of rain, faded towards `volume` (0 lets it die away).

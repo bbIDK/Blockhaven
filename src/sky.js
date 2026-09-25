@@ -15,21 +15,7 @@ export function makeEnvironment() {
     // For shaders (linear light): where the sun or moon shines from (moved in small steps, so
     // shadows don't crawl), its light, the sky's ambient light, and the glow round the sun.
     lightDir: [0, 1, 0], lightColor: [0, 0, 0], ambient: [0, 0, 0], sunGlow: [0, 0, 0],
-    // The least light anywhere, and whether there's a sky at all (both only for the Nether).
-    floor: [0, 0, 0], flat: false,
   };
-}
-
-const NETHER_FLOOR = [0.17, 0.125, 0.11];
-// The Nether has no sky, sun or stars: only a haze the colour of its biome (`fog`), and a dim red
-// glow over everything, so the darkest corner isn't pitch black.
-export function netherEnvironment(env, fog) {
-  for (const k of ['zenith', 'horizon', 'fogColor']) for (let i = 0; i < 3; i++) env[k][i] = fog[i];
-  for (const k of ['lightColor', 'ambient', 'sunGlow', 'skyLight']) env[k].fill(0);
-  for (let i = 0; i < 3; i++) env.floor[i] = NETHER_FLOOR[i];
-  env.daylight = 0; env.stars = 0; env.sunset = 0;
-  env.flat = true;
-  return env;
 }
 
 const SHADOW_STEP = Math.PI / 720; // (a quarter of a degree: a step every second or so)
@@ -38,7 +24,6 @@ const SHADOW_STEP = Math.PI / 720; // (a quarter of a degree: a step every secon
 export function updateEnvironment(env, time) {
   const t = ((time % TICKS_PER_DAY) + TICKS_PER_DAY) % TICKS_PER_DAY / TICKS_PER_DAY;
   const a = t * Math.PI * 2;
-  env.floor.fill(0); env.flat = false;
   env.sunAngle = a;
   env.sunDir[0] = Math.cos(a); env.sunDir[1] = Math.sin(a); env.sunDir[2] = 0.18;
   const l = Math.hypot(...env.sunDir);

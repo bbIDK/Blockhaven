@@ -32,7 +32,6 @@ export const EFFECTS = {
   invisibility: { label: 'Invisibility', colour: 0x7f8392 },
   poison: { label: 'Poison', colour: 0x4e9331, bad: true },
   hunger: { label: 'Hunger', colour: 0x587653, bad: true },
-  wither: { label: 'Wither', colour: 0x352a27, bad: true },
   healing: { label: 'Instant Health', colour: 0xf82423 },
   harming: { label: 'Instant Damage', colour: 0x430a09, bad: true },
 };
@@ -52,4 +51,4 @@ export function potionLine(name, splash = false) {
 }
 
 // The undead are hurt by healing and healed by harming.
-export const UNDEAD = new Set(['zombie', 'husk', 'drowned', 'skeleton', 'stray', 'phantom', 'zombified_piglin', 'wither_skeleton']);
+export const UNDEAD = new Set(['zombie', 'husk', 'drowned', 'skeleton', 'stray', 'phantom']);

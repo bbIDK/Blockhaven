@@ -6,17 +6,15 @@ import { B, SOLID, WATERLIKE, CLIMB, LEAVES_WOOD, SHAPE_KIND } from './blocks.js
 import { I } from './items.js';
 import { BIOME } from './biomes.js';
 import { DYES } from './colors.js';
-import { HEIGHT, inNether } from './config.js';
+import { HEIGHT } from './config.js';
 import { identity, translate, rotateX, rotateY, rotateZ, scale, hash2, clamp } from './math.js';
 import { TEX } from './textures.js';
 import { HORSE_COATS } from './tex/mobskins.js';
 import { horseDrive, tameTick } from './riding.js';
 import { leashTick, leashPull } from './leads.js';
-import { TAU, wrap, wander, faceTowards, faceAway, dist2, rallyPets, preyFor, targetGone, meleeTick, aimAt, clearLine, steer } from './mobkit.js';
-import { ghastTick, blazeTick, piglinTick, hoglinShuns, striderTick, striderFloat, admire, wearsGold } from './nethermobs.js';
 
-export { rallyPets };
-
+const TAU = Math.PI * 2;
+const wrap = (a) => a - Math.round(a / TAU) * TAU;
 const d = (name, lo, hi, chance = 1) => [name, lo, hi, chance];
 
 // ---------------------------------------------------------------- kinds
@@ -102,26 +100,6 @@ export const MOBS = {
     scale: 0.7, calmInDaylight: true },
   phantom: { label: 'Phantom', rig: 'phantom', skins: ['phantom'], hw: 0.45, h: 0.5, health: 20, speed: 7, kind: 'hostile', anim: 'phantom',
     damage: 3, burns: true, drops: [d('phantom_membrane', 0, 1)], sound: 'phantom', flies: 'phantom', scale: 1.1 },
-  // The Nether's (see nethermobs.js). `fireproof`: fire and lava don't hurt it.
-  zombified_piglin: { label: 'Zombified Piglin', rig: 'piglin', skins: ['zombified_piglin'], hw: 0.3, h: 1.95, health: 20, speed: 2.2, kind: 'neutral',
-    anim: 'piglin', damage: 5, pack: true, fireproof: true, held: 'golden_sword', sound: 'zombified_piglin',
-    drops: [d('rotten_flesh', 0, 1), d('gold_nugget', 0, 1), d('gold_ingot', 1, 1, 0.025), d('golden_sword', 1, 1, 0.085)] },
-  piglin: { label: 'Piglin', rig: 'piglin', skins: ['piglin'], hw: 0.3, h: 1.95, health: 16, speed: 2.4, kind: 'hostile', anim: 'piglin', damage: 5,
-    held: 'golden_sword', barters: true, drops: [d('golden_sword', 1, 1, 0.085)], sound: 'piglin' },
-  hoglin: { label: 'Hoglin', rig: 'hoglin', skins: ['hoglin'], hw: 0.6, h: 1.4, health: 40, speed: 2.1, kind: 'hostile', anim: 'hoglin', damage: 6,
-    tosses: true, shunsWarped: true, scale: 1.2, drops: [d('raw_porkchop', 2, 4), d('leather', 0, 1)], sound: 'hoglin' },
-  ghast: { label: 'Ghast', rig: 'ghast', skins: ['ghast'], hw: 2, h: 4, health: 10, speed: 2.4, kind: 'hostile', anim: 'ghast', flies: 'ghast',
-    scale: 4.5, fireproof: true, noBlood: true, drops: [d('ghast_tear', 0, 1), d('gunpowder', 0, 2)], sound: 'ghast' },
-  blaze: { label: 'Blaze', rig: 'blaze', skins: ['blaze'], hw: 0.3, h: 1.8, health: 20, speed: 2.3, kind: 'hostile', anim: 'blaze', flies: 'blaze',
-    damage: 6, fireproof: true, noBlood: true, glows: true, hurtByWater: true, xp: 10, drops: [d('blaze_rod', 0, 1)], sound: 'blaze' },
-  magma_cube: { label: 'Magma Cube', rig: 'magma_cube', skins: ['magma_cube'], hw: 0.26, h: 0.52, health: 1, speed: 2.4, kind: 'hostile', anim: 'magma',
-    sized: true, jump: 1.3, bitesSmall: true, fireproof: true, noBlood: true, drops: [d('magma_cream', 0, 1, 0.25)], sound: 'magma_cube' },
-  wither_skeleton: { label: 'Wither Skeleton', rig: 'skeleton', skins: ['wither_skeleton'], hw: 0.35, h: 2.4, health: 20, speed: 2.4, kind: 'hostile',
-    anim: 'humanoid', damage: 8, withers: 10, held: 'stone_sword', fireproof: true, noBlood: true, scale: 1.2,
-    drops: [d('coal', 0, 1), d('bone', 0, 2)], sound: 'wither_skeleton' },
-  strider: { label: 'Strider', rig: 'strider', skins: ['strider', 'strider_cold'], saddleSkin: 'strider_saddle', hw: 0.45, h: 1.7, health: 20,
-    speed: 1.4, rideSpeed: 3.2, kind: 'animal', anim: 'strider', fireproof: true, hurtByWater: true, lavaWalker: true, rideable: true,
-    needsSaddle: true, seat: 1.95, food: ['warped_fungus'], drops: [d('string', 2, 5)], sound: 'strider' },
   // Village people (see civilians.js); each wears their own skin.
   civilian: { label: 'Villager', rig: 'humanoid', skins: ['civ_farmer_0'], hw: 0.3, h: 1.9, health: 20, speed: 1.6, kind: 'civilian',
     anim: 'humanoid', drops: [], sound: null },
@@ -164,9 +142,6 @@ export function initMob(e, type, o = {}) {
   if (e.owner && t.tameHealth) e.health = t.tameHealth;
   e.maxHealth = e.health;
   if (t.sized) { e.hw = 0.26 * size; e.h = 0.52 * size; }
-  // (Anyone can ride a saddled strider; a magma cube bites harder the bigger it is.)
-  if (t.lavaWalker) e.tame = true;
-  if (t.bitesSmall) e.damage = size >= 4 ? 6 : size >= 2 ? 4 : 3;
   else if (e.baby) { e.hw = t.hw * 0.5; e.h = t.h * 0.5; }
   return e;
 }
@@ -203,14 +178,8 @@ export function mobTick(ents, e) {
   const feetId = w.getBlock(Math.floor(e.x), Math.floor(e.y + 0.2), Math.floor(e.z));
   const inWater = WATERLIKE[feetId] === 1 || WATERLIKE[w.getBlock(Math.floor(e.x), Math.floor(e.y + e.h * 0.6), Math.floor(e.z))] === 1;
   e.inWater = inWater;
-  // Fire and lava burn (not the Nether's own creatures); water puts it out.
-  if ((feetId === B.fire || WATERLIKE[feetId] === 2) && !t.fireproof) { e.onFire = 160; if (WATERLIKE[feetId] === 2 && ++e.burnCd >= 10) { e.burnCd = 0; ents.hurtMob(e, 4, null); } }
-  if (t.fireproof) e.onFire = 0;
-  // Water (and rain) hurts blazes and striders.
-  if (t.hurtByWater) {
-    const rained = game.weather.rain > 0.3 && (w.getLight(Math.floor(e.x), Math.floor(e.y + e.h), Math.floor(e.z)) >> 4) >= 15 && !inNether(e.x);
-    if ((inWater || rained) && (e.wetCd = (e.wetCd ?? 0) + 1) % 10 === 0) ents.hurtMob(e, 1, null);
-  }
+  // Fire and lava burn; water puts it out.
+  if (feetId === B.fire || WATERLIKE[feetId] === 2) { e.onFire = 160; if (WATERLIKE[feetId] === 2 && ++e.burnCd >= 10) { e.burnCd = 0; ents.hurtMob(e, 4, null); } }
   // Splashed with a potion: poison stings, slowness drags, regeneration heals.
   if (e.poisoned > 0 && --e.poisoned % 25 === 0 && e.health > 1) ents.hurtMob(e, 1, null);
   if (e.regen > 0 && --e.regen % 50 === 0) e.health = Math.min(e.maxHealth ?? e.health, e.health + 1);
@@ -258,10 +227,7 @@ export function mobTick(ents, e) {
   if (e.leash && leashTick(ents, e)) { lookTick(ents, e); return; }
   if (e.owner && petTick(ents, e)) { lookTick(ents, e); return; }
   if (t.flies === 'phantom') phantomTick(ents, e);
-  else if (t.flies === 'ghast') ghastTick(ents, e);
-  else if (t.flies === 'blaze') blazeTick(ents, e);
   else if (t.flies) flyTick(ents, e);
-  else if (t.lavaWalker && striderTick(ents, e)) { /* it knows what it's doing */ }
   else switch (t.kind) {
     case 'hostile': hostileTick(ents, e); break;
     case 'neutral': neutralTick(ents, e); break;
@@ -320,6 +286,15 @@ function lookTick(ents, e) {
   e.headPitch += (pitch - e.headPitch) * 0.3;
 }
 
+function wander(e, chance = 0.4) {
+  if (--e.wander > 0) return;
+  if (e.moving || Math.random() < chance) { e.moving = false; e.wander = 40 + Math.floor(Math.random() * 80); }
+  else { e.moving = true; e.yaw = Math.random() * TAU; e.wander = 30 + Math.floor(Math.random() * 70); }
+  e.speedMul = 1;
+}
+const faceTowards = (e, x, z) => { e.yaw = Math.atan2(-(x - e.x), -(z - e.z)); };
+const faceAway = (e, x, z) => { e.yaw = Math.atan2(x - e.x, z - e.z); };
+const dist2 = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 
 function animalTick(ents, e) {
   const t = e.def, game = ents.game, w = ents.world;
@@ -451,6 +426,15 @@ function petTeleport(ents, e, owner) {
   }
   return false;
 }
+// Someone's wolves go after `foe`: whatever their owner (a player's id) attacked, or whatever
+// attacked them. (Not creepers, and not another of the same owner's pets.)
+export function rallyPets(ents, uid, foe) {
+  if (!foe || foe.kind !== 'mob' || foe.def.explodes || (foe.owner && foe.owner === uid)) return;
+  for (const o of ents.list) {
+    if (o.kind !== 'mob' || !o.def.defends || !o.owner || o.sitting || o.dead || o.dying || o === foe) continue;
+    if ((o.owner === uid || !ents.game.net) && dist2(o, foe) < 20) { o.target = foe; o.angry = 200; }
+  }
+}
 
 function grazeDone(ents, e) {
   const w = ents.world, x = Math.floor(e.x), y = Math.floor(e.y - 0.5), z = Math.floor(e.z);
@@ -484,11 +468,29 @@ function swimTick(ents, e) {
   }
 }
 
+// Players (and for zombies, villagers) a monster could go after (no more than `tall` blocks above
+// or below it).
+function preyFor(ents, e, range, tall = 12) {
+  let best = null, bd = range;
+  for (const p of ents.players) {
+    if (p.creative || p.dead || Math.abs(p.y - e.y) > tall) continue;
+    const dd = Math.hypot(p.x - e.x, p.y - e.y, p.z - e.z);
+    // (Someone invisible has to all but walk into them to be noticed.)
+    if (dd < bd && (!p.invisible || dd < 2.5)) { bd = dd; best = p; }
+  }
+  if (e.def.hunts) {
+    for (const o of ents.list) {
+      if (o.kind !== 'mob' || o.def.kind !== 'civilian' || o.dead || o.dying) continue;
+      const dd = Math.hypot(o.x - e.x, o.y - e.y, o.z - e.z);
+      if (dd < bd * 0.8) { bd = dd; best = o; }
+    }
+  }
+  return best;
+}
+const targetGone = (t) => !t || t.dead || t.dying || t.creative;
 
 function hostileTick(ents, e) {
   const t = e.def, game = ents.game, w = ents.world;
-  if (t.barters && piglinTick(ents, e)) return;
-  if (t.shunsWarped && hoglinShuns(ents, e)) return;
   // Creepers are afraid of cats.
   if (t.explodes) {
     const cat = ents.list.find((o) => o.type === 'cat' && !o.dead && !o.dying && dist2(o, e) < 6 && Math.abs(o.y - e.y) < 4);
@@ -502,8 +504,6 @@ function hostileTick(ents, e) {
   if (!e.target && !calm && (e.targetCd = (e.targetCd ?? 0) - 1) <= 0) {
     e.targetCd = 10;
     e.target = preyFor(ents, e, t.sized ? 16 : 24);
-    // (Piglins leave anyone wearing gold be, unless they've been given cause.)
-    if (t.barters && e.target && wearsGold(e.target) && !(e.angry > 0)) e.target = null;
   }
   const tg = e.target;
   if (!tg) { e.fuse = Math.max(0, e.fuse - 1); e.aim = 0; if (t.sized) slimeHop(ents, e, null); else wander(e); return; }
@@ -520,6 +520,22 @@ function hostileTick(ents, e) {
   meleeTick(ents, e, tg, dist, dy);
 }
 
+function meleeTick(ents, e, tg, dist, dy) {
+  const reach = e.hw + (tg.hw ?? 0.3) + 0.75;
+  if (dist < reach && dy > -1.5 && dy < e.h && e.attackCd === 0) {
+    e.attackCd = 20;
+    e.swing = 1;
+    const k = 5 / Math.max(0.1, dist);
+    const dmg = e.def.damage ?? 2;
+    const why = `You were slain by ${/^[AEIOU]/.test(e.def.label) ? 'an' : 'a'} ${e.def.label.toLowerCase()}`;
+    // Iron golems fling what they hit into the air.
+    const up = e.def.heavy ? 9 : 4.5;
+    if (tg.kind === 'mob') { ents.hurtMob(tg, dmg, e, e.def.heavy ? 1.5 : 0); if (e.def.heavy) tg.vy = up; }
+    else { ents.game.hurtPlayer(tg, dmg, why, [(tg.x - e.x) * k * 0.3, up, (tg.z - e.z) * k * 0.3], true); rallyPets(ents, tg.uid, e); }
+    if (e.def.poison && tg.kind !== 'mob') ents.game.giveEffect?.(tg, 'poison', ...e.def.poison);
+    if (e.def.heavy) ents.game.audio.mob('golem', 'attack', { x: e.x, y: e.y + 2, z: e.z });
+  }
+}
 
 function creeperTick(ents, e, tg, dist) {
   const game = ents.game;
@@ -539,7 +555,27 @@ function creeperTick(ents, e, tg, dist) {
   }
 }
 
+// The velocity to throw or shoot something at `v` blocks a second from (ex, ey, ez) so that it
+// comes down on (tx, ty, tz): aimed that much higher to allow for its fall (gravity 20, as in
+// Entities.arrowPhysics; the flatter of the two arcs that reach).
+function aimAt(ex, ey, ez, tx, ty, tz, v) {
+  const dx = tx - ex, dz = tz - ez, dy = ty - ey, h = Math.hypot(dx, dz) || 1e-3, G = 20, v2 = v * v;
+  const disc = v2 * v2 - G * (G * h * h + 2 * dy * v2);
+  // (Out of reach: as far as it will go.)
+  const ang = disc >= 0 ? Math.atan2(v2 - Math.sqrt(disc), G * h) : Math.PI / 4, c = Math.cos(ang);
+  return [(dx / h) * v * c, v * Math.sin(ang), (dz / h) * v * c];
+}
 
+// Whether there's a clear line from (ax, ay, az) to (bx, by, bz): nothing solid in the way (grass,
+// flowers and the like don't hide anyone).
+function clearLine(w, ax, ay, az, bx, by, bz) {
+  const len = Math.hypot(bx - ax, by - ay, bz - az), n = Math.ceil(len * 4);
+  for (let i = 1; i < n; i++) {
+    const f = i / n;
+    if (SOLID[w.getBlock(Math.floor(ax + (bx - ax) * f), Math.floor(ay + (by - ay) * f), Math.floor(az + (bz - az) * f))]) return false;
+  }
+  return true;
+}
 
 function archerTick(ents, e, tg, dist) {
   const w = ents.world;
@@ -564,8 +600,7 @@ function archerTick(ents, e, tg, dist) {
   } else e.aim = Math.max(0, e.aim - 0.05);
 }
 
-// Slimes get about by hopping; big ones hurt on contact. (Magma cubes jump higher, and even the
-// small ones bite.)
+// Slimes get about by hopping; big ones hurt on contact.
 function slimeHop(ents, e, tg) {
   e.moving = false;
   if (e.onGround) {
@@ -574,13 +609,12 @@ function slimeHop(ents, e, tg) {
       e.jumpCd = 20 + Math.floor(Math.random() * 30);
       if (tg) faceTowards(e, tg.x, tg.z); else e.yaw += (Math.random() - 0.5) * 2;
       const f = -Math.sin(e.yaw), g = -Math.cos(e.yaw), sp = tg ? 3.2 : 1.6;
-      e.vy = (6.5 + e.size * 0.4) * (e.def.jump ?? 1); e.vx = f * sp; e.vz = g * sp;
-      // (A magma cube's slabs spring apart as it jumps, then close up again.)
-      e.squish = e.def.anim === 'magma' ? 0.6 : 1;
-      ents.game.audio.mob(e.def.sound, 'say', { x: e.x, y: e.y, z: e.z }, 1.4 - e.size * 0.15);
+      e.vy = 6.5 + e.size * 0.4; e.vx = f * sp; e.vz = g * sp;
+      e.squish = 1;
+      ents.game.audio.mob('slime', 'say', { x: e.x, y: e.y, z: e.z }, 1.4 - e.size * 0.15);
     }
   }
-  if (tg && (e.size > 1 || e.def.bitesSmall)) meleeTick(ents, e, tg, dist2(tg, e), tg.y - e.y);
+  if (tg && e.size > 1) meleeTick(ents, e, tg, dist2(tg, e), tg.y - e.y);
 }
 
 // Witches keep their distance and throw potions: poison, slowness, or harm. Hurt, they drink
@@ -675,6 +709,11 @@ function flyTick(ents, e) {
   const f = e.flyTarget;
   if (!f) { e.flyVel = [0, t.flies === 'bat' ? 0.2 : -1, 0]; return; }
   steer(e, f, t.speed * (e.panic > 0 ? 1.8 : 1));
+}
+function steer(e, f, sp) {
+  const dx = f.x - e.x, dy = f.y - e.y, dz = f.z - e.z, len = Math.hypot(dx, dy, dz) || 1;
+  e.flyVel = [(dx / len) * sp, (dy / len) * sp, (dz / len) * sp];
+  e.moving = true;
 }
 
 // Phantoms circle high over their prey, then swoop down to bite and climb away again.
@@ -834,8 +873,6 @@ export function mobUseEffect(e, id, { mine = false, holds = false, name = null }
     return 'sit';
   }
   if (!id) return null;
-  // Piglins take a gold ingot, and give something for it.
-  if (t.barters) return id === I.gold_ingot && !e.alt && !(e.angry > 0) ? 'barter' : null;
   if (t.rideable) {
     // Horses: saddled once tame; fed to heal and to warm to you; golden food to breed.
     if (id === I.saddle) return e.tame && !e.saddled && !e.baby ? 'saddle' : null;
@@ -886,7 +923,6 @@ export function applyMobUse(ents, e, id, effect, uid = null, name = null) {
     case 'grow': e.grow = Math.max(0, e.grow - 2400); game.particles.bits(e.x, e.y + e.h + 0.2, e.z, TEX.happy, 5, 0.8, 0.4); break;
     case 'dye': e.colour = DYE_OF[id]; break;
     case 'saddle': e.saddled = true; game.audio.equip('leather'); break;
-    case 'barter': admire(ents, e, ents.players.find((p) => p.uid === uid) ?? ents.players[0] ?? null); break;
     case 'feed':
       e.health = Math.min(e.maxHealth ?? e.health, e.health + (id === I.wheat ? 2 : 4));
       if (!e.tame) e.temper = Math.min(100, (e.temper ?? 0) + (id === I.golden_apple || id === I.golden_carrot ? 10 : 3));
@@ -952,7 +988,7 @@ export function mobPhysics(ents, e, dt, fluid) {
   const dir = e.yaw + (e.rider ? e.rideDir ?? 0 : 0);
   const fx = -Math.sin(dir), fz = -Math.cos(dir);
   // Animals won't walk off a cliff or into water on their own.
-  if (speed && !t.hostile && t.kind !== 'water' && t.kind !== 'civilian' && !t.swimmer && !t.lavaWalker && e.onGround && !e.panic && !e.rider) {
+  if (speed && !t.hostile && t.kind !== 'water' && t.kind !== 'civilian' && !t.swimmer && e.onGround && !e.panic && !e.rider) {
     const ax = Math.floor(e.x + fx * (e.hw + 0.4)), az = Math.floor(e.z + fz * (e.hw + 0.4)), y = Math.floor(e.y + 0.1);
     const ahead = w.getBlock(ax, y - 1, az), ahead2 = w.getBlock(ax, y - 2, az);
     if ((!SOLID[ahead] && !SOLID[ahead2]) || WATERLIKE[ahead] || WATERLIKE[w.getBlock(ax, y, az)]) {
@@ -1004,7 +1040,6 @@ export function mobPhysics(ents, e, dt, fluid) {
   }
   if (e.leash && !ents.guest) leashPull(ents, e, dt);
   e.move(w, e.vx * dt, e.vy * dt, e.vz * dt);
-  if (t.lavaWalker) striderFloat(w, e);
   if (e.hitWall && speed) {
     if (t.climbs) e.vy = Math.max(e.vy, 3.5);
     // (In water too: that's how anything swimming gets back up onto the bank.)
@@ -1015,7 +1050,7 @@ export function mobPhysics(ents, e, dt, fluid) {
   if (t.sized && e.onGround && !wasGround && vyBefore < -2) {
     e.squish = -0.6;
     e.vx *= 0.3; e.vz *= 0.3;
-    ents.game.audio.mob(t.sound, 'hurt', { x: e.x, y: e.y, z: e.z }, 1.6 - e.size * 0.2);
+    ents.game.audio.mob('slime', 'hurt', { x: e.x, y: e.y, z: e.z }, 1.6 - e.size * 0.2);
   }
   e.squish *= Math.exp(-dt * 6);
   if (e.tilt) e.tilt *= Math.exp(-dt * 8);
@@ -1037,10 +1072,8 @@ function flyPhysics(ents, e, dt) {
   e.vx += (v[0] - e.vx) * k; e.vy += (v[1] - e.vy) * k; e.vz += (v[2] - e.vz) * k;
   e.move(ents.world, e.vx * dt, e.vy * dt, e.vz * dt);
   const hs = Math.hypot(e.vx, e.vz);
-  // (Ghasts and blazes turn to what they're after, and stay upright.)
-  if (e.facing) e.yaw += wrap(Math.atan2(-(e.facing.x - e.x), -(e.facing.z - e.z)) - e.yaw) * Math.min(1, dt * 6);
-  else if (hs > 0.2) e.yaw += wrap(Math.atan2(-e.vx, -e.vz) - e.yaw) * Math.min(1, dt * 8);
-  e.tilt = t.flies === 'ghast' || t.flies === 'blaze' ? 0 : (e.tilt ?? 0) + (clamp(Math.atan2(e.vy, Math.max(hs, 0.5)), -1.2, 1.2) - (e.tilt ?? 0)) * Math.min(1, dt * 5);
+  if (hs > 0.2) e.yaw += wrap(Math.atan2(-e.vx, -e.vz) - e.yaw) * Math.min(1, dt * 8);
+  e.tilt = (e.tilt ?? 0) + (clamp(Math.atan2(e.vy, Math.max(hs, 0.5)), -1.2, 1.2) - (e.tilt ?? 0)) * Math.min(1, dt * 5);
   e.walk = Math.min(1, hs / 2);
   e.walkPhase += hs * dt * 4;
 }
@@ -1216,65 +1249,6 @@ export function poseMob(e, pose) {
       pose.tail = [0, Math.sin(age * (e.inWater ? 8 : 20)) * 0.45, 0];
       break;
     }
-    case 'piglin': {
-      pose.head = head;
-      pose.rightLeg = [a, 0, 0]; pose.leftLeg = [-a, 0, 0];
-      pose.rightArm = [-a * 0.8, 0, 0.05]; pose.leftArm = [a * 0.8, 0, -0.05];
-      // Ears flopping as it goes.
-      const flop = Math.sin(age * 3 + e.walkPhase) * 0.12 * (0.3 + e.walk);
-      pose.rightEar = [0, 0, flop]; pose.leftEar = [0, 0, -flop];
-      // Admiring gold: held up close and gazed at. Otherwise the sword's held ready when angry.
-      if (e.alt && t.barters) { pose.rightArm = [1.25, -0.35, 0]; pose.head = [-0.55, -0.25, 0]; }
-      else if (e.angry > 0 || e.target) pose.rightArm = [0.6, 0, 0.05];
-      if (e.swing > 0) pose.rightArm = [1.8 * Math.sin(e.swing * Math.PI), 0, 0.2];
-      break;
-    }
-    case 'ghast': {
-      for (let j = 0; j < 9; j++) pose[`tentacle${j}`] = [Math.sin(age * 1.6 + j * 0.9) * 0.22 + 0.12, 0, Math.cos(age * 1.25 + j * 1.7) * 0.1];
-      break;
-    }
-    case 'blaze': {
-      // The rods circle in three rings, bobbing (Minecraft's own reckoning, in ticks).
-      const tk = age * 20;
-      let f = tk * Math.PI * -0.1;
-      for (let i = 0; i < 4; i++, f++) pose[`rod${i}@`] = [Math.cos(f) * 9, 18 - Math.cos((i * 2 + tk) * 0.25), Math.sin(f) * 9];
-      f = Math.PI / 4 + tk * Math.PI * 0.03;
-      for (let i = 4; i < 8; i++, f++) pose[`rod${i}@`] = [Math.cos(f) * 7, 14 - Math.cos((i * 2 + tk) * 0.25), Math.sin(f) * 7];
-      f = 0.4712 + tk * Math.PI * -0.05;
-      for (let i = 8; i < 12; i++, f++) pose[`rod${i}@`] = [Math.cos(f) * 5, 5 - Math.cos((i * 1.5 + tk) * 0.5), Math.sin(f) * 5];
-      pose.head = head;
-      break;
-    }
-    case 'magma': {
-      // As it springs, the slabs draw apart to show the glow inside.
-      const q = Math.max(0, e.squish);
-      for (let i = 0; i < 8; i++) pose[`slice${i}@`] = [0, i * q * 1.4, 0];
-      pose['core@'] = [0, q * 3, 0];
-      break;
-    }
-    case 'hoglin': {
-      // Tossing its head up to throw what it charges.
-      pose.head = [head[0] * 0.3 + (e.swing > 0 ? Math.sin(e.swing * Math.PI) * 0.9 : 0), head[1] * 0.5, 0];
-      pose.legFR = [a, 0, 0]; pose.legBL = [a, 0, 0]; pose.legFL = [-a, 0, 0]; pose.legBR = [-a, 0, 0];
-      const flop = Math.sin(age * 2.5) * 0.1;
-      pose.rightEar = [0, 0, flop]; pose.leftEar = [0, 0, -flop];
-      break;
-    }
-    case 'strider': {
-      // A rolling waddle (Minecraft's own reckoning): the body rocking and bobbing with each
-      // step, the long legs swinging and lifting in turn, the bristles flapping and swaying.
-      // Shivering when cold.
-      const k = Math.min(0.25, e.walk * 0.4), ph = e.walkPhase * 0.8, lp = ph * 0.75, tk = age * 20;
-      pose.rightLeg = [Math.sin(lp) * 2 * k, 0, 0.17 * Math.cos(lp + Math.PI) * k];
-      pose.leftLeg = [-Math.sin(lp) * 2 * k, 0, 0.17 * Math.cos(lp) * k];
-      pose['rightLeg@'] = [0, Math.max(0, -Math.sin(lp)) * 4 * k, 0];
-      pose['leftLeg@'] = [0, Math.max(0, Math.sin(lp)) * 4 * k, 0];
-      pose.body = [0, 0, 0.4 * Math.sin(ph * 1.5) * k + (e.alt ? Math.sin(age * 45) * 0.03 : 0)];
-      pose['body@'] = [0, 4 * Math.cos(ph * 1.5) * k - 1, 0];
-      const flap = Math.cos(ph * 1.5 + Math.PI) * k, sway = [0.1 * Math.sin(tk * 0.4), 0.1 * Math.sin(tk * 0.2), 0.05 * Math.sin(tk * -0.4)];
-      for (let i = 0; i < 6; i++) pose[`bristle${i}`] = [0, 0, flap * [0.6, 1.2, 1.3][i % 3] + sway[i % 3]];
-      break;
-    }
     default:
   }
 }
@@ -1302,8 +1276,6 @@ export function renderMob(ents, e, rx, ry, rz, light, out) {
   if (t.wool) skins.wool = t.wool;
   if (t.saddleSkin) skins.saddle = t.saddleSkin;
   if (t.type === 'wolf' && e.angry > 0) skins.main = 'wolf_angry';
-  if (t.type === 'ghast' && e.alt) skins.main = 'ghast_fire';
-  if (t.type === 'strider' && e.alt) skins.main = 'strider_cold';
   if (t.kind === 'civilian') skins.main = e.skin;
   const pet = !!e.owner || (e.tame && t.tameIds.size > 0);
   const tint = t.wool ? woolTint(e.colour) : pet && t.rigDef.bones.collar ? woolTint(e.collar ?? RED) : null;
@@ -1344,7 +1316,7 @@ export function renderMob(ents, e, rx, ry, rz, light, out) {
     parts.push({ mesh: m.mesh, model: boneMatrix(ents.mat(), base, m.bone, pose, m.name) });
   }
   // What it holds: attached to the hand of the arm bone.
-  const held = (t.barters && e.alt ? I.gold_ingot : null) ?? e.held ?? (e.drinking ? I.potion_healing ?? null : null) ?? (t.held ? I[t.held] : null);
+  const held = e.held ?? (e.drinking ? I.potion_healing ?? null : null) ?? (t.held ? I[t.held] : null);
   const hand = t.rigDef.hand;
   if (held && hand) {
     const mesh = r.itemMesh(held);
@@ -1360,7 +1332,7 @@ export function renderMob(ents, e, rx, ry, rz, light, out) {
     }
   }
   const flash = t.explodes && e.fuse > 0 && Math.floor(e.fuse / 3) % 2 === 0;
-  out.push({ parts, light: t.glows ? [15, 15] : light, tint: flash ? [2, 2, 2] : null, hurt: e.hurt > 0 || e.dying > 0 });
+  out.push({ parts, light, tint: flash ? [2, 2, 2] : null, hurt: e.hurt > 0 || e.dying > 0 });
 }
 const woolTints = new Map();
 function woolTint(colour) {

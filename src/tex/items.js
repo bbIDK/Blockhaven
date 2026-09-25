@@ -234,7 +234,6 @@ function powder(t, pal) {
 def('bone_meal', (t) => powder(t, [0x9a988a, 0xc6c4b6, 0xe2e0d4, 0xf6f4ec]));
 def('gunpowder', (t) => powder(t, [0x2e2e2e, 0x4a4a4a, 0x6a6a6a, 0x8e8e8e]));
 def('sugar', (t) => powder(t, [0xc8c8cc, 0xe0e0e4, 0xf2f2f4, 0xffffff]));
-def('glowstone_dust', (t) => powder(t, [0x8a6a1e, 0xd0a030, 0xf4d060, 0xfff4b0]));
 def('slime_ball', (t) => {
   shaded(t, ['', '', '', '', '.....xxxxx......', '....xxxxxxx.....', '...xxxxxxxxx....', '...xxxxxxxxx....', '...xxxxxxxxx....',
     '...xxxxxxxxx....', '....xxxxxxx.....', '.....xxxxx......'], [0x2a6a1e, 0x4a9a3a, 0x68b850, 0x8ad46a, 0xc4f4a4], {}, { outline: 'all' });
@@ -636,43 +635,4 @@ def('sign_item', (t) => {
   paint(t, ['', '', '.##############.', '#pPppPppPppPppP#', '#pppPppppPppppp#', '#pPppppPpppPppP#', '#ppppPppppppPpp#', '#pPpppPpppPpppP#',
     '#ppPppppPppppPp#', '.######ll######.', '.......ll.......', '.......ll.......', '.......ll.......', '.......ll.......', '.......LL.......'],
   { '#': 0x4a3418, p: 0xb8945a, P: 0x9c7a44, l: 0x6e5230, L: 0x4a3418 });
-});
-
-// ---------------------------------------------------------------- from the Nether's creatures
-// A ghast's tear: a pale drop.
-def('ghast_tear', (t) => shaded(t, ['', '', '', '.......x........', '......xxx.......', '......xxx.......', '.....xxxxx......', '.....xxxxx......',
-  '....xxxxxxx.....', '....xxxxxxx.....', '....xxxxxxx.....', '.....xxxxx......', '......xxx.......'],
-[0x546470, 0x9cb2bc, 0xcadce4, 0xe8f6fa, 0xffffff], {}, { outline: 'all' }));
-// A blaze rod: a stick of living fire, glowing gold with hot white flecks; its powder.
-def('blaze_rod', (t) => {
-  t.clear();
-  for (let y = 14; y >= 1; y--) {
-    const x = 15 - y;
-    t.set(x, y, y % 4 === 1 ? 0xfff4b0 : 0xffd23c);
-    t.set(x + 1, y, y % 3 === 0 ? 0xf0a018 : 0xd87a0e);
-    if (x + 2 < 16) t.set(x + 2, y, 0x7a3a06);
-  }
-  t.set(0, 15, 0x7a3a06); t.set(1, 15, 0x7a3a06); t.set(14, 0, 0x7a3a06); t.set(15, 0, 0x7a3a06);
-});
-def('blaze_powder', (t) => powder(t, [0x9a4606, 0xe07a10, 0xf8b830, 0xffec96]));
-// Magma cream: a slime ball with fire at its heart.
-def('magma_cream', (t) => {
-  shaded(t, ['', '', '', '', '.....xxxxx......', '....xxxxxxx.....', '...xxxxxxxxx....', '...xxxxxxxxx....', '...xxxxxxxxx....',
-    '...xxxxxxxxx....', '....xxxxxxx.....', '.....xxxxx......'], [0x4a1206, 0x8a2e0a, 0xc8581a, 0xee9a2e, 0xffe070], {}, { outline: 'all' });
-  for (const [x, y] of [[6, 7], [7, 7], [7, 8], [8, 9], [9, 8]]) t.set(x, y, 0xfff0a0);
-  t.set(5, 6, 0xffffff);
-});
-// A fire charge: a black ball wrapped in flame.
-def('fire_charge', (t) => {
-  shaded(t, ['', '', '', '', '.....xxxxx......', '....xxxxxxx.....', '...xxxxxxxxx....', '...xxxxxxxxx....', '...xxxxxxxxx....',
-    '...xxxxxxxxx....', '....xxxxxxx.....', '.....xxxxx......'], [0x140c08, 0x2a1a10, 0x3a2616, 0x503420, 0x6a4a2c], {}, { outline: 'all' });
-  for (const [x, y, c] of [[5, 5, 0xffe070], [6, 5, 0xf0a020], [4, 7, 0xf07818], [9, 6, 0xffd040], [10, 7, 0xf08a20], [7, 9, 0xf06a14],
-    [5, 10, 0xffc030], [9, 10, 0xe85a10], [8, 7, 0xffe888], [6, 8, 0xf0a020]]) t.set(x, y, c);
-});
-// A warped fungus dangling from a fishing rod, to steer a strider by.
-def('warped_fungus_on_a_stick', (t) => {
-  t.clear();
-  paint(t, ['', '............ww..', '...........wW.k.', '..........wW..k.', '.........wW...k.', '........wW....k.', '.......wW.....k.', '......wW......k.',
-    '.....wW.......k.', '....wW.......ccc', '...wW........cCc', '..wW.........cCc', '.wW...........s.', 'wW..............'],
-  { w: 0x5a4020, W: 0x8a6838, k: 0xd8d8d8, c: 0x1a8c84, C: 0x46c8b4, s: 0x3a3250 });
 });

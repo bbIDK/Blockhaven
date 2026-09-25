@@ -19,12 +19,12 @@ import { TouchControls } from './touch.js';
 import { HostSession, GuestSession, openRoom, openGames, cleanName, COLORS, playerUid, playerKey } from './multiplayer.js';
 import { Avatars, playerSkin } from './avatars.js';
 import * as storage from './storage.js';
-import { makeEnvironment, updateEnvironment, netherEnvironment, clockText } from './sky.js';
+import { makeEnvironment, updateEnvironment, clockText } from './sky.js';
 import {
   B, BLOCKS, BASE, SOLID, REPLACEABLE, WATERLIKE, FACING_VARIANTS, WALL_TORCH, FACE_DIRS,
   RENDER, R, SLAB, STAIRS, DOOR, doorId, CLIMB, LADDER, oppositeFace, CHEST, CHEST_PAIR, CHEST_RIGHT, chestId, chestHalf, BED, bedId,
   FURNACE_IDS, furnaceVariant, isLitFurnace, FURNACE_KIND, FURNACE_FRONT, LOG_AXES, GATE, gateId, VINE, DOUBLE, LEAVES_WOOD,
-  TRAPDOOR, trapdoorId, SWITCH, SIGN, WALL_SIGN, CAKE, NOTE, JUKEBOX, RAIL, PORTAL,
+  TRAPDOOR, trapdoorId, SWITCH, SIGN, WALL_SIGN, CAKE, NOTE, JUKEBOX, RAIL,
   NATURAL_LEAVES, WOOD, LOOT_KIND, LOOT_FRONT,
 } from './blocks.js';
 import { rollLoot } from './loot.js';
@@ -35,16 +35,15 @@ import { seatY, startRide, driveFrom, dismountSpot } from './riding.js';
 import { addXp, xpToNext, enchLevel, SMELT_XP, ORE_XP, shiny } from './enchanting.js';
 import { Fishing, bobberMesh, bobberModel, linePoints } from './fishing.js';
 import { tableBook } from './tablebook.js';
-import { POTIONS, EFFECTS, UNDEAD } from './potions.js';
+import { POTIONS, EFFECTS } from './potions.js';
 import { Signs, SignEditor } from './signs.js';
 import { drawLeads, isFence, LEAD_SNAP } from './leads.js';
 import { Jukeboxes, instrumentFor, noteColour, noteClear, nextNote } from './jukebox.js';
 import { isHanging } from './hangings.js';
 import { layRail } from './rails.js';
 import { ITEMS, I, itemDef, itemLabel, breakTime, dropsFor, attackDamage, attackSpeed, canHarvest } from './items.js';
-import { BIOME, BIOME_NAMES, NETHER_FOG } from './biomes.js';
-import { CHUNK_VOLUME, HEIGHT, TICKS_PER_DAY, SAVE_VERSION, NETHER_X, inNether } from './config.js';
-import { Travel } from './travel.js';
+import { BIOME_NAMES } from './biomes.js';
+import { CHUNK_VOLUME, HEIGHT, TICKS_PER_DAY, SAVE_VERSION } from './config.js';
 import { seedFromText, clamp, hashString, mat4, identity, translate, rotateX, rotateZ } from './math.js';
 
 const SETTINGS_KEY = 'blockhaven.settings';
@@ -83,6 +82,7 @@ const CLOUD_HEIGHT = 216.5; // above all but the highest peaks
 const REACH = { creative: 5.5, survival: 4.6 };
 
 // Extra damage from a weapon's enchantments against creature `type`.
+const UNDEAD = new Set(['zombie', 'husk', 'skeleton', 'stray', 'drowned', 'zombie_villager', 'phantom']);
 const ARTHROPODS = new Set(['spider', 'cave_spider', 'silverfish', 'bee']);
 function enchantDamage(ench, type) {
   if (!ench) return 0;
@@ -142,7 +142,6 @@ export class Game {
     this.particles = new Particles();
     this.entities = new Entities(this);
     this.fishing = new Fishing(this);
-    this.travel = new Travel(this);
     this.player = new Player();
     this.inv = new Inventory();
     this.state = 'boot';
@@ -500,8 +499,6 @@ export class Game {
     this.fire = 0;
     this.loadStart = performance.now();
     this.mining = null;
-    this.travel.reset();
-    this.netherFog = null;
   }
 
   // ---------------------------------------------------------------- multiplayer
@@ -621,8 +618,7 @@ export class Game {
     const p = this.player;
     const me = (this.me ??= { addr: null, uid: this.uid });
     Object.assign(me, { x: p.x, y: p.y, z: p.z, creative: this.creative, dead: this.state === 'dead', held: this.inv.heldId,
-      look: p.lookDir(), sneaking: p.sneaking, invisible: this.effects.has('invisibility'),
-      gold: this.inv.armor.some((a) => a && itemDef(a.id)?.armor?.material === 'golden') });
+      look: p.lookDir(), sneaking: p.sneaking, invisible: this.effects.has('invisibility') });
     return this.net ? [me, ...this.net.others()] : [me];
   }
 
@@ -795,7 +791,6 @@ export class Game {
     if (this.world) { await this.world.store?.drain(); this.world.dispose(); this.world = null; }
     this.meta = null;
     this.riding = null;
-    this.travel.reset();
     this.entities.reset(null);
     this.ui.setHUD(false);
     this.startPanorama();
@@ -1140,7 +1135,6 @@ export class Game {
 
   sleepIn(x, y, z) {
     const p = this.player;
-    if (inNether(x)) { this.bedBlast(x, y, z); return; }
     if (this.env.daylight > 0.6) { this.ui.message('You can only sleep at night'); return; }
     const near = this.entities.list.some((e) => e.kind === 'mob' && e.def.hostile && !e.dead && Math.hypot(e.x - p.x, e.y - p.y, e.z - p.z) < 10);
     if (near) { this.ui.message('You may not rest now, there are monsters nearby', '#e88a78'); return; }
@@ -1318,13 +1312,6 @@ export class Game {
     else if (!this.creative || !EFFECTS[p.effect].bad) this.addEffect(p.effect, Math.round(p.seconds * (splash ? 0.75 : 1) * scale), 1);
   }
   // A creature (or a splash) gives player `t` an effect: this one, or a guest over the network.
-  // Sets a player alight (this one, or another in multiplayer) for `seconds`.
-  setOnFire(t, seconds) {
-    if (t?.addr) { this.net?.setOnFire?.(t.addr, seconds); return; }
-    if (this.creative || this.effects.has('fire_resistance')) return;
-    this.fire = Math.max(this.fire, Math.round(seconds * 20));
-  }
-
   giveEffect(t, name, seconds, level = 1) {
     if (t?.addr) this.net?.giveEffect?.(t.addr, name, seconds, level);
     else if (!this.creative) this.addEffect(name, seconds, level);
@@ -1338,7 +1325,6 @@ export class Game {
       const every = Math.max(1, Math.floor((name === 'regeneration' ? 50 : 25) / 2 ** (e.level - 1)));
       if (name === 'regeneration' && e.ticks % every === 0 && this.health < 20) this.health = Math.min(20, this.health + 1);
       else if (name === 'poison' && e.ticks % every === 0 && this.health > 1) this.damage(1, 'You were poisoned', true);
-      else if (name === 'wither' && e.ticks % Math.max(1, Math.floor(40 / 2 ** (e.level - 1))) === 0) this.damage(1, 'You withered away', true);
       else if (name === 'hunger') this.exhaust(0.005 * e.level);
       if (--e.ticks <= 0) this.effects.delete(name);
     }
@@ -1460,7 +1446,7 @@ export class Game {
   // `draw`: false when stepping the world in a hidden tab (multiplayer).
   updateGame(dt, draw = true) {
     const p = this.player, w = this.world;
-    const active = this.state === 'play' && draw && !this.travel.busy;
+    const active = this.state === 'play' && draw;
     // In multiplayer the game menu doesn't stop the world.
     const paused = this.state === 'pause' && !this.net;
     w.update(p.x, p.z, this.settings.renderDistance);
@@ -1473,23 +1459,19 @@ export class Game {
     if (!paused && this.campfires) {
       for (const [x, y, z] of this.campfires) if (Math.random() < dt * 3) this.particles.smoke(x + 0.5, y + 0.8, z + 0.5, 1, 0.2, true);
     }
-    if (!paused && this.portalsNear) {
-      for (const [x, y, z] of this.portalsNear) if (Math.random() < dt * 1.5) this.particles.portal(x + 0.5, y + 0.5, z + 0.5);
-    }
     if (!paused && this.tables) {
       for (const t of this.tables) for (const [x, y, z] of t.shelves) {
         if (Math.random() < dt * 0.18) this.particles.glyph(x + 0.5, y + 0.9, z + 0.5, t.x + 0.5, t.y + 1.1, t.z + 0.5);
       }
     }
     const move = active ? this.movementInput() : { forward: 0, right: 0, jump: false, sneak: false, sprint: false };
-    p.frozen = !w.isLoaded(p.x, p.z) || this.needsRespawnY || this.travel.busy;
+    p.frozen = !w.isLoaded(p.x, p.z) || this.needsRespawnY;
     if (!paused && this.state !== 'dead') {
       if (this.riding) this.steer(move);
       else {
         p.depthStrider = enchLevel(this.inv.armor[3], 'depth_strider');
         // (Eating, drawing a bow or holding up a shield, you walk slowly.)
-        p.speedMul = (1 + 0.2 * this.effectLevel('speed')) * Math.max(0.1, 1 - 0.15 * this.effectLevel('slowness')) * (this.eating || this.drawing || this.guarding ? 0.35 : 1) *
-          (p.onGround && this.standingOn() === B.soul_sand ? 0.45 : 1);
+        p.speedMul = (1 + 0.2 * this.effectLevel('speed')) * Math.max(0.1, 1 - 0.15 * this.effectLevel('slowness')) * (this.eating || this.drawing || this.guarding ? 0.35 : 1);
         this.shieldDown = Math.max(0, (this.shieldDown ?? 0) - dt);
         p.jumpBoost = this.effectLevel('jump_boost');
         const prevInWater = p.inWater;
@@ -1512,8 +1494,6 @@ export class Game {
     if (this.riding) this.sitOnMount();
     this.net?.update(dt);
     if (!this.world) return; // (the game ended while updating)
-    this.travel.update(dt);
-    if (!paused && inNether(p.x)) this.netherAir(dt);
     if (!draw) return;
     this.target = this.state === 'play' || this.state === 'container' ? this.pickTarget() : null;
     if (active) this.handleActions(dt);
@@ -1534,7 +1514,6 @@ export class Game {
   musicMood() {
     const p = this.player;
     if (this.state === 'loading') return null;
-    if (inNether(p.x)) return 'nether';
     const sky = this.world.getLight(Math.floor(p.x), Math.floor(p.eyeY), Math.floor(p.z)) >> 4;
     if (p.y < 52 && sky < 4) return 'cave';
     return this.env.daylight < 0.45 ? 'night' : 'day';
@@ -1648,7 +1627,7 @@ export class Game {
   mount(e) {
     const p = this.player;
     if (this.riding || this.state !== 'play' || !e || e.dead || e.dying || (e.rider && e.rider !== 'me') || e.ridden) return false;
-    if (e.kind === 'mob' && (!e.def.rideable || e.baby || (e.def.needsSaddle && !e.saddled))) return false;
+    if (e.kind === 'mob' && (!e.def.rideable || e.baby)) return false;
     startRide(e, 'me');
     this.riding = e;
     Object.assign(p, { vx: 0, vy: 0, vz: 0, flying: false, sneaking: false, sprinting: false, bob: 0, stepSmooth: 0, eyeOffset: 1.62, fallDistance: 0 });
@@ -1659,7 +1638,7 @@ export class Game {
     this.ui.showItemName(`Press ${this.touch.enabled ? 'Sneak' : 'Shift'} to ${e.kind === 'mob' ? 'dismount' : 'get out'}`, 3000);
     if (e.kind === 'boat') this.audio.place('wood', { x: e.x, y: e.y, z: e.z });
     else if (e.kind === 'cart') this.audio.place('metal', { x: e.x, y: e.y, z: e.z });
-    else this.audio.mob(e.def.rideable && e.def.sound !== 'donkey' ? e.def.sound : 'horse', e.tame ? 'say' : 'angry', { x: e.x, y: e.y + e.h, z: e.z });
+    else this.audio.mob('horse', e.tame ? 'say' : 'angry', { x: e.x, y: e.y + e.h, z: e.z });
     this.net?.ride?.(e, true);
     return true;
   }
@@ -1727,7 +1706,7 @@ export class Game {
     this.time++;
     this.attackTicks++;
     // (Here as well as when drawing: a host's game carries on in a background tab.)
-    this.updateEnv(0, false);
+    updateEnvironment(this.env, this.time);
     this.world.daylight = this.env.daylight;
     this.world.tick();
     if (!this.net?.guest) this.world.randomTicks(this.players().map((t) => [Math.floor(t.x) >> 4, Math.floor(t.z) >> 4]));
@@ -1735,8 +1714,7 @@ export class Game {
     this.fishing.tick();
     if (!this.net?.guest) { this.tickFurnaces(); this.pressPlates(); }
     const p = this.player;
-    this.travel.tick();
-    if (!this.creative && this.state !== 'dead' && !this.travel.busy) {
+    if (!this.creative && this.state !== 'dead') {
       this.invuln = Math.max(0, this.invuln - 1);
       this.sinceDamage++;
       if (p.headInWater && !this.effects.has('water_breathing')) {
@@ -1753,10 +1731,6 @@ export class Game {
       }
       if (p.y < -40 && this.time % 10 === 0) this.damage(4, 'You fell out of the world', true);
       if (this.time % 10 === 0 && this.touchingCactus()) this.damage(1, 'You were pricked to death', false, null, true);
-      // Magma burns the feet of anyone who doesn't tread carefully (sneaking).
-      if (this.time % 10 === 0 && p.onGround && !p.sneaking && this.standingOn() === B.magma_block && !this.effects.has('fire_resistance')) {
-        this.damage(1, 'You discovered the floor was lava', false, null, true);
-      }
       this.hungerTick();
       this.effectsTick();
       if (this.eating) this.eatTick();
@@ -1837,20 +1811,13 @@ export class Game {
     // Look around for campfires to send smoke up from, and enchanting tables (with the bookshelves
     // around them) to draw books over (see updateGame and drawList).
     this.campfires = [];
-    const tables = [], jukes = [], portals = [];
+    const tables = [], jukes = [];
     const px = Math.floor(p.x), py = Math.floor(p.y), pz = Math.floor(p.z);
     for (let y = py - 6; y <= py + 6; y++) for (let z = pz - 16; z <= pz + 16; z++) for (let x = px - 16; x <= px + 16; x++) {
       const id = w.getBlock(x, y, z);
       if (id === B.campfire) this.campfires.push([x, y, z]);
       else if (id === B.enchanting_table) tables.push([x, y, z]);
       else if (JUKEBOX[id] >= 0) jukes.push([x, y, z, JUKEBOX[id]]);
-      else if (PORTAL[id] && portals.length < 96) portals.push([x, y, z]);
-    }
-    // Portals near by whisper, and draw specks of light in (see updateGame).
-    this.portalsNear = portals;
-    if (portals.length && Math.random() < 0.3) {
-      const [x, y, z] = portals[Math.floor(Math.random() * portals.length)];
-      this.audio.portal('ambient', { x: x + 0.5, y: y + 0.5, z: z + 0.5 });
     }
     this.jukeboxes.found(jukes);
     const old = new Map((this.tables ?? []).map((t) => [`${t.x},${t.y},${t.z}`, t]));
@@ -1888,7 +1855,7 @@ export class Game {
   // `armored`: the hit is one that armor protects against (mobs, explosions, lava, cactus).
   // `opts.axe`: the hit was with an axe (which knocks a shield down).
   damage(amount, cause, ignoreInvuln = false, knock = null, armored = false, opts = null) {
-    if (this.creative || this.state === 'dead' || amount <= 0 || this.travel.busy) return false;
+    if (this.creative || this.state === 'dead' || amount <= 0) return false;
     // A shield held up takes hits from in front: blows, arrows, blasts.
     if (knock && this.shieldUp && this.fromFront(knock)) {
       this.blockHit(amount, !!opts?.axe);
@@ -2067,10 +2034,8 @@ export class Game {
   }
 
   attackEntity(e) {
-    // (A punch knocks down what's hung up, whatever it's done with; it sends a ghast's fireball
-    // back where it came from.)
+    // (A punch knocks down what's hung up, whatever it's done with.)
     if (isHanging(e)) { this.swingArm(); this.entities.hitHanging(e, this.creative); return; }
-    if (e.fireball) { this.swingArm(); this.entities.deflect(e, this.player.lookDir(), this.players()[0]); return; }
     const p = this.player, held = this.inv.heldId, def = itemDef(held), ench = this.inv.held?.ench ?? null;
     const f = this.attackStrength(this.tickAcc);
     const strong = f > 0.9;
@@ -2197,16 +2162,6 @@ export class Game {
   useItem(repeat = false) {
     const held = this.inv.held, t = this.target, p = this.player, w = this.world;
     const def = held ? itemDef(held.id) : null;
-    // Riding a strider, a warped fungus on a stick spurs it on (and it nibbles the fungus).
-    if (held?.id === I.warped_fungus_on_a_stick && this.riding?.def?.lavaWalker) {
-      if (repeat || (this.riding.boost ?? 0) > 0) return;
-      this.riding.boost = 60;
-      this.swingArm();
-      this.audio.mob('strider', 'say', { x: p.x, y: p.y, z: p.z });
-      if (!this.creative && this.inv.damageHeld(7)) { this.audio.toolBreak(); this.inv.slots[this.inv.selected] = { id: I.fishing_rod, count: 1, dmg: 0 }; }
-      this.invChanged();
-      return;
-    }
     // An item frame takes what you're holding, whatever it is (or turns what's in it).
     if (t?.entity && isHanging(t.entity)) { if (!repeat) this.entities.interact(t.entity, held); return; }
     // Doors, chests, beds, crafting tables and furnaces are used rather than built on (sneak to
@@ -2302,10 +2257,8 @@ export class Game {
       }
       return;
     }
-    // Flint and steel strikes a fire (a fire charge does it once, with a whoosh).
-    if (held?.id === I.flint_and_steel || held?.id === I.fire_charge) {
+    if (held?.id === I.flint_and_steel) {
       if (repeat) return;
-      const charge = held.id === I.fire_charge;
       if (t.id === B.tnt) {
         w.setBlock(t.x, t.y, t.z, 0);
         this.entities.primeTNT(t.x, t.y, t.z, 80);
@@ -2315,9 +2268,8 @@ export class Game {
         const fx = t.x + d[0], fy = t.y + d[1], fz = t.z + d[2];
         if (!w.ignite(fx, fy, fz)) return;
       }
-      const at = { x: t.x + 0.5, y: t.y + 0.5, z: t.z + 0.5 };
-      if (charge) { this.audio.mob('blaze', 'shoot', at); if (!this.creative) this.inv.consumeHeld(); }
-      else { this.audio.ignite(at); if (!this.creative && this.inv.damageHeld(1)) this.audio.toolBreak(); }
+      this.audio.ignite({ x: t.x + 0.5, y: t.y + 0.5, z: t.z + 0.5 });
+      if (!this.creative && this.inv.damageHeld(1)) this.audio.toolBreak();
       this.invChanged();
       this.swingArm();
       return;
@@ -2643,7 +2595,7 @@ export class Game {
     switch (lower) {
       case 'help':
         say('/time set day|noon|night|midnight|<ticks>, /time add <n>');
-        say('/gamemode creative|survival, /tp <x> <y> <z> [nether|overworld], /give <item> [count], /weather clear|rain');
+        say('/gamemode creative|survival, /tp <x> <y> <z>, /give <item> [count], /weather clear|rain');
         say('/spawn, /setspawn, /seed, /locate village, /fly, /kill, /clear');
         if (this.net) say(`/list${this.net.host ? ', /pvp on|off' : ''}`);
         break;
@@ -2677,16 +2629,10 @@ export class Game {
         break;
       }
       case 'tp': case 'teleport': {
-        // In the coordinates of the world you're in, or of the one named after them.
-        const here = inNether(p.x) ? NETHER_X : 0, dim = (args[3] ?? '').toLowerCase();
-        const there = dim.includes('nether') ? NETHER_X : dim ? 0 : here;
-        const x = num(args[0], p.x - here), y = num(args[1], p.y), z = num(args[2], p.z);
-        if ([x, y, z].some(Number.isNaN) || (dim && !/nether|overworld/.test(dim)) || Math.abs(x) > 60000 * (there ? 1 : 8)) {
-          say('Usage: /tp <x> <y> <z> [overworld|nether]', '#e88a78');
-          break;
-        }
-        p.x = x + there; p.y = y; p.z = z; p.vx = p.vy = p.vz = 0; p.fallDistance = 0;
-        say(`Teleported to ${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)}${there === here ? '' : there ? ' in the Nether' : ' in the overworld'}`);
+        const x = num(args[0], p.x), y = num(args[1], p.y), z = num(args[2], p.z);
+        if ([x, y, z].some(Number.isNaN)) { say('Usage: /tp <x> <y> <z>', '#e88a78'); break; }
+        p.x = x; p.y = y; p.z = z; p.vx = p.vy = p.vz = 0; p.fallDistance = 0;
+        say(`Teleported to ${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)}`);
         break;
       }
       case 'give': {
@@ -2751,60 +2697,6 @@ export class Game {
     this.lagYaw = p.yaw - dyaw * (1 - k);
   }
 
-  // The sky and light for where the player is: the overworld's time of day (and weather, when
-  // drawing), or the Nether's haze, its colour drifting as you go from one biome into the next.
-  updateEnv(dt, weather) {
-    updateEnvironment(this.env, this.time);
-    const p = this.player;
-    if (this.world && inNether(p.x)) {
-      const want = NETHER_FOG[this.world.biomeAt(Math.floor(p.x), Math.floor(p.z))] ?? this.netherFog ?? NETHER_FOG[BIOME.NETHER_WASTES];
-      if (!this.netherFog) this.netherFog = [...want];
-      const k = Math.min(1, dt * 0.7);
-      for (let i = 0; i < 3; i++) this.netherFog[i] += (want[i] - this.netherFog[i]) * k;
-      netherEnvironment(this.env, this.netherFog);
-    } else {
-      this.netherFog = null;
-      if (weather) this.applyWeather();
-    }
-  }
-
-  // The Nether's air: spores drifting in its forests, ash falling in the valleys and the deltas.
-  netherAir(dt) {
-    const p = this.player, w = this.world;
-    const [rate, colour, vy, glow] = {
-      [BIOME.CRIMSON_FOREST]: [14, 0xd8423a, -0.25, true],
-      [BIOME.WARPED_FOREST]: [14, 0x46d8c4, 0.25, true],
-      [BIOME.SOUL_SAND_VALLEY]: [8, 0x9a8a78, -0.35, false],
-      [BIOME.BASALT_DELTAS]: [40, 0xdcd4d4, -0.6, false],
-    }[w.biomeAt(Math.floor(p.x), Math.floor(p.z))] ?? [0];
-    for (let n = rate * dt; n > 0; n--) {
-      if (n < 1 && Math.random() > n) break;
-      const x = p.x + (Math.random() - 0.5) * 24, y = p.eyeY + (Math.random() - 0.5) * 14, z = p.z + (Math.random() - 0.5) * 24;
-      if (w.getBlock(Math.floor(x), Math.floor(y), Math.floor(z)) === 0) this.particles.mote(x, y, z, colour, vy, glow);
-    }
-  }
-
-  // The block under the player's feet.
-  standingOn() {
-    const p = this.player;
-    return this.world.getBlock(Math.floor(p.x), Math.floor(p.y - 0.05), Math.floor(p.z));
-  }
-
-  // A bed can't be slept in in the Nether: it blows up, and sets fire round about.
-  bedBlast(x, y, z) {
-    if (this.net?.guest) { this.net.bedBlast(x, y, z); return; }
-    const w = this.world, b = BED[w.getBlock(x, y, z)];
-    if (!b) return;
-    const d = FACE_DIRS[b.dir], s = b.head ? -1 : 1;
-    w.setBlock(x + d[0] * s, y, z + d[2] * s, 0);
-    w.setBlock(x, y, z, 0);
-    this.entities.explode(x + 0.5, y + 0.5, z + 0.5, 5);
-    for (let k = 0; k < 30; k++) {
-      const fx = x + Math.floor(Math.random() * 9) - 4, fy = y + Math.floor(Math.random() * 5) - 2, fz = z + Math.floor(Math.random() * 9) - 4;
-      if (Math.random() < 0.4) w.ignite(fx, fy, fz);
-    }
-  }
-
   // Rain greys out the sky, dims the daylight and hides the sun, moon and stars.
   applyWeather() {
     const k = this.weather.rain, e = this.env;
@@ -2840,8 +2732,8 @@ export class Game {
 
   renderScene(dt, loading) {
     const p = this.player, s = this.settings;
-    this.updateEnv(dt, true);
-    const nether = inNether(p.x);
+    updateEnvironment(this.env, this.time);
+    this.applyWeather();
     // View bobbing and the hurt tilt, done like the original: a small sway and roll while walking,
     // and a quick roll of the camera when you take damage.
     const bob = s.viewBobbing ? p.bob * 0.1 : 0, walk = p.bobPhase / Math.PI;
@@ -2858,11 +2750,10 @@ export class Game {
     this.lastCam = cam;
     const draw = this.drawing ? Math.min(1, this.drawing.t) : 0;
     const fovTarget = (p.sprinting ? 1.12 : 1) * (p.flying && p.sprinting ? 1.08 : 1) * (p.headInWater ? 0.9 : 1) * (1 - draw * draw * 0.15) *
-      (1 + 0.05 * this.effectLevel('speed')) * (1 - 0.05 * this.effectLevel('slowness')) * (1 + 0.12 * this.travel.closing);
+      (1 + 0.05 * this.effectLevel('speed')) * (1 - 0.05 * this.effectLevel('slowness'));
     this.fovMul += (fovTarget - this.fovMul) * Math.min(1, dt * 8);
     const rd = s.renderDistance;
-    // (The Nether's haze is thick: it closes in far nearer than the overworld's horizon.)
-    let fogColor = this.env.fogColor, fogStart = nether ? 4 : rd * 16 * 0.55, fogEnd = nether ? Math.min(rd * 16, 160) * 0.62 : rd * 16 * 0.95;
+    let fogColor = this.env.fogColor, fogStart = rd * 16 * 0.55, fogEnd = rd * 16 * 0.95;
     const eyeBlock = this.world.getBlock(Math.floor(cam.x), Math.floor(cam.y), Math.floor(cam.z));
     const underwater = p.headInWater;
     if (underwater) {
@@ -2878,13 +2769,12 @@ export class Game {
     this.particles.build(cam, this.world);
     this.renderer.render({
       cam, fov: s.fov * this.fovMul, env: this.env, time: performance.now() / 1000, renderDist: rd, world: this.world,
-      fogColor, fogStart, fogEnd, underwater, clouds: s.clouds && !nether, cloudHeight: CLOUD_HEIGHT, brightness: s.brightness / 100,
-      originX: nether ? NETHER_X : 0,
+      fogColor, fogStart, fogEnd, underwater, clouds: s.clouds, cloudHeight: CLOUD_HEIGHT, brightness: s.brightness / 100,
       wave: true, shaders: Math.min(s.shaders, this.shaderCap), nightVision: this.nightVision(),
       selection: target && this.state !== 'dead' ? { x: target.x, y: target.y, z: target.z, box: this.world.selectionBox(target.x, target.y, target.z, target.id) } : null,
       crack: this.mining && this.mining.progress > 0 ? { x: this.mining.x, y: this.mining.y, z: this.mining.z, stage: Math.floor(this.mining.progress * 10) } : null,
       particles: this.particles,
-      weather: nether ? null : this.weather,
+      weather: this.weather,
       entities: this.drawList(cam),
       lines: this.fishingLines(),
       rod: this.rodLine(),
@@ -2992,8 +2882,7 @@ export class Game {
       if (this.menu) this.gui.render();
     }
     if (this.menu) this.gui.frame();
-    ui.renderStats(!this.creative, Math.ceil(this.health), this.air, p.headInWater, this.food, this.inv.armorPoints,
-      this.effects.has('wither') ? 'wither' : this.effects.has('poison') ? 'poison' : null, this.effects.has('hunger'));
+    ui.renderStats(!this.creative, Math.ceil(this.health), this.air, p.headInWater, this.food, this.inv.armorPoints, this.effects.has('poison'), this.effects.has('hunger'));
     ui.renderEffects(this.state === 'dead' ? [] : [...this.effects].map(([name, e]) => ({ name, ...e })).sort((a, b) => (EFFECTS[a.name].bad ? 1 : 0) - (EFFECTS[b.name].bad ? 1 : 0)));
     ui.renderXp(!this.creative, this.xp.level, this.xp.points / xpToNext(this.xp.level));
     const wind = this.attackStrength(this.tickAcc);
@@ -3042,12 +2931,10 @@ export class Game {
     const biome = w.biomeAt(bx, bz);
     const t = this.target;
     const r = this.renderer.stats;
-    // (In the Nether, its own coordinates: an eighth of the overworld's.)
-    const nether = inNether(p.x), ox = nether ? NETHER_X : 0;
     return [
       `Blockhaven · ${Math.round(this.fps)} fps (${this.frameMs.toFixed(1)} ms)${this.world.pool.threaded ? '' : ' · single-threaded'}`,
-      `XYZ: ${(p.x - ox).toFixed(3)} / ${p.y.toFixed(3)} / ${p.z.toFixed(3)}${nether ? ' · the Nether' : ''}`,
-      `Block: ${bx - ox} ${by} ${bz} · Chunk: ${(bx - ox) >> 4} ${bz >> 4}`,
+      `XYZ: ${p.x.toFixed(3)} / ${p.y.toFixed(3)} / ${p.z.toFixed(3)}`,
+      `Block: ${bx} ${by} ${bz} · Chunk: ${bx >> 4} ${bz >> 4}`,
       `Facing: ${facing} (${deg.toFixed(1)}° / ${((p.pitch * 180) / Math.PI).toFixed(1)}°)`,
       `Biome: ${BIOME_NAMES[biome] ?? '?'} · Light: ${light >> 4} sky, ${light & 15} block`,
       `Day ${Math.floor(this.time / TICKS_PER_DAY) + 1}, ${clockText(this.time)} · ${this.creative ? 'Creative' : 'Survival'}${p.flying ? ' · flying' : ''}`,

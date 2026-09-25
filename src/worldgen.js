@@ -3,14 +3,13 @@
 // caves, ores by depth, deepslate, and small structures (dungeons, wells, ice spikes, icebergs,
 // boulders, fallen trees). Pure functions of (seed, chunk), so it runs inside Web Workers and
 // every chunk agrees with its neighbours.
-import { CHUNK, HEIGHT, SEA_LEVEL, CHUNK_VOLUME, NETHER_CX } from './config.js';
+import { CHUNK, HEIGHT, SEA_LEVEL, CHUNK_VOLUME } from './config.js';
 import { Noise } from './noise.js';
 import { B, REPLACEABLE, FACING_VARIANTS, SOLID, WATERLIKE, NATURAL_LEAVES, DOUBLE, LOOT_CHEST } from './blocks.js';
 import { BIOME, toByte } from './biomes.js';
 import { hash2, hash3, hashString, mulberry32, smoothstep, lerp, clamp } from './math.js';
 import { TREES, WIDE_TREES, TREE_REACH } from './trees.js';
 import { WorldGenV1 } from './worldgen1.js';
-import { NetherGen } from './worldgen_nether.js';
 import { villagePieces, villagesNear, groundLevel, insideVillage } from './villages.js';
 
 const PAD = 1; // neighbour columns kept for slopes
@@ -756,11 +755,6 @@ function LOG_AXES_OF(log, alongX) {
 }
 
 // The generator a world was made with: worlds from before the release update keep the first one.
-// Every world, flat or not, old or new, has the same Nether far to the east (see config.js).
 export function makeGenerator(seed, type = 'default', version = 2) {
-  const gen = version >= 2 ? new WorldGen(seed, type) : new WorldGenV1(seed, type);
-  const overworld = gen.generate.bind(gen);
-  let nether = null;
-  gen.generate = (cx, cz) => (cx >= NETHER_CX ? (nether ??= new NetherGen(seed)).generate(cx, cz) : overworld(cx, cz));
-  return gen;
+  return version >= 2 ? new WorldGen(seed, type) : new WorldGenV1(seed, type);
 }

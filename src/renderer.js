@@ -20,8 +20,6 @@ import { terrainVS, terrainFS, fullscreenVS, skyFS, cloudVS, cloudFS, lineVS, li
 import { Shadows, Post } from './post.js';
 import { linePoints } from './fishing.js';
 
-const ZERO3 = [0, 0, 0];
-
 const OPPOSITE = [1, 0, 3, 2, 5, 4];
 const QCAP = 1 << 15;
 
@@ -322,8 +320,7 @@ export class Renderer {
     gl.useProgram(this.terrain.prog);
     gl.uniformMatrix4fv(u.u_proj, false, this.proj);
     gl.uniformMatrix4fv(u.u_view, false, this.view);
-    // (Measured from the Nether's own middle there, where x is large enough to lose precision.)
-    gl.uniform3f(u.u_camPos, f.cam.x - (f.originX ?? 0), f.cam.y, f.cam.z);
+    gl.uniform3f(u.u_camPos, f.cam.x, f.cam.y, f.cam.z);
     gl.uniform1f(u.u_time, f.time);
     gl.uniform1f(u.u_wave, f.wave ? 1 : 0);
     for (let i = 0; i < 4; i++) gl.uniform1i(u[`u_tex${i}`], i);
@@ -334,9 +331,6 @@ export class Renderer {
     gl.uniform2f(u.u_fog, f.fogStart, f.fogEnd);
     gl.uniform1f(u.u_gamma, 1 - 0.45 * f.brightness);
     gl.uniform1f(u.u_night, f.nightVision ?? 0);
-    const fl = f.env.floor ?? ZERO3;
-    if (this.mode) gl.uniform3f(u.u_floorLight, fl[0] ** 2.2, fl[1] ** 2.2, fl[2] ** 2.2);
-    else gl.uniform3fv(u.u_floorLight, fl);
     gl.uniform4f(u.u_lightOverride, 0, 0, 0, 0);
     gl.uniform4f(u.u_colorMul, 1, 1, 1, 1);
     gl.uniform1f(u.u_alphaMul, 1);
@@ -541,7 +535,6 @@ export class Renderer {
     gl.uniform1f(su.u_starAngle, f.env.sunAngle);
     gl.uniform1f(su.u_underwater, f.underwater ? 1 : 0);
     gl.uniform1f(su.u_rain, f.weather?.rain ?? 0);
-    gl.uniform1f(su.u_flat, f.env.flat ? 1 : 0);
     if (fancy) {
       gl.uniform1f(su.u_time, f.time);
       gl.uniform3fv(su.u_sunGlow, f.env.sunGlow);

@@ -4,7 +4,7 @@
 // lane, with farms, pens, gardens and a mine behind. A village is planned once per region from
 // the seed; every chunk it overlaps copies its share of the blocks, so they all agree. The
 // people who live there are listed on the plan (see civilians.js).
-import { HEIGHT, SEA_LEVEL, NETHER_CX } from './config.js';
+import { HEIGHT, SEA_LEVEL } from './config.js';
 import { B, STAIRS, FACING_VARIANTS, LADDER, LOG_AXES, doorId, bedId, lootChestId, gateId, WOOD, WALL_TORCH } from './blocks.js';
 import { BIOME } from './biomes.js';
 import { hash2, mulberry32 } from './math.js';
@@ -61,8 +61,7 @@ export function regionVillage(gen, rx, rz) {
   const key = `${rx},${rz}`, cacheKey = `${gen.seed}:${gen.type}:${key}`;
   if (plans.has(cacheKey)) return plans.get(cacheKey);
   let plan = null;
-  // (No villages in the Nether, nor on the far edge of the overworld beside it.)
-  if (gen.villages && (rx + 1) * REGION * 16 + REACH < NETHER_CX * 16) {
+  if (gen.villages) {
     const rnd = mulberry32(Math.floor(hash2(rx, rz, gen.seed ^ 0x7111a9e) * 4294967296));
     // The regions around the origin try hard, so every world has a village near spawn.
     const home = (rx === 0 || rx === -1) && (rz === 0 || rz === -1);
