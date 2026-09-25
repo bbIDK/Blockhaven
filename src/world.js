@@ -4,8 +4,9 @@ import { CHUNK, HEIGHT, SECTIONS, chunkKey } from './config.js';
 import {
   B, BLOCKS, OPAQUE, SOLID, FILTER, EMIT, RENDER, R, SELECTABLE, REPLACEABLE, TORCH_LEAN, FACE_DIRS,
   WATERLIKE, isWater, waterLevel, lavaLevel, WATER_FLOW_BASE, LAVA_FLOW_BASE, SHAPE, shapeBoxes, DOOR, doorId, LADDER_SIDE, BED,
-  SPREAD, BURN, CLIMB, VINE_SIDE, DOUBLE, GATE, gateId, TICKS, LOG, NATURAL_LEAVES,
+  SPREAD, BURN, CLIMB, VINE_SIDE, DOUBLE, GATE, gateId, TICKS, LOG, NATURAL_LEAVES, SWITCH,
 } from './blocks.js';
+import { powerChanged, powerMatters } from './power.js';
 import { randomTick, logRemoved, leafTick } from './growth.js';
 import { nextLevel } from './light.js';
 import { meshSection, P, P2, PADDED, ALL_OPEN } from './mesher.js';
@@ -625,6 +626,12 @@ export class World {
     if (LOG[old] && !LOG[id] && !this.remote) logRemoved(this, x, y, z);
     if (remesh) this.remeshAround(x, y, z);
     this.listener?.blockChanged?.(x, y, z, old, id);
+    if (!this.remote && powerMatters(old, id)) {
+      // A button springs back out after a moment; a pressure plate once nothing's on it.
+      const sw = SWITCH[id];
+      if (sw?.on && sw.kind !== 'lever') this.scheduleTick(x, y, z, sw.kind === 'button' ? sw.time : 10);
+      powerChanged(this, x, y, z, old, id);
+    }
     if (updates) this.neighborsChanged(x, y, z);
     return true;
   }
@@ -663,6 +670,7 @@ export class World {
     this.runIncrease();
     for (const [x, y, z, old, id] of applied) {
       this.listener?.blockChanged?.(x, y, z, old, id);
+      if (!this.remote && powerMatters(old, id)) powerChanged(this, x, y, z, old, id);
       this.neighborsChanged(x, y, z);
     }
   }
@@ -711,6 +719,10 @@ export class World {
       }
       case 'sand': return below === B.sand || SOIL.has(below);
       case 'solid': return !!SOLID[below];
+      case 'attached': {
+        const d = FACE_DIRS[SWITCH[id].attach];
+        return !!SOLID[this.getBlock(x + d[0], y + d[1], z + d[2])];
+      }
       case 'cane': return below === B.sugar_cane || below === B.sand || SOIL.has(below);
       case 'cactus': return below === B.sand || below === B.cactus;
       case 'bed': {
@@ -758,6 +770,11 @@ export class World {
       else if (NATURAL_LEAVES[id]) leafTick(this, t.x, t.y, t.z, id);
       else if (BLOCKS[id]?.falls) this.fall(t.x, t.y, t.z, id);
       else if (id === B.composter_7) { this.setBlock(t.x, t.y, t.z, B.composter_ready); this.listener?.blockSound?.(t.x, t.y, t.z, 'composter'); }
+      else if (SWITCH[id]?.on && SWITCH[id].kind === 'button') { this.setBlock(t.x, t.y, t.z, SWITCH[id].other); this.listener?.blockSound?.(t.x, t.y, t.z, 'click_off'); }
+      else if (SWITCH[id]?.on && SWITCH[id].kind === 'plate') {
+        if (this.listener?.pressing?.(t.x, t.y, t.z, SWITCH[id].wood)) this.scheduleTick(t.x, t.y, t.z, 10);
+        else { this.setBlock(t.x, t.y, t.z, SWITCH[id].other); this.listener?.blockSound?.(t.x, t.y, t.z, 'click_off'); }
+      }
     }
   }
 

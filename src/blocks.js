@@ -345,7 +345,7 @@ stairs([['oak_planks', 'oak', 'Oak'], ['cobblestone', 'cobblestone', 'Cobbleston
 // Doors: 16 variants (4 facings x open x lower/upper). The item is the closed lower half facing north.
 const DOOR_PANEL = { 5: [0, 0, 0, 16, 16, 3], 4: [0, 0, 13, 16, 16, 16], 0: [13, 0, 0, 16, 16, 16], 1: [0, 0, 0, 3, 16, 16] };
 const LEFT_OF = { 5: 1, 4: 0, 0: 5, 1: 4 };
-function doors(wood, first) {
+function doors(wood, first, iron = false) {
   const title = `${wood[0].toUpperCase()}${wood.slice(1).replace('_', ' ')} Door`;
   STAIR_FACES.forEach((facing, fi) => {
     [false, true].forEach((open) => {
@@ -354,10 +354,12 @@ function doors(wood, first) {
         const side = open ? LEFT_OF[facing] : OPPOSITE[facing];
         const firstId = id === first;
         shaped(id, firstId ? `${wood}_door` : `${wood}_door_${fi}${open ? 'o' : ''}${upper ? 'u' : ''}`, [DOOR_PANEL[side]], {
-          label: title.replace('Dark oak', 'Dark Oak'), tex: upper ? `${wood}_door_top` : `${wood}_door_bottom`, cutout: true, hardness: 3, tool: 'axe',
-          sound: 'wood', base: first, item: firstId, drop: upper ? null : `${wood}_door`, support: upper ? 'door_upper' : 'door_lower', cat: 'functional',
+          label: title.replace('Dark oak', 'Dark Oak'), tex: upper ? `${wood}_door_top` : `${wood}_door_bottom`, cutout: true,
+          hardness: iron ? 5 : 3, tool: iron ? 'pickaxe' : 'axe', tier: iron ? 1 : 0, sound: iron ? 'metal' : 'wood', base: first, item: firstId,
+          drop: upper ? null : `${wood}_door`, support: upper ? 'door_upper' : 'door_lower', cat: 'functional',
         });
-        DOOR[id] = { facing, open, upper, base: first, wood };
+        // (Iron doors only open when powered: see power.js.)
+        DOOR[id] = { facing, open, upper, base: first, wood, iron };
       });
     });
   });
@@ -800,6 +802,98 @@ export const POT_FOR = Object.fromEntries(Object.entries(POTTED).map(([pid, plan
 export const LOG = new Uint8Array(N);
 for (const w of WOOD_NAMES) { LOG[WOOD[w].log] = 1; for (const a of LOG_AXES[WOOD[w].log]) LOG[a] = 1; }
 
+// ---------------------------------------------------------------- trapdoors and switches
+// Trapdoors: 4 hinge sides x lower/upper half x open, for each wood and iron. Shut, a trapdoor is
+// a thin board across the bottom or top of its block; open, it stands against its hinge side.
+export const TRAPDOOR = {}; // id -> { hinge, top, open, base, iron }
+function trapdoors(name, first, o) {
+  STAIR_FACES.forEach((hinge, fi) => [false, true].forEach((top) => [false, true].forEach((open) => {
+    const id = first + fi * 4 + (top ? 2 : 0) + (open ? 1 : 0);
+    const box = open ? DOOR_PANEL[hinge] : [0, top ? 13 : 0, 0, 16, top ? 16 : 3, 16];
+    shaped(id, id === first ? `${name}_trapdoor` : `${name}_trapdoor_${fi}${top ? 't' : ''}${open ? 'o' : ''}`, [box], {
+      label: o.label, tex: `${name}_trapdoor`, cutout: true, hardness: o.hardness, tool: o.tool, tier: o.tier ?? 0, sound: o.sound,
+      base: first, item: id === first, drop: `${name}_trapdoor`, cat: 'functional' });
+    TRAPDOOR[id] = { hinge, top, open, base: first, iron: !!o.iron };
+  })));
+}
+WOOD_NAMES.forEach((w, i) => trapdoors(w, 2100 + i * 16, { label: `${WOOD[w].title} Trapdoor`, hardness: 3, tool: 'axe', sound: 'wood' }));
+trapdoors('iron', 2212, { label: 'Iron Trapdoor', hardness: 5, tool: 'pickaxe', tier: 1, sound: 'metal', iron: true });
+export const trapdoorId = (base, hinge, top, open) => base + STAIR_FACES.indexOf(hinge) * 4 + (top ? 2 : 0) + (open ? 1 : 0);
+doors('iron', 2228, true);
+
+// Levers, buttons and pressure plates (see power.js). SWITCH[id]: { kind, on, attach (the face
+// towards the block it's fixed to), base, other (the same switch in its other state) }.
+export const SWITCH = {};
+const ATTACH_BOX = {
+  // A box `w` wide, `h` high and `d` deep, fixed to the face `f` of its block ([x0, y0, z0, x1, y1, z1]).
+  box(f, w, h, d, axisX = true) {
+    const a = (16 - w) / 2, b = (16 + w) / 2, c = (16 - h) / 2, e = (16 + h) / 2;
+    switch (f) {
+      case 3: return axisX ? [a, 0, c, b, d, e] : [c, 0, a, e, d, b];
+      case 2: return axisX ? [a, 16 - d, c, b, 16, e] : [c, 16 - d, a, e, 16, b];
+      case 5: return [a, c, 0, b, e, d];
+      case 4: return [a, c, 16 - d, b, e, 16];
+      case 1: return [0, c, a, d, e, b];
+      default: return [16 - d, c, a, 16, e, b];
+    }
+  },
+};
+// Lever placements: fixed to a wall (4) or to the floor or ceiling along either axis.
+const LEVER_PLACES = [[5, true], [4, true], [0, true], [1, true], [3, true], [3, false], [2, true], [2, false]];
+// The handle as a staircase of little boxes leaning from the base (on: up or towards +x/+z).
+function leverHandle(f, axisX, on) {
+  const out = [];
+  for (let i = 0; i < 4; i++) {
+    const lean = (on ? 1 : -1) * (i + 1) * 1.1, out_ = 3 + i * 2;
+    const box = (() => {
+      switch (f) {
+        case 5: return [7, 7 + lean, out_, 9, 9 + lean, out_ + 2];
+        case 4: return [7, 7 + lean, 14 - out_, 9, 9 + lean, 16 - out_];
+        case 1: return [out_, 7 + lean, 7, out_ + 2, 9 + lean, 9];
+        case 0: return [14 - out_, 7 + lean, 7, 16 - out_, 9 + lean, 9];
+        case 3: return axisX ? [7 + lean, out_, 7, 9 + lean, out_ + 2, 9] : [7, out_, 7 + lean, 9, out_ + 2, 9 + lean];
+        default: return axisX ? [7 + lean, 14 - out_, 7, 9 + lean, 16 - out_, 9] : [7, 14 - out_, 7 + lean, 9, 16 - out_, 9 + lean];
+      }
+    })();
+    out.push([...box, TEX.lever]);
+  }
+  return out;
+}
+LEVER_PLACES.forEach(([f, axisX], pi) => [false, true].forEach((on) => {
+  const id = 2250 + pi * 2 + (on ? 1 : 0);
+  const base = ATTACH_BOX.box(f, 6, 8, 3, axisX);
+  shaped(id, id === 2250 ? 'lever' : `lever_${pi}${on ? '_on' : ''}`, [[...base, TEX.cobblestone], ...leverHandle(f, axisX, on)], {
+    tex: 'cobblestone', solid: false, hardness: 0.5, sound: 'stone', base: 2250, item: id === 2250, drop: 'lever', support: 'attached',
+    cat: 'functional' });
+  SWITCH[id] = { kind: 'lever', on, attach: f, base: 2250, other: id ^ 1 };
+}));
+// Buttons: on any face; pressed, they sink in. Stone ones stay in for a second, wooden ones longer.
+[['stone', 'stone', 'Stone Button', 20], ['oak', 'oak_planks', 'Oak Button', 30]].forEach(([name, tex, label, time], k) => {
+  const first = 2270 + k * 12;
+  for (let f = 0; f < 6; f++) [false, true].forEach((on) => {
+    const id = first + f * 2 + (on ? 1 : 0);
+    shaped(id, id === first ? `${name}_button` : `${name}_button_${f}${on ? '_on' : ''}`, [ATTACH_BOX.box(f ^ 1, 6, 4, on ? 1 : 2)], {
+      label, tex, solid: false, hardness: 0.5, tool: name === 'stone' ? 'pickaxe' : 'axe', sound: name === 'stone' ? 'stone' : 'wood',
+      base: first, item: id === first, drop: `${name}_button`, support: 'attached', cat: 'functional' });
+    SWITCH[id] = { kind: 'button', on, attach: f ^ 1, base: first, other: id ^ 1, time };
+  });
+  ICON_SHAPE[first] = [[5, 6, 5, 11, 10, 11]];
+});
+// Pressure plates: pressed by whoever stands on them (wooden ones by dropped items too).
+[['stone', 'stone', 'Stone Pressure Plate'], ['oak', 'oak_planks', 'Oak Pressure Plate']].forEach(([name, tex, label], k) => {
+  const first = 2296 + k * 2;
+  [false, true].forEach((on) => {
+    const id = first + (on ? 1 : 0);
+    shaped(id, on ? `${name}_pressure_plate_on` : `${name}_pressure_plate`, [[1, 0, 1, 15, on ? 0.5 : 1, 15]], {
+      label, tex, solid: false, hardness: 0.5, tool: name === 'stone' ? 'pickaxe' : 'axe', sound: name === 'stone' ? 'stone' : 'wood',
+      base: first, item: !on, drop: `${name}_pressure_plate`, support: 'solid', cat: 'functional' });
+    SWITCH[id] = { kind: 'plate', on, attach: 3, base: first, other: id ^ 1, wood: name === 'oak' };
+  });
+});
+block(2300, 'redstone_lamp', { tex: 'redstone_lamp', hardness: 0.3, sound: 'glass', cat: 'functional' });
+block(2301, 'redstone_lamp_on', { label: 'Redstone Lamp', tex: 'redstone_lamp_on', hardness: 0.3, sound: 'glass', emit: 15, emissive: true,
+  base: 2300, item: false, drop: 'redstone_lamp' });
+
 // Blocks shown in the inventory and in the hand as a flat picture rather than a little model
 // (-1 for the rest). Tall flowers show their flowering top.
 export function spriteOf(block) {
@@ -812,6 +906,7 @@ export function spriteOf(block) {
   if (block === B.lantern) return TEX.lantern_item;
   if (block === B.campfire) return TEX.campfire_item;
   if (block === B.lily_pad) return TEX.lily_pad;
+  if (SWITCH[block]?.kind === 'lever') return TEX.lever_item;
   if (DOUBLE[block] && !DOUBLE[block].upper) return TEXL[DOUBLE[block].other * 6];
   return -1;
 }
@@ -957,7 +1052,8 @@ const CREATIVE_ORDER = [
   'crafting_table', 'furnace', 'smoker', 'blast_furnace', 'chest', 'barrel', 'smithing_table', 'fletching_table', 'bed', 'bookshelf',
   'anvil', 'grindstone', 'stonecutter', 'loom', 'lectern', 'cartography_table', 'composter', 'cauldron', 'bell', 'flower_pot',
   'torch', 'lantern', 'campfire', 'glowstone', 'jack_o_lantern', 'ladder', 'iron_bars', 'tnt',
-  ...WOOD_NAMES.flatMap((w) => [`${w}_door`, `${w}_fence`, `${w}_fence_gate`]),
+  ...WOOD_NAMES.flatMap((w) => [`${w}_door`, `${w}_trapdoor`, `${w}_fence`, `${w}_fence_gate`]), 'iron_door', 'iron_trapdoor',
+  'lever', 'stone_button', 'oak_button', 'stone_pressure_plate', 'oak_pressure_plate', 'redstone_lamp', 'redstone_block',
 ];
 export const CREATIVE_BLOCKS = (() => {
   const out = [], seen = new Set();

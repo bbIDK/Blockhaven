@@ -24,6 +24,7 @@ import {
   B, BLOCKS, BASE, SOLID, REPLACEABLE, WATERLIKE, FACING_VARIANTS, WALL_TORCH, FACE_DIRS,
   RENDER, R, SLAB, STAIRS, DOOR, doorId, CLIMB, LADDER, oppositeFace, CHEST, CHEST_PAIR, CHEST_RIGHT, chestId, chestHalf, BED, bedId,
   FURNACE_IDS, furnaceVariant, isLitFurnace, FURNACE_KIND, FURNACE_FRONT, LOG_AXES, GATE, gateId, VINE, DOUBLE, LEAVES_WOOD,
+  TRAPDOOR, trapdoorId, SWITCH,
   NATURAL_LEAVES, WOOD, LOOT_KIND, LOOT_FRONT,
 } from './blocks.js';
 import { rollLoot } from './loot.js';
@@ -1378,7 +1379,7 @@ export class Game {
     this.world.tick();
     if (!this.net?.guest) this.world.randomTicks(this.players().map((t) => [Math.floor(t.x) >> 4, Math.floor(t.z) >> 4]));
     this.entities.tick();
-    if (!this.net?.guest) this.tickFurnaces();
+    if (!this.net?.guest) { this.tickFurnaces(); this.pressPlates(); }
     const p = this.player;
     if (!this.creative && this.state !== 'dead') {
       this.invuln = Math.max(0, this.invuln - 1);
@@ -1654,8 +1655,9 @@ export class Game {
 
   // Blocks you use rather than build against (sneak to build against them).
   interactive(id) {
-    return !!DOOR[id] || CHEST[id] !== undefined || !!BED[id] || id === B.crafting_table || FURNACE_IDS.has(id) || !!GATE[id] || id === B.barrel ||
-      LOOT_KIND[id] !== undefined || id === B.bell || id === B.bell_z || id === B.composter_ready;
+    return (!!DOOR[id] && !DOOR[id].iron) || CHEST[id] !== undefined || !!BED[id] || id === B.crafting_table || FURNACE_IDS.has(id) || !!GATE[id] ||
+      id === B.barrel || LOOT_KIND[id] !== undefined || id === B.bell || id === B.bell_z || id === B.composter_ready ||
+      (!!TRAPDOOR[id] && !TRAPDOOR[id].iron) || SWITCH[id]?.kind === 'lever' || SWITCH[id]?.kind === 'button';
   }
 
   breakTarget() {
@@ -1726,6 +1728,16 @@ export class Game {
         if (w.toggleDoor(t.x, t.y, t.z)) this.audio.door(!!DOOR[w.getBlock(t.x, t.y, t.z)]?.open, { x: t.x + 0.5, y: t.y + 0.5, z: t.z + 0.5 });
       } else if (GATE[t.id]) {
         if (w.toggleGate(t.x, t.y, t.z, this.lookFace())) this.audio.door(!!GATE[w.getBlock(t.x, t.y, t.z)]?.open, { x: t.x + 0.5, y: t.y + 0.5, z: t.z + 0.5 });
+      } else if (TRAPDOOR[t.id]) {
+        const td = TRAPDOOR[t.id];
+        if (w.setBlock(t.x, t.y, t.z, trapdoorId(td.base, td.hinge, td.top, !td.open))) this.audio.door(!td.open, { x: t.x + 0.5, y: t.y + 0.5, z: t.z + 0.5 });
+      } else if (SWITCH[t.id]) {
+        // A lever flips; a button goes in (and comes back out by itself).
+        const sw = SWITCH[t.id];
+        if (sw.kind === 'lever' || !sw.on) {
+          w.setBlock(t.x, t.y, t.z, sw.other);
+          this.audio.switchClick(!sw.on, { x: t.x + 0.5, y: t.y + 0.5, z: t.z + 0.5 });
+        }
       } else if (t.id === B.barrel) this.openChestAt(t.x, t.y, t.z);
       else if (LOOT_KIND[t.id] !== undefined) {
         // A chest the world left here: it becomes an ordinary chest, filled the first time.
@@ -1828,6 +1840,23 @@ export class Game {
       if (face === 3) id = B.lantern_hanging;
     } else if (GATE[blockId]) {
       id = gateId(blockId, this.lookFace(), false);
+    } else if (TRAPDOOR[blockId]) {
+      // Against a wall it hinges on the wall (in the top or bottom half of the block, as clicked);
+      // on a floor or ceiling it opens away from you.
+      const side = face !== 2 && face !== 3;
+      id = trapdoorId(blockId, side ? oppositeFace(face) : this.lookFace(), upperHalf, false);
+    } else if (SWITCH[blockId]) {
+      const kind = SWITCH[blockId].kind;
+      if (kind === 'plate') {
+        if (face !== 2) return;
+      } else if (kind === 'button') {
+        id = blockId + face * 2;
+      } else {
+        // Levers: on a wall, or on a floor or ceiling along the way you're looking.
+        const along = this.lookFace() < 2;
+        const place = face === 2 ? (along ? 4 : 5) : face === 3 ? (along ? 6 : 7) : [3, 2, -1, -1, 0, 1][face];
+        id = blockId + place * 2;
+      }
     } else if (NATURAL_LEAVES[blockId]) {
       id = WOOD[LEAVES_WOOD[blockId]].placedLeaves;
     } else if (DOUBLE[blockId]) {
@@ -1952,6 +1981,39 @@ export class Game {
   blockSound(x, y, z, kind) {
     const at = { x: x + 0.5, y: y + 0.5, z: z + 0.5 };
     if (kind === 'composter') { this.audio.place('grass', at); this.particles.bits(at.x, y + 1, at.z, TEX.happy, 8, 0.6, 0.4); }
+    else if (kind === 'open' || kind === 'close') this.audio.door(kind === 'open', at);
+    else if (kind === 'click_on' || kind === 'click_off') this.audio.switchClick(kind === 'click_on', at);
+  }
+
+  // World listener: is anyone (or, for a wooden plate, anything) standing on the pressure plate
+  // at (x, y, z)?
+  pressing(x, y, z, wood) {
+    return this.bodiesOn((bx, by, bz) => bx === x && by === y && bz === z, wood);
+  }
+  // Calls on(x, y, z) with the block each body stands in: the player, other players, creatures,
+  // and dropped items if `items`. True as soon as it returns true.
+  bodiesOn(on, items = false) {
+    const at = (b) => on(Math.floor(b.x), Math.floor(b.y + 0.05), Math.floor(b.z));
+    if (this.state !== 'dead' && this.player && at(this.player)) return true;
+    for (const rp of this.net?.players?.values?.() ?? []) if (rp.ready && !rp.dead && at(rp)) return true;
+    for (const e of this.entities.list) {
+      if (e.dead || (e.kind !== 'mob' && !(items && e.kind === 'item'))) continue;
+      if (at(e)) return true;
+    }
+    return false;
+  }
+
+  // Once a tick: pressure plates go down under whoever steps on them.
+  pressPlates() {
+    const w = this.world;
+    this.bodiesOn((x, y, z) => {
+      const sw = SWITCH[w.getBlock(x, y, z)];
+      if (sw?.kind === 'plate' && !sw.on) {
+        w.setBlock(x, y, z, sw.other);
+        this.audio.switchClick(true, { x: x + 0.5, y: y + 0.1, z: z + 0.5 });
+      }
+      return false;
+    }, true);
   }
 
   // World listener: is it raining on (x, y, z)? (Rain puts fires out.)

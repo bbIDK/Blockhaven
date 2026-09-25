@@ -295,6 +295,11 @@ export class Audio {
   ignite(at) { this.play('fire.ignite', { volume: 0.8, at }); }
   toolBreak() { this.play('item.break', { volume: 0.8, pitch: 0.9, vary: 0.2 }); }
   door(open, at) { this.play(open ? 'door.open' : 'door.close', { volume: 0.85, at }); }
+  // Levers, buttons and pressure plates: a small mechanical click (higher going on).
+  switchClick(on, at) {
+    this.tick(at, 0.22, on ? 3000 : 2200);
+    this.thump(at, on ? 900 : 600, on ? 500 : 350, 0.12, 0.03);
+  }
   chest(open, at) { this.play(open ? 'chest.open' : 'door.close', { volume: open ? 0.7 : 0.4, pitch: open ? 1 : 1.2, at }); }
   bucket(kind, at) {
     if (kind.endsWith('lava')) this.play('lava.pop', { volume: 0.6, pitch: kind.startsWith('fill') ? 0.8 : 0.6, at });

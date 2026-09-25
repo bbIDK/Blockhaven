@@ -59,7 +59,17 @@ for (const w of WOOD_NAMES) {
   shaped(`${w}_door`, 3, ['##', '##', '##'], { '#': `${w}_planks` }, 'misc');
   shaped(`${w}_fence`, 3, ['W#W', 'W#W'], { W: `${w}_planks`, '#': 'stick' }, 'misc');
   shaped(`${w}_fence_gate`, 1, ['#W#', '#W#'], { W: `${w}_planks`, '#': 'stick' }, 'misc');
+  shaped(`${w}_trapdoor`, 2, ['###', '###'], { '#': `${w}_planks` }, 'misc');
 }
+// Switches and the things they work.
+shaped('iron_door', 3, ['##', '##', '##'], { '#': 'iron_ingot' }, 'misc');
+shaped('iron_trapdoor', 1, ['##', '##'], { '#': 'iron_ingot' }, 'misc');
+shaped('lever', 1, ['S', 'C'], { S: 'stick', C: 'cobblestone' }, 'misc');
+shaped('stone_button', 1, ['#'], { '#': 'stone' }, 'misc');
+shaped('oak_button', 1, ['#'], { '#': '#planks' }, 'misc');
+shaped('stone_pressure_plate', 1, ['##'], { '#': 'stone' }, 'misc');
+shaped('oak_pressure_plate', 1, ['##'], { '#': '#planks' }, 'misc');
+shaped('redstone_lamp', 1, [' R ', 'RGR', ' R '], { R: 'redstone', G: 'glowstone' }, 'misc');
 shaped('ladder', 3, ['# #', '###', '# #'], { '#': 'stick' }, 'misc');
 shaped('glass_pane', 16, ['###', '###'], { '#': 'glass' }, 'building');
 shaped('bookshelf', 1, ['###', 'BBB', '###'], { '#': '#planks', B: 'book' }, 'building');
