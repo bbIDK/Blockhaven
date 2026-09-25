@@ -256,8 +256,29 @@ function azalea(put, x, y, z, rnd) {
   put(tx, top + 1, tz, leaf(), false);
 }
 
+// Palm: a slender jungle-wood trunk leaning out as it rises, with long fronds fanning out from
+// the top and drooping at their ends. (They grow on warm beaches and islands.)
+function palm(put, x, y, z, rnd) {
+  const log = WOOD.jungle.log, leaves = WOOD.jungle.leaves, h = 6 + Math.floor(rnd() * 4);
+  const [lx, lz] = [[1, 0], [-1, 0], [0, 1], [0, -1]][Math.floor(rnd() * 4)];
+  let tx = x, tz = z, leans = 0;
+  for (let i = 0; i < h; i++) {
+    put(tx, y + i, tz, log, true);
+    // (It leans out once or twice, over the upper half of the trunk.)
+    if (i >= h / 2 - 1 && i < h - 2 && leans < 2 && rnd() < 0.5) { tx += lx; tz += lz; leans++; put(tx, y + i, tz, log, true); }
+  }
+  const top = y + h;
+  put(tx, top, tz, leaves, false);
+  put(tx, top - 1, tz, leaves, false);
+  for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+    const len = dx && dz ? 2 + (rnd() < 0.5 ? 1 : 0) : 3 + (rnd() < 0.6 ? 1 : 0);
+    for (let k = 1; k <= len; k++) put(tx + dx * k, top - (k > len - 2 ? 1 : 0) - (k === len && len > 3 ? 1 : 0), tz + dz * k, leaves, false);
+  }
+}
+
 export const TREES = {
   azalea,
+  palm,
   oak: (put, x, y, z, rnd) => small(put, x, y, z, rnd, 'oak'),
   big_oak: bigOak,
   swamp_oak: swampOak,

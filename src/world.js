@@ -5,7 +5,7 @@ import {
   B, BLOCKS, OPAQUE, SOLID, FILTER, EMIT, RENDER, R, SELECTABLE, REPLACEABLE, TORCH_LEAN, FACE_DIRS,
   WATERLIKE, isWater, waterLevel, lavaLevel, WATER_FLOW_BASE, LAVA_FLOW_BASE, SHAPE, shapeBoxes, DOOR, doorId, LADDER_SIDE, BED,
   SPREAD, BURN, CLIMB, VINE_SIDE, DOUBLE, GATE, gateId, TICKS, LOG, NATURAL_LEAVES, SWITCH, SIGN, RAIL, CAVE_VINES, DRIPSTONE,
-  LICHEN_SIDE,
+  LICHEN_SIDE, WET,
 } from './blocks.js';
 import { powerChanged, powerMatters } from './power.js';
 import { randomTick, logRemoved, leafTick } from './growth.js';
@@ -13,7 +13,7 @@ import { nextLevel } from './light.js';
 import { meshSection, P, P2, PADDED, ALL_OPEN } from './mesher.js';
 import { JobPool } from './workers.js';
 import { makeGenerator } from './worldgen.js';
-import { reshapeDripstone, reshapeVine } from './caves.js';
+import { reshapeDripstone, reshapeVine, reshapeKelp } from './caves.js';
 import { columnColors, fromByte } from './biomes.js';
 
 export const S_REQUESTED = 1, S_READY = 2;
@@ -742,19 +742,22 @@ export class World {
   checkBlock(x, y, z) {
     const id = this.getBlock(x, y, z);
     if (!id) return;
-    // Water spreads a block every 5 ticks, lava every 30 (Minecraft's speeds).
-    if (WATERLIKE[id] === 1) { this.scheduleTick(x, y, z, 5); return; }
+    // Water spreads a block every 5 ticks, lava every 30 (Minecraft's speeds). (Sea plants are
+    // water too, but come loose like plants.)
+    if (WATERLIKE[id] === 1 && !WET[id]) { this.scheduleTick(x, y, z, 5); return; }
+    if (WET[id]) this.scheduleTick(x, y, z, 5);
     if (WATERLIKE[id] === 2) { this.scheduleTick(x, y, z, 30); return; }
     if (id === B.fire) { this.scheduleTick(x, y, z, 30 + ((x * 7 + z * 13 + y) & 7)); return; }
     const def = BLOCKS[id];
     if (def.falls) { this.scheduleTick(x, y, z, 2); return; }
     if (def.support && !this.supported(x, y, z, id)) {
-      this.setBlock(x, y, z, 0, { remesh: true });
+      this.setBlock(x, y, z, WET[id] ? B.water : 0, { remesh: true });
       this.listener?.blockDropped?.(x, y, z, id);
       return;
     }
     if (DRIPSTONE[id]) reshapeDripstone(this, x, y, z);
     else if (CAVE_VINES[id]) reshapeVine(this, x, y, z);
+    else if (id === B.kelp || id === B.kelp_plant) reshapeKelp(this, x, y, z);
   }
 
   supported(x, y, z, id) {
@@ -773,6 +776,11 @@ export class World {
         return !!OPAQUE[this.getBlock(x + d[0], y, z + d[2])] || this.getBlock(x, y + 1, z) === id;
       }
       case 'sand': return below === B.sand || SOIL.has(below);
+      // The ocean update's: sea plants on the sea floor, kelp on kelp.
+      case 'sea_floor': return !!SOLID[below] && !WET[below];
+      case 'kelp': return (!!SOLID[below] && !WET[below]) || below === B.kelp || below === B.kelp_plant;
+      case 'tall_seagrass': return !!SOLID[below] && this.getBlock(x, y + 1, z) === B.tall_seagrass_top;
+      case 'tall_seagrass_top': return below === B.tall_seagrass;
       // The cave update's: things hanging from a ceiling, pointed dripstone and amethyst either way
       // up, glow lichen on any face and the big dripleaf's stalk.
       case 'hanging': return !!SOLID[this.getBlock(x, y + 1, z)];
@@ -1037,8 +1045,9 @@ export class World {
     }
   }
 
+  // (Sea plants stand in water already: it doesn't wash them away.)
   canFlowInto(id) {
-    return id === 0 || (REPLACEABLE[id] && !WATERLIKE[id]) || RENDER[id] === R.CROSS || RENDER[id] === R.TORCH;
+    return !WET[id] && (id === 0 || (REPLACEABLE[id] && !WATERLIKE[id]) || RENDER[id] === R.CROSS || RENDER[id] === R.TORCH);
   }
 
   flowWater(x, y, z, id) {

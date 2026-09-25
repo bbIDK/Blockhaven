@@ -3,7 +3,7 @@
 // sky, block, ao, flow (normalised) | tint rgb, 255 (normalised). `flow` is only used by liquids:
 // 0 still, 1..254 the direction the surface flows, 255 falling down the sides.
 import {
-  R, RENDER, OPAQUE, AO, TEXL, FFLAGS, TINT, TINT_RGB, CULL_SELF, TRANSLUCENT, B, ANIM,
+  R, RENDER, OPAQUE, AO, TEXL, FFLAGS, TINT, TINT_RGB, CULL_SELF, TRANSLUCENT, B, ANIM, WET,
   F_TINT, F_OVERLAY, F_UVROT, F_ANIM, liquidHeight, liquidLevel, sameCullGroup, TORCH_LEAN, shapeBoxes, boxFaceUV, boxLayer, RAIL,
 } from './blocks.js';
 import { columnColors, fromByte } from './biomes.js';
@@ -397,6 +397,8 @@ export function meshSection(blocks, light, climate, cx, cz, biomes = null, tints
         else if (rt === R.MODEL) model(dirs, blocks, light, x, y, z, p, id);
         else if (rt === R.CAMPFIRE) campfire(dirs, other, blocks, light, x, y, z, p, id);
         else if (rt === R.RAIL) rail(other, light, x, y, z, p, id);
+        // Sea plants stand in water: draw the water round them too.
+        if (WET[id]) liquid(trans, blocks, light, x, y, z, p, B.water);
       }
     }
   }

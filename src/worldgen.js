@@ -7,12 +7,13 @@
 import { CHUNK, HEIGHT, SEA_LEVEL, CHUNK_VOLUME } from './config.js';
 import { Noise } from './noise.js';
 import { B, REPLACEABLE, FACING_VARIANTS, SOLID, WATERLIKE, NATURAL_LEAVES, DOUBLE, LOOT_CHEST } from './blocks.js';
-import { BIOME, toByte } from './biomes.js';
+import { BIOME, OCEANS, toByte } from './biomes.js';
 import { hash2, hash3, hashString, mulberry32, smoothstep, lerp, clamp } from './math.js';
 import { TREES, WIDE_TREES, TREE_REACH } from './trees.js';
 import { WorldGenV1 } from './worldgen1.js';
 import { villagePieces, villagesNear, groundLevel, insideVillage, villageAt } from './villages.js';
 import { CaveGen } from './cavegen.js';
+import { SeaGen } from './oceangen.js';
 
 const PAD = 1; // neighbour columns kept for slopes
 const GW = CHUNK + PAD * 2;
@@ -154,9 +155,9 @@ const CARVED = new Set([BIOME.JAGGED_PEAKS, BIOME.FROZEN_PEAKS, BIOME.STONY_PEAK
 
 export class WorldGen {
   // `version`: 2 for worlds made before villages were spread further apart, 3 since, 4 for worlds
-  // with settlements of every size (camps, hamlets, villages, towns and kingdoms), and 5 for those
-  // with the cave update's caves.
-  constructor(seed, type = 'default', version = 5) {
+  // with settlements of every size (camps, hamlets, villages, towns and kingdoms), 5 for those with
+  // the cave update's caves, and 6 for those with the ocean update's seas.
+  constructor(seed, type = 'default', version = 6) {
     this.seed = seed >>> 0;
     this.type = type;
     this.version = version;
@@ -169,6 +170,8 @@ export class WorldGen {
     this.col = {};
     this.columns = new Map(); // columns looked up outside the chunk being made (tree roots)
     this.caves = version >= 5 ? new CaveGen(this.seed) : null;
+    this.sea = version >= 6 ? new SeaGen(this.seed) : null;
+    this.nIsle = n('islands');
   }
 
   // Terrain shape and climate of one column. Returns the (fractional) surface height and fills
@@ -177,7 +180,8 @@ export class WorldGen {
     const col = this.col;
     const wx = x + this.nWarp.noise2(x / 260, z / 260) * 36 + this.nWarp.noise2(x / 70, z / 70) * 6;
     const wz = z + this.nWarp.noise2(z / 260 + 31.7, x / 260 - 17.3) * 36 + this.nWarp.noise2(z / 70 + 9.1, x / 70 - 3.3) * 6;
-    const c = this.nCont.fbm2(wx / 1500, wz / 1500, 5) * 1.7 + 0.42;
+    // (Since the ocean update the seas are wider and the continents further apart.)
+    const c = this.version >= 6 ? this.nCont.fbm2(wx / 2300, wz / 2300, 5) * 1.75 + 0.14 : this.nCont.fbm2(wx / 1500, wz / 1500, 5) * 1.7 + 0.42;
     const e = this.nEros.fbm2(wx / 750, wz / 750, 4) * 1.7;
     const temp = this.nTemp.fbm2(x / 1900, z / 1900, 3) * 1.7;
     const hum = this.nHum.fbm2(x / 1500 + 91, z / 1500 - 47, 3) * 1.7;
@@ -212,6 +216,14 @@ export class WorldGen {
       river = (1 - t) * land * (1 - mount * 0.7);
       h = h * (1 - river) + carved * river;
     }
+    // Islands out at sea, rising from shallows round them (since the ocean update).
+    col.isle = 0;
+    if (this.version >= 6 && c < -0.12) {
+      const isle = this.nIsle.noise2(x / 300, z / 300) * 0.7 + this.nIsle.noise2(x / 70 + 40, z / 70 - 11) * 0.3;
+      const k = smoothstep(0.3, 0.62, isle) * smoothstep(-0.12, -0.28, c);
+      if (k > 0) h = Math.max(h, SEA_LEVEL - 9 + k * 17 + this.nHills.fbm2(x / 40, z / 40, 2) * 5 * smoothstep(0.62, 0.95, k));
+      col.isle = k;
+    }
     col.h = Math.min(h, HEIGHT - 14);
     col.c = c; col.e = e; col.mount = mount; col.pv = pv; col.v = v; col.river = river; col.swamp = swamp * land; col.bad = bad;
     // Colder up high.
@@ -224,6 +236,15 @@ export class WorldGen {
     const { h, temp: t, hum, c, river, mount, pv, v } = col;
     if (h < SEA_LEVEL - 0.5) {
       if (river > 0.5 && h > SEA_LEVEL - 9) return t < -0.45 ? BIOME.FROZEN_RIVER : BIOME.RIVER;
+      if (this.version >= 6) {
+        // Seas by warmth: frozen, cold, temperate, lukewarm and warm (the colder ones deep too).
+        const deep = h < 44;
+        if (t < -0.55) return deep ? BIOME.DEEP_FROZEN_OCEAN : BIOME.FROZEN_OCEAN;
+        if (t < -0.2) return deep ? BIOME.DEEP_COLD_OCEAN : BIOME.COLD_OCEAN;
+        if (t < 0.18) return deep ? BIOME.DEEP_OCEAN : BIOME.OCEAN;
+        if (t < 0.4) return deep ? BIOME.DEEP_LUKEWARM_OCEAN : BIOME.LUKEWARM_OCEAN;
+        return BIOME.WARM_OCEAN;
+      }
       if (t < -0.6) return BIOME.FROZEN_OCEAN;
       if (h < 42) return BIOME.DEEP_OCEAN;
       return t > 0.45 ? BIOME.WARM_OCEAN : BIOME.OCEAN;
@@ -236,6 +257,13 @@ export class WorldGen {
       if (h > 98) return v > 0.35 && t > -0.1 ? BIOME.CHERRY_GROVE : t < -0.35 ? BIOME.SNOWY_SLOPES : hum > 0.15 ? BIOME.WINDSWEPT_FOREST : BIOME.MOUNTAINS;
     }
     if (col.swamp > 0.5) return BIOME.SWAMP;
+    // An island has a green heart: jungle or savanna in warm seas, woods and meadows in cooler ones.
+    if (this.version >= 6 && col.isle > 0) {
+      if (t < -0.45) return hum > 0 ? BIOME.SNOWY_TAIGA : BIOME.SNOWY_PLAINS;
+      if (t < -0.15) return BIOME.TAIGA;
+      if (t < 0.3) return hum > 0 ? BIOME.FOREST : BIOME.PLAINS;
+      return hum > -0.3 ? BIOME.SPARSE_JUNGLE : BIOME.SAVANNA;
+    }
     if (col.bad > 0.5) return BIOME.BADLANDS;
     if (t < -0.45) return v > 0.45 ? BIOME.ICE_SPIKES : hum > 0 ? BIOME.SNOWY_TAIGA : BIOME.SNOWY_PLAINS;
     if (t < -0.15) return hum > 0.2 && v > 0.05 ? BIOME.OLD_GROWTH_TAIGA : BIOME.TAIGA;
@@ -266,7 +294,7 @@ export class WorldGen {
     if (this.type === 'flat') return { x: 0.5, z: 0.5 };
     const green = new Set([BIOME.PLAINS, BIOME.FOREST, BIOME.BIRCH_FOREST, BIOME.FLOWER_FOREST, BIOME.SUNFLOWER_PLAINS, BIOME.MEADOW,
       BIOME.CHERRY_GROVE, BIOME.TAIGA, BIOME.SAVANNA]);
-    const dry = (b) => ![BIOME.OCEAN, BIOME.DEEP_OCEAN, BIOME.WARM_OCEAN, BIOME.FROZEN_OCEAN, BIOME.RIVER, BIOME.FROZEN_RIVER, BIOME.SWAMP].includes(b);
+    const dry = (b) => !OCEANS.has(b) && ![BIOME.RIVER, BIOME.FROZEN_RIVER, BIOME.SWAMP].includes(b);
     let fallback = null;
     for (let r = 0; r < 4000; r += 12) {
       const steps = Math.max(1, Math.floor((r * Math.PI * 2) / 12));
@@ -304,12 +332,20 @@ export class WorldGen {
   }
 
   // A column's height and biome, for tree roots outside the chunk (remembered per chunk).
+  // Palms stand apart: one is only where no other would grow within two blocks of it.
+  palmSpot(wx, wz, roll) {
+    for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
+      if ((dx || dz) && hash2(wx + dx, wz + dz, this.seed ^ 0x7ee) < roll) return false;
+    }
+    return true;
+  }
+
   rootColumn(x, z) {
     const k = `${x},${z}`;
     let r = this.columns.get(k);
     if (!r) {
       const h = this.column(x, z);
-      r = { h: Math.floor(h), biome: this.biome(this.col), mount: this.col.mount };
+      r = { h: Math.floor(h), biome: this.biome(this.col), mount: this.col.mount, temp: this.col.temp };
       this.columns.set(k, r);
     }
     return r;
@@ -342,7 +378,7 @@ export class WorldGen {
         MOUNT[i] = this.col.mount;
         TEMP[i] = this.col.temp;
         HUM[i] = this.col.hum;
-        if (gx >= PAD && gx < GW - PAD && gz >= PAD && gz < GW - PAD) this.columns.set(`${x0 + gx - PAD},${z0 + gz - PAD}`, { h: H[i], biome: BIO[i], mount: MOUNT[i] });
+        if (gx >= PAD && gx < GW - PAD && gz >= PAD && gz < GW - PAD) this.columns.set(`${x0 + gx - PAD},${z0 + gz - PAD}`, { h: H[i], biome: BIO[i], mount: MOUNT[i], temp: TEMP[i] });
       }
     }
     // Villages level their ground (and it eases back to the land around them).
@@ -421,9 +457,12 @@ export class WorldGen {
           case BIOME.SNOWY_BEACH: surf = filler = B.sand; depth = 3; break;
           case BIOME.STONY_SHORE: surf = filler = B.stone; break;
           case BIOME.OCEAN: case BIOME.DEEP_OCEAN: case BIOME.WARM_OCEAN: case BIOME.FROZEN_OCEAN: case BIOME.RIVER: case BIOME.FROZEN_RIVER:
+          case BIOME.LUKEWARM_OCEAN: case BIOME.COLD_OCEAN: case BIOME.DEEP_LUKEWARM_OCEAN: case BIOME.DEEP_COLD_OCEAN: case BIOME.DEEP_FROZEN_OCEAN:
             surf = filler = top < SEA_LEVEL - 7 ? (n > 0.25 ? B.gravel : n < -0.45 ? B.clay : B.sand) : (n > 0.55 ? B.gravel : B.sand);
             if (surf === B.clay) filler = B.clay;
             depth = 3;
+            // (Since the ocean update: warm seas are sandy, cold ones gravelly.)
+            if (this.sea) { surf = filler = this.sea.floorFor(biome, n, top); if (surf === B.clay) filler = B.clay; }
             break;
           case BIOME.SNOWY_PLAINS: case BIOME.SNOWY_TAIGA: case BIOME.ICE_SPIKES: surf = B.snowy_grass; break;
           case BIOME.OLD_GROWTH_TAIGA: surf = n > 0.05 ? B.podzol : n < -0.4 ? B.coarse_dirt : B.grass_block; break;
@@ -567,7 +606,7 @@ export class WorldGen {
     for (let z = 0; z < 16; z++) {
       for (let x = 0; x < 16; x++) {
         const gi = (z + PAD) * GW + x + PAD, biome = BIO[gi];
-        const frozen = TEMP[gi] < -0.45 || biome === BIOME.FROZEN_RIVER || biome === BIOME.FROZEN_OCEAN;
+        const frozen = TEMP[gi] < -0.45 || biome === BIOME.FROZEN_RIVER || biome === BIOME.FROZEN_OCEAN || biome === BIOME.DEEP_FROZEN_OCEAN;
         for (let y = TOP[z * 16 + x] + 1; y <= SEA_LEVEL; y++) {
           const i = idx(x, y, z);
           if (blocks[i] === 0) blocks[i] = frozen && y === SEA_LEVEL ? B.ice : B.water;
@@ -575,8 +614,10 @@ export class WorldGen {
       }
     }
 
-    // (The caves' own growths, and amethyst geodes.)
+    // (The caves' own growths, and amethyst geodes; since the ocean update, coral reefs, kelp
+    // forests and seagrass on the sea floor.)
     if (caves) { caves.decorate(cg); caves.geodes(cg); }
+    if (this.sea) this.sea.decorate({ blocks, x0, z0, TOP, BIO, GW });
 
     // 7. Small structures: dungeons, wells, ice spikes, icebergs, boulders, fallen logs.
     const put = (wx, y, wz, id, isLog = false, onlyAir = false) => {
@@ -675,21 +716,23 @@ export class WorldGen {
         const inside = wx >= x0 && wx < x0 + 16 && wz >= z0 && wz < z0 + 16;
         const col = inside ? this.columns.get(`${wx},${wz}`) : this.rootColumn(wx, wz);
         const table = TREE_TABLE[col.biome];
-        // (Azalea trees stand over lush caves.)
+        // (Azalea trees stand over lush caves; palms on warm shores.)
         const azalea = caves && roll < 0.005 && AZALEA_GROUND.has(col.biome) && caves.lushAt(wx, wz);
-        if (!azalea && (!table || roll >= table[0])) continue;
+        const palm = this.sea && col.biome === BIOME.BEACH && col.temp > 0.28 && roll < 0.03 && this.palmSpot(wx, wz, roll);
+        if (!azalea && !palm && (!table || roll >= table[0])) continue;
         if (vplans.length && insideVillage(vplans, wx, wz, 4)) continue;
         let h = col.h;
         if (inside) h = TOP[(wz - z0) * 16 + wx - x0];
-        if (h <= SEA_LEVEL - (col.biome === BIOME.SWAMP ? 2 : 0) || h > HEIGHT - 40) continue;
+        if (h <= SEA_LEVEL - (col.biome === BIOME.SWAMP ? 2 : palm ? 1 : 0) || h > HEIGHT - 40) continue;
         if (inside) {
           const g = blocks[idx(wx - x0, h, wz - z0)];
-          if (g !== B.grass_block && g !== B.podzol && g !== B.dirt && g !== B.coarse_dirt && g !== B.snowy_grass && !(col.biome === BIOME.SWAMP && g === B.water)) continue;
+          if (palm ? g !== B.sand && g !== B.grass_block
+            : g !== B.grass_block && g !== B.podzol && g !== B.dirt && g !== B.coarse_dirt && g !== B.snowy_grass && !(col.biome === BIOME.SWAMP && g === B.water)) continue;
         }
         if (caves ? caves.surfaceCarved(wx, h, wz) : this.caveAt(wx, h, wz)) continue;
         const rnd = mulberry32(Math.floor(hash2(wx, wz, seed ^ 0x1ee7) * 4294967296));
-        let kind = 'azalea';
-        if (!azalea) {
+        let kind = palm ? 'palm' : 'azalea';
+        if (!azalea && !palm) {
           let pickT = rnd() * table[1].reduce((a, [w]) => a + w, 0);
           kind = table[1][0][1];
           for (const [w, k] of table[1]) { if ((pickT -= w) <= 0) { kind = k; break; } }
@@ -770,7 +813,7 @@ export class WorldGen {
           for (let y = -3; y < 1; y++) set(bx, h + y, bz, B.packed_ice);
         }
         // Icebergs drifting in frozen seas.
-        if (col.biome === BIOME.FROZEN_OCEAN && roll > 0.8 && h < SEA_LEVEL - 4) {
+        if ((col.biome === BIOME.FROZEN_OCEAN || col.biome === BIOME.DEEP_FROZEN_OCEAN) && roll > 0.8 && h < SEA_LEVEL - 4) {
           const rad = 3 + r() * 4, up = 3 + r() * 8;
           for (let dy = -Math.ceil(rad * 1.4); dy <= up; dy++) {
             const k = dy > 0 ? rad * (1 - dy / (up + 1)) : rad * (1 + dy / (rad * 1.6));

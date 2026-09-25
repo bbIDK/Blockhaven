@@ -27,7 +27,7 @@ const ROCK = new Set([B.stone, B.deepslate, B.tuff, B.granite, B.diorite, B.ande
 const PLAIN = 0, DRIP = 1, LUSH = 2;
 // Surfaces with no lush caves under them (too dry or too cold).
 const NOT_LUSH = new Set([BIOME.DESERT, BIOME.BADLANDS, BIOME.SNOWY_PLAINS, BIOME.SNOWY_TAIGA, BIOME.ICE_SPIKES, BIOME.FROZEN_PEAKS,
-  BIOME.JAGGED_PEAKS, BIOME.SNOWY_SLOPES, BIOME.SNOWY_BEACH, BIOME.FROZEN_OCEAN, BIOME.FROZEN_RIVER]);
+  BIOME.JAGGED_PEAKS, BIOME.SNOWY_SLOPES, BIOME.SNOWY_BEACH, BIOME.FROZEN_OCEAN, BIOME.FROZEN_RIVER, BIOME.DEEP_FROZEN_OCEAN]);
 const idx = (x, y, z) => (y << 8) | (z << 4) | x;
 const SIDES = [[1, 0, 0], [-1, 1, 0], [0, 4, 1], [0, 5, -1]]; // dx, face of the lichen's wall, dz
 

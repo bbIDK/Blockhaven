@@ -5,6 +5,7 @@
 // and then turns it over onto its front, where the game's models lie it along the creature; those
 // are remapped face by face (rotBox). Skins not listed here are drawn in code (among them the iron
 // golem and the enderman, which Pixel Perfection reimagines as a lava-veined statue and a totem).
+import { TROPICAL, FISH_COLOURS } from '../src/tropical.js';
 
 // The six faces of a box in a skin: [x, y, w, h] each.
 const faces = (u, v, [w, h, d]) => ({
@@ -95,6 +96,12 @@ export const SKIN_SOURCES = {
   squid: whole(E('squid')),
   cod: whole(E('fish/cod')),
   salmon: whole(E('fish/salmon')),
+  // Tropical fish: the shape's picture in the base colour, the pattern over it in the other.
+  ...Object.fromEntries(TROPICAL.map(([name, shape, pattern, base, over]) => [`tropical_${name}`, (H) => {
+    const ab = shape ? 'b' : 'a', rgb = (c) => [(FISH_COLOURS[c] >> 16) & 255, (FISH_COLOURS[c] >> 8) & 255, FISH_COLOURS[c] & 255];
+    return H.paste(skin64(H), H.paste(H.tint(H.load(E(`fish/tropical_${ab}`)), rgb(base)), H.tint(H.load(E(`fish/tropical_${ab}_pattern_${pattern}`)), rgb(over))));
+  }])),
+  pufferfish: whole(E('fish/pufferfish')),
   pig: (H) => {
     const src = H.load(E('pig/pig')), out = skin64(H);
     box(H, out, src, [0, 0], [8, 8, 8]); box(H, out, src, [16, 16], [4, 3, 1]); box(H, out, src, [0, 16], [4, 6, 4]);

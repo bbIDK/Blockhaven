@@ -664,6 +664,35 @@ doubled in size (the particles). Anything not listed is drawn by the game's own 
 | `textures/cobweb.png` | Pixel Perfection CE block/cobweb.png |  |
 | `textures/glow_berries.png` | Mineclonia mods/ITEMS/mcl_lush_caves/textures/mcl_lush_caves_glow_berries.png |  |
 | `textures/amethyst_shard.png` | Mineclonia mods/ITEMS/mcl_amethyst/textures/mcl_amethyst_amethyst_shard.png |  |
+| `textures/kelp.png` | Pixel Perfection CE block/kelp.png | changed |
+| `textures/kelp_plant.png` | Pixel Perfection CE block/kelp_plant.png | changed |
+| `textures/seagrass.png` | Pixel Perfection CE block/seagrass.png | changed |
+| `textures/tall_seagrass_bottom.png` | Pixel Perfection CE block/tall_seagrass_bottom.png | changed |
+| `textures/tall_seagrass_top.png` | Pixel Perfection CE block/tall_seagrass_top.png | changed |
+| `textures/tube_coral_block.png` | Pixel Perfection CE block/tube_coral_block.png |  |
+| `textures/tube_coral.png` | Pixel Perfection CE block/tube_coral.png |  |
+| `textures/tube_coral_fan.png` | Pixel Perfection CE block/tube_coral_fan.png |  |
+| `textures/brain_coral_block.png` | Pixel Perfection CE block/brain_coral_block.png |  |
+| `textures/brain_coral.png` | Pixel Perfection CE block/brain_coral.png |  |
+| `textures/brain_coral_fan.png` | Pixel Perfection CE block/brain_coral_fan.png |  |
+| `textures/bubble_coral_block.png` | Pixel Perfection CE block/bubble_coral_block.png |  |
+| `textures/bubble_coral.png` | Pixel Perfection CE block/bubble_coral.png |  |
+| `textures/bubble_coral_fan.png` | Pixel Perfection CE block/bubble_coral_fan.png |  |
+| `textures/fire_coral_block.png` | Pixel Perfection CE block/fire_coral_block.png |  |
+| `textures/fire_coral.png` | Pixel Perfection CE block/fire_coral.png |  |
+| `textures/fire_coral_fan.png` | Pixel Perfection CE block/fire_coral_fan.png |  |
+| `textures/horn_coral_block.png` | Pixel Perfection CE block/horn_coral_block.png |  |
+| `textures/horn_coral.png` | Pixel Perfection CE block/horn_coral.png |  |
+| `textures/horn_coral_fan.png` | Pixel Perfection CE block/horn_coral_fan.png |  |
+| `textures/sea_pickle.png` | Pixel Perfection CE block/sea_pickle.png |  |
+| `textures/sea_pickle_item.png` | Pixel Perfection CE item/sea_pickle.png |  |
+| `textures/kelp_item.png` | Pixel Perfection CE item/kelp.png |  |
+| `textures/dried_kelp.png` | Pixel Perfection CE item/dried_kelp.png |  |
+| `textures/dried_kelp_side.png` | Pixel Perfection CE block/dried_kelp_side.png |  |
+| `textures/dried_kelp_top.png` | Pixel Perfection CE block/dried_kelp_top.png |  |
+| `textures/dried_kelp_bottom.png` | Pixel Perfection CE block/dried_kelp_bottom.png |  |
+| `textures/raw_shark.png` | Pixel Perfection CE item/beef.png | changed |
+| `textures/cooked_shark.png` | Pixel Perfection CE item/cooked_beef.png | changed |
 | `skins/zombie.png` | Pixel Perfection CE entity/zombie/zombie.png | changed |
 | `skins/husk.png` | Pixel Perfection CE entity/zombie/husk.png | changed |
 | `skins/drowned.png` | Pixel Perfection CE entity/zombie/drowned.png; Pixel Perfection CE entity/zombie/drowned_outer_layer.png | changed |
@@ -676,6 +705,23 @@ doubled in size (the particles). Anything not listed is drawn by the game's own 
 | `skins/squid.png` | Pixel Perfection CE entity/squid.png | changed |
 | `skins/cod.png` | Pixel Perfection CE entity/fish/cod.png | changed |
 | `skins/salmon.png` | Pixel Perfection CE entity/fish/salmon.png | changed |
+| `skins/tropical_clownfish.png` | Pixel Perfection CE entity/fish/tropical_a.png; Pixel Perfection CE entity/fish/tropical_a_pattern_1.png | changed |
+| `skins/tropical_tomato_clownfish.png` | Pixel Perfection CE entity/fish/tropical_a.png; Pixel Perfection CE entity/fish/tropical_a_pattern_1.png | changed |
+| `skins/tropical_triggerfish.png` | Pixel Perfection CE entity/fish/tropical_a.png; Pixel Perfection CE entity/fish/tropical_a_pattern_2.png | changed |
+| `skins/tropical_parrotfish.png` | Pixel Perfection CE entity/fish/tropical_a.png; Pixel Perfection CE entity/fish/tropical_a_pattern_2.png | changed |
+| `skins/tropical_blue_tang.png` | Pixel Perfection CE entity/fish/tropical_a.png; Pixel Perfection CE entity/fish/tropical_a_pattern_4.png | changed |
+| `skins/tropical_queen_angelfish.png` | Pixel Perfection CE entity/fish/tropical_a.png; Pixel Perfection CE entity/fish/tropical_a_pattern_5.png | changed |
+| `skins/tropical_cotton_candy_betta.png` | Pixel Perfection CE entity/fish/tropical_a.png; Pixel Perfection CE entity/fish/tropical_a_pattern_6.png | changed |
+| `skins/tropical_snooper.png` | Pixel Perfection CE entity/fish/tropical_a.png; Pixel Perfection CE entity/fish/tropical_a_pattern_3.png | changed |
+| `skins/tropical_threadfin.png` | Pixel Perfection CE entity/fish/tropical_b.png; Pixel Perfection CE entity/fish/tropical_b_pattern_1.png | changed |
+| `skins/tropical_yellow_tang.png` | Pixel Perfection CE entity/fish/tropical_b.png; Pixel Perfection CE entity/fish/tropical_b_pattern_2.png | changed |
+| `skins/tropical_red_lipped_blenny.png` | Pixel Perfection CE entity/fish/tropical_b.png; Pixel Perfection CE entity/fish/tropical_b_pattern_2.png | changed |
+| `skins/tropical_glitterfish.png` | Pixel Perfection CE entity/fish/tropical_b.png; Pixel Perfection CE entity/fish/tropical_b_pattern_3.png | changed |
+| `skins/tropical_red_snapper.png` | Pixel Perfection CE entity/fish/tropical_b.png; Pixel Perfection CE entity/fish/tropical_b_pattern_4.png | changed |
+| `skins/tropical_red_cichlid.png` | Pixel Perfection CE entity/fish/tropical_b.png; Pixel Perfection CE entity/fish/tropical_b_pattern_5.png | changed |
+| `skins/tropical_ornate_butterflyfish.png` | Pixel Perfection CE entity/fish/tropical_b.png; Pixel Perfection CE entity/fish/tropical_b_pattern_6.png | changed |
+| `skins/tropical_goatfish.png` | Pixel Perfection CE entity/fish/tropical_b.png; Pixel Perfection CE entity/fish/tropical_b_pattern_4.png | changed |
+| `skins/pufferfish.png` | Pixel Perfection CE entity/fish/pufferfish.png | changed |
 | `skins/pig.png` | Pixel Perfection CE entity/pig/pig.png | changed |
 | `skins/cow.png` | Pixel Perfection CE entity/cow/cow.png | changed |
 | `skins/sheep.png` | Pixel Perfection CE entity/sheep/sheep.png | changed |

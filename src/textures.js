@@ -21,6 +21,7 @@ import './tex/decor.js';
 import './tex/paintings.js';
 import './tex/rails.js';
 import './tex/caves.js';
+import './tex/sea.js';
 
 export const ARRAY_LAYERS = 256;
 

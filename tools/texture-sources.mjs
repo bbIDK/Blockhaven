@@ -250,6 +250,11 @@ export const SOURCES = {
   raw_iron: mcl(`${MCL.raw}_raw_iron`),
   raw_gold: mcl(`${MCL.raw}_raw_gold`),
   glow_berries: mcl(`${MCL.lush}_glow_berries`),
+  kelp_item: 'item/kelp',
+  sea_pickle_item: 'item/sea_pickle',
+  // Shark steaks: the beef steak in a shark's pale flesh (grey skin round the edge), and cooked.
+  raw_shark: (H) => H.remap(H.load('item/beef'), () => true, [0x4a525c, 0x66707a, 0xb07c80, 0xc8969a, 0xdcb0ae, 0xecc8c2, 0xf6dcd4]),
+  cooked_shark: (H) => H.remap(H.load('item/cooked_beef'), () => true, [0x3c2a1e, 0x5c3e28, 0x7e5634, 0x9c7042, 0xb88c56, 0xd0a86c]),
   amethyst_shard: mcl(`${MCL.amethyst}_amethyst_shard`),
   dye: grayOf('item/white_dye', 0.67),
   minecart_item: 'item/minecart',

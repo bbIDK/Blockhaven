@@ -248,7 +248,8 @@ for (let level = 1; level <= 8; level++) {
 export const isWater = (id) => WATERLIKE[id] === 1;
 export const isLava = (id) => WATERLIKE[id] === 2;
 // 0 = source, 1..7 = flowing level, 8 = falling.
-export const waterLevel = (id) => (id === 10 ? 0 : id >= 120 && id <= 127 ? id - 119 : -1);
+// (Sea plants stand in water: they count as water that doesn't move, like a source.)
+export const waterLevel = (id) => (id === 10 || WET[id] ? 0 : id >= 120 && id <= 127 ? id - 119 : -1);
 export const lavaLevel = (id) => (id === 35 ? 0 : id >= 222 && id <= 229 ? id - 221 : -1);
 export const liquidLevel = (id) => (WATERLIKE[id] === 2 ? lavaLevel(id) : waterLevel(id));
 // Surface height of a liquid block, as a fraction of a block.
@@ -292,6 +293,7 @@ function shaped(id, name, boxes, o) {
   block(id, name, { render: R.MODEL, opaque: false, solid: o.solid ?? true, ...o });
   SHAPE[id] = boxes;
   SHAPE_KIND[id] = 1;
+  return id;
 }
 
 // [material block, short name, label]
@@ -1068,6 +1070,43 @@ export const AMETHYST = {};
 block(2444, 'cobweb', { render: R.CROSS, tex: 'cobweb', cutout: true, solid: false, hardness: 4, tool: 'sword', sound: 'cloth',
   drop: null, ...natural });
 
+// ================================================================ the ocean update's blocks
+// Sea plants stand in water: the water shows round them, swimmers swim through them, and when one
+// goes the water takes its place. They count as still water (see waterLevel).
+export const WET = new Uint8Array(N);
+function wet(id) { WET[id] = 1; WATERLIKE[id] = 1; FILTER[id] = Math.max(FILTER[id], 1); return id; }
+const seaPlant = (o) => plant({ support: 'sea_floor', wave: true, ...natural, ...o });
+// Kelp grows up from the sea floor towards the surface; its top piece is the growing tip.
+wet(block(2448, 'kelp', seaPlant({ tex: 'kelp', support: 'kelp', ticks: true })));
+wet(block(2449, 'kelp_plant', seaPlant({ label: 'Kelp', tex: 'kelp_plant', support: 'kelp', base: 2448, item: false, drop: 'kelp' })));
+wet(block(2450, 'seagrass', seaPlant({ tex: 'seagrass', replaceable: true, drop: null })));
+wet(block(2451, 'tall_seagrass', seaPlant({ tex: 'tall_seagrass_bottom', support: 'tall_seagrass', replaceable: true, drop: null, item: false })));
+wet(block(2452, 'tall_seagrass_top', seaPlant({ label: 'Tall Seagrass', tex: 'tall_seagrass_top', support: 'tall_seagrass_top', replaceable: true,
+  drop: null, base: 2451, item: false })));
+// Coral: blocks of it, and the coral and coral fans that grow on the reef.
+export const CORALS = ['tube', 'brain', 'bubble', 'fire', 'horn'];
+CORALS.forEach((c, i) => {
+  block(2453 + i, `${c}_coral_block`, { tex: `${c}_coral_block`, ...rock({ hardness: 1.5 }), ...natural });
+  wet(block(2458 + i, `${c}_coral`, seaPlant({ tex: `${c}_coral`, wave: false, sound: 'stone' })));
+  wet(block(2463 + i, `${c}_coral_fan`, seaPlant({ tex: `${c}_coral_fan`, wave: false, sound: 'stone' })));
+});
+// Sea pickles: one to four in a clump on the sea floor, glowing brighter the more there are.
+export const PICKLES = {};
+const PICKLE_BOXES = [
+  [[6, 0, 6, 10, 6, 10]],
+  [[3, 0, 3, 7, 6, 7], [9, 0, 9, 13, 4, 13]],
+  [[3, 0, 9, 7, 6, 13], [9, 0, 8, 13, 4, 12], [7, 0, 2, 11, 6, 6]],
+  [[2, 0, 2, 6, 4, 6], [9, 0, 9, 13, 6, 13], [9, 0, 2, 13, 5, 6], [2, 0, 9, 6, 7, 13]],
+];
+for (let n = 1; n <= 4; n++) {
+  const id = 2467 + n;
+  wet(shaped(id, n === 1 ? 'sea_pickle' : `sea_pickle_${n}`, PICKLE_BOXES[n - 1], { label: 'Sea Pickle', tex: 'sea_pickle', cutout: true, solid: false,
+    emit: 3 + 3 * n, hardness: 0, sound: 'grass', base: 2468, item: n === 1, drop: 'sea_pickle', support: 'sea_floor', ...natural }));
+  PICKLES[id] = n;
+}
+block(2472, 'dried_kelp_block', { tex: { side: 'dried_kelp_side', top: 'dried_kelp_top', bottom: 'dried_kelp_bottom' }, hardness: 0.5, tool: 'hoe',
+  sound: 'grass' });
+
 // Blocks shown in the inventory and in the hand as a flat picture rather than a little model
 // (-1 for the rest). Tall flowers show their flowering top.
 export function spriteOf(block) {
@@ -1075,6 +1114,8 @@ export function spriteOf(block) {
   if (BED[block]) return TEX.bed_item;
   if (VINE_SIDE[block] !== undefined) return TEX.vine;
   if (LICHEN_SIDE[block] !== undefined) return TEX.glow_lichen;
+  if (block === B.kelp) return TEX.kelp_item;
+  if (PICKLES[block]) return TEX.sea_pickle_item;
   if (block === B.big_dripleaf) return TEX.big_dripleaf_top;
   if (CLIMB[block]) return TEX.ladder;
   if (block === B.iron_bars) return TEX.iron_bars;

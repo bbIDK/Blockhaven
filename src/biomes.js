@@ -9,6 +9,8 @@ export const BIOME = {
   SNOWY_PLAINS: 18, ICE_SPIKES: 19, SAVANNA: 20, BADLANDS: 21, JUNGLE: 22, SWAMP: 23, CHERRY_GROVE: 24,
   MEADOW: 25, STONY_PEAKS: 26, JAGGED_PEAKS: 27, FROZEN_PEAKS: 28, SNOWY_SLOPES: 29, STONY_SHORE: 30,
   DEEP_OCEAN: 31, WARM_OCEAN: 32, SNOWY_BEACH: 33, FROZEN_RIVER: 34, SPARSE_JUNGLE: 35, WINDSWEPT_FOREST: 36,
+  // (The ocean update's.)
+  LUKEWARM_OCEAN: 37, COLD_OCEAN: 38, DEEP_LUKEWARM_OCEAN: 39, DEEP_COLD_OCEAN: 40, DEEP_FROZEN_OCEAN: 41,
 };
 
 export const BIOME_NAMES = [
@@ -18,7 +20,11 @@ export const BIOME_NAMES = [
   'Snowy Plains', 'Ice Spikes', 'Savanna', 'Badlands', 'Jungle', 'Swamp', 'Cherry Grove',
   'Meadow', 'Stony Peaks', 'Jagged Peaks', 'Frozen Peaks', 'Snowy Slopes', 'Stony Shore',
   'Deep Ocean', 'Warm Ocean', 'Snowy Beach', 'Frozen River', 'Sparse Jungle', 'Windswept Forest',
+  'Lukewarm Ocean', 'Cold Ocean', 'Deep Lukewarm Ocean', 'Deep Cold Ocean', 'Deep Frozen Ocean',
 ];
+// Every kind of sea.
+export const OCEANS = new Set([BIOME.OCEAN, BIOME.DEEP_OCEAN, BIOME.WARM_OCEAN, BIOME.FROZEN_OCEAN, BIOME.LUKEWARM_OCEAN, BIOME.COLD_OCEAN,
+  BIOME.DEEP_LUKEWARM_OCEAN, BIOME.DEEP_COLD_OCEAN, BIOME.DEEP_FROZEN_OCEAN]);
 
 // Climate values are stored per column as bytes: 0..255 maps to -1..1.
 export const toByte = (v) => Math.max(0, Math.min(255, Math.round((v + 1) * 127.5)));
@@ -56,6 +62,11 @@ const FIXED = {
   [BIOME.SAVANNA]: [hex(0xbfb755), hex(0xaea42a), null],
   [BIOME.WARM_OCEAN]: [null, null, w(0x43d5ee)],
   [BIOME.DEEP_OCEAN]: [null, null, w(0x3c52d6)],
+  [BIOME.LUKEWARM_OCEAN]: [null, null, w(0x45adf2)],
+  [BIOME.DEEP_LUKEWARM_OCEAN]: [null, null, w(0x45adf2)],
+  [BIOME.COLD_OCEAN]: [null, null, w(0x3d57d6)],
+  [BIOME.DEEP_COLD_OCEAN]: [null, null, w(0x3d57d6)],
+  [BIOME.DEEP_FROZEN_OCEAN]: [null, null, w(0x3938c9)],
 };
 
 export const grassColor = (temp, hum, out, o = 0) => bilinear(GRASS, temp, hum, out, o);

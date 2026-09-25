@@ -90,7 +90,7 @@ shaped('clay', 1, ['##', '##'], { '#': 'clay_ball' }, 'building');
 for (const [block, material] of [['iron_block', 'iron_ingot'], ['gold_block', 'gold_ingot'], ['diamond_block', 'diamond'], ['coal_block', 'coal'],
   ['copper_block', 'copper_ingot'], ['lapis_block', 'lapis_lazuli'], ['redstone_block', 'redstone'], ['emerald_block', 'emerald'],
   ['hay_block', 'wheat'], ['iron_ingot', 'iron_nugget'], ['gold_ingot', 'gold_nugget'], ['raw_copper_block', 'raw_copper'],
-  ['raw_iron_block', 'raw_iron'], ['raw_gold_block', 'raw_gold']]) {
+  ['raw_iron_block', 'raw_iron'], ['raw_gold_block', 'raw_gold'], ['dried_kelp_block', 'dried_kelp']]) {
   shaped(block, 1, ['###', '###', '###'], { '#': material }, 'building');
   shapeless(material, 9, [block], 'misc');
 }
@@ -204,6 +204,7 @@ shapeless('beetroot_soup', 1, ['bowl', 'beetroot', 'beetroot', 'beetroot', 'beet
 shapeless('rabbit_stew', 1, ['bowl', 'cooked_rabbit', 'carrot', 'baked_potato', 'brown_mushroom'], 'misc');
 shapeless('sugar', 1, ['sugar_cane'], 'misc');
 shapeless('bone_meal', 3, ['bone'], 'misc');
+shapeless('bone_meal', 2, ['shark_tooth'], 'misc');
 for (const [mat, x] of [['leather', 'leather'], ['iron', 'iron_ingot'], ['golden', 'gold_ingot'], ['diamond', 'diamond']]) {
   shaped(`${mat}_helmet`, 1, ['XXX', 'X X'], { X: x }, 'equipment');
   shaped(`${mat}_chestplate`, 1, ['X X', 'XXX', 'XXX'], { X: x }, 'equipment');
@@ -342,7 +343,8 @@ const SMELT = [
   }),
   ['raw_porkchop', 'cooked_porkchop', 'food'], ['raw_beef', 'cooked_beef', 'food'], ['raw_chicken', 'cooked_chicken', 'food'],
   ['raw_mutton', 'cooked_mutton', 'food'], ['raw_rabbit', 'cooked_rabbit', 'food'], ['cod', 'cooked_cod', 'food'],
-  ['salmon', 'cooked_salmon', 'food'], ['potato', 'baked_potato', 'food'],
+  ['salmon', 'cooked_salmon', 'food'], ['potato', 'baked_potato', 'food'], ['kelp', 'dried_kelp', 'food'],
+  ['raw_shark', 'cooked_shark', 'food'],
   ...GROUPS.logs.map((l) => [l, 'charcoal']),
 ];
 const SMELTING = new Map(SMELT.map(([a, b]) => [I[a], I[b]]));
@@ -363,6 +365,7 @@ const FUELS = [
     [`${w}_door`, 200], [`${w}_sapling`, 100], ...(I[`${w}_stairs`] !== undefined ? [[`${w}_stairs`, 300]] : [])]),
   ...GROUPS.wool.map((w) => [w, 100]),
   ...DYES.map((d) => [`${d.name}_carpet`, 67]),
+  ['dried_kelp_block', 4000],
 ];
 const FUEL = new Map(FUELS.map(([name, t]) => [I[name], t]));
 if ([...FUEL.keys()].some((id) => id === undefined)) throw new Error('Unknown fuel item');

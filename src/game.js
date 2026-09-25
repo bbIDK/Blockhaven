@@ -25,7 +25,7 @@ import {
   RENDER, R, SLAB, STAIRS, DOOR, doorId, CLIMB, LADDER, oppositeFace, CHEST, CHEST_PAIR, CHEST_RIGHT, chestId, chestHalf, BED, bedId,
   FURNACE_IDS, furnaceVariant, isLitFurnace, FURNACE_KIND, FURNACE_FRONT, LOG_AXES, GATE, gateId, VINE, DOUBLE, LEAVES_WOOD,
   TRAPDOOR, trapdoorId, SWITCH, SIGN, WALL_SIGN, CAKE, NOTE, JUKEBOX, RAIL,
-  NATURAL_LEAVES, WOOD, LOOT_KIND, LOOT_FRONT, liquidHeight, AMETHYST, GLOW_LICHEN,
+  NATURAL_LEAVES, WOOD, LOOT_KIND, LOOT_FRONT, liquidHeight, AMETHYST, GLOW_LICHEN, WET, PICKLES,
 } from './blocks.js';
 import { dripId } from './caves.js';
 import { rollLoot } from './loot.js';
@@ -408,7 +408,7 @@ export class Game {
     const { mode, type } = this.ui.createState;
     const meta = {
       id: `w${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`,
-      name, seed, seedText, mode, type, gen: 5, created: Date.now(), lastPlayed: Date.now(), time: 1000,
+      name, seed, seedText, mode, type, gen: 6, created: Date.now(), lastPlayed: Date.now(), time: 1000,
       spawn: null, player: null, inventory: null, version: SAVE_VERSION,
     };
     await storage.saveWorld(meta);
@@ -528,7 +528,7 @@ export class Game {
     const world = w.w;
     const meta = {
       id: `mp-${session.gid}`, name: String(world.name ?? 'World').slice(0, 32), seed: world.seed >>> 0,
-      type: world.type === 'flat' ? 'flat' : 'default', gen: [2, 3, 4, 5].includes(world.gen) ? world.gen : 1,
+      type: world.type === 'flat' ? 'flat' : 'default', gen: [2, 3, 4, 5, 6].includes(world.gen) ? world.gen : 1,
       mode: you?.mode === 'creative' || (!you?.mode && world.mode === 'creative') ? 'creative' : 'survival',
       spawn: world.spawn && Number.isFinite(world.spawn.x) && Number.isFinite(world.spawn.z) ? { x: world.spawn.x, y: world.spawn.y ?? null, z: world.spawn.z } : { x: 0.5, y: null, z: 0.5 },
       time: Number.isFinite(world.time) ? world.time : 1000, weather: { raining: !!world.rain },
@@ -1972,7 +1972,7 @@ export class Game {
     this.guarding = null;
     if ((hdef?.food || hdef?.drink || hdef?.potion) && (!this.creative || hdef.potion) && (this.food < 20 || hdef.always || hdef.drink || hdef.potion) && eatInput && !usable) {
       if (!this.eating || this.eating.id !== held.id || this.eating.slot !== this.inv.selected) {
-        this.eating = { id: held.id, slot: this.inv.selected, left: 32, touch: touchTap };
+        this.eating = { id: held.id, slot: this.inv.selected, left: hdef.quick ? 16 : 32, touch: touchTap };
       }
     } else this.eating = null;
     this.useCooldown -= dt;
@@ -2113,7 +2113,8 @@ export class Game {
   breakBlockAt(x, y, z, id, byPlayer) {
     const def = BLOCKS[id];
     if (id === B.fire) { this.world.setBlock(x, y, z, 0); this.audio.fizz({ x: x + 0.5, y: y + 0.5, z: z + 0.5 }); return; }
-    this.world.setBlock(x, y, z, 0);
+    // (A sea plant leaves the water it stood in.)
+    this.world.setBlock(x, y, z, WET[id] ? B.water : 0);
     if (byPlayer) this.exhaust(0.005);
     this.particles.burst(x, y, z, id);
     this.audio.breakBlock(def.sound, { x: x + 0.5, y: y + 0.5, z: z + 0.5 });
@@ -2303,6 +2304,11 @@ export class Game {
         return;
       }
     }
+    // Another sea pickle on a clump makes it bigger (up to four).
+    if (blockId === B.sea_pickle && PICKLES[t.id]) {
+      if (PICKLES[t.id] < 4) this.finishPlace(t.x, t.y, t.z, t.id + 1);
+      return;
+    }
     let x = t.x, y = t.y, z = t.z;
     if (!REPLACEABLE[t.id] || t.id === blockId) {
       const d = FACE_DIRS[face];
@@ -2410,6 +2416,8 @@ export class Game {
       return;
     }
     if (BLOCKS[id].support && !w.supported(x, y, z, id)) return;
+    // Sea plants grow only in still water.
+    if (WET[id] && existing !== B.water) return;
     if (SOLID[id] && (p.intersectsBlock(x, y, z) || this.entities.blocksPlacement(x, y, z) || this.net?.blocksPlacement(x, y, z))) return;
     if (w.setBlock(x, y, z, id)) this.afterPlace(id, x, y, z);
   }

@@ -3,13 +3,15 @@
 // water and lava, and workstations do their jobs. Each returns true when it handled the click
 // (see Game.useItem).
 import { B, CROP, SAPLING, FACE_DIRS, WATERLIKE, REPLACEABLE, waterLevel, lavaLevel, DOUBLE, COMPOSTER, POTTED, POT_FOR,
-  WOOD_NAMES, liquidHeight, SOLID, CAVE_VINES, caveVineId } from './blocks.js';
+  WOOD_NAMES, liquidHeight, SOLID, CAVE_VINES, caveVineId, WET, CORALS } from './blocks.js';
+import { BIOME } from './biomes.js';
 import { I, itemDef } from './items.js';
 import { TEX } from './textures.js';
 import { growCrop, growSapling } from './growth.js';
 import { HEIGHT } from './config.js';
 
 const TILLABLE = new Set([B.grass_block, B.dirt, B.dirt_path, B.coarse_dirt, B.snowy_grass]);
+const SEA_BED = new Set([B.sand, B.red_sand, B.gravel, B.dirt, B.clay]);
 const FLOWERS = ['dandelion', 'poppy', 'cornflower', 'oxeye_daisy', 'azure_bluet'];
 
 export function useItemOnBlock(game, held, def, t) {
@@ -56,6 +58,26 @@ function boneMeal(game, t) {
         if (w.getBlock(x, y + 1, z) === 0) {
           const r = Math.random();
           w.setBlock(x, y + 1, z, r < 0.12 ? B[FLOWERS[Math.floor(Math.random() * FLOWERS.length)]] : r < 0.2 ? B.fern : B.tall_grass);
+        }
+        break;
+      }
+    }
+  }
+  // Under water: seagrass grows tall, and the sea floor sprouts seagrass (and in warm seas, coral).
+  else if (t.id === B.seagrass && w.getBlock(t.x, t.y + 1, t.z) === B.water) {
+    did = true;
+    w.setBlock(t.x, t.y + 1, t.z, B.tall_seagrass_top, { updates: false });
+    w.setBlock(t.x, t.y, t.z, B.tall_seagrass);
+  } else if (SEA_BED.has(t.id) && w.getBlock(t.x, t.y + 1, t.z) === B.water) {
+    did = true;
+    const warm = w.biomeAt(t.x, t.z) === BIOME.WARM_OCEAN;
+    for (let k = 0; k < 16; k++) {
+      const x = t.x + Math.round((Math.random() - 0.5) * 6), z = t.z + Math.round((Math.random() - 0.5) * 6);
+      for (let y = t.y + 2; y >= t.y - 2; y--) {
+        if (!SEA_BED.has(w.getBlock(x, y, z))) continue;
+        if (w.getBlock(x, y + 1, z) === B.water) {
+          const r = Math.random(), kind = CORALS[Math.floor(Math.random() * CORALS.length)];
+          w.setBlock(x, y + 1, z, warm && r < 0.2 ? B[`${kind}_coral${r < 0.1 ? '' : '_fan'}`] : B.seagrass);
         }
         break;
       }
@@ -162,7 +184,8 @@ export function useBucket(game, held) {
   const hit = w.raycast(p.x, p.eyeY, p.z, d[0], d[1], d[2], 5, true);
   if (!hit) return false;
   if (held.id === I.bucket) {
-    const water = waterLevel(hit.id) === 0, lava = lavaLevel(hit.id) === 0;
+    // (A sea plant's water can't be scooped up.)
+    const water = waterLevel(hit.id) === 0 && !WET[hit.id], lava = lavaLevel(hit.id) === 0;
     if (!water && !lava) return false;
     w.setBlock(hit.x, hit.y, hit.z, 0);
     game.audio.bucket(lava ? 'fill_lava' : 'fill', { x: hit.x + 0.5, y: hit.y + 0.5, z: hit.z + 0.5 });

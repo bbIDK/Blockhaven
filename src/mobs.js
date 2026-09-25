@@ -11,6 +11,7 @@ import { identity, translate, rotateX, rotateY, rotateZ, scale, hash2, clamp } f
 import { TEX } from './textures.js';
 import { HORSE_COATS, HORSE_MARKINGS } from './tex/mobskins.js';
 import { horseDrive, tameTick } from './riding.js';
+import { TROPICAL } from './tropical.js';
 import { leashTick, leashPull } from './leads.js';
 
 const TAU = Math.PI * 2;
@@ -39,7 +40,7 @@ export const MOBS = {
   wolf: { label: 'Wolf', rig: 'wolf', skins: ['wolf', 'wolf_angry'], extraSkins: { collar: 'collar' }, hw: 0.3, h: 0.85, health: 8, speed: 1.5,
     kind: 'neutral', anim: 'quad', damage: 4, drops: [], sound: 'wolf', pack: true, tameWith: ['bone'], tameHealth: 20, defends: true,
     petFood: ['raw_beef', 'cooked_beef', 'raw_porkchop', 'cooked_porkchop', 'raw_chicken', 'cooked_chicken', 'raw_mutton', 'cooked_mutton',
-      'raw_rabbit', 'cooked_rabbit', 'rotten_flesh'] },
+      'raw_rabbit', 'cooked_rabbit', 'raw_shark', 'cooked_shark', 'rotten_flesh'] },
   // (A horse's variant is its coat plus seven times its markings: 0 for none.)
   horse: { label: 'Horse', rig: 'horse', skins: HORSE_COATS.map(([n]) => `horse_${n}`), markings: HORSE_MARKINGS.map((n) => `horse_markings_${n}`),
     variants: true, variantCount: HORSE_COATS.length * (HORSE_MARKINGS.length + 1), hw: 0.65, h: 1.6, health: 22,
@@ -96,6 +97,25 @@ export const MOBS = {
     anim: 'snow_golem', drops: [d('snowball', 0, 15)], sound: 'snow_golem', throwsSnow: true, melts: true, noBlood: true, xp: 0 },
   dolphin: { label: 'Dolphin', rig: 'dolphin', skins: ['dolphin'], hw: 0.45, h: 0.6, health: 10, speed: 3.5, kind: 'water', anim: 'dolphin',
     drops: [d('cod', 0, 1)], sound: 'dolphin', scale: 0.7, leaps: true },
+  // ---- the ocean update's sea life
+  // Tropical fish swim in bright schools over the reefs, each a base colour with a pattern over it
+  // (two shapes: see TROPICAL).
+  tropical_fish: { label: 'Tropical Fish', rig: 'tropical_a', skins: TROPICAL.map(([n]) => `tropical_${n}`), variants: true, hw: 0.25, h: 0.4,
+    health: 3, speed: 1.6, kind: 'water', anim: 'fish', drops: [d('tropical_fish', 1, 1), d('bone_meal', 0, 1, 0.05)], sound: 'fish', schools: true },
+  // Pufferfish puff up when anything comes close, and sting what touches them then.
+  pufferfish: { label: 'Pufferfish', rig: 'pufferfish', skins: ['pufferfish'], hw: 0.35, h: 0.35, health: 3, speed: 1.0, kind: 'water', anim: 'puffer',
+    drops: [d('pufferfish', 1, 1), d('bone_meal', 0, 1, 0.05)], sound: 'fish', puffs: true },
+  // Sharks hunt anyone swimming in their sea: about five blocks long, as a great white is.
+  shark: { label: 'Shark', rig: 'shark', skins: ['shark'], hw: 0.95, h: 1.2, health: 30, speed: 2.6, kind: 'water', anim: 'shark', damage: 6,
+    preys: true, drops: [d('raw_shark', 1, 3), d('shark_tooth', 0, 2)], sound: null, scale: 2.2 },
+  // Whales roam the deep seas, coming up now and then to blow; left alone they're peaceful, but one
+  // that's hurt turns on whoever hurt it. A humpback is about fourteen blocks long, a blue whale
+  // near twenty-five.
+  humpback_whale: { label: 'Humpback Whale', rig: 'whale_humpback', skins: ['whale_humpback'], hw: 2.4, h: 2.6, health: 100, speed: 1.7,
+    kind: 'water', anim: 'whale', damage: 8, retaliates: true, deep: 12, breathes: true, drops: [d('bone', 2, 6), d('cod', 1, 4)], sound: null,
+    scale: 5.2, knockback: 0 },
+  blue_whale: { label: 'Blue Whale', rig: 'whale_blue', skins: ['whale_blue'], hw: 3.6, h: 3.6, health: 160, speed: 1.5, kind: 'water', anim: 'whale',
+    damage: 10, retaliates: true, deep: 18, breathes: true, drops: [d('bone', 4, 10), d('cod', 2, 6)], sound: null, scale: 9, knockback: 0 },
   drowned: { label: 'Drowned', rig: 'humanoid', skins: ['drowned'], hw: 0.3, h: 1.95, health: 20, speed: 1.9, kind: 'hostile', anim: 'zombie',
     damage: 3, burns: true, swims: true, drops: [d('rotten_flesh', 0, 2), d('copper_ingot', 1, 1, 0.11)], sound: 'zombie', pitch: 0.75, hunts: true },
   witch: { label: 'Witch', rig: 'witch', skins: ['witch'], hw: 0.3, h: 1.95, health: 26, speed: 1.9, kind: 'hostile', anim: 'witch', throws: true,
@@ -127,8 +147,11 @@ export const MOB_TYPES = MOBS;
 export const isMob = (type) => !!MOBS[type];
 
 // Everything a new creature starts with. `o`: variant, size (slimes), baby, colour (sheep).
+let mobSeq = 0;
 export function initMob(e, type, o = {}) {
   const t = MOBS[type];
+  // (A number in the order they came, which a school of fish goes by to choose its leader.)
+  e.seq = ++mobSeq;
   const size = t.sized ? (o.size ?? 1) : 1;
   Object.assign(e, {
     type, label: t.label, def: t, health: t.sized ? size * size : t.health, yaw: Math.random() * TAU, headYaw: 0, headPitch: 0,
@@ -143,8 +166,12 @@ export function initMob(e, type, o = {}) {
     made: !!o.made,
     // (A name given with a name tag; who holds its lead, or the fence post it's tied to.)
     named: o.named ?? null, leash: o.leash ?? null,
+    // (Fish: the school it swims in.)
+    school: o.school ?? 0,
   });
   if ((type === 'horse' || type === 'mule') && o.health === undefined) e.health = 15 + Math.floor(Math.random() * 16);
+  // (A tropical fish's shape goes with its pattern.)
+  if (type === 'tropical_fish') e.rig = TROPICAL[Math.min(TROPICAL.length - 1, Math.max(0, e.variant | 0))][1] ? 'tropical_b' : 'tropical_a';
   if (e.owner && t.tameHealth) e.health = t.tameHealth;
   e.maxHealth = e.health;
   if (t.sized) { e.hw = 0.26 * size; e.h = 0.52 * size; }
@@ -166,9 +193,9 @@ const RED = DYES.findIndex((dd) => dd.name === 'red');
 // Where a snow golem melts; where it's too warm for its trail of snow; where rain falls as snow.
 const HOT = new Set([BIOME.DESERT, BIOME.SAVANNA, BIOME.BADLANDS]);
 const WARM = new Set([...HOT, BIOME.JUNGLE, BIOME.SPARSE_JUNGLE, BIOME.PLAINS, BIOME.SUNFLOWER_PLAINS, BIOME.FLAT, BIOME.BEACH, BIOME.SWAMP,
-  BIOME.WARM_OCEAN, BIOME.OCEAN, BIOME.DEEP_OCEAN]);
+  BIOME.WARM_OCEAN, BIOME.OCEAN, BIOME.DEEP_OCEAN, BIOME.LUKEWARM_OCEAN, BIOME.DEEP_LUKEWARM_OCEAN]);
 const COLD = new Set([BIOME.SNOWY_TAIGA, BIOME.SNOWY_PLAINS, BIOME.ICE_SPIKES, BIOME.SNOWY_SLOPES, BIOME.SNOWY_PEAKS, BIOME.FROZEN_PEAKS,
-  BIOME.JAGGED_PEAKS, BIOME.FROZEN_OCEAN, BIOME.FROZEN_RIVER, BIOME.SNOWY_BEACH]);
+  BIOME.JAGGED_PEAKS, BIOME.FROZEN_OCEAN, BIOME.FROZEN_RIVER, BIOME.SNOWY_BEACH, BIOME.DEEP_FROZEN_OCEAN]);
 
 // ---------------------------------------------------------------- behaviour (20 times a second)
 // `ents` is the Entities list (players, world, game).
@@ -465,6 +492,11 @@ function grazeDone(ents, e) {
 
 function swimTick(ents, e) {
   if (!e.inWater) { e.moving = false; return; }
+  const t = e.def;
+  if (t.puffs) puffTick(ents, e);
+  if ((t.preys || t.retaliates) && huntTick(ents, e)) return;
+  if (t.breathes && breatheTick(ents, e)) return;
+  if (t.schools && e.school && schoolTick(ents, e)) return;
   // Dolphins come up for air every so often, leaping clear of the water when they reach the top.
   if (e.def.leaps && (e.leapCd = (e.leapCd ?? 100 + Math.floor(Math.random() * 300)) - 1) <= 0) {
     const w = ents.world;
@@ -479,11 +511,147 @@ function swimTick(ents, e) {
   if (e.panic > 0) { e.panic--; e.speedMul = 2.2; }
   else e.speedMul = 1;
   if (--e.wander <= 0) {
-    e.wander = 20 + Math.floor(Math.random() * 60);
-    e.moving = Math.random() < 0.8;
-    e.yaw = Math.random() * TAU;
-    e.swimY = (Math.random() - 0.45) * 1.2;
+    // (Whales swim long and straight, and keep to the deep.)
+    const big = !!t.deep;
+    e.wander = big ? 100 + Math.floor(Math.random() * 200) : 20 + Math.floor(Math.random() * 60);
+    e.moving = big || Math.random() < 0.8;
+    e.yaw = big ? e.yaw + (Math.random() - 0.5) * 1.6 : Math.random() * TAU;
+    e.swimY = (Math.random() - 0.45) * (big ? 0.5 : 1.2);
+    // (Reef fish keep near where they were first seen: straying, they turn for home.)
+    if (t.schools || t.puffs) {
+      e.reef ??= [e.x, e.z];
+      const hx = e.reef[0] - e.x, hz = e.reef[1] - e.z;
+      if (Math.hypot(hx, hz) > 10) e.yaw = Math.atan2(-hx, -hz) + (Math.random() - 0.5) * 0.8;
+    }
   }
+  if (t.deep) keepDeep(ents, e);
+}
+
+// A school of fish follows its leader (the first of them still about), each keeping its own place
+// beside it, and scatters when frightened.
+function schoolTick(ents, e) {
+  if (e.panic > 0) return false;
+  if (!e.leader || e.leader.dead || (e.leaderCheck = (e.leaderCheck ?? 0) - 1) <= 0) {
+    e.leaderCheck = 40;
+    e.leader = null;
+    for (const o of ents.list) {
+      if (o === e || o.dead || o.school !== e.school || o.kind !== 'mob') continue;
+      if (Math.abs(o.x - e.x) > 20 || Math.abs(o.z - e.z) > 20) continue;
+      if (!e.leader || o.seq < e.leader.seq) e.leader = o;
+    }
+    if (e.leader && e.leader.seq > e.seq) e.leader = null; // (it leads)
+    e.place ??= [(Math.random() - 0.5) * 3, (Math.random() - 0.5) * 1.2, (Math.random() - 0.5) * 3];
+  }
+  const l = e.leader;
+  if (!l) return false;
+  const tx = l.x + e.place[0], ty = l.y + e.place[1], tz = l.z + e.place[2];
+  const dx = tx - e.x, dz = tz - e.z, dist = Math.hypot(dx, dz);
+  e.moving = dist > 0.4 || l.moving;
+  if (dist > 0.4) e.yaw = Math.atan2(-dx, -dz);
+  else e.yaw = l.yaw;
+  e.speedMul = dist > 4 ? 1.6 : dist > 1.5 ? 1.2 : 0.9;
+  e.swimY = clamp((ty - e.y) * 1.5, -1.2, 1.2);
+  return true;
+}
+
+// Pufferfish puff up when a player or another creature (not a pufferfish) comes near, stay puffed a
+// while after, and sting whoever touches them while they are.
+function puffTick(ents, e) {
+  let near = null;
+  for (const p of ents.players) if (!p.dead && Math.hypot(p.x - e.x, p.y + 0.9 - e.y, p.z - e.z) < 2.6) { near = p; break; }
+  if (!near) {
+    for (const o of ents.list) {
+      if (o.kind !== 'mob' || o === e || o.dead || o.type === 'pufferfish' || o.def?.kind !== 'water') continue;
+      if (Math.abs(o.x - e.x) < 2.2 && Math.abs(o.y - e.y) < 2.2 && Math.abs(o.z - e.z) < 2.2) { near = o; break; }
+    }
+  }
+  if (near) {
+    if (!(e.angry > 0)) ents.game.audio.mob('fish', 'hurt', { x: e.x, y: e.y, z: e.z }, 1.6);
+    e.angry = 80;
+  } else if (e.angry > 0) e.angry--;
+  if (e.angry > 40 && e.attackCd === 0) {
+    for (const p of ents.players) {
+      if (p.dead || p.creative || Math.hypot(p.x - e.x, p.y + 0.9 - e.y, p.z - e.z) > 1.4) continue;
+      e.attackCd = 20;
+      ents.game.giveEffect?.(p, 'poison', 6, 1);
+      bite(ents, e, p, 1);
+    }
+  }
+}
+
+// Sharks hunt anyone swimming near them; a whale goes after whoever hurt it. They chase while the
+// quarry stays in the water and within reach, and bite (or ram) when they catch up.
+function huntTick(ents, e) {
+  const t = e.def;
+  if (t.preys && !e.target && (e.lookCd = (e.lookCd ?? 0) - 1) <= 0) {
+    e.lookCd = 20;
+    let best = null, bd = 16;
+    for (const p of ents.players) {
+      if (p.dead || p.creative || !inWaterAt(ents.world, p)) continue;
+      const dd = Math.hypot(p.x - e.x, p.y - e.y, p.z - e.z);
+      if (dd < bd) { bd = dd; best = p; }
+    }
+    if (best) { e.target = best; e.angry = 400; }
+  }
+  const tg = e.target;
+  if (!tg) return false;
+  const gone = tg.dead || tg.dying || tg.creative || (e.angry = (e.angry ?? 0) - 1) <= 0;
+  const dx = tg.x - e.x, dy = tg.y + (tg.h ?? 1.8) * 0.4 - (e.y + e.h * 0.5), dz = tg.z - e.z, dist = Math.hypot(dx, dy, dz);
+  if (gone || dist > 32 || (t.preys && !inWaterAt(ents.world, tg) && dist > 4)) { e.target = null; e.angry = 0; return false; }
+  e.moving = true;
+  e.yaw = Math.atan2(-dx, -dz);
+  e.swimY = clamp(dy * 1.5, -2.5, 2.5);
+  e.speedMul = t.preys ? 1.9 : 2.2;
+  const reach = e.hw * (t.scale ?? 1) * 0.6 + 1.2;
+  if (dist < reach && e.attackCd <= 0) {
+    e.attackCd = t.preys ? 18 : 40;
+    e.swing = 1;
+    bite(ents, e, tg, t.damage);
+    if (t.retaliates && (e.angry -= 150) <= 0) e.target = null;
+  }
+  return true;
+}
+
+// A bite (or a whale's ram): hurts, and knocks the one hit away.
+function bite(ents, e, tg, dmg) {
+  const dx = tg.x - e.x, dz = tg.z - e.z, k = 3 / Math.max(0.1, Math.hypot(dx, dz));
+  if (tg.kind === 'mob') { ents.hurtMob(tg, dmg, e); return; }
+  const why = `You were slain by ${/^[AEIOU]/.test(e.def.label) ? 'an' : 'a'} ${e.def.label.toLowerCase()}`;
+  ents.game.hurtPlayer(tg, dmg, why, [dx * k, 2, dz * k], true);
+  rallyPets(ents, tg.uid, e);
+}
+const inWaterAt = (w, p) => WATERLIKE[w.getBlock(Math.floor(p.x), Math.floor(p.y + 0.4), Math.floor(p.z))] === 1;
+
+// Whales come up to blow every minute or two: they rise to the surface, spout, and dive again.
+function breatheTick(ents, e) {
+  const w = ents.world;
+  if (e.breath === undefined) e.breath = 600 + Math.floor(Math.random() * 1400);
+  if (--e.breath > 0) return false;
+  e.moving = true; e.speedMul = 0.8; e.swimY = 1.6;
+  const top = Math.floor(e.y + e.h * 0.9);
+  if (!WATERLIKE[w.getBlock(Math.floor(e.x), top + 1, Math.floor(e.z))]) {
+    // At the surface: a spout of spray.
+    ents.game.particles.splash?.(e.x, top + 1.2, e.z, 0x9ecbf0, 40);
+    ents.game.audio.splash?.({ x: e.x, y: top + 1, z: e.z }, 0.6);
+    e.breath = 900 + Math.floor(Math.random() * 1500);
+    e.swimY = -0.8;
+  }
+  if (e.breath < -600) e.breath = 600;
+  return true;
+}
+
+// Big swimmers keep off the bottom and out of the shallows: they turn back where the water gets
+// shallow ahead of them.
+function keepDeep(ents, e) {
+  const w = ents.world, t = e.def;
+  const reach = (t.scale ?? 1) * 1.2 + 2;
+  const ax = e.x - Math.sin(e.yaw) * reach, az = e.z - Math.cos(e.yaw) * reach;
+  let depth = 0;
+  for (let y = Math.floor(e.y + e.h); y > Math.floor(e.y) - 6; y--) { if (WATERLIKE[w.getBlock(Math.floor(ax), y, Math.floor(az))] === 1) depth++; else break; }
+  if (depth < Math.min(6, e.h + 2)) { e.yaw += Math.PI * (0.6 + Math.random() * 0.4); e.wander = 60; }
+  // (Keep a few blocks off the sea floor.)
+  const below = w.getBlock(Math.floor(e.x), Math.floor(e.y) - 2, Math.floor(e.z));
+  if (!WATERLIKE[below]) e.swimY = Math.max(e.swimY ?? 0, 0.4);
 }
 
 // Players (and for zombies, villagers) a monster could go after (no more than `tall` blocks above
@@ -859,6 +1027,7 @@ export function provoked(ents, e, from) {
     if (t.defends) { e.target = from; e.angry = 200; return; }
   }
   if (t.kind === 'animal') { e.panic = 80; if (from) faceAway(e, from.x, from.z); e.love = 0; e.flyTarget = null; e.roost = false; }
+  else if (t.kind === 'water' && (t.preys || t.retaliates) && from && !from.creative) { e.target = from; e.angry = 600; }
   else if (t.kind === 'water') { e.panic = 60; ents.game.particles.smoke?.(e.x, e.y + 0.4, e.z, 4, 0.4); }
   else if (t.kind === 'neutral' && from && !from.creative) {
     e.angry = 400; e.target = from;
@@ -1276,6 +1445,33 @@ export function poseMob(e, pose) {
       pose.tail = [0, Math.sin(age * (e.inWater ? 8 : 20)) * 0.45, 0];
       break;
     }
+    case 'puffer': {
+      pose.finR = [0, 0, Math.sin(age * 14) * 0.5]; pose.finL = [0, 0, -Math.sin(age * 14) * 0.5];
+      break;
+    }
+    case 'shark': {
+      // The rear and tail sweep side to side (the tail swinging further), the head a little against
+      // them, and the pectoral fins trim.
+      const s = Math.sin(e.walkPhase * 1.1) * (0.12 + e.walk * 0.22), s2 = Math.sin(e.walkPhase * 1.1 - 0.8) * (0.12 + e.walk * 0.22);
+      pose.rear = [0, s * 0.45, 0];
+      pose.tail = [0, s2 * 0.9, 0];
+      pose.head = [0, -s * 0.3, 0];
+      const f = Math.sin(e.walkPhase * 0.6) * 0.06;
+      pose.finR = [0, 0, f]; pose.finL = [0, 0, -f];
+      if (e.swing > 0) pose.head = [Math.sin(e.swing * Math.PI) * 0.25, -s * 0.35, 0];
+      break;
+    }
+    case 'whale': {
+      // Slow up-and-down beats of the tail and flukes; the flippers sweep gently.
+      const s = Math.sin(e.walkPhase * 0.55) * (0.1 + e.walk * 0.12), s2 = Math.sin(e.walkPhase * 0.55 - 0.9) * (0.1 + e.walk * 0.12);
+      pose.rear = [s * 0.35, 0, 0];
+      pose.tail = [s2 * 0.8, 0, 0];
+      pose.fluke = [s2 * 0.7, 0, 0];
+      pose.head = [-s * 0.1, 0, 0];
+      const f = Math.sin(e.walkPhase * 0.55 + 1) * 0.12;
+      pose.finR = [0, 0, f]; pose.finL = [0, 0, -f];
+      break;
+    }
     default:
   }
 }
@@ -1308,7 +1504,7 @@ export function renderMob(ents, e, rx, ry, rz, light, out) {
   if (t.kind === 'civilian') skins.main = e.skin;
   const pet = !!e.owner || (e.tame && t.tameIds.size > 0);
   const tint = t.wool ? woolTint(e.colour) : pet && t.rigDef.bones.collar ? woolTint(e.collar ?? RED) : null;
-  const meshes = rigMeshes(r, t.rig, skins, tint);
+  const meshes = rigMeshes(r, e.rig ?? t.rig, skins, tint);
   const base = identity(baseMat);
   translate(base, base, rx, ry, rz);
   rotateY(base, base, e.yaw);
@@ -1318,10 +1514,12 @@ export function renderMob(ents, e, rx, ry, rz, light, out) {
   if (e.sitting && t.anim === 'humanoid') translate(base, base, 0, -0.6, 0);
   let s = (t.scale ?? 1) * (e.baby ? 0.5 : 1);
   if (t.sized) s *= e.size;
+  // (Pufferfish swell up when frightened.)
+  if (t.puffs) { e.puff = (e.puff ?? 0) + ((e.angry > 0 ? 1 : 0) - (e.puff ?? 0)) * 0.15; s *= 0.42 + 0.58 * e.puff; }
   // Flyers (and dolphins) pitch up and down with where they're heading; bats fly leaning
   // forwards and roost hanging upside down.
   if (e.roost) { translate(base, base, 0, e.h, 0); rotateZ(base, base, Math.PI); }
-  else if (t.flies || t.anim === 'dolphin') {
+  else if (t.flies || t.anim === 'dolphin' || t.anim === 'shark' || t.anim === 'whale') {
     const pitch = (e.tilt ?? 0) - (t.anim === 'bat' ? 0.7 : t.anim === 'parrot' && !e.onGround ? 0.35 : 0);
     if (pitch) { translate(base, base, 0, e.h * 0.5, 0); rotateX(base, base, pitch); translate(base, base, 0, -e.h * 0.5, 0); }
   }
@@ -1417,10 +1615,15 @@ const HERDS = {
   beach: [['turtle', 10, 3]],
   meadow: [['sheep', 10, 4], ['rabbit', 6, 3], ['goat', 3, 2], ['cow', 4, 3]],
   cherry: [['pig', 6, 3], ['rabbit', 6, 2], ['sheep', 6, 3]],
-  sea: [['squid', 8, 3], ['cod', 10, 4], ['dolphin', 2, 3]],
-  warm_sea: [['dolphin', 6, 3], ['cod', 8, 4], ['squid', 4, 3]],
-  cold_sea: [['squid', 6, 3], ['salmon', 10, 4]],
-  river: [['salmon', 8, 3], ['cod', 4, 3], ['squid', 2, 2]],
+  // (Seas: schools of fish, and now and then something bigger.)
+  sea: [['cod', 12, 6], ['squid', 7, 3], ['dolphin', 4, 3], ['shark', 1, 1], ['humpback_whale', 1, 1]],
+  deep_sea: [['cod', 10, 6], ['squid', 7, 3], ['dolphin', 4, 3], ['shark', 2, 1], ['humpback_whale', 3, 1], ['blue_whale', 1, 1]],
+  warm_sea: [['tropical_fish', 20, 8], ['pufferfish', 5, 2], ['dolphin', 5, 3], ['squid', 2, 2], ['shark', 2, 1], ['cod', 3, 4]],
+  lukewarm_sea: [['tropical_fish', 12, 7], ['cod', 8, 5], ['pufferfish', 3, 1], ['dolphin', 5, 3], ['squid', 4, 3], ['shark', 1, 1]],
+  cold_sea: [['salmon', 12, 5], ['cod', 6, 5], ['squid', 6, 3], ['humpback_whale', 1, 1]],
+  deep_cold_sea: [['salmon', 10, 5], ['cod', 6, 5], ['squid', 6, 3], ['humpback_whale', 2, 1], ['blue_whale', 1, 1]],
+  frozen_sea: [['salmon', 10, 4], ['squid', 4, 3]],
+  river: [['salmon', 8, 4], ['cod', 4, 3], ['squid', 1, 2]],
 };
 const HERD_OF = {
   [BIOME.PLAINS]: 'plains', [BIOME.SUNFLOWER_PLAINS]: 'plains', [BIOME.FLAT]: 'plains', [BIOME.FOREST]: 'forest', [BIOME.FLOWER_FOREST]: 'forest',
@@ -1428,9 +1631,11 @@ const HERD_OF = {
   [BIOME.TAIGA]: 'taiga', [BIOME.OLD_GROWTH_TAIGA]: 'taiga', [BIOME.SNOWY_TAIGA]: 'snowy', [BIOME.SNOWY_PLAINS]: 'snowy', [BIOME.ICE_SPIKES]: 'snowy',
   [BIOME.SNOWY_SLOPES]: 'snowy', [BIOME.DESERT]: 'desert', [BIOME.BADLANDS]: 'desert', [BIOME.SAVANNA]: 'savanna', [BIOME.JUNGLE]: 'jungle',
   [BIOME.SPARSE_JUNGLE]: 'jungle', [BIOME.MOUNTAINS]: 'peaks', [BIOME.STONY_PEAKS]: 'peaks', [BIOME.JAGGED_PEAKS]: 'peaks', [BIOME.FROZEN_PEAKS]: 'peaks',
-  [BIOME.MEADOW]: 'meadow', [BIOME.CHERRY_GROVE]: 'cherry', [BIOME.OCEAN]: 'sea', [BIOME.DEEP_OCEAN]: 'sea', [BIOME.WARM_OCEAN]: 'warm_sea',
+  [BIOME.MEADOW]: 'meadow', [BIOME.CHERRY_GROVE]: 'cherry', [BIOME.OCEAN]: 'sea', [BIOME.DEEP_OCEAN]: 'deep_sea', [BIOME.WARM_OCEAN]: 'warm_sea',
   [BIOME.BEACH]: 'beach',
-  [BIOME.FROZEN_OCEAN]: 'cold_sea', [BIOME.RIVER]: 'river', [BIOME.FROZEN_RIVER]: 'cold_sea',
+  [BIOME.FROZEN_OCEAN]: 'frozen_sea', [BIOME.RIVER]: 'river', [BIOME.FROZEN_RIVER]: 'frozen_sea',
+  [BIOME.LUKEWARM_OCEAN]: 'lukewarm_sea', [BIOME.DEEP_LUKEWARM_OCEAN]: 'lukewarm_sea', [BIOME.COLD_OCEAN]: 'cold_sea',
+  [BIOME.DEEP_COLD_OCEAN]: 'deep_cold_sea', [BIOME.DEEP_FROZEN_OCEAN]: 'frozen_sea',
 };
 const RABBIT_OF = (biome) => (HERD_OF[biome] === 'snowy' ? 1 : biome === BIOME.DESERT || biome === BIOME.BADLANDS ? 3 : Math.random() < 0.15 ? 2 : 0);
 
@@ -1446,6 +1651,8 @@ export function herdFor(chunk, seed) {
   const [type, , n] = row, water = MOBS[type].kind === 'water', flier = !!MOBS[type].flies;
   const out = [];
   const variant = type === 'rabbit' ? RABBIT_OF(biome) : 0;
+  // (A school of fish keeps together; its members share a pattern, mostly.)
+  const school = MOBS[type].schools ? 1 + Math.floor(Math.random() * 1e9) : 0, look = Math.floor(Math.random() * (MOBS[type].skins.length));
   for (let i = 0; i < n + Math.floor(hash2(chunk.cx * 7, chunk.cz, 5) * 2); i++) {
     const lx = (lx0 + Math.floor((hash2(chunk.cx, i, chunk.cz) - 0.5) * 8)) & 15, lz = (lz0 + Math.floor((hash2(i, chunk.cz, chunk.cx) - 0.5) * 8)) & 15;
     for (let y = HEIGHT - 2; y > 1; y--) {
@@ -1453,16 +1660,33 @@ export function herdFor(chunk, seed) {
       if (!id) continue;
       if (water ? WATERLIKE[id] === 1 : (id === B.grass_block || id === B.snowy_grass || id === B.sand || id === B.snow_block || id === B.podzol ||
         id === B.stone || id === B.coarse_dirt || id === B.snow || (flier && LEAVES_WOOD[id] !== undefined))) {
-        const yy = water ? y - 1 - Math.floor(Math.random() * 2) : y + 1;
+        let yy = water ? y - 1 - Math.floor(Math.random() * 2) : y + 1;
         if (water && WATERLIKE[chunk.blocks[(yy << 8) | (lz << 4) | lx]] !== 1) break;
+        // (Whales want deep water under them, and start down in it.)
+        if (MOBS[type].deep) {
+          let depth = 0;
+          while (yy - depth > 1 && WATERLIKE[chunk.blocks[((yy - depth) << 8) | (lz << 4) | lx]] === 1) depth++;
+          if (depth < MOBS[type].deep) break;
+          yy -= Math.floor(depth / 2);
+        }
         out.push({ type, x: chunk.cx * 16 + lx + 0.5, y: yy, z: chunk.cz * 16 + lz + 0.5,
-          o: { variant: MOBS[type].variants ? Math.floor(Math.random() * (MOBS[type].variantCount ?? MOBS[type].skins.length)) : variant,
-            colour: type === 'sheep' ? sheepColour(Math.random()) : 0, baby: Math.random() < 0.1 } });
+          o: { variant: school ? (Math.random() < 0.85 ? look : Math.floor(Math.random() * MOBS[type].skins.length))
+            : MOBS[type].variants ? Math.floor(Math.random() * (MOBS[type].variantCount ?? MOBS[type].skins.length)) : variant,
+            colour: type === 'sheep' ? sheepColour(Math.random()) : 0, baby: Math.random() < 0.1 && !MOBS[type].deep && type !== 'shark', school } });
       }
       break;
     }
   }
   return out;
+}
+
+// The sea life to add near a swimmer in biome `biome`: [type, count] or null.
+export function seaLifeFor(biome) {
+  const table = HERDS[HERD_OF[biome]];
+  if (!table || MOBS[table[0][0]].kind !== 'water') return null;
+  let pick = Math.random() * table.reduce((a, x) => a + x[1], 0);
+  for (const r of table) { if ((pick -= r[1]) <= 0) return [r[0], r[2]]; }
+  return [table[0][0], table[0][2]];
 }
 
 // Which monster to try at a dark spot (biome and depth decide).

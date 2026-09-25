@@ -135,6 +135,12 @@ POTION_NAMES.forEach((name, i) => {
 // The cave update's: glow berries (eaten, or planted under a ceiling as cave vines) and amethyst.
 item(451, 'glow_berries', { label: 'Glow Berries', food: 2, sat: 0.1 });
 item(452, 'amethyst_shard', { label: 'Amethyst Shard' });
+// The ocean update's: kelp dried in a furnace, quick to eat.
+item(453, 'dried_kelp', { label: 'Dried Kelp', food: 1, sat: 0.1, quick: true });
+// A shark's: its meat, and its teeth (ground up for bone meal).
+item(454, 'raw_shark', { label: 'Raw Shark', food: 3, sat: 0.3 });
+item(455, 'cooked_shark', { label: 'Cooked Shark', food: 7, sat: 0.8 });
+item(456, 'shark_tooth', { label: 'Shark Tooth' });
 // (Only ever seen in a hand: the rod while its line is out.)
 item(1020, 'fishing_rod_cast', { label: 'Fishing Rod', stack: 1, hidden: true });
 // Dyes are one texture in sixteen colours.
@@ -235,7 +241,7 @@ export function breakTime(block, tool, efficiency = 0) {
 
 // What a block drops in survival: [{ id, count }].
 const SHEARABLE = new Set(['tall_grass', 'fern', 'tall_grass_double', 'large_fern', 'dead_bush', 'vine', 'glow_lichen', 'hanging_roots',
-  'azalea_leaves', 'flowering_azalea_leaves', 'cobweb']);
+  'azalea_leaves', 'flowering_azalea_leaves', 'cobweb', 'seagrass']);
 export function dropsFor(blockId, tool, rand = Math.random) {
   const block = BLOCKS[blockId];
   if (!block) return [];

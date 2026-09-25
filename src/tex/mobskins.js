@@ -4,6 +4,7 @@
 import { skin, boxRegions } from '../skins.js';
 import { RIGS } from '../rigs.js';
 import { ramp, mix } from './core.js';
+import { TROPICAL, FISH_COLOURS } from '../tropical.js';
 
 const reg = (cube) => boxRegions(cube.uv[0], cube.uv[1], cube.size[0], cube.size[1], cube.size[2]);
 const cubesOf = (rig, bone) => RIGS[rig].bones[bone].cubes;
@@ -794,6 +795,126 @@ skin('dolphin', (sk) => {
   const beak = reg(cubesOf('dolphin', 'head')[1]);
   for (const side of SIDES) sk.fill(beak[side], belly, { cell: 1 });
 });
+
+// ---------------------------------------------------------------- the ocean update's sea life
+// Tropical fish and pufferfish come from the texture pack (tools/skin-sources.mjs); these are the
+// fallback: the fish's base colour with a band of its pattern colour.
+for (const [name, shape, , base, over] of TROPICAL) {
+  skin(`tropical_${name}`, (sk) => {
+    const rig = shape ? 'tropical_b' : 'tropical_a';
+    fur(sk, rig, ['body', 'tail', 'finR', 'finL'], ramp(FISH_COLOURS[base], 3, 0.08, 4), { cell: 1, grain: 0.2 });
+    const r = reg(cubesOf(rig, 'body')[0]);
+    for (const side of ['right', 'left']) for (let y = 0; y < r[side][3]; y++) at(sk, r[side], 2, y, FISH_COLOURS[over]);
+  });
+}
+skin('pufferfish', (sk) => {
+  fur(sk, 'pufferfish', ['body'], [0xd8a038, 0xe8b448, 0xf0c45c], { cell: 1, grain: 0.3 });
+  const r = reg(cubesOf('pufferfish', 'body')[0]);
+  sk.fill(r.bottom, [0xf0e0b0, 0xf8ecc8], { cell: 1 });
+  at(sk, r.front, 1, 2, 0x101010); at(sk, r.front, 6, 2, 0x101010);
+});
+
+// Sharks: slate grey above and white below, the line between them wavering along the flanks; a
+// dark eye, gill slits behind the head, a grim mouth line under the snout, and darker fins. (On a
+// box's side, the right side's picture runs back to front and the left's front to back: `fore`
+// counts from the front either way.)
+const fore = (r, side, x) => (side === 'right' ? r[2] - 1 - x : x);
+const SHARK = [0x4e5a66, 0x56626e, 0x5e6a76, 0x68747f], SHARK_BELLY = [0xd8dcdc, 0xe2e6e4, 0xeceeec], SHARK_FIN = [0x444e58, 0x4c5660, 0x545e68];
+skin('shark', (sk) => {
+  fur(sk, 'shark', ['body', 'head', 'rear', 'tail'], SHARK, { cell: 2, grain: 0.25 });
+  for (const cube of [cubesOf('shark', 'body')[0], ...cubesOf('shark', 'head'), cubesOf('shark', 'rear')[0], ...cubesOf('shark', 'tail')]) {
+    const R = reg(cube);
+    sk.fill(R.bottom, SHARK_BELLY, { cell: 2 });
+    for (const side of ['right', 'left']) {
+      const r = R[side], belly = Math.max(1, Math.round(r[3] * 0.42));
+      // (A wavy line where the grey meets the white.)
+      for (let x = 0; x < r[2]; x++) {
+        const b = belly + ((x * 7) % 3 === 0 ? 1 : 0);
+        for (let y = r[3] - b; y < r[3]; y++) at(sk, r, x, y, SHARK_BELLY[(x + y) % 3]);
+      }
+    }
+    for (const face of ['front', 'back']) if (R[face][3] > 2) sk.fill([R[face][0], R[face][1] + R[face][3] - 2, R[face][2], 2], SHARK_BELLY, { cell: 1 });
+  }
+  fur(sk, 'shark', ['dorsal', 'lobeU', 'lobeL'], SHARK_FIN, { cell: 1, grain: 0.2 });
+  for (const cube of cubesOf('shark', 'rear').slice(1)) sk.box(cube, (face, r) => sk.fill(r, SHARK_FIN, { cell: 1 }));
+  // Pectoral fins: grey above, pale beneath, with dark tips.
+  each(sk, 'shark', ['finR'], (face, r) => sk.fill(r, face === 'bottom' ? SHARK_BELLY : SHARK_FIN, { cell: 1 }));
+  const F = reg(cubesOf('shark', 'finR')[0]);
+  for (const face of ['top', 'bottom']) for (let y = 0; y < F[face][3]; y++) at(sk, F[face], 0, y, 0x353e47);
+  // The head: an eye on each side, the mouth along the snout's lower edge, nostrils.
+  const [H, S] = cubesOf('shark', 'head').map(reg);
+  for (const side of ['right', 'left']) {
+    at(sk, H[side], fore(H[side], side, 1), 2, 0x0a0c0e); at(sk, H[side], fore(H[side], side, 1), 3, 0x2a3036);
+    for (let x = 0; x < S[side][2]; x++) at(sk, S[side], x, S[side][3] - 1, 0x2a2e32);
+    for (let x = 0; x < 3; x++) at(sk, H[side], fore(H[side], side, x), H[side][3] - 2, 0x2a2e32);
+    at(sk, H[side], fore(H[side], side, 3), H[side][3] - 1, 0x2a2e32);
+    // (a glimpse of teeth under the lip)
+    at(sk, S[side], fore(S[side], side, 1), S[side][3] - 2, 0xf4f4f0); at(sk, H[side], fore(H[side], side, 1), H[side][3] - 1, 0xf4f4f0);
+  }
+  at(sk, S.front, 1, 1, 0x2a2e32); at(sk, S.front, 3, 1, 0x2a2e32);
+  // Gill slits on the flanks just behind the head.
+  const B = reg(cubesOf('shark', 'body')[0]);
+  for (const side of ['right', 'left']) for (let k = 0; k < 3; k++) for (let y = 2; y < 5; y++) at(sk, B[side], fore(B[side], side, 1 + k * 2), y, 0x3a434c);
+});
+
+// Whales: a humpback is near black above, with a white throat pleated in grooves, knobbly bumps on
+// its head, long white flippers and flukes white beneath; a blue whale is mottled blue-grey, paler
+// below. Both have an eye low at the back corner of the mouth, the mouth line running forward
+// from it, and a blowhole on top of the head.
+function whaleSkin(rig, back, belly, { pleats = false, bumps = false, paleFlippers = false, mottle = null } = {}) {
+  return (sk) => {
+    fur(sk, rig, ['head', 'body', 'rear', 'tail', 'fluke', 'finR'], back, { cell: 2, grain: 0.2 });
+    const trunk = [...cubesOf(rig, 'head'), cubesOf(rig, 'body')[0], cubesOf(rig, 'rear')[0], ...cubesOf(rig, 'tail')];
+    for (const cube of trunk) {
+      const R = reg(cube);
+      sk.fill(R.bottom, belly, { cell: 2 });
+      for (const side of ['right', 'left', 'front', 'back']) {
+        const r = R[side], b = Math.max(1, Math.round(r[3] * 0.38));
+        for (let x = 0; x < r[2]; x++) {
+          const bb = b + ((x * 5) % 4 === 0 ? 1 : 0);
+          for (let y = r[3] - bb; y < r[3]; y++) at(sk, r, x, y, belly[(x + y) % belly.length]);
+        }
+      }
+    }
+    if (mottle) each(sk, rig, ['head', 'body', 'rear', 'tail'], (face, r) => {
+      if (face === 'bottom') return;
+      for (let k = 0; k < (r[2] * r[3]) / 7; k++) at(sk, r, sk.ri(r[2]), sk.ri(r[3]), mottle[sk.ri(mottle.length)]);
+    });
+    const [H, S] = cubesOf(rig, 'head').map(reg);
+    for (const side of ['right', 'left']) {
+      const h = H[side], sn = S[side];
+      at(sk, h, fore(h, side, h[2] - 2), h[3] - 3, 0x0c0e10); at(sk, h, fore(h, side, h[2] - 3), h[3] - 3, belly[2]);
+      for (let x = 0; x < h[2] - 1; x++) at(sk, h, fore(h, side, x), h[3] - 2, back[0]);
+      for (let x = 0; x < sn[2]; x++) at(sk, sn, x, sn[3] - 2, back[0]);
+    }
+    // The blowhole, just behind the snout.
+    const hw = H.top[2];
+    at(sk, H.top, (hw >> 1) - 1, H.top[3] - 2, 0x101214); at(sk, H.top, hw >> 1, H.top[3] - 2, 0x101214);
+    if (pleats) {
+      for (const R of [H, S, reg(cubesOf(rig, 'body')[0])]) {
+        const r = R.bottom, len = R === H || R === S ? r[3] : Math.ceil(r[3] * 0.6);
+        for (let x = 1; x < r[2]; x += 2) for (let y = 0; y < len; y++) at(sk, r, x, y, belly[0] - 0x101010);
+      }
+    }
+    if (bumps) for (const r of [H.top, S.top]) for (let k = 0; k < (r[2] * r[3]) / 5; k++) at(sk, r, sk.ri(r[2]), sk.ri(r[3]), k % 3 ? back[0] : back[3]);
+    if (paleFlippers) {
+      each(sk, rig, ['finR'], (face, r) => sk.fill(r, belly, { cell: 1 }));
+      each(sk, rig, ['finR'], (face, r) => { if (face === 'top') for (let k = 0; k < r[2] / 2; k++) at(sk, r, sk.ri(r[2]), sk.ri(r[3]), back[1]); });
+    }
+    // Flukes: pale beneath (the humpback's) with a dark trailing edge, notched in the middle.
+    const Fl = reg(cubesOf(rig, 'fluke')[0]), fw = Fl.top[2];
+    if (paleFlippers) sk.fill(Fl.bottom, belly, { cell: 1 });
+    for (let x = 0; x < fw; x++) { at(sk, Fl.top, x, 0, back[0]); at(sk, Fl.bottom, x, Fl.bottom[3] - 1, back[0]); }
+    for (const x of [(fw >> 1) - 1, fw >> 1]) {
+      sk.set(Fl.top[0] + x, Fl.top[1], 0, 0); sk.set(Fl.bottom[0] + x, Fl.bottom[1] + Fl.bottom[3] - 1, 0, 0);
+      sk.set(Fl.back[0] + x, Fl.back[1], 0, 0);
+    }
+  };
+}
+skin('whale_humpback', whaleSkin('whale_humpback', [0x1e2226, 0x262a2f, 0x2e3338, 0x363b41], [0xc8ccd0, 0xd6dade, 0xe4e7ea],
+  { pleats: true, bumps: true, paleFlippers: true }));
+skin('whale_blue', whaleSkin('whale_blue', [0x4a6680, 0x52708a, 0x5c7a94, 0x66849e], [0x9fb2c2, 0xaebfcd, 0xbccad6],
+  { mottle: [0x7e98ae, 0x8aa2b6, 0x3e586f] }));
 
 // Snow golems: packed snow (blue-white, a few darker lumps), stick arms, and a carved pumpkin with
 // a candle-lit face.

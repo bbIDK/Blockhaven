@@ -17,6 +17,17 @@ export function randomTick(w, x, y, z, id) {
   else if (id === B.farmland || id === B.farmland_moist) hydrate(w, x, y, z, id);
   else if (id === B.sugar_cane || id === B.cactus) growTall(w, x, y, z, id);
   else if (id === B.dirt) spreadGrass(w, x, y, z);
+  else if (id === B.kelp) growKelp(w, x, y, z);
+}
+
+// Kelp grows up through still water, a block now and then, until it nears the surface (or reaches
+// its own height, anywhere up to about 25 blocks).
+function growKelp(w, x, y, z) {
+  if (Math.random() > 0.14 || w.getBlock(x, y + 1, z) !== B.water || w.getBlock(x, y + 2, z) !== B.water) return;
+  let base = y;
+  while (base > 0 && (w.getBlock(x, base - 1, z) === B.kelp_plant || w.getBlock(x, base - 1, z) === B.kelp)) base--;
+  if (y - base >= 2 + Math.floor(((x * 73856093) ^ (z * 19349663)) >>> 0) % 24) return;
+  w.setBlock(x, y + 1, z, B.kelp);
 }
 
 // ---------------------------------------------------------------- crops

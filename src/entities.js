@@ -10,9 +10,10 @@ import { mat4, identity, translate, rotateX, rotateY, rotateZ, scale, hash2 } fr
 import { B, BLOCKS, BASE, SOLID, WATERLIKE, FILTER, REPLACEABLE, RAIL, RAIL_ID } from './blocks.js';
 import { I, itemDef, DISCS } from './items.js';
 import { rayBox } from './world.js';
-import { HEIGHT, TICKS_PER_DAY } from './config.js';
+import { HEIGHT, TICKS_PER_DAY, SEA_LEVEL } from './config.js';
 import { villageAt } from './villages.js';
-import { MOBS, initMob, mobTick, mobPhysics, renderMob, provoked, mobUseEffect, applyMobUse, applyHeldUse, mobDrops, mobXp, herdFor, monsterFor, HOSTILE_TYPES,
+import { BIOME } from './biomes.js';
+import { MOBS, initMob, mobTick, mobPhysics, renderMob, provoked, mobUseEffect, applyMobUse, applyHeldUse, mobDrops, mobXp, herdFor, monsterFor, HOSTILE_TYPES, seaLifeFor,
   rallyPets } from './mobs.js';
 import { Civilians } from './civilians.js';
 import { extras, cleanExtras } from './inventory.js';
@@ -50,13 +51,16 @@ export function mobExtra(e) {
   if (e.made) o.md = 1;
   if (e.named) o.nm = e.named;
   if (e.leash) o.le = e.leash.uid ?? [e.leash.x, e.leash.y, e.leash.z];
+  if (e.school) o.sc = e.school;
   if (e.def.kind === 'civilian') { o.r = e.rid; o.sk = e.skin; o.n = e.name; o.ro = e.role; }
   return o;
 }
+// The seas deep enough for whales.
+const DEEP_SEAS = new Set([BIOME.DEEP_OCEAN, BIOME.DEEP_LUKEWARM_OCEAN, BIOME.DEEP_COLD_OCEAN, BIOME.DEEP_FROZEN_OCEAN]);
 const extraOpts = (s) => ({ variant: Number.isInteger(s.v) ? s.v : 0, colour: Number.isInteger(s.c) ? s.c : 0, size: [1, 2, 4].includes(s.s) ? s.s : 1,
   baby: !!s.b, sheared: !!s.sh, tame: !!s.tm, saddled: !!s.sd, temper: Number.isFinite(s.te) ? Math.max(0, Math.min(100, s.te)) : 0,
   owner: typeof s.ow === 'string' && s.ow ? s.ow.slice(0, 64) : null, sitting: !!s.si, collar: Number.isInteger(s.co) && s.co >= 0 && s.co < 16 ? s.co : undefined,
-  made: !!s.md, named: typeof s.nm === 'string' ? cleanTagName(s.nm) : null,
+  made: !!s.md, named: typeof s.nm === 'string' ? cleanTagName(s.nm) : null, school: Number.isInteger(s.sc) ? s.sc : 0,
   leash: typeof s.le === 'string' && s.le ? { uid: s.le.slice(0, 64) }
     : Array.isArray(s.le) && s.le.length === 3 && s.le.every(Number.isInteger) ? { x: s.le[0], y: s.le[1], z: s.le[2] } : null });
 // A name from a name tag: printable, and no longer than the original allows.
@@ -420,6 +424,58 @@ export class Entities {
     }
   }
 
+  // The seas stay full of life: now and then a school of fish (or dolphins, squid, a shark, a whale)
+  // turns up in open water not far from someone.
+  trySpawnSea() {
+    const w = this.world;
+    if (!this.players.length) return;
+    const sea = this.list.filter((e) => e.kind === 'mob' && e.def.kind === 'water' && !e.dead);
+    const p = this.players[Math.floor(Math.random() * this.players.length)];
+    // Now and then a whale comes up out of the deep, when there's none about already.
+    if (Math.random() < 0.08 && !sea.some((e) => e.def.deep)) this.trySpawnWhale(p);
+    if (sea.length >= 48) return;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const a = Math.random() * Math.PI * 2, d = 18 + Math.random() * 30;
+      const x = Math.floor(p.x + Math.cos(a) * d), z = Math.floor(p.z + Math.sin(a) * d);
+      if (!w.isLoaded(x, z) || WATERLIKE[w.getBlock(x, SEA_LEVEL, z)] !== 1) continue;
+      const pick = seaLifeFor(w.biomeAt?.(x, z) ?? 0);
+      if (!pick) continue;
+      const [type, n] = pick, t = MOBS[type];
+      // (No more than a couple of sharks, or of whales, about at once.)
+      if ((t.preys || t.deep) && sea.filter((e) => e.def.preys === t.preys && !!e.def.deep === !!t.deep).length >= 2) continue;
+      let depth = 0;
+      while (depth < 60 && WATERLIKE[w.getBlock(x, SEA_LEVEL - depth, z)] === 1) depth++;
+      if (depth < (t.deep ?? 2)) continue;
+      const school = t.schools ? 1 + Math.floor(Math.random() * 1e9) : 0, look = Math.floor(Math.random() * t.skins.length);
+      const y = t.deep ? SEA_LEVEL - Math.floor(depth / 2) : SEA_LEVEL - 1 - Math.floor(Math.random() * Math.min(8, depth - 1));
+      const count = n + (t.deep || t.preys ? 0 : Math.floor(Math.random() * 3));
+      for (let i = 0; i < count; i++) {
+        const sx = x + 0.5 + (Math.random() - 0.5) * 3, sz = z + 0.5 + (Math.random() - 0.5) * 3;
+        if (WATERLIKE[w.getBlock(Math.floor(sx), y, Math.floor(sz))] !== 1) continue;
+        this.spawnMob(type, sx, y, sz, { variant: school ? (Math.random() < 0.85 ? look : Math.floor(Math.random() * t.skins.length)) : 0, school });
+      }
+      return;
+    }
+  }
+
+  // Whales, well out over deep water: a humpback or two, or (in the deepest seas) a blue whale.
+  trySpawnWhale(p) {
+    const w = this.world;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const a = Math.random() * Math.PI * 2, d = 40 + Math.random() * 30;
+      const x = Math.floor(p.x + Math.cos(a) * d), z = Math.floor(p.z + Math.sin(a) * d);
+      if (!w.isLoaded(x, z) || !DEEP_SEAS.has(w.biomeAt(x, z)) || WATERLIKE[w.getBlock(x, SEA_LEVEL - 1, z)] !== 1) continue;
+      let depth = 0;
+      while (depth < 60 && WATERLIKE[w.getBlock(x, SEA_LEVEL - 1 - depth, z)] === 1) depth++;
+      const blue = depth >= MOBS.blue_whale.deep + 2 && Math.random() < 0.35;
+      const type = blue ? 'blue_whale' : 'humpback_whale';
+      if (depth < MOBS[type].deep + 2) continue;
+      const y = SEA_LEVEL - 1 - Math.floor(depth / 2), n = blue ? 1 : 1 + (Math.random() < 0.4 ? 1 : 0);
+      for (let i = 0; i < n; i++) this.spawnMob(type, x + 0.5 + i * 6, y, z + 0.5 + i * 3);
+      return;
+    }
+  }
+
   // Bats flit about in dark caves (never many at once).
   trySpawnBat() {
     const w = this.world;
@@ -458,7 +514,7 @@ export class Entities {
     if (this.guest) { this.remoteTick(); return; }
     // Everyone creatures can see: this player and, in multiplayer, the others.
     this.players = game.players();
-    if (++this.spawnTimer >= 40) { this.spawnTimer = 0; this.trySpawnHostile(); if (Math.random() < 0.5) this.trySpawnBat(); }
+    if (++this.spawnTimer >= 40) { this.spawnTimer = 0; this.trySpawnHostile(); if (Math.random() < 0.5) this.trySpawnBat(); if (Math.random() < 0.6) this.trySpawnSea(); }
     if ((this.phantomTimer = (this.phantomTimer ?? 0) + 1) >= 600) { this.phantomTimer = 0; this.trySpawnPhantoms(); }
     this.civilians.tick();
     this.detectorTick();

@@ -65,6 +65,32 @@ function horseBones(ears, extra = {}) {
   return bones;
 }
 
+// Whales, drawn several times the pixel size of other creatures (as Minecraft draws a ghast): a
+// head tapering to the snout, a great body, the rear half and the tail stock narrowing to broad
+// flukes (which beat up and down, the rear bending with them), and flippers. A humpback is stocky,
+// with flippers a third of its length and a small hump for a fin; a blue whale is long and slender,
+// with a broad flat head, small flippers and a tiny fin far back.
+const WHALES = {
+  humpback: {
+    head: { pivot: [0, 4.5, -13], cubes: [c([-4.5, 0.5, -19], [9, 7, 6], [0, 22]), c([-3.5, 1, -23], [7, 5, 4], [30, 22])] },
+    body: { pivot: [0, 4.5, 0], cubes: [c([-5.5, 0, -13], [11, 9, 13], [0, 0])] },
+    rear: { pivot: [0, 4.5, 0], cubes: [c([-4.5, 0.5, 0], [9, 8, 8], [0, 35]), c([-0.5, 8.5, 3], [1, 2, 3], [48, 0])] },
+    tail: { parent: 'rear', pivot: [0, 4.5, 8], cubes: [c([-3, 2, 8], [6, 5, 7], [34, 35]), c([-2, 2.5, 15], [4, 4, 4], [0, 51])] },
+    fluke: { parent: 'tail', pivot: [0, 4.5, 19], cubes: [c([-9, 4, 19], [18, 1, 5], [16, 51])] },
+    finR: { pivot: [5, 2.5, -9], rest: [0, -0.35, -0.38], cubes: [c([5, 2, -11], [14, 1, 4], [0, 59])] },
+    finL: { pivot: [-5, 2.5, -9], rest: [0, 0.35, 0.38], cubes: [c([-19, 2, -11], [14, 1, 4], [0, 59], { mirror: true })] },
+  },
+  blue: {
+    head: { pivot: [0, 3.5, -13], cubes: [c([-3.5, 0.5, -20], [7, 5, 7], [0, 22]), c([-3.5, 1, -24], [7, 3, 4], [28, 22])] },
+    body: { pivot: [0, 3.5, 0], cubes: [c([-4, 0, -13], [8, 7, 15], [0, 0])] },
+    rear: { pivot: [0, 3.5, 2], cubes: [c([-3.5, 0.5, 2], [7, 6, 9], [0, 34]), c([-0.5, 6.5, 8], [1, 1, 2], [46, 0])] },
+    tail: { parent: 'rear', pivot: [0, 3.5, 11], cubes: [c([-2.5, 1.5, 11], [5, 4, 7], [32, 34]), c([-1.5, 2, 18], [3, 3, 3], [50, 22])] },
+    fluke: { parent: 'tail', pivot: [0, 3.5, 21], cubes: [c([-7, 3, 21], [14, 1, 4], [0, 49])] },
+    finR: { pivot: [4, 1.5, -9], rest: [0, -0.4, -0.45], cubes: [c([4, 1, -10], [5, 1, 2], [36, 49])] },
+    finL: { pivot: [-4, 1.5, -9], rest: [0, 0.4, 0.45], cubes: [c([-9, 1, -10], [5, 1, 2], [36, 49], { mirror: true })] },
+  },
+};
+
 export const RIGS = {
   humanoid: { bones: HUMANOID, hand: { bone: 'rightArm', at: [6, 13, -1] }, height: 32 },
   skeleton: {
@@ -401,6 +427,60 @@ export const RIGS = {
       tail: { pivot: [0, 2.5, 4], cubes: [c([-1.5, 0, 4], [3, 5, 4], [0, 13]), c([0, 0, 8], [0, 5, 5], [20, 10])] },
     },
   },
+  // Tropical fish, Minecraft's two shapes: small and slim (A), and tall and flat with fins above
+  // and below (B); their skins are a base colour with a pattern over it.
+  tropical_a: {
+    bones: {
+      body: { pivot: [0, 2, 0], cubes: [c([-1, 0.5, -3], [2, 3, 6], [0, 0]), c([0, 3.5, -3], [0, 3, 6], [10, -5])] },
+      tail: { pivot: [0, 2, 3], cubes: [c([0, 0.5, 3], [0, 3, 6], [22, -6])] },
+      finR: { pivot: [1, 1.5, 0], rest: [0, -Math.PI / 4, 0], cubes: [c([1, 0.5, 0], [2, 2, 0], [2, 16])] },
+      finL: { pivot: [-1, 1.5, 0], rest: [0, Math.PI / 4, 0], cubes: [c([-3, 0.5, 0], [2, 2, 0], [2, 12])] },
+    },
+  },
+  tropical_b: {
+    bones: {
+      body: { pivot: [0, 7, 0], cubes: [c([-1, 4, -3], [2, 6, 6], [0, 20]), c([0, 10, -3], [0, 4, 6], [20, 11]), c([0, 0, -3], [0, 4, 6], [20, 21])] },
+      tail: { pivot: [0, 7, 3], cubes: [c([0, 4, 3], [0, 6, 5], [21, 16])] },
+      finR: { pivot: [1, 5, 0], rest: [0, -Math.PI / 4, 0], cubes: [c([1, 4, 0], [2, 2, 0], [2, 16])] },
+      finL: { pivot: [-1, 5, 0], rest: [0, Math.PI / 4, 0], cubes: [c([-3, 4, 0], [2, 2, 0], [2, 12])] },
+    },
+  },
+  // Pufferfish, as Minecraft draws one puffed right up: a round (well, cubic) body with spines
+  // standing out all round it. (Unpuffed, the game draws it small.)
+  pufferfish: {
+    bones: {
+      body: { pivot: [0, 4, 0], cubes: [c([-4, 0, -4], [8, 8, 8], [0, 0]), c([-4, 8, 0], [8, 1, 1], [14, 16]), c([-4, -1, 0], [8, 1, 0], [15, 20])] },
+      finR: { pivot: [4, 8, -2], cubes: [c([4, 8, -3], [2, 1, 2], [24, 0])] },
+      finL: { pivot: [-4, 8, -2], cubes: [c([-6, 8, -3], [2, 1, 2], [24, 3])] },
+      spineTF: { pivot: [0, 8, -4], rest: [-Math.PI / 4, 0, 0], cubes: [c([-4, 8, -4], [8, 1, 0], [15, 17])] },
+      spineTB: { pivot: [0, 8, 4], rest: [Math.PI / 4, 0, 0], cubes: [c([-4, 8, 4], [8, 1, 0], [23, 18])] },
+      spineBF: { pivot: [0, 0, -4], rest: [Math.PI / 4, 0, 0], cubes: [c([-4, -1, -4], [8, 1, 0], [15, 20])] },
+      spineBB: { pivot: [0, 0, 4], rest: [-Math.PI / 4, 0, 0], cubes: [c([-4, -1, 4], [8, 1, 0], [15, 20])] },
+      spineRF: { pivot: [4, 0, -4], rest: [0, Math.PI / 4, 0], cubes: [c([4, 0, -4], [1, 8, 0], [5, 17])] },
+      spineLF: { pivot: [-4, 0, -4], rest: [0, -Math.PI / 4, 0], cubes: [c([-5, 0, -4], [1, 8, 0], [1, 17])] },
+      spineRB: { pivot: [4, 0, 4], rest: [0, -Math.PI / 4, 0], cubes: [c([4, 0, 4], [1, 8, 0], [9, 17])] },
+      spineLB: { pivot: [-4, 0, 4], rest: [0, Math.PI / 4, 0], cubes: [c([-5, 0, 4], [1, 8, 0], [9, 17])] },
+    },
+  },
+  // Sharks: a torpedo of a body, thickest behind the head and narrowing to the tail, a pointed
+  // snout, a tall dorsal fin raked back, pectoral fins held out and down, and a tail whose upper
+  // lobe is the larger (the rear and tail sweep side to side as it swims). Drawn at twice the pixel
+  // size or so, to come out the length of a great white.
+  shark: {
+    bones: {
+      body: { pivot: [0, 4, 0], cubes: [c([-4, 0, -8], [8, 8, 12], [0, 0])] },
+      head: { pivot: [0, 4, -8], cubes: [c([-3.5, 0.5, -14], [7, 7, 6], [0, 20]), c([-2.5, 1.5, -18], [5, 4, 4], [26, 20])] },
+      dorsal: { pivot: [0, 8, -1], rest: [0.45, 0, 0], cubes: [c([-0.5, 7.5, -3.5], [1, 7, 5], [44, 20])] },
+      rear: { pivot: [0, 4, 4], cubes: [c([-3, 1, 4], [6, 6, 8], [0, 33]), c([-0.5, 6.5, 8], [1, 2, 2], [24, 47]), c([-0.5, -0.5, 9], [1, 2, 2], [30, 47])] },
+      tail: { parent: 'rear', pivot: [0, 4, 12], cubes: [c([-1.5, 2, 12], [3, 4, 6], [28, 33]), c([-1, 2.5, 18], [2, 3, 3], [46, 33])] },
+      lobeU: { parent: 'tail', pivot: [0, 5, 20], rest: [0.65, 0, 0], cubes: [c([-0.5, 4.5, 18.5], [1, 10, 4], [40, 0])] },
+      lobeL: { parent: 'tail', pivot: [0, 3, 20], rest: [-0.55, 0, 0], cubes: [c([-0.5, -2, 18.5], [1, 5, 3], [50, 0])] },
+      finR: { pivot: [4, 1.5, -5], rest: [0, -0.45, -0.4], cubes: [c([4, 1, -7], [8, 1, 4], [0, 47])] },
+      finL: { pivot: [-4, 1.5, -5], rest: [0, 0.45, 0.4], cubes: [c([-12, 1, -7], [8, 1, 4], [0, 47], { mirror: true })] },
+    },
+  },
+  whale_humpback: { bones: WHALES.humpback },
+  whale_blue: { bones: WHALES.blue },
 };
 
 // ---------------------------------------------------------------- meshes and poses

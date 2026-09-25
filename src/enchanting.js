@@ -44,7 +44,7 @@ export const ORE_XP = {
 export const SMELT_XP = {
   iron_ingot: 0.7, gold_ingot: 1, copper_ingot: 0.7, diamond: 1, emerald: 1, lapis_lazuli: 0.2, redstone: 0.3, coal: 0.1, glass: 0.1, stone: 0.1,
   smooth_stone: 0.1, brick: 0.3, terracotta: 0.35, charcoal: 0.15, cooked_porkchop: 0.35, cooked_beef: 0.35, cooked_chicken: 0.35,
-  cooked_mutton: 0.35, cooked_rabbit: 0.35, cooked_cod: 0.35, cooked_salmon: 0.35, baked_potato: 0.35, deepslate: 0.1,
+  cooked_mutton: 0.35, cooked_rabbit: 0.35, cooked_cod: 0.35, cooked_salmon: 0.35, cooked_shark: 0.35, dried_kelp: 0.1, baked_potato: 0.35, deepslate: 0.1,
 };
 
 // ---------------------------------------------------------------- the enchantments

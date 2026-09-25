@@ -1,7 +1,8 @@
-// Cave blocks that shape themselves to what's around them: pointed dripstone thins from its root to
-// its tip (and where a stalactite comes down to meet a stalagmite, both tips merge), and a cave
-// vine's lowest piece is its growing tip. The world generator lays them out the same way.
-import { DRIPSTONE, DRIPSTONE_ID, CAVE_VINES, caveVineId } from './blocks.js';
+// Blocks that shape themselves to what's around them: pointed dripstone thins from its root to its
+// tip (and where a stalactite comes down to meet a stalagmite, both tips merge), a cave vine's
+// lowest piece is its growing tip, and so is kelp's highest. The world generator lays them out the
+// same way.
+import { B, DRIPSTONE, DRIPSTONE_ID, CAVE_VINES, caveVineId } from './blocks.js';
 
 // The parts of a spike `n` long, root first: base, middles, frustum, tip.
 export function dripParts(n, merged = false) {
@@ -42,4 +43,11 @@ export function reshapeVine(w, x, y, z) {
   if (!v) return;
   const tip = !CAVE_VINES[w.getBlock(x, y - 1, z)];
   if (tip !== v.tip) w.setBlock(x, y, z, caveVineId(tip, v.lit), { updates: false });
+}
+
+// Kelp is a tip when there's no more kelp above it.
+export function reshapeKelp(w, x, y, z) {
+  const id = w.getBlock(x, y, z), above = w.getBlock(x, y + 1, z);
+  const want = above === B.kelp || above === B.kelp_plant ? B.kelp_plant : B.kelp;
+  if (want !== id) w.setBlock(x, y, z, want, { updates: false });
 }
