@@ -1946,6 +1946,13 @@ export function renderMob(ents, e, rx, ry, rz, light, out) {
 // third-person hold). A bow stands upright across the hand with its string towards the holder;
 // anything else is held small and upright in front of the fist.
 const HANDHELD = /_(sword|pickaxe|axe|shovel|hoe)$|^(stick|bone|fishing_rod|fishing_rod_cast)$/;
+// Which way round a tool's picture goes in the hand: turned so an axe's or a hoe's blade is on the
+// underside, as Minecraft holds them, but a fishing rod the other way so its line hangs from the tip
+// (Minecraft's own rod hold). (The picture's handle-to-head diagonal points forward either way.)
+export function toolSide(m, name) {
+  if (/^fishing_rod/.test(name)) rotateY(m, m, Math.PI / 2);
+  else { rotateY(m, m, -Math.PI / 2); rotateZ(m, m, Math.PI / 2); }
+}
 const HOLD_TILT = 0.45; // how far above straight ahead the tool points (before the arm's own lift)
 function holdItem(m, id, kind) {
   const name = ITEMS.get(id)?.name ?? '';
@@ -1956,7 +1963,7 @@ function holdItem(m, id, kind) {
     translate(m, m, -0.34 - 8, -0.66 - 8, -0.5 - 8);
   } else if (kind === 'sprite' && HANDHELD.test(name)) {
     rotateX(m, m, HOLD_TILT - Math.PI / 4);
-    rotateY(m, m, Math.PI / 2);
+    toolSide(m, name);
     scale(m, m, 0.8, 0.8, 0.8);
     translate(m, m, -0.16 - 8, -0.16 - 8, -0.5 - 8);
   } else if (kind === 'sprite') {

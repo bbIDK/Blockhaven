@@ -1728,6 +1728,8 @@ export class Game {
     }
     p.x = e.x; p.z = e.z; p.y = seatY(e);
     p.vx = e.vx; p.vz = e.vz; p.vy = 0;
+    // (No walking sway of the view while riding, as in the original.)
+    p.bob = 0;
     p.onGround = true;
     p.fallDistance = 0;
     p.landed = null;
@@ -2162,7 +2164,11 @@ export class Game {
   }
 
   updateMining(dt, target) {
+    // (After a block gives way there's a moment, a quarter of a second, before the next one starts
+    // to, as in the original.)
+    if (this.breakCooldown > 0) this.breakCooldown -= dt;
     if (!target || BLOCKS[target.id].hardness < 0) { this.mining = null; return; }
+    if (this.breakCooldown > 0) return;
     const m = this.mining;
     if (!m || m.x !== target.x || m.y !== target.y || m.z !== target.z || m.id !== target.id) {
       this.mining = { x: target.x, y: target.y, z: target.z, id: target.id, progress: 0, sound: 0 };
@@ -2175,6 +2181,8 @@ export class Game {
     let time = breakTime(BLOCKS[target.id], this.inv.heldId, enchLevel(this.inv.held, 'efficiency'));
     if (p.headInWater && !enchLevel(this.inv.armor[0], 'aqua_affinity')) time *= 5;
     if (!p.onGround && !p.flying) time *= 5;
+    // (In whole game ticks, as in the original: a block that would take a tick or less goes at once.)
+    time = time <= 0.05 ? 0 : Math.ceil(time * 20 - 1e-6) / 20;
     cur.progress += time <= 0 ? 1 : dt / time;
     cur.sound -= dt;
     if (!this.swinging || this.swing >= 0.5) this.swingArm();
@@ -2183,10 +2191,10 @@ export class Game {
       this.audio.dig(BLOCKS[target.id].sound, { x: target.x + 0.5, y: target.y + 0.5, z: target.z + 0.5 });
       this.particles.chip(target.x, target.y, target.z, target.face, target.id);
     }
-    if (cur.progress >= 1) {
+    if (cur.progress >= 1 - 1e-6) {
       this.breakBlockAt(target.x, target.y, target.z, target.id, true);
       this.mining = null;
-      this.breakCooldown = 0.15;
+      this.breakCooldown = 0.25;
     }
   }
 
@@ -2879,7 +2887,7 @@ export class Game {
     this.renderer.render({
       cam, fov: s.fov * this.fovMul, env: this.env, time: performance.now() / 1000, renderDist: rd, world: this.world,
       fogColor, fogStart, fogEnd, underwater, caveDark, clouds: s.clouds, cloudHeight: CLOUD_HEIGHT, brightness: s.brightness / 100,
-      wave: true, shaders: Math.min(s.shaders, this.shaderCap), nightVision: this.nightVision(),
+      wave: true, shaders: Math.min(s.shaders, this.shaderCap), nightVision: this.nightVision(), riding: !!this.riding,
       selection: target && this.state !== 'dead' ? { x: target.x, y: target.y, z: target.z, box: this.world.selectionBox(target.x, target.y, target.z, target.id) } : null,
       crack: this.mining && this.mining.progress > 0 ? { x: this.mining.x, y: this.mining.y, z: this.mining.z, stage: Math.floor(this.mining.progress * 10) } : null,
       particles: this.particles,

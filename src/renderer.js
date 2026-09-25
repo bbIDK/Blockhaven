@@ -497,8 +497,9 @@ export class Renderer {
         gl.activeTexture(gl.TEXTURE0);
         this.shadows.ensure(2048);
         this.shadows.update(cam, f.env.lightDir);
-        // Redrawn when the view from the sun moves, else every other frame (for things that move).
-        if (this.shadows.key !== this.shadowKey || (++this.shadowTick & 1)) {
+        // Redrawn when the view from the sun moves, else every other frame (for things that move);
+        // every frame while riding, so the shadow of what you ride keeps up with it.
+        if (this.shadows.key !== this.shadowKey || f.riding || (++this.shadowTick & 1)) {
           this.shadowKey = this.shadows.key;
           this.stats.shadowDraws = this.shadows.render(this, f);
         }

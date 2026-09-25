@@ -336,10 +336,45 @@ function stairs(list, first) {
           stairBoxes(face, upside), { tex: src.faces, hardness: src.hardness, tool: src.tool, tier: src.tier, sound: src.sound,
             label, base, item: firstId, drop: firstId ? undefined : `${short}_stairs` });
         ids[face][ui] = id;
+        SHAPE_KIND[id] = 5;
+        STAIR[id] = { face, upside };
       });
     });
     STAIRS[base] = { material: B[mat], ids };
   });
+}
+
+// Stairs turn corners where they meet other stairs at right angles, as Minecraft's do: with a stair
+// at right angles on its high side it's an outer corner (only a quarter of the step up), on its low
+// side an inner corner (three quarters up). Worked out from the neighbours, so every stair ever
+// built or generated takes its corner shape.
+export const STAIR = {}; // id -> { face: the side its step is on, upside }
+const CW = { 5: 0, 0: 4, 4: 1, 1: 5 }, CCW = { 5: 1, 1: 4, 4: 0, 0: 5 };
+// The half of a block on each side: [x0, z0, x1, z1].
+const HALF_ON = { 0: [8, 0, 16, 16], 1: [0, 0, 8, 16], 4: [0, 8, 16, 16], 5: [0, 0, 16, 8] };
+const overlap = (a, b) => [Math.max(a[0], b[0]), Math.max(a[1], b[1]), Math.min(a[2], b[2]), Math.min(a[3], b[3])];
+const stairCache = new Map();
+function stairBoxesAt(id, neighbour) {
+  const s = STAIR[id], f = s.face;
+  const other = (dir) => STAIR[neighbour(dir)];
+  // (A stair only turns towards a side where the next one along isn't already lined up with it.)
+  const free = (dir) => { const o = other(dir); return !o || o.face !== f || o.upside !== s.upside; };
+  const across = (o) => o && o.upside === s.upside && (o.face >> 1) !== (f >> 1);
+  let kind = 'straight', side = 0;
+  const front = other(f), back = other(OPPOSITE[f]);
+  if (across(front) && free(OPPOSITE[front.face])) { kind = 'outer'; side = front.face === CCW[f] ? CCW[f] : CW[f]; }
+  else if (across(back) && free(back.face)) { kind = 'inner'; side = back.face === CCW[f] ? CCW[f] : CW[f]; }
+  if (kind === 'straight') return SHAPE[id];
+  const key = `${f}${s.upside ? 1 : 0}${kind}${side}`;
+  let boxes = stairCache.get(key);
+  if (!boxes) {
+    const y0 = s.upside ? 0 : 8, y1 = s.upside ? 8 : 16, box = (r) => [r[0], y0, r[1], r[2], y1, r[3]];
+    const slab = s.upside ? [0, 8, 0, 16, 16, 16] : [0, 0, 0, 16, 8, 16];
+    boxes = kind === 'outer' ? [slab, box(overlap(HALF_ON[f], HALF_ON[side]))]
+      : [slab, box(HALF_ON[f]), box(overlap(HALF_ON[OPPOSITE[f]], HALF_ON[side]))];
+    stairCache.set(key, boxes);
+  }
+  return boxes;
 }
 stairs([['oak_planks', 'oak', 'Oak'], ['cobblestone', 'cobblestone', 'Cobblestone'], ['stone_bricks', 'stone_brick', 'Stone Brick'],
   ['bricks', 'brick', 'Brick'], ['sandstone', 'sandstone', 'Sandstone']], 144);
@@ -1201,6 +1236,7 @@ export function boxFaceUV(b, f) {
 export function shapeBoxes(id, neighbour, collision = false) {
   const kind = SHAPE_KIND[id];
   if (kind === 1) return collision && COLLISION[id] ? COLLISION[id] : SHAPE[id];
+  if (kind === 5) return stairBoxesAt(id, neighbour);
   if (kind === 4) {
     // A straight run of wall with nothing on top has no post.
     const j = [0, 1, 4, 5].map((f) => connects(4, neighbour(f)));

@@ -6,6 +6,7 @@ import { skinMesh, MODEL_OFFSET } from './models.js';
 import { RIGS } from './rigs.js';
 import { skinLayer, SKIN_INDEX } from './skins.js';
 import { itemDef, I } from './items.js';
+import { toolSide } from './mobs.js';
 import { hashString, mat4, identity, translate, rotateX, rotateY, rotateZ, scale, clamp } from './math.js';
 
 const PX = 1 / 16;
@@ -212,16 +213,21 @@ export class Avatars {
           translate(mat, mat, 0, -0.8, 0);
           return mat;
         }
-        translate(mat, mat, rx, ry - (sneak ? 0.08 : 0), rz);
+        translate(mat, mat, rx, ry - (sneak ? PX : 0), rz);
         rotateY(mat, mat, rp.bodyYaw);
         return mat;
       };
-      // Everything above the hips leans forward when sneaking.
+      // Sneaking, the way Minecraft crouches: the body leans forward from the neck (so the hips go
+      // back), the head and shoulders come down, the arms hang along the body, and the legs, still
+      // upright, step back under the hips.
+      const lower = (mat, px) => (sneak ? translate(mat, mat, 0, -px * PX, 0) : mat);
       const torso = (mat) => {
-        base(mat);
-        if (sneak) { translate(mat, mat, 0, 12 * PX, 0); rotateX(mat, mat, -0.45); translate(mat, mat, 0, -12 * PX, 0); }
+        lower(base(mat), 3.2);
+        if (sneak) { translate(mat, mat, 0, 24 * PX, 0); rotateX(mat, mat, -0.5); translate(mat, mat, 0, -24 * PX, 0); }
         return mat;
       };
+      const shoulders = (mat) => lower(base(mat), 3.2);
+      const hips = (mat) => { base(mat); if (sneak) translate(mat, mat, 0, 0, 4 * PX); return mat; };
       const joint = (mat, pivot, ax, ay = 0, az = 0) => {
         translate(mat, mat, pivot[0], pivot[1], pivot[2]);
         if (ay) rotateY(mat, mat, ay);
@@ -231,10 +237,17 @@ export class Avatars {
         return mat;
       };
       const add = (g, mat) => { translate(mat, mat, -MODEL_OFFSET, -MODEL_OFFSET, -MODEL_OFFSET); parts.push({ mesh: g.mesh, model: mat }); };
-      const legBack = sneak ? 0.3 : 0;
-      // A front crawl: the arms wheel over one after the other, reaching out past the head and
-      // pulling back under the body, while the legs kick.
-      const stroke = (k) => -Math.PI + ((rp.swimPhase + k * Math.PI) % TAU);
+      const armBack = sneak ? 0.4 : 0;
+      // Swimming, Minecraft's breaststroke: both arms reach out past the head, sweep out to the
+      // sides and back, come in under the chest and reach forward again, while the legs kick.
+      // ([forward swing, outward sweep] through the stroke, with Minecraft's timing.)
+      const stroke = () => {
+        const f = (rp.swimPhase / TAU) * 26, q = (x) => x * x - 65 * x;
+        if (f < 14) return [Math.PI, (1.87 * q(f)) / q(14)];
+        if (f < 22) { const k = (f - 14) / 8; return [Math.PI - (Math.PI / 2) * k, 1.87 * (1 - k)]; }
+        return [Math.PI / 2 + (Math.PI / 2) * ((f - 22) / 4), 0];
+      };
+      const [swingA, sweep] = swim ? stroke() : [0, 0];
       if (swim) {
         const kick = Math.sin(rp.swimPhase * 2.4) * 0.35;
         add(m.rightLeg, joint(base(this.mat()), m.rightLeg.pivot, kick));
@@ -243,22 +256,20 @@ export class Avatars {
         add(m.rightLeg, joint(base(this.mat()), m.rightLeg.pivot, 1.41, -0.31));
         add(m.leftLeg, joint(base(this.mat()), m.leftLeg.pivot, 1.41, 0.31));
       } else {
-        add(m.rightLeg, joint(base(this.mat()), m.rightLeg.pivot, walkA - legBack));
-        add(m.leftLeg, joint(base(this.mat()), m.leftLeg.pivot, -walkA - legBack));
+        add(m.rightLeg, joint(hips(this.mat()), m.rightLeg.pivot, walkA));
+        add(m.leftLeg, joint(hips(this.mat()), m.leftLeg.pivot, -walkA));
       }
       add(m.body, torso(this.mat()));
-      add(m.head, joint(torso(this.mat()), m.head.pivot, swim ? 0.85 : rp.pitch + (sneak ? 0.45 : 0), wrap(rp.yaw - rp.bodyYaw)));
-      // (Out of the water on the way over, the arm swings a little wide of the head.)
-      const wide = (a) => (swim ? 0.12 + 0.3 * Math.max(0, Math.sin(a)) : 0.05);
-      const leftA = swim ? stroke(1) : walkA * 0.7 + (sneak ? 0.35 : 0) + (sit ? 0.63 : 0);
-      add(m.leftArm, joint(torso(this.mat()), m.leftArm.pivot, leftA, 0, -wide(leftA)));
+      add(m.head, joint(lower(base(this.mat()), 4.2), m.head.pivot, swim ? 0.85 : rp.pitch, wrap(rp.yaw - rp.bodyYaw)));
+      const leftA = swim ? swingA : walkA * 0.7 - armBack + (sit ? 0.63 : 0);
+      add(m.leftArm, joint(shoulders(this.mat()), m.leftArm.pivot, leftA, 0, swim ? -sweep : -0.05));
       // The right arm swings forward and up to hit or use something, and holds the item.
       // (A shield held up: the arm across in front, the shield facing out.)
       const shield = rp.held === I.shield, guard = shield && rp.guarding;
-      const rightA = swim ? stroke(0) : guard ? 0.95 : -walkA * 0.7 + (sneak ? 0.35 : 0) + (rp.held ? 0.3 : 0) + attack * 1.3 + (sit ? 0.63 : 0);
-      const arm = joint(torso(this.mat()), m.rightArm.pivot, rightA, guard && !swim ? -0.5 : -attack * 0.4, wide(rightA));
+      const rightA = swim ? swingA : guard ? 0.95 : -walkA * 0.7 - armBack + (rp.held ? 0.3 : 0) + attack * 1.3 + (sit ? 0.63 : 0);
+      const arm = joint(shoulders(this.mat()), m.rightArm.pivot, rightA, guard && !swim ? -0.5 : -attack * 0.4, swim ? sweep : 0.05);
       const held = rp.held ? this.renderer.itemMesh(rp.held) : null;
-      if (held) parts.push({ mesh: held, model: shield ? this.heldShield(arm, rightA) : this.heldItem(arm, held), glint: rp.heldShiny ? 1 : 0 });
+      if (held) parts.push({ mesh: held, model: shield ? this.heldShield(arm, rightA) : this.heldItem(arm, held, rp.held), glint: rp.heldShiny ? 1 : 0 });
       add(m.rightArm, arm);
       out.push({ parts, light: [l >> 4, l & 15], tint: null, hurt: rp.hurt > 0 });
     }
@@ -266,7 +277,7 @@ export class Avatars {
 
   // The item in a right hand: a block as a little cube in the fist, anything else (tools, food)
   // gripped at its handle and pointing forward.
-  heldItem(arm, mesh) {
+  heldItem(arm, mesh, id) {
     const m = this.mat();
     m.set(arm);
     translate(m, m, 6 * PX, 12.5 * PX, -1 * PX);
@@ -279,7 +290,7 @@ export class Avatars {
       // Item pictures have the handle at the bottom left and the tip at the top right: turned
       // side-on, with the handle in the fist and the tip pointing forward and up.
       translate(m, m, 0, 1.5 * PX, 0);
-      rotateY(m, m, Math.PI / 2);
+      toolSide(m, itemDef(id)?.name ?? '');
       scale(m, m, 0.62, 0.62, 0.62);
       translate(m, m, -0.12 - MODEL_OFFSET, -0.12 - MODEL_OFFSET, -0.5 - MODEL_OFFSET);
     }

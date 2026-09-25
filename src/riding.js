@@ -61,12 +61,27 @@ function waterTop(w, x, y, z) {
   return null;
 }
 
+// The water under a boat: the highest surface anywhere under its bottom (so it keeps afloat over
+// the edge of the water, and doesn't jolt from one block's water level to the next), or null.
+function waterUnder(w, e) {
+  let top = null;
+  for (const [dx, dz] of [[0, 0], [-0.45, -0.45], [0.45, -0.45], [-0.45, 0.45], [0.45, 0.45]]) {
+    const t = waterTop(w, e.x + dx, e.y, e.z + dz);
+    if (t !== null && (top === null || t > top)) top = t;
+  }
+  return top;
+}
+
 // A boat's movement each frame. `drive`: { forward, turn } from its rider, or null.
 export function boatPhysics(w, e, dt, drive) {
-  const top = waterTop(w, e.x, e.y, e.z);
+  const top = waterUnder(w, e);
   const afloat = top !== null && e.y < top + 0.25;
+  // (Where the water line is, eased from one level to the next.)
+  if (afloat) e.floatY = e.floatY === undefined || Math.abs(top - e.floatY) > 1 ? top : e.floatY + (top - e.floatY) * Math.min(1, dt * 6);
+  // It turns with some weight to it, as in the original, gathering and losing its swing.
+  e.spin = (e.spin ?? 0) + ((drive ? drive.turn * 2.4 : 0) - (e.spin ?? 0)) * Math.min(1, dt * 7);
+  if (Math.abs(e.spin) > 1e-4) e.yaw = wrap(e.yaw + e.spin * dt);
   if (drive) {
-    e.yaw = wrap(e.yaw + drive.turn * dt * 2.4);
     const push = drive.forward > 0 ? 1 : drive.forward < 0 ? -0.45 : 0;
     const fx = -Math.sin(e.yaw), fz = -Math.cos(e.yaw);
     const accel = afloat ? 10 : 2.5;
@@ -74,10 +89,11 @@ export function boatPhysics(w, e, dt, drive) {
     e.vz += fz * push * accel * dt;
   }
   if (afloat) {
-    // It floats with its floor just clear of the water (which never comes in), bobbing gently.
-    const target = top - 0.12 + Math.sin(e.age * 1.7) * 0.02;
-    e.vy += (target - e.y) * 30 * dt;
-    e.vy *= Math.exp(-6 * dt);
+    // It floats with its floor just clear of the water (which never comes in), bobbing gently, and
+    // settles where it should without bouncing (a critically damped spring).
+    const target = e.floatY - 0.12 + Math.sin(e.age * 1.3) * 0.015;
+    e.vy += (target - e.y) * 36 * dt;
+    e.vy *= Math.exp(-12 * dt);
     const drag = Math.exp(-(drive?.forward ? 0.8 : 1.4) * dt);
     e.vx *= drag; e.vz *= drag;
     const sp = Math.hypot(e.vx, e.vz), max = 8;
