@@ -565,7 +565,8 @@ export class HostSession extends Session {
     if (![...v, ...at].every(num) || g.x === null || Math.hypot(m.x - g.x, m.y - g.y - 1.5, m.z - g.z) > 3) return;
     const owner = this.others().find((o) => o.addr === g.addr) ?? { x: g.x, y: g.y, z: g.z, addr: g.addr };
     this.game.entities.spawnArrow(m.x, m.y, m.z, clamp(m.vx, -80, 80), clamp(m.vy, -80, 80), clamp(m.vz, -80, 80), owner,
-      clamp(num(m.d) ? m.d : 2, 0, 30), !!m.p, { punch: int(m.pu) ? clamp(m.pu, 0, 2) : 0, flame: !!m.fl, potion: POTIONS[m.po] ? m.po : null });
+      clamp(num(m.d) ? m.d : 2, 0, 30), !!m.p, { punch: int(m.pu) ? clamp(m.pu, 0, 2) : 0, flame: !!m.fl, potion: POTIONS[m.po] ? m.po : null,
+      snowball: !!m.sb });
   }
 
   // One player hits another.
@@ -746,7 +747,9 @@ function entityState(e) {
   if (e.kind === 'item') return Object.assign(s, { k: 'i', id: e.id, n: e.count, d: e.dmg ?? 0, pd: r2(Math.max(0, e.pickupDelay)), ex: e.extra ?? undefined });
   if (e.kind === 'tnt') return Object.assign(s, { k: 't', f: e.fuse });
   if (e.kind === 'falling') return Object.assign(s, { k: 'f', b: e.block });
-  if (e.kind === 'arrow') return Object.assign(s, { k: 'a', a: r2(e.ayaw ?? Math.atan2(-e.vx, -e.vz)), p: r2(e.apitch ?? 0), po: e.potion ?? undefined });
+  if (e.kind === 'arrow') {
+    return Object.assign(s, { k: 'a', a: r2(e.ayaw ?? Math.atan2(-e.vx, -e.vz)), p: r2(e.apitch ?? 0), po: e.potion ?? undefined, sb: e.snowball ? 1 : undefined });
+  }
   if (e.kind === 'boat') return Object.assign(s, { k: 'b', w: e.wood, a: r2(e.yaw), f: boatFlags(e) });
   if (e.kind === 'xp') return Object.assign(s, { k: 'x', v: e.value });
   return Object.assign(s, { k: 'm', ty: e.type, a: r2(e.yaw), f: mobFlags(e), ...mobExtra(e) });
@@ -1027,6 +1030,7 @@ export class GuestSession extends Session {
     if (msg.k === 'boom') game.explosionFx(at.x, at.y, at.z, 4);
     else if (msg.k === 'fizz') game.fizz(Math.floor(at.x), Math.floor(at.y), Math.floor(at.z));
     else if (msg.k === 'splash' && POTIONS[msg.n]) game.entities.splashFx(at.x, at.y, at.z, msg.n);
+    else if (msg.k === 'snow') game.entities.snowFx(at.x, at.y, at.z);
   }
 
   // Game hooks.
@@ -1053,7 +1057,7 @@ export class GuestSession extends Session {
   useMob(e, id, effect) { this.toHost({ t: 'um', e: e.nid, i: id, f: effect }); }
   shootArrow(x, y, z, vx, vy, vz, damage, pickup, fx) {
     this.toHost({ t: 'arw', x: r2(x), y: r2(y), z: r2(z), vx: r2(vx), vy: r2(vy), vz: r2(vz), d: damage, p: pickup ? 1 : 0,
-      pu: fx?.punch || undefined, fl: fx?.flame ? 1 : undefined, po: fx?.potion || undefined });
+      pu: fx?.punch || undefined, fl: fx?.flame ? 1 : undefined, po: fx?.potion || undefined, sb: fx?.snowball ? 1 : undefined });
   }
 
   hitMob(e, amount, bonus, opts = null) {

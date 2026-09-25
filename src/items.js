@@ -111,6 +111,7 @@ item(408, 'pufferfish', { food: 1, sat: 0.1, effects: [['poison', 60, 2], ['hung
 item(409, 'enchanted_book', { label: 'Enchanted Book', stack: 1 });
 item(410, 'glass_bottle', { label: 'Glass Bottle' });
 item(411, 'phantom_membrane', { label: 'Phantom Membrane' });
+item(436, 'snowball', { stack: 16, throws: 'snowball' });
 // Potions (see potions.js): drunk from the bottle, or thrown to break over everyone nearby.
 POTION_NAMES.forEach((name, i) => {
   const label = POTIONS[name].label;
@@ -238,6 +239,8 @@ export function dropsFor(blockId, tool, rand = Math.random) {
     case 'gravel': if (rand() < 0.1) return one('flint'); break;
     case 'dead_bush': return one('stick', n(0, 2));
     case 'clay': return one('clay_ball', 4);
+    case 'snow_block': return one('snowball', 4);
+    case 'snow': return one('snowball');
     case 'bookshelf': return one('book', 3);
     case 'melon': return one('melon_slice', n(3, 7));
     case 'campfire': return one('charcoal', 2);

@@ -171,7 +171,7 @@ block(16, 'diamond_ore', { tex: 'diamond_ore', hardness: 3, tool: 'pickaxe', tie
 block(17, 'bricks', { tex: 'bricks', hardness: 2, tool: 'pickaxe', tier: 1 });
 block(18, 'snowy_grass', { tex: { top: 'snow', bottom: 'dirt', side: 'grass_side_snowy' }, hardness: 0.6,
   tool: 'shovel', drop: 'dirt', sound: 'snow' });
-block(19, 'snow_block', { label: 'Snow', tex: 'snow', hardness: 0.2, tool: 'shovel', sound: 'snow' });
+block(19, 'snow_block', { label: 'Snow Block', tex: 'snow', hardness: 0.2, tool: 'shovel', sound: 'snow' });
 block(20, 'ice', { tex: 'ice', translucent: true, cullSelf: true, filter: 2, hardness: 0.5, tool: 'pickaxe', sound: 'glass', drop: null });
 block(21, 'cactus', { render: R.CACTUS, tex: { top: 'cactus_top', bottom: 'cactus_bottom', side: 'cactus_side' },
   opaque: false, hardness: 0.4, sound: 'cloth', support: 'cactus' });
@@ -897,6 +897,10 @@ block(2301, 'redstone_lamp_on', { label: 'Redstone Lamp', tex: 'redstone_lamp_on
 // faintly. Its book is drawn floating above it (see Game.drawList).
 shaped(2302, 'enchanting_table', [tb([0, 0, 0, 16, 12, 16], { side: 'enchanting_table_side', top: 'enchanting_table_top', bottom: 'enchanting_table_bottom' })],
   { tex: 'enchanting_table_side', hardness: 5, tool: 'pickaxe', tier: 1, sound: 'stone', emit: 7, cat: 'functional' });
+// A layer of snow over the ground (what a snow golem leaves behind it). Washed away by water,
+// flattened by anything built on it.
+shaped(2303, 'snow', [[0, 0, 0, 16, 2, 16]], { label: 'Snow', tex: 'snow', hardness: 0.1, tool: 'shovel', sound: 'snow', support: 'carpet',
+  replaceable: true, cat: 'nature' });
 
 // Blocks shown in the inventory and in the hand as a flat picture rather than a little model
 // (-1 for the rest). Tall flowers show their flowering top.
@@ -1051,7 +1055,7 @@ const CREATIVE_ORDER = [
   ...WOOD_NAMES.flatMap((w) => [`${w}_leaves`, `${w}_sapling`]), 'tall_grass', 'fern', 'tall_grass_double', 'large_fern', 'dead_bush',
   'dandelion', 'poppy', 'cornflower', 'allium', 'azure_bluet', 'blue_orchid', 'oxeye_daisy', 'red_tulip', 'orange_tulip', 'white_tulip',
   'pink_tulip', 'lily_of_the_valley', 'sunflower', 'lilac', 'rose_bush', 'peony', 'sugar_cane', 'cactus', 'vine', 'lily_pad',
-  'red_mushroom', 'brown_mushroom', 'pumpkin', 'melon', 'hay_block',
+  'red_mushroom', 'brown_mushroom', 'pumpkin', 'melon', 'hay_block', 'snow',
   // functional
   'crafting_table', 'furnace', 'smoker', 'blast_furnace', 'chest', 'barrel', 'smithing_table', 'fletching_table', 'bed', 'bookshelf',
   'enchanting_table', 'anvil', 'grindstone', 'stonecutter', 'loom', 'lectern', 'cartography_table', 'composter', 'cauldron', 'bell', 'flower_pot',

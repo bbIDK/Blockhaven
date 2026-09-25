@@ -591,3 +591,7 @@ def('phantom_membrane', (t) => {
     '....#mmmMMmmm#..', '...#mmmmmMmmm#..', '...#mm##mmMmm#..', '..#m#..#mmmm#...', '..##....#mm#....', '.........##.....'],
   { '#': 0x3a3448, m: 0x8c86a0, M: 0xb8b2c8 });
 });
+
+// A snowball: a lumpy white ball, blue in its shadows.
+def('snowball', (t) => shaded(t, ['', '', '', '', '', '......xxx.......', '.....xxxxx......', '....xxxxxxx.....', '....xxxxxxx.....', '....xxxxxxx.....',
+  '.....xxxxx......', '......xxx.......'], [0x5a7898, 0xb4c8dc, 0xe0ecf6, 0xf6fbff, 0xffffff], {}, { outline: 'all' }));

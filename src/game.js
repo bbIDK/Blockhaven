@@ -108,7 +108,8 @@ function protection(armor, cause) {
 
 // Blocks Silk Touch takes whole (that otherwise drop something else, or nothing).
 const SILK_TOUCH = (name) => !!name && (/_ore$|glass|leaves$|^ice$|packed_ice|blue_ice/.test(name) ||
-  ['stone', 'deepslate', 'grass_block', 'podzol', 'dirt_path', 'bookshelf', 'clay', 'melon', 'glowstone', 'campfire', 'gravel', 'snowy_grass'].includes(name));
+  ['stone', 'deepslate', 'grass_block', 'podzol', 'dirt_path', 'bookshelf', 'clay', 'melon', 'glowstone', 'campfire', 'gravel', 'snowy_grass', 'snow_block',
+    'snow'].includes(name));
 
 export class Game {
   constructor() {
@@ -1189,6 +1190,35 @@ export class Game {
     }
     else if (old === B.crafting_table && id !== old && this.openBlock?.key === this.containerKey(x, y, z)) this.closeMenu();
     this.net?.blockChanged(x, y, z, old, id);
+    // (After this change has gone through.)
+    if ((BASE[id] === B.pumpkin || BASE[id] === B.jack_o_lantern) && !this.net?.guest) queueMicrotask(() => this.checkGolem(x, y, z));
+  }
+
+  // A pumpkin set on a snow golem's body (two snow blocks) or an iron golem's (a T of four iron
+  // blocks, nothing either side of its legs) brings it to life.
+  checkGolem(x, y, z) {
+    const w = this.world, at = (dx, dy, dz) => w.getBlock(x + dx, y + dy, z + dz);
+    if (BASE[at(0, 0, 0)] !== B.pumpkin && BASE[at(0, 0, 0)] !== B.jack_o_lantern) return;
+    let type = null, parts = null;
+    if (at(0, -1, 0) === B.snow_block && at(0, -2, 0) === B.snow_block) { type = 'snow_golem'; parts = [[0, 0, 0], [0, -1, 0], [0, -2, 0]]; }
+    else if (at(0, -1, 0) === B.iron_block && at(0, -2, 0) === B.iron_block) {
+      for (const [ax, az] of [[1, 0], [0, 1]]) {
+        if (at(ax, -1, az) === B.iron_block && at(-ax, -1, -az) === B.iron_block && !SOLID[at(ax, -2, az)] && !SOLID[at(-ax, -2, -az)]) {
+          type = 'iron_golem'; parts = [[0, 0, 0], [0, -1, 0], [0, -2, 0], [ax, -1, az], [-ax, -1, -az]];
+          break;
+        }
+      }
+    }
+    if (!type) return;
+    for (const [dx, dy, dz] of parts) {
+      const id = at(dx, dy, dz);
+      w.setBlock(x + dx, y + dy, z + dz, 0);
+      this.particles.burst(x + dx, y + dy, z + dz, id);
+    }
+    const golem = this.entities.spawnMob(type, x + 0.5, y - 2, z + 0.5, { made: true });
+    const p = this.player;
+    golem.yaw = Math.atan2(-(p.x - golem.x), -(p.z - golem.z));
+    this.audio.mob(type === 'iron_golem' ? 'golem' : 'snow_golem', 'hurt', { x: x + 0.5, y: y - 1, z: z + 0.5 }, 0.8);
   }
 
   openChat(prefix = '') {
@@ -1902,11 +1932,12 @@ export class Game {
     }
   }
 
-  // A splash potion thrown from the hand: it arcs away and breaks over whatever it hits.
-  throwPotion(name) {
-    const p = this.player, d = p.lookDir(), v = 11;
-    this.entities.spawnArrow(p.x + d[0] * 0.4, p.eyeY - 0.1 + d[1] * 0.4, p.z + d[2] * 0.4, d[0] * v + p.vx, d[1] * v + 2.4, d[2] * v + p.vz,
-      this.players()[0], 0, false, { potion: name });
+  // A splash potion (or a snowball) thrown from the hand: it arcs away and breaks over whatever it
+  // hits.
+  throwItem(fx) {
+    const p = this.player, d = p.lookDir(), v = fx.snowball ? 15 : 11;
+    this.entities.spawnArrow(p.x + d[0] * 0.4, p.eyeY - 0.1 + d[1] * 0.4, p.z + d[2] * 0.4, d[0] * v + p.vx, d[1] * v + (fx.snowball ? 1.5 : 2.4), d[2] * v + p.vz,
+      this.players()[0], 0, false, fx);
     this.audio.bow({ x: p.x, y: p.eyeY, z: p.z }, true);
     this.swingArm();
     if (!this.creative) { this.inv.consumeHeld(); this.invChanged(); }
@@ -2088,7 +2119,8 @@ export class Game {
       return;
     }
     if ((def?.food || def?.drink || def?.potion) && (!this.creative || def.potion)) return; // eaten by holding right click (see handleActions)
-    if (def?.splash) { if (!repeat) this.throwPotion(def.splash); return; }
+    if (def?.splash) { if (!repeat) this.throwItem({ potion: def.splash }); return; }
+    if (def?.throws === 'snowball') { if (!repeat) this.throwItem({ snowball: true }); return; }
     // Buckets and lily pads look for water along the line of sight themselves.
     if (held && (held.id === I.bucket || held.id === I.water_bucket || held.id === I.lava_bucket)) { if (!repeat) useBucket(this, held); return; }
     if (held?.id === B.lily_pad) { if (!repeat) placeLilyPad(this); return; }

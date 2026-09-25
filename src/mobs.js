@@ -2,7 +2,7 @@
 // moves its limbs, and where it turns up. Entities (entities.js) keeps them in its list and runs
 // their physics; everything particular to a kind of creature lives here.
 import { RIGS, rigMeshes, boneMatrix } from './rigs.js';
-import { B, SOLID, WATERLIKE, CLIMB, LEAVES_WOOD } from './blocks.js';
+import { B, SOLID, WATERLIKE, CLIMB, LEAVES_WOOD, SHAPE_KIND } from './blocks.js';
 import { I } from './items.js';
 import { BIOME } from './biomes.js';
 import { DYES } from './colors.js';
@@ -85,6 +85,8 @@ export const MOBS = {
   iron_golem: { label: 'Iron Golem', rig: 'iron_golem', skins: ['iron_golem'], extraSkins: { limbs: 'iron_golem_limbs' }, hw: 0.7, h: 2.7,
     health: 100, speed: 1.3, kind: 'neutral', anim: 'golem', damage: 15, guards: true, heavy: true, noBlood: true, knockback: 0, xp: 0,
     drops: [d('iron_ingot', 3, 5), d('poppy', 0, 2)], sound: 'golem' },
+  snow_golem: { label: 'Snow Golem', rig: 'snow_golem', skins: ['snow_golem'], hw: 0.35, h: 1.9, health: 4, speed: 1.1, kind: 'neutral',
+    anim: 'snow_golem', drops: [d('snowball', 0, 15)], sound: 'snow_golem', throwsSnow: true, melts: true, noBlood: true, xp: 0 },
   dolphin: { label: 'Dolphin', rig: 'dolphin', skins: ['dolphin'], hw: 0.45, h: 0.6, health: 10, speed: 3.5, kind: 'water', anim: 'dolphin',
     drops: [d('cod', 0, 1)], sound: 'dolphin', scale: 0.7, leaps: true },
   drowned: { label: 'Drowned', rig: 'humanoid', skins: ['drowned'], hw: 0.3, h: 1.95, health: 20, speed: 1.9, kind: 'hostile', anim: 'zombie',
@@ -128,6 +130,8 @@ export function initMob(e, type, o = {}) {
     tame: !!o.tame, saddled: !!o.saddled, temper: o.temper ?? 0, rider: null,
     // (Pets: whose they are (a player's id), whether they've been told to sit, their collar's dye.)
     owner: o.owner ?? null, sitting: !!o.sitting, collar: o.collar ?? RED,
+    // (Golems someone built stay put when they're far away, like pets.)
+    made: !!o.made,
   });
   if (type === 'horse' && o.health === undefined) e.health = 15 + Math.floor(Math.random() * 16);
   if (e.owner && t.tameHealth) e.health = t.tameHealth;
@@ -148,6 +152,12 @@ export function sheepColour(r) {
 }
 export const woolBlock = (colour) => B[`${DYES[colour]?.name ?? 'white'}_wool`] ?? B.white_wool;
 const RED = DYES.findIndex((dd) => dd.name === 'red');
+// Where a snow golem melts; where it's too warm for its trail of snow; where rain falls as snow.
+const HOT = new Set([BIOME.DESERT, BIOME.SAVANNA, BIOME.BADLANDS]);
+const WARM = new Set([...HOT, BIOME.JUNGLE, BIOME.SPARSE_JUNGLE, BIOME.PLAINS, BIOME.SUNFLOWER_PLAINS, BIOME.FLAT, BIOME.BEACH, BIOME.SWAMP,
+  BIOME.WARM_OCEAN, BIOME.OCEAN, BIOME.DEEP_OCEAN]);
+const COLD = new Set([BIOME.SNOWY_TAIGA, BIOME.SNOWY_PLAINS, BIOME.ICE_SPIKES, BIOME.SNOWY_SLOPES, BIOME.SNOWY_PEAKS, BIOME.FROZEN_PEAKS,
+  BIOME.JAGGED_PEAKS, BIOME.FROZEN_OCEAN, BIOME.FROZEN_RIVER, BIOME.SNOWY_BEACH]);
 
 // ---------------------------------------------------------------- behaviour (20 times a second)
 // `ents` is the Entities list (players, world, game).
@@ -189,6 +199,20 @@ export function mobTick(ents, e) {
       if (e.onGround && Math.random() < 0.15) { e.vy = 4; e.vx = (Math.random() - 0.5) * 3; e.vz = (Math.random() - 0.5) * 3; }
       if ((e.dry = (e.dry ?? 0) + 1) >= 40) { e.dry = 0; ents.hurtMob(e, 1, null); }
     }
+  }
+  // Snow golems melt where it's hot, or wet (rain that isn't snow, water); where it's cool they
+  // leave a trail of snow behind them.
+  if (t.melts) {
+    const bx = Math.floor(e.x), bz = Math.floor(e.z), biome = w.biomeAt?.(bx, bz) ?? -1;
+    const rained = game.weather.rain > 0.3 && !COLD.has(biome) && (w.getLight(bx, Math.floor(e.y + 1.8), bz) >> 4) >= 15;
+    if ((HOT.has(biome) || inWater || rained) && (e.meltCd = (e.meltCd ?? 0) + 1) % 20 === 0) ents.hurtMob(e, 1, null);
+    const cell = `${bx},${Math.floor(e.y + 0.05)},${bz}`;
+    if (e.onGround && e.cell && e.cell !== cell && !WARM.has(biome)) {
+      const [x, y, z] = e.cell.split(',').map(Number);
+      const below = w.getBlock(x, y - 1, z);
+      if (w.getBlock(x, y, z) === 0 && SOLID[below] && !SHAPE_KIND[below] && w.supported(x, y, z, B.snow)) w.setBlock(x, y, z, B.snow);
+    }
+    e.cell = e.onGround ? cell : e.cell;
   }
   // A zombie kept under water turns into a drowned.
   if (t.type === 'zombie' && WATERLIKE[w.getBlock(Math.floor(e.x), Math.floor(e.y + 1.7), Math.floor(e.z))] === 1) {
@@ -524,6 +548,17 @@ function creeperTick(ents, e, tg, dist) {
   }
 }
 
+// The velocity to throw or shoot something at `v` blocks a second from (ex, ey, ez) so that it
+// comes down on (tx, ty, tz): aimed that much higher to allow for its fall (gravity 20, as in
+// Entities.arrowPhysics; the flatter of the two arcs that reach).
+function aimAt(ex, ey, ez, tx, ty, tz, v) {
+  const dx = tx - ex, dz = tz - ez, dy = ty - ey, h = Math.hypot(dx, dz) || 1e-3, G = 20, v2 = v * v;
+  const disc = v2 * v2 - G * (G * h * h + 2 * dy * v2);
+  // (Out of reach: as far as it will go.)
+  const ang = disc >= 0 ? Math.atan2(v2 - Math.sqrt(disc), G * h) : Math.PI / 4, c = Math.cos(ang);
+  return [(dx / h) * v * c, v * Math.sin(ang), (dz / h) * v * c];
+}
+
 // Whether there's a clear line from (ax, ay, az) to (bx, by, bz): nothing solid in the way (grass,
 // flowers and the like don't hide anyone).
 function clearLine(w, ax, ay, az, bx, by, bz) {
@@ -539,7 +574,6 @@ function archerTick(ents, e, tg, dist) {
   const w = ents.world;
   faceTowards(e, tg.x, tg.z);
   const ex = e.x, ey = e.y + 1.6, ez = e.z, ty = tg.y + (tg.kind === 'mob' ? tg.h * 0.6 : 1.4);
-  const ddx = tg.x - ex, ddy = ty - ey, ddz = tg.z - ez, len = Math.hypot(ddx, ddy, ddz);
   const sees = clearLine(w, ex, ey, ez, tg.x, ty, tg.z);
   // Keep at bow range, circling a little.
   e.moving = !sees || dist > 12 || dist < 5;
@@ -551,9 +585,9 @@ function archerTick(ents, e, tg, dist) {
       e.attackCd = 20 + Math.floor(Math.random() * 20);
       e.aim = 0;
       // Aim a little high for the drop over distance.
-      const v = 18, lift = len * 0.045;
-      ents.spawnArrow(ex, ey, ez, (ddx / len) * v + (Math.random() - 0.5) * 1.2, ((ddy + lift) / len) * v + (Math.random() - 0.5) * 1.2,
-        (ddz / len) * v + (Math.random() - 0.5) * 1.2, e, 2 + Math.floor(Math.random() * 3), false);
+      const [vx, vy, vz] = aimAt(ex, ey, ez, tg.x, ty, tg.z, 18);
+      ents.spawnArrow(ex, ey, ez, vx + (Math.random() - 0.5) * 1.2, vy + (Math.random() - 0.5) * 1.2, vz + (Math.random() - 0.5) * 1.2, e,
+        2 + Math.floor(Math.random() * 3), false);
       ents.game.audio.bow({ x: e.x, y: ey, z: e.z });
     }
   } else e.aim = Math.max(0, e.aim - 0.05);
@@ -591,7 +625,6 @@ function witchTick(ents, e, tg, dist) {
     game.audio.mob('witch', 'drink', { x: e.x, y: e.y + 1.6, z: e.z });
   }
   const ex = e.x, ey = e.y + 1.6, ez = e.z, ty = tg.y + (tg.kind === 'mob' ? tg.h * 0.6 : 1.2);
-  const ddx = tg.x - ex, ddy = ty - ey, ddz = tg.z - ez, len = Math.hypot(ddx, ddy, ddz);
   const sees = clearLine(w, ex, ey, ez, tg.x, ty, tg.z);
   e.moving = !sees || dist > 9 || dist < 4;
   if (dist < 4) e.yaw += Math.PI;
@@ -599,8 +632,8 @@ function witchTick(ents, e, tg, dist) {
     e.attackCd = 60;
     e.swing = 1;
     const kind = dist > 7 ? 'slowness' : Math.random() < 0.5 ? 'poison' : 'harming';
-    const v = 10, lift = len * 0.09;
-    ents.spawnArrow(ex, ey, ez, (ddx / len) * v, ((ddy + lift) / len) * v, (ddz / len) * v, e, 0, false, { potion: kind });
+    const [vx, vy, vz] = aimAt(ex, ey, ez, tg.x, ty, tg.z, 10);
+    ents.spawnArrow(ex, ey, ez, vx, vy, vz, e, 0, false, { potion: kind });
     game.audio.mob('witch', 'say', { x: e.x, y: ey, z: e.z });
   }
 }
@@ -710,8 +743,30 @@ function phantomTick(ents, e) {
   }
 }
 
+// Snow golems pelt any monster close by with snowballs (and never go for players).
+function snowGolemTick(ents, e) {
+  const w = ents.world, near = (o) => Math.hypot(o.x - e.x, o.y - e.y, o.z - e.z);
+  let foe = e.target?.kind === 'mob' && !targetGone(e.target) && near(e.target) < 12 ? e.target : null;
+  if (!foe && (e.targetCd = (e.targetCd ?? 0) - 1) <= 0) {
+    e.targetCd = 10;
+    foe = ents.list.find((o) => o.kind === 'mob' && o.def.hostile && !o.dead && !o.dying && near(o) < 10) ?? null;
+  }
+  e.target = foe; e.angry = 0;
+  if (!foe) { e.speedMul = 0.8; wander(e, 0.5); return; }
+  faceTowards(e, foe.x, foe.z);
+  e.moving = false;
+  if (e.attackCd > 0) return;
+  const ex = e.x, ey = e.y + 1.6, ez = e.z, ty = foe.y + foe.h * 0.6;
+  if (!clearLine(w, ex, ey, ez, foe.x, ty, foe.z)) { e.moving = true; return; }
+  const [vx, vy, vz] = aimAt(ex, ey, ez, foe.x, ty, foe.z, 14);
+  e.attackCd = 20; e.swing = 1;
+  ents.spawnArrow(ex, ey, ez, vx, vy, vz, e, 0, false, { snowball: true });
+  ents.game.audio.bow({ x: ex, y: ey, z: ez }, true);
+}
+
 function neutralTick(ents, e) {
   const t = e.def, game = ents.game;
+  if (t.throwsSnow) return snowGolemTick(ents, e);
   if (t.teleports) {
     // An enderman stared at grows angry; water and rain make it vanish elsewhere.
     if (!e.angry) {
@@ -770,6 +825,8 @@ export function teleport(ents, e, near = null) {
 // Something hurt this creature: animals flee, neutral ones (and their pack) fight back.
 export function provoked(ents, e, from) {
   const t = e.def;
+  // Golems someone built never turn on players.
+  if (e.made && from && from.kind !== 'mob') return;
   // A pet doesn't turn on its owner (a wolf fights back against anyone else).
   if (e.owner) {
     if (!from || from.uid === e.owner || (!ents.game.net && from === ents.players[0])) return;
@@ -1136,6 +1193,14 @@ export function poseMob(e, pose) {
       pose.tail = [s, 0, 0];
       pose.head = [-s * 0.3, 0, 0];
       pose.finR = [0, 0, Math.sin(e.walkPhase * 1.4 + 1) * 0.1]; pose.finL = [0, 0, -Math.sin(e.walkPhase * 1.4 + 1) * 0.1];
+      break;
+    }
+    case 'snow_golem': {
+      // It slides along, wobbling a little; an arm flicks forward to throw.
+      pose.head = head;
+      pose.body = [0, Math.sin(e.walkPhase * 0.5) * 0.08 * e.walk, 0];
+      const flick = e.swing > 0 ? Math.sin(e.swing * Math.PI) * 0.7 : 0;
+      pose.rightArm = [flick, 0, Math.sin(age * 1.7) * 0.04]; pose.leftArm = [0, 0, -Math.sin(age * 1.7) * 0.04];
       break;
     }
     case 'creeper': {

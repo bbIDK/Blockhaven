@@ -815,3 +815,27 @@ skin('dolphin', (sk) => {
   const beak = reg(cubesOf('dolphin', 'head')[1]);
   for (const side of SIDES) sk.fill(beak[side], belly, { cell: 1 });
 });
+
+// Snow golems: packed snow (blue-white, a few darker lumps), stick arms, and a carved pumpkin with
+// a candle-lit face.
+skin('snow_golem', (sk) => {
+  const SNOW = [0xd8e4ee, 0xe4eef6, 0xeef5fb, 0xf8fbfe], STICK = [0x4a3418, 0x5e4422, 0x75562c];
+  fur(sk, 'snow_golem', ['body'], SNOW, { cell: 2, grain: 0.3 });
+  each(sk, 'snow_golem', ['body'], (face, r) => { for (let k = 0; k < 4; k++) at(sk, r, sk.ri(r[2]), sk.ri(r[3]), 0xc4d4e2); });
+  fur(sk, 'snow_golem', ['rightArm'], STICK, { cell: 1, grain: 0.4 });
+  const PUMPKIN = [0xb85c0e, 0xcc6c12, 0xe07e1c, 0xee9028];
+  const [head] = cubesOf('snow_golem', 'head');
+  sk.box(head, (face, r) => {
+    sk.fill(r, PUMPKIN, { cell: 1, cy: 8, grain: 0.2 });
+    // Ridges down the sides.
+    if (face !== 'top' && face !== 'bottom') for (const x of [1, 4, 6]) for (let y = 0; y < r[3]; y++) at(sk, r, x, y, 0xa84e0a);
+    if (face === 'top') { at(sk, r, 3, 3, 0x4a6a1a); at(sk, r, 4, 3, 0x4a6a1a); at(sk, r, 4, 4, 0x3a5412); }
+  });
+  const f = reg(head).front, lit = 0xffc84a, dark = 0x3a1e04;
+  sk.fill(f, PUMPKIN, { cell: 1, cy: 8, grain: 0.15 });
+  for (const [x, y] of [[1, 2], [2, 2], [1, 3], [5, 2], [6, 2], [6, 3]]) at(sk, f, x, y, lit);
+  for (const [x, y] of [[2, 3], [5, 3]]) at(sk, f, x, y, dark);
+  for (let x = 1; x < 7; x++) at(sk, f, x, 5, lit);
+  for (const x of [2, 4, 6]) at(sk, f, x, 6, lit);
+  for (const x of [1, 3, 5]) at(sk, f, x, 6, dark);
+});

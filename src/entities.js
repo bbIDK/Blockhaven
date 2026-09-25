@@ -43,12 +43,14 @@ export function mobExtra(e) {
   if (e.temper) o.te = e.temper;
   if (e.owner) { o.ow = e.owner; o.co = e.collar; }
   if (e.sitting) o.si = 1;
+  if (e.made) o.md = 1;
   if (e.def.kind === 'civilian') { o.r = e.rid; o.sk = e.skin; o.n = e.name; o.ro = e.role; }
   return o;
 }
 const extraOpts = (s) => ({ variant: Number.isInteger(s.v) ? s.v : 0, colour: Number.isInteger(s.c) ? s.c : 0, size: [1, 2, 4].includes(s.s) ? s.s : 1,
   baby: !!s.b, sheared: !!s.sh, tame: !!s.tm, saddled: !!s.sd, temper: Number.isFinite(s.te) ? Math.max(0, Math.min(100, s.te)) : 0,
-  owner: typeof s.ow === 'string' && s.ow ? s.ow.slice(0, 64) : null, sitting: !!s.si, collar: Number.isInteger(s.co) && s.co >= 0 && s.co < 16 ? s.co : undefined });
+  owner: typeof s.ow === 'string' && s.ow ? s.ow.slice(0, 64) : null, sitting: !!s.si, collar: Number.isInteger(s.co) && s.co >= 0 && s.co < 16 ? s.co : undefined,
+  made: !!s.md });
 // Flags sent with each creature update: 1 hurt, 2 dying, 4 swinging, 8 burning, 16 shorn, 32 angry,
 // 64 about to explode, 128 drawing a bow, 256 asleep, 512 saddled, 1024 tame, 2048 being ridden,
 // 4096 roosting (a bat hanging upside down), 8192 drinking (a witch), 16384 sitting (a pet).
@@ -243,7 +245,7 @@ export class Entities {
     if (this.guest) { this.game.net.shootArrow?.(x, y, z, vx, vy, vz, damage, pickup, fx); return null; }
     const e = new Entity('arrow', 0.05, 0.1, x, y, z);
     Object.assign(e, { vx, vy, vz, owner, damage, pickup, stuck: false, life: 0, punch: fx?.punch ?? 0, flame: !!fx?.flame,
-      potion: POTIONS[fx?.potion] ? fx.potion : null, spin: 0 });
+      potion: POTIONS[fx?.potion] ? fx.potion : null, snowball: !!fx?.snowball });
     this.list.push(e);
     return e;
   }
@@ -352,7 +354,7 @@ export class Entities {
         // animals come back when the village does). Horses someone has tamed or saddled stay,
         // waiting where they were left.
         const near = this.players.some((p) => Math.hypot(p.x - e.x, p.z - e.z) < (game.settings.renderDistance + 2) * 16);
-        const kept = e.tame || e.saddled || e.rider;
+        const kept = e.tame || e.saddled || e.rider || e.made;
         if ((!near && !kept && (e.def.kind !== 'civilian' || !loaded)) || e.y < -40) { e.dead = true; this.civilians.gone(e); }
       }
     }
@@ -450,9 +452,9 @@ export class Entities {
       const r = rayBox(e.x - q.x, e.y - q.y, e.z - q.z, dx, dy, dz, [-0.4, 0, -0.4, 0.4, 1.8, 0.4]);
       if (r && r.t <= len) { len = r.t; victim = q; }
     }
-    if (e.potion && (victim || hit)) {
+    if ((e.potion || e.snowball) && (victim || hit)) {
       e.x += dx * len; e.y += dy * len; e.z += dz * len;
-      this.shatter(e, victim);
+      if (e.potion) this.shatter(e, victim); else this.snowballHit(e, victim);
       return;
     }
     if (victim) {
@@ -494,6 +496,24 @@ export class Entities {
       const k = near(o, o.x, o.y + o.h / 2, o.z);
       if (k > 0.05) this.potionOnMob(o, name, k, e.owner);
     }
+  }
+  // A snowball bursts on whatever it hits: no harm done, but a knock back (and a monster hit by a
+  // snow golem's snowball turns on the golem).
+  snowballHit(e, victim) {
+    e.dead = true;
+    this.game.net?.entityGone?.(e, 'x');
+    this.snowFx(e.x, e.y, e.z);
+    this.game.net?.effect?.('snow', e.x, e.y, e.z);
+    if (victim?.kind !== 'mob') return;
+    const d = Math.hypot(e.vx, e.vz) || 1;
+    victim.vx += (e.vx / d) * 3; victim.vz += (e.vz / d) * 3;
+    if (victim.onGround) victim.vy = 3.5;
+    victim.hurt = Math.max(victim.hurt, 6);
+    if (e.owner && e.owner !== victim) provoked(this, victim, e.owner);
+  }
+  snowFx(x, y, z) {
+    this.game.particles.bits(x, y, z, TEX.snow, 10, 1.6, 0.45);
+    this.game.audio.mob('snow_golem', 'hurt', { x, y, z }, 1.4);
   }
   splashFx(x, y, z, name) {
     const p = POTIONS[name];
@@ -677,7 +697,7 @@ export class Entities {
       } else if (s.k === 'a') {
         e = new Entity('arrow', 0.05, 0.1, s.x, s.y, s.z);
         Object.assign(e, { stuck: false, life: 0, ayaw: Number.isFinite(s.a) ? s.a : 0, apitch: Number.isFinite(s.p) ? s.p : 0,
-          potion: POTIONS[s.po] ? s.po : null });
+          potion: POTIONS[s.po] ? s.po : null, snowball: !!s.sb });
       } else if (s.k === 'x') {
         e = new Entity('xp', 0.125, 0.25, s.x, s.y, s.z);
         e.value = Number.isInteger(s.v) && s.v > 0 ? s.v : 1;
@@ -933,9 +953,9 @@ export class Entities {
         scale(m, m, s, s, s);
         translate(m, m, -MODEL_OFFSET, -MODEL_OFFSET, -MODEL_OFFSET);
         out.push({ parts: [{ mesh: this.orbModel(), model: m }], light: [15, 15], tint: [0.75 + k * 0.5, 1.25, 0.35 + k * 0.15] });
-      } else if (e.kind === 'arrow' && e.potion) {
-        // A thrown potion tumbles as it flies.
-        const mesh = r.itemMesh(I[`splash_potion_${e.potion}`]);
+      } else if (e.kind === 'arrow' && (e.potion || e.snowball)) {
+        // A thrown potion (or snowball) tumbles as it flies.
+        const mesh = r.itemMesh(e.potion ? I[`splash_potion_${e.potion}`] : I.snowball);
         if (!mesh) continue;
         const m = identity(this.mat());
         translate(m, m, rx, ry, rz);

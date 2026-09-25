@@ -229,6 +229,15 @@ export const RIGS = {
       },
     },
   },
+  // Snow golems: two balls of snow, a carved pumpkin for a head, and sticks for arms.
+  snow_golem: {
+    bones: {
+      body: { pivot: [0, 11, 0], cubes: [c([-6, 0, -6], [12, 12, 12], [0, 36]), c([-5, 11, -5], [10, 10, 10], [0, 16])] },
+      head: { pivot: [0, 21, 0], cubes: [c([-4, 21, -4], [8, 8, 8], [0, 0], { inflate: 0.4 })] },
+      rightArm: { pivot: [5, 18, 0], cubes: [c([5, 17, -1], [11, 2, 2], [32, 0])], rest: [0, 0, 0.55] },
+      leftArm: { pivot: [-5, 18, 0], cubes: [c([-16, 17, -1], [11, 2, 2], [32, 0], { mirror: true })], rest: [0, 0, -0.55] },
+    },
+  },
   // Iron golems: a broad chest over a narrow waist, a long nose, and arms down to their knees
   // (arms and legs come from a second skin, `limbs`).
   iron_golem: {

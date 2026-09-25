@@ -21,7 +21,7 @@ const MATERIALS = {
 const MOB_PITCH = { chicken: 1.1 };
 const BORROW = { goat: ['sheep', 0.78], bear: ['cow', 0.55], husk: ['zombie', 0.8], llama: ['sheep', 0.62] };
 const SYNTH = new Set(['rabbit', 'fox', 'wolf', 'fish', 'skeleton', 'creeper', 'spider', 'enderman', 'slime', 'horse', 'golem', 'cat', 'bat',
-  'donkey', 'witch', 'phantom', 'parrot', 'dolphin', 'turtle']);
+  'donkey', 'witch', 'phantom', 'parrot', 'dolphin', 'turtle', 'snow_golem']);
 
 // A low thump layered under breaking and placing, by block material: [start Hz, end Hz, gain].
 const THUMP = {
@@ -506,6 +506,10 @@ export class Audio {
           for (let i = 0; i < 6; i++) this.hiss(at, { f: 3500 + Math.random() * 2000, q: 4, time: 0.012, volume: 0.25, delay: i * 0.035 });
           this.tone(at, { type: 'sine', f0: 1500 * r(), f1: 2800, time: 0.35, volume: 0.09, vibrato: 90, vibratoRate: 11, delay: 0.1 });
         }
+        break;
+      case 'snow_golem':
+        // Packed snow crunching.
+        if (hurt || death) for (let i = 0; i < (death ? 4 : 2); i++) this.hiss(at, { f: 1500 * pitch * r(), q: 0.8, time: 0.09, volume: 0.3, sweep: 500, delay: i * 0.07 });
         break;
       case 'turtle':
         if (hurt || death) this.tone(at, { type: 'triangle', f0: 200 * r(), f1: death ? 80 : 130, time: death ? 0.6 : 0.2, volume: 0.2 });
