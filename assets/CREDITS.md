@@ -64,7 +64,7 @@ doubled in size (the particles). Anything not listed is drawn by the game's own 
 | `textures/deepslate_coal_ore.png` | Mineclonia mods/ITEMS/mcl_deepslate/textures/mcl_deepslate_coal_ore.png |  |
 | `textures/iron_ore.png` | Pixel Perfection CE block/iron_ore.png |  |
 | `textures/deepslate_iron_ore.png` | Mineclonia mods/ITEMS/mcl_deepslate/textures/mcl_deepslate_iron_ore.png |  |
-| `textures/copper_ore.png` | Mineclonia mods/ITEMS/mcl_copper/textures/mcl_copper_ore.png |  |
+| `textures/copper_ore.png` | Pixel Perfection CE block/stone.png; Mineclonia mods/ITEMS/mcl_copper/textures/mcl_copper_ore.png | changed |
 | `textures/deepslate_copper_ore.png` | Mineclonia mods/ITEMS/mcl_deepslate/textures/mcl_deepslate_copper_ore.png |  |
 | `textures/gold_ore.png` | Pixel Perfection CE block/gold_ore.png |  |
 | `textures/deepslate_gold_ore.png` | Mineclonia mods/ITEMS/mcl_deepslate/textures/mcl_deepslate_gold_ore.png |  |

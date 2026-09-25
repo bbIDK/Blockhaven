@@ -154,7 +154,8 @@ export const SOURCES = {
   cobbled_deepslate: mcl(`${MCL.deepslate}_cobbled`),
   deepslate_bricks: mcl(`${MCL.deepslate}_bricks`),
   ...Object.fromEntries(['coal', 'iron', 'copper', 'gold', 'redstone', 'lapis', 'emerald', 'diamond'].map((o) => [`deepslate_${o}_ore`, mcl(`${MCL.deepslate}_${o}_ore`)])),
-  copper_ore: mcl(`${MCL.copper}_ore`),
+  // (Mineclonia's copper ore is only the ore, drawn over stone in the game.)
+  copper_ore: (H) => H.paste(H.frame(H.load('block/stone')), H.load(mcl(`${MCL.copper}_ore`))),
   copper_block: mcl(`${MCL.copper}_block`),
   raw_iron_block: mcl(`${MCL.raw}_raw_iron_block`),
   cherry_planks: mcl(`${MCL.cherry}_planks`),
