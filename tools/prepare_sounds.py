@@ -10,7 +10,7 @@ Needs Python 3 with numpy and imageio-ffmpeg (pip install numpy imageio-ffmpeg).
 
     python3 tools/prepare_sounds.py [--cache DIR]
 """
-import argparse, html, io, json, os, re, subprocess, sys, urllib.request, zipfile
+import argparse, html, io, json, os, re, subprocess, sys, urllib.parse, urllib.request, zipfile
 
 import numpy as np
 import imageio_ffmpeg
@@ -31,8 +31,9 @@ def K(pack, name):
     return ('kenney', pack, name)
 
 
-def F(user, sid):
-    return ('freesound', user, sid)
+def F(user, sid, start=0.0):
+    # (`start`: seconds to skip, where a recording has other sounds before the one wanted)
+    return ('freesound', user, sid, start)
 
 
 def kr(pack, stem, n, start=0):
@@ -83,6 +84,8 @@ CATALOG = {
     'tnt.fuse': ([F('j1987', 140715)], 2.2, -15),
     'tnt.explode': ([F('bevibeldesign', 366091), F('V-ktor', 482993)], 3.2, -9),
     'water.splash': ([F('qubodup', 737233), F('qubodup', 737234), F('rombart', 186748)], 0.8, -13),
+    # Jumping or falling into water: a big splash (the one above is for buckets, items and the like).
+    'water.enter': ([F('qubodup', 442773), F('SpliceSound', 260131, start=1.42), F('speedygonzo', 235725, start=5.75)], 1.5, -11),
     'water.swim': ([F('qubodup', 737232), F('qubodup', 737235)], 0.6, -16),
     'lava.pop': ([F('florianreichelt', 683100)], 1.2, -16),
     'weather.rain': ([F('dmk67', 392980)], 9.6, -18, {'loop': True}),
@@ -129,7 +132,7 @@ def freesound_file(cache, user, sid):
     if os.path.exists(meta_path):
         meta = json.load(open(meta_path))
     else:
-        url = f'https://freesound.org/people/{user}/sounds/{sid}/'
+        url = f'https://freesound.org/people/{urllib.parse.quote(user)}/sounds/{sid}/'
         page = urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': 'x'}), timeout=60).read().decode()
         # The first licence named on the page is this sound's (later ones belong to related sounds).
         lic = re.search(r'(Creative Commons 0|Attribution NonCommercial[^<"]*|Attribution[^<"]*)', page)
@@ -205,7 +208,10 @@ def main():
             else:
                 path, who, lic = freesound_file(args.cache, src[1], src[2])
             dest = os.path.join(OUT, f'{name}{i}.mp3')
-            y = shape_loop(decode(path), max_s, target) if opts.get('loop') else shape(decode(path), max_s, target)
+            x = decode(path)
+            if src[0] == 'freesound' and src[3]:
+                x = x[int(src[3] * SR):]
+            y = shape_loop(x, max_s, target) if opts.get('loop') else shape(x, max_s, target)
             encode(y, dest)
             total += os.path.getsize(dest)
             credits.append(f'| `{name}{i}` | {who} | {lic} |')

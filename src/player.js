@@ -5,9 +5,14 @@ import { Body } from './body.js';
 
 export const HALF_W = 0.3;
 export const HEIGHT = 1.8;
+// Swimming (and crawling out under a low ceiling afterwards) the player is this tall, with the
+// eyes this high: the original's swimming pose.
+const LOW_HEIGHT = 0.6, LOW_EYE = 0.4;
 const GRAVITY = 32;
 const JUMP_V = 9.0;
 const STEP = 0.6; // walk up slabs and stairs without jumping
+// How far up block (x, y, z) the liquid `id` in it comes: all the way when there's more above.
+const fill = (world, x, y, z, id) => (WATERLIKE[world.getBlock(x, y + 1, z)] === WATERLIKE[id] ? 1 : liquidHeight(id));
 
 export class Player extends Body {
   constructor() {
@@ -18,6 +23,7 @@ export class Player extends Body {
     this.flying = false;
     this.sneaking = false;
     this.sprinting = false;
+    this.swimming = false;
     this.inWater = false;
     this.inLava = false;
     this.headInWater = false;
@@ -49,13 +55,15 @@ export class Player extends Body {
       const id = world.getBlock(x, y, z);
       const k = WATERLIKE[id];
       if (!k) continue;
-      if (y === y0 && this.y + 0.05 > y + liquidHeight(id)) continue;
+      if (y === y0 && this.y + 0.05 > y + fill(world, x, y, z, id)) continue;
       if (k === 1) water = true; else lava = true;
     }
+    // How hard it went in, for the splash (going sideways counts for less, as in the original).
+    if (water && !this.inWater) this.entrySpeed = Math.hypot(this.vx * 0.45, this.vy, this.vz * 0.45);
     this.inWater = water;
     this.inLava = lava;
     const ey = this.eyeY, eb = world.getBlock(Math.floor(this.x), Math.floor(ey), Math.floor(this.z));
-    this.headInWater = WATERLIKE[eb] === 1 && ey < Math.floor(ey) + liquidHeight(eb) + 0.02;
+    this.headInWater = WATERLIKE[eb] === 1 && ey < Math.floor(ey) + fill(world, Math.floor(this.x), Math.floor(ey), Math.floor(this.z), eb) + 0.02;
     this.headInLava = WATERLIKE[eb] === 2;
   }
 
@@ -65,8 +73,9 @@ export class Player extends Body {
     const steps = Math.ceil(dt / (1 / 120));
     const h = dt / steps;
     for (let i = 0; i < steps; i++) this.step(h, input, world);
-    const target = this.sneaking && !this.flying ? 1.32 : 1.62;
-    this.eyeOffset += (target - this.eyeOffset) * Math.min(1, dt * 14);
+    const low = this.h < HEIGHT, target = low ? LOW_EYE : this.sneaking && !this.flying ? 1.32 : 1.62;
+    // (Going into or out of the swimming pose takes a moment longer than ducking.)
+    this.eyeOffset += (target - this.eyeOffset) * Math.min(1, dt * (low || this.eyeOffset < 1.2 ? 7 : 14));
     this.stepSmooth *= Math.exp(-dt * 14);
   }
 
@@ -74,20 +83,30 @@ export class Player extends Body {
     this.sampleFluids(world);
     const fluid = this.inWater || this.inLava;
     this.sneaking = input.sneak && !this.flying;
-    if (!input.forward || input.forward <= 0 || this.sneaking || fluid) this.sprinting = false;
+    // Sprinting, and in water swimming: as in the original, sprinting with your head under water
+    // starts a swim, which carries on for as long as you keep going forward in water.
+    if (!(input.forward > 0) || this.sneaking || this.inLava) this.sprinting = false;
+    else if (this.inWater && !this.flying) this.sprinting = this.swimming || (!!input.sprint && this.headInWater);
     else if (input.sprint) this.sprinting = true;
+    this.swimming = this.sprinting && this.inWater && !this.flying;
+    // Swimming lays the player out 0.6 tall; afterwards they get up once there's room to stand.
+    const low = this.swimming || (this.h < HEIGHT && world.collides(this.x - this.hw, this.y, this.z - this.hw, this.x + this.hw, this.y + HEIGHT, this.z + this.hw));
+    this.h = low ? LOW_HEIGHT : HEIGHT;
 
     const s = Math.sin(this.yaw), c = Math.cos(this.yaw);
-    let mx = -s * input.forward + c * input.right;
-    let mz = -c * input.forward - s * input.right;
+    // (Swimming goes where you look, so looking up or down takes some of the speed off forward.)
+    const fw = input.forward * (this.swimming ? Math.cos(this.pitch) : 1);
+    let mx = -s * fw + c * input.right;
+    let mz = -c * fw - s * input.right;
     const len = Math.hypot(mx, mz);
     if (len > 1) { mx /= len; mz /= len; }
 
     let speed, accel;
     if (this.flying) { speed = this.sprinting ? 21.6 : 10.9; accel = 5; }
     else if (this.inLava) { speed = 1.2; accel = 4; }
+    else if (this.swimming) { speed = 5.5 + 1.5 * Math.min(3, this.depthStrider ?? 0) / 3; accel = 3.5; }
     else if (this.inWater) { speed = 2.2 + (4.32 - 2.2) * Math.min(3, this.depthStrider ?? 0) / 3; accel = 5; }
-    else if (this.sneaking) { speed = 1.31; accel = 14; }
+    else if (this.sneaking || low) { speed = 1.31; accel = 14; }
     else { speed = this.sprinting ? 5.61 : 4.32; accel = this.onGround ? 14 : 2.8; }
     // (Swiftness and Slowness.)
     if (!this.flying) speed *= this.speedMul ?? 1;
@@ -98,6 +117,13 @@ export class Player extends Body {
     if (this.flying) {
       const up = (input.jump ? 1 : 0) - (input.sneak ? 1 : 0);
       this.vy += (up * 8.5 - this.vy) * (1 - Math.exp(-8 * dt));
+    } else if (this.swimming) {
+      // Up or down the way you look (with jump to rise); at the surface you swim along it rather
+      // than leaping out.
+      let up = Math.sin(this.pitch) * speed * Math.max(0, input.forward);
+      if (input.jump) up = Math.max(up, 2.5);
+      if (up > 0 && !this.headInWater) up = 0;
+      this.vy += (up - this.vy) * k;
     } else if (fluid) {
       this.vy -= (this.inLava ? 4 : 7) * dt;
       this.vy *= Math.exp(-2.4 * dt);

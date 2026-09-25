@@ -105,6 +105,9 @@ export class Audio {
     this.muffle.connect(comp);
     this.sfx = ctx.createGain();
     this.sfx.connect(this.muffle);
+    // (Sounds that shouldn't be muffled: the splash of going under.)
+    this.dry = ctx.createGain();
+    this.dry.connect(comp);
     this.noise = ctx.createBuffer(1, Math.round(ctx.sampleRate * 0.05), ctx.sampleRate);
     const nd = this.noise.getChannelData(0);
     for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
@@ -159,20 +162,21 @@ export class Audio {
     return gain < 0.01 ? null : { gain, pan };
   }
 
-  // Connects a source through its gain (and panner) to the effects bus.
-  output(node, gainNode, pan) {
+  // Connects a source through its gain (and panner) to the effects bus (or, `dry`, around the
+  // underwater muffling).
+  output(node, gainNode, pan, dry = false) {
     let n = node.connect(gainNode);
     if (pan && this.ctx.createStereoPanner) {
       const p = this.ctx.createStereoPanner();
       p.pan.value = pan;
       n = n.connect(p);
     }
-    n.connect(this.sfx);
+    n.connect(dry ? this.dry : this.sfx);
   }
 
   // Plays one of the recordings called `name`. With `at`, the sound comes from that point.
   // `offset`/`length` play just part of it (with short fades), for long recordings like fire.
-  play(name, { volume = 1, pitch = 1, at = null, vary = 0.1, offset = null, length = null } = {}) {
+  play(name, { volume = 1, pitch = 1, at = null, vary = 0.1, offset = null, length = null, dry = false } = {}) {
     const ctx = this.ctx, list = this.buffers[name];
     if (!this.ready || !list?.length) return;
     const sp = this.spatial(at, volume);
@@ -185,7 +189,7 @@ export class Audio {
     src.playbackRate.value = pitch * (1 + (Math.random() - Math.random()) * vary);
     const g = ctx.createGain();
     g.gain.value = sp.gain;
-    this.output(src, g, sp.pan);
+    this.output(src, g, sp.pan, dry);
     this.active++;
     src.onended = () => { this.active--; };
     if (offset === null) { src.start(); return; }
@@ -294,6 +298,14 @@ export class Audio {
   smash(at) { this.play('glass.break', { volume: 0.8, vary: 0.1, at }); }
   burp() { this.play('player.burp', { volume: 0.45, vary: 0.05 }); }
   splash(strength = 1, at = null) { this.play('water.splash', { volume: Math.min(1, 0.35 + strength * 0.35), at }); }
+  // Going into water (`strength` 0..1: wading in .. a big drop): a small splash wading in, a big
+  // one jumping or falling in, with a low thud. (Heard as you go in, so the muffling of being
+  // underwater doesn't swallow it.)
+  waterEntry(strength, at = null) {
+    if (strength < 0.12) { this.play('water.splash', { volume: 0.35 + strength * 2, vary: 0.15, at }); return; }
+    this.play('water.enter', { volume: 0.45 + 0.55 * strength, pitch: 1.12 - 0.2 * strength, vary: 0.08, at, dry: true });
+    this.thump(at, 130, 45, 0.35 * strength, 0.18);
+  }
   swim() { this.play('water.swim', { volume: 0.18 }); }
   fuse(at) { this.play('tnt.fuse', { volume: 1, vary: 0.02, at }); }
   explode(at) { this.play('tnt.explode', { volume: 4, pitch: 0.95, vary: 0.15, at }); }

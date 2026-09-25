@@ -188,7 +188,7 @@ class Session {
       pres.p = [r2(p.x), r2(p.y), r2(p.z), r2(p.yaw), r2(p.pitch)];
       pres.f = (p.sneaking ? 1 : 0) | (p.sprinting ? 2 : 0) | (p.flying ? 4 : 0) | (p.onGround ? 8 : 0) |
         (g.state === 'dead' ? 16 : 0) | (g.state === 'sleeping' ? 32 : 0) | (g.creative ? 64 : 0) | (g.effects?.has('invisibility') ? 128 : 0) |
-        (g.guarding ? 256 : 0);
+        (g.guarding ? 256 : 0) | (p.swimming ? 512 : 0);
       pres.i = g.handLook;
       if (shiny(g.inv.held)) pres.ih = 1;
       pres.a = g.inv.armor.map((s) => s?.id ?? 0);

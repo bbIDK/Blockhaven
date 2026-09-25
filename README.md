@@ -37,13 +37,14 @@ The host's game runs the world: mobs, items, TNT, water, furnaces, time and weat
 | Middle click | Pick the block you're looking at |
 | `Space` | Jump. Double-tap to toggle flying in Creative |
 | `Shift` | Sneak (you won't fall off edges) / fly down |
-| `Ctrl` or double-tap `W` | Sprint |
+| `Ctrl` or double-tap `W` | Sprint; with your head under water, swim (you glide the way you look) |
 | `1`–`9`, mouse wheel | Choose hotbar slot |
 | `E` | Inventory (armor, 2×2 crafting, recipe book) |
 | `Q` | Drop the held item (`Ctrl+Q` drops the stack) |
 | `T`, `Enter` or `/` | Chat and commands |
 | `F3` | Coordinates and debug info |
 | `F1` | Hide the HUD |
+| `F5` | Camera: through your eyes, from behind, from in front |
 | `Esc` | Game menu (with Open to Friends) |
 
 In inventories, crafting tables, furnaces and chests the clicks work like Minecraft's: left click takes or places a stack, right click takes half or places one, `Shift`+click moves a stack across (on a crafting result it crafts as many as you can), dragging a stack across slots shares it out evenly (right-drag places one in each), double-click gathers a stack, number keys swap with the hotbar and `Q` throws the item under the mouse. On touch screens, tap is a left click and a long press a right click.
@@ -56,7 +57,7 @@ On phones and tablets, on-screen controls appear automatically. The left stick m
 
 ## What's in it
 
-- **Endless worlds** from a seed, in 37 biomes: mountain ranges with stony, jagged and frozen peaks, snowy slopes and meadows; plains, flower forests, dark forests, birch and old-growth forests, taiga, jungles, swamps, savannas, badlands, deserts, cherry groves and ice spikes; rivers, beaches and warm, cold and deep oceans. Trees grow big, and there's a flat world option.
+- **Endless worlds** from a seed, in 37 biomes: mountain ranges with stony, jagged and frozen peaks, snowy slopes and meadows; plains, flower forests, dark forests, birch and old-growth forests, taiga, jungles, swamps, savannas, badlands, deserts, cherry groves and ice spikes; rivers, beaches and warm, cold and deep oceans. Grass, leaves and water shade gradually from one biome's colours into the next's. Trees grow big, and there's a flat world option.
 - **Underground:** winding caves and caverns, deepslate, ores by depth (coal, copper, iron, gold, lapis, redstone, diamond, emerald), lava lakes, and dungeons with loot chests. On the surface you'll also find desert wells, icebergs, boulders and fallen trees.
 - **Walled villages:** stone walls with corner towers, a gatehouse on every side and a walk along the top, streets and a market square with a well, and some thirty kinds of buildings: houses, a smithy, butcher's, hunter's lodge, library, inn, bakery, farms, pens and a mine.
 - **Villagers who talk and trade:** friendly people with jobs (merchant, guard, blacksmith, butcher, hunter, librarian, innkeeper, baker, farmer, shepherd, miner and fisher). They go about their day, chat when you talk to them, and buy and sell for gold coins. Iron golems and cats live there too.
@@ -78,7 +79,8 @@ On phones and tablets, on-screen controls appear automatically. The left stick m
 - **And more:** cake, name tags and leads, item frames, 15 paintings, flower pots, note blocks, and a jukebox with 8 music discs.
 - **Shaders:** **Options → Shaders** (Low or High) adds sunlight with soft shadows, glinting water, a glowing sky, bloom and light shafts.
 - **Multiplayer:** host a world for your friends from the game menu, on claude.ai or with a join code (see [Play with friends](#play-with-friends)).
-- **Weather:** rain showers come and go, with streaks of rain, splashes, a grey sky and the sound of rain (quieter indoors). It snows in cold biomes and high up, and deserts stay dry. Sleeping clears the weather.
+- **Swimming:** sprint with your head under water to swim like in Minecraft, gliding the way you look with a front crawl. Jump or fall in and there's a proper splash. **F5** shows you from behind or in front.
+- **Weather:** rain showers come and go, with streaks of rain, splashes, a grey sky and the sound of rain (quieter indoors). It snows in cold biomes and high up; deserts, savannas and badlands stay dry. Sleeping clears the weather.
 - **Survival:** health, hunger (sprinting, jumping, fighting and mining make you hungry, and you only heal when well fed), fall damage, drowning, fire and lava, and mining speeds that depend on the tool and block.
 - **Creative:** every block, flying, instant breaking, and a searchable inventory.
 - **Interface:** menus, HUD and inventories styled after the classic game (bevelled buttons, sliders with their value written on them, a pixel-art logo with splash text) and all drawn to one GUI scale. **Options → GUI Scale** makes the whole interface bigger or smaller; Auto picks the largest size that fits, like the original.

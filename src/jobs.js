@@ -20,7 +20,7 @@ export function runJob(job) {
     };
   }
   if (job.type === 'mesh') {
-    const m = meshSection(job.blocks, job.light, job.climate, job.cx, job.cz, job.biomes);
+    const m = meshSection(job.blocks, job.light, job.climate, job.cx, job.cz, job.biomes, job.tints);
     return {
       result: { type: 'mesh', id: job.id, cx: job.cx, cz: job.cz, sy: job.sy, version: job.version, solid: m.solid, trans: m.trans,
         groups: m.groups, vis: m.vis },

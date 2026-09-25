@@ -17,7 +17,7 @@ import { Weather } from './weather.js';
 import { Entities } from './entities.js';
 import { TouchControls } from './touch.js';
 import { HostSession, GuestSession, openRoom, openGames, cleanName, COLORS, playerUid, playerKey } from './multiplayer.js';
-import { Avatars, playerSkin } from './avatars.js';
+import { Avatars, RemotePlayer, playerSkin } from './avatars.js';
 import * as storage from './storage.js';
 import { makeEnvironment, updateEnvironment, clockText } from './sky.js';
 import {
@@ -25,7 +25,7 @@ import {
   RENDER, R, SLAB, STAIRS, DOOR, doorId, CLIMB, LADDER, oppositeFace, CHEST, CHEST_PAIR, CHEST_RIGHT, chestId, chestHalf, BED, bedId,
   FURNACE_IDS, furnaceVariant, isLitFurnace, FURNACE_KIND, FURNACE_FRONT, LOG_AXES, GATE, gateId, VINE, DOUBLE, LEAVES_WOOD,
   TRAPDOOR, trapdoorId, SWITCH, SIGN, WALL_SIGN, CAKE, NOTE, JUKEBOX, RAIL,
-  NATURAL_LEAVES, WOOD, LOOT_KIND, LOOT_FRONT,
+  NATURAL_LEAVES, WOOD, LOOT_KIND, LOOT_FRONT, liquidHeight,
 } from './blocks.js';
 import { rollLoot } from './loot.js';
 import { useItemOnBlock, useBucket, placeLilyPad, placeBoat, useWorkstation } from './behaviors.js';
@@ -183,10 +183,10 @@ export class Game {
     this.riding = null;
     this.lastW = 0;
     this.stepAcc = 0;
-    this.wasInWater = false;
     this.fovMul = 1;
     this.showDebug = false;
     this.hideHud = false;
+    this.view = 0; // F5: 0 through your own eyes, 1 from behind, 2 from in front
     this.expectUnlock = false;
     this.screenStack = [];
     this.chatHistory = [];
@@ -1355,6 +1355,7 @@ export class Game {
         else if (e.code === 'Slash') { e.preventDefault(); this.openChat('/'); }
         else if (e.code === 'F3') { this.showDebug = !this.showDebug; }
         else if (e.code === 'F1') { this.hideHud = !this.hideHud; }
+        else if (e.code === 'F5') { e.preventDefault(); this.view = (this.view + 1) % 3; }
         else if (e.code === 'Escape' && !this.input.locked) this.pause();
       } else if (s === 'talk') {
         if (e.code === 'KeyE' || e.code === 'Escape') this.closeTalk();
@@ -1476,7 +1477,7 @@ export class Game {
         p.jumpBoost = this.effectLevel('jump_boost');
         const prevInWater = p.inWater;
         p.update(dt, move, w);
-        if (p.inWater && !prevInWater && p.vy < -4) this.audio.splash(Math.min(1, -p.vy / 14));
+        if (p.inWater && !prevInWater) this.splashInto(p.x, p.y, p.z, p.entrySpeed ?? 0);
         this.afterMove(dt);
       }
     }
@@ -1519,6 +1520,18 @@ export class Game {
     return this.env.daylight < 0.45 ? 'night' : 'day';
   }
 
+  // Going into water at `speed` (blocks a second): a splash as big as the plunge was hard, with
+  // water thrown up where you went in and bubbles going down with you.
+  splashInto(x, y, z, speed) {
+    const w = this.world, bx = Math.floor(x), bz = Math.floor(z);
+    let sy = Math.floor(y);
+    for (let k = 0; k < 3 && WATERLIKE[w.getBlock(bx, sy + 1, bz)] === 1; k++) sy++;
+    const top = sy + liquidHeight(w.getBlock(bx, sy, bz));
+    const s = Math.max(0, Math.min(1, (speed - 1.5) / 11));
+    this.audio.waterEntry(s);
+    this.particles.waterSplash(x, top, z, s);
+  }
+
   afterMove(dt) {
     const p = this.player;
     if (!p.flying) {
@@ -1534,7 +1547,7 @@ export class Game {
     } else if (p.inWater && !p.onGround) {
       this.stepAcc += Math.hypot(p.vx, p.vy, p.vz) * dt;
       if (this.stepAcc > 2.2) { this.stepAcc = 0; this.audio.swim(); }
-    } else if (p.onGround && !p.flying) {
+    } else if (p.onGround && !p.flying && !p.swimming) {
       if (p.sprinting && Math.random() < dt * 14) {
         const g = p.groundBlock(this.world);
         if (g) this.particles.spawn(p.x + (Math.random() - 0.5) * 0.5, p.y + 0.1, p.z + (Math.random() - 0.5) * 0.5, -p.vx * 0.15, 1.2 + Math.random(), -p.vz * 0.15, g, 2, 0.35, 0.05);
@@ -1546,8 +1559,6 @@ export class Game {
         if (g && !p.sneaking) this.audio.step(BLOCKS[g]?.sound ?? 'stone');
       }
     }
-    if (p.inWater && !this.wasInWater && p.vy >= -4) this.audio.splash(0.3);
-    this.wasInWater = p.inWater;
     // Fall damage
     if (p.landed !== null) {
       const d = p.landed;
@@ -2739,14 +2750,17 @@ export class Game {
     const bob = s.viewBobbing ? p.bob * 0.1 : 0, walk = p.bobPhase / Math.PI;
     const hurtF = this.hurtTime / 0.5;
     const roll = hurtF > 0 && !REDUCED_MOTION ? -Math.sin(hurtF ** 4 * Math.PI) * 14 * DEG : 0;
+    // (Seen from outside with F5 the view doesn't bob.)
+    const third = this.view > 0 && this.state !== 'dead' && this.state !== 'sleeping';
     const pre = identity(this.viewPre);
     if (roll) rotateZ(pre, pre, roll);
-    if (bob) {
+    if (bob && !third) {
       translate(pre, pre, Math.sin(walk * Math.PI) * bob * 0.5, -Math.abs(Math.cos(walk * Math.PI) * bob), 0);
       rotateZ(pre, pre, Math.sin(walk * Math.PI) * bob * 3 * DEG);
       rotateX(pre, pre, Math.abs(Math.cos(walk * Math.PI - 0.2) * bob) * 5 * DEG);
     }
     const cam = { x: p.x, y: p.eyeY, z: p.z, yaw: p.yaw, pitch: p.pitch, pre };
+    if (third) this.pullBack(cam);
     this.lastCam = cam;
     const draw = this.drawing ? Math.min(1, this.drawing.t) : 0;
     const fovTarget = (p.sprinting ? 1.12 : 1) * (p.flying && p.sprinting ? 1.08 : 1) * (p.headInWater ? 0.9 : 1) * (1 - draw * draw * 0.15) *
@@ -2755,7 +2769,7 @@ export class Game {
     const rd = s.renderDistance;
     let fogColor = this.env.fogColor, fogStart = rd * 16 * 0.55, fogEnd = rd * 16 * 0.95;
     const eyeBlock = this.world.getBlock(Math.floor(cam.x), Math.floor(cam.y), Math.floor(cam.z));
-    const underwater = p.headInWater;
+    const underwater = third ? this.inWaterAt(cam.x, cam.y, cam.z) : p.headInWater;
     if (underwater) {
       const d = this.env.daylight;
       fogColor = [0.04 * d + 0.01, 0.14 * d + 0.02, 0.38 * d + 0.05];
@@ -2778,7 +2792,7 @@ export class Game {
       entities: this.drawList(cam),
       lines: this.fishingLines(),
       rod: this.rodLine(),
-      hand: loading || this.hideHud || this.state === 'dead' ? null : {
+      hand: loading || this.hideHud || this.state === 'dead' || third ? null : {
         item: this.handItem === I.fishing_rod && this.fishing.out ? I.fishing_rod_cast : this.handItem, swing: this.swinging ? this.swing : 0,
         equip: 1 - this.handHeight,
         bob, walk, roll, lag: [(this.lagPitch - p.pitch) * 0.1, (this.lagYaw - p.yaw) * 0.1],
@@ -2790,9 +2804,48 @@ export class Game {
     });
   }
 
+  // F5: the camera moved back from the eyes (or out in front, turned to look back) by up to four
+  // blocks, closer where something's in the way.
+  pullBack(cam) {
+    const d = this.player.lookDir(), sign = this.view === 1 ? -1 : 1, w = this.world;
+    let dist = 4;
+    for (let t = 0.1; t <= 4; t += 0.1) {
+      const x = cam.x + d[0] * t * sign, y = cam.y + d[1] * t * sign, z = cam.z + d[2] * t * sign;
+      if (w.collides(x - 0.12, y - 0.12, z - 0.12, x + 0.12, y + 0.12, z + 0.12)) { dist = Math.max(0, t - 0.1); break; }
+    }
+    cam.x += d[0] * dist * sign; cam.y += d[1] * dist * sign; cam.z += d[2] * dist * sign;
+    if (this.view === 2) { cam.yaw += Math.PI; cam.pitch = -cam.pitch; }
+  }
+
+  inWaterAt(x, y, z) {
+    const w = this.world, bx = Math.floor(x), by = Math.floor(y), bz = Math.floor(z), id = w.getBlock(bx, by, bz);
+    if (WATERLIKE[id] !== 1) return false;
+    return WATERLIKE[w.getBlock(bx, by + 1, bz)] === 1 || y < by + liquidHeight(id) + 0.02;
+  }
+
+  // This player as others see them, to draw when the camera's outside (F5).
+  selfAvatar() {
+    const p = this.player, a = (this.self ??= new RemotePlayer('self'));
+    const now = performance.now(), dt = a.lastT ? Math.min(0.1, (now - a.lastT) / 1000) : 0;
+    a.lastT = now;
+    if (!a.ready) Object.assign(a, { ready: true, bodyYaw: p.yaw, lastX: p.x, lastZ: p.z });
+    Object.assign(a, {
+      x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, name: this.settings.name, look: this.settings.look,
+      flags: (p.sneaking ? 1 : 0) | (this.guarding ? 256 : 0) | (p.swimming ? 512 : 0) | (this.effects?.has('invisibility') ? 128 : 0),
+      held: this.handLook, heldShiny: shiny(this.inv.held), armor: this.inv.armor.map((s) => s?.id ?? 0),
+      mountId: this.riding ? 1 : null,
+    });
+    a.animate(dt);
+    a.swing = this.swinging ? Math.max(1e-3, this.swing) : 0;
+    a.hurt = this.hurtTime;
+    return a;
+  }
+
   drawList(cam) {
     const list = this.entities.renderList(cam);
-    if (this.net) this.avatars.render(this.net.players.values(), cam, this.world, this.settings.renderDistance * 16, list);
+    const others = this.net ? [...this.net.players.values()] : [];
+    if (this.view > 0 && this.state !== 'dead' && this.state !== 'sleeping') others.push(this.selfAvatar());
+    if (others.length) this.avatars.render(others, cam, this.world, this.settings.renderDistance * 16, list);
     // The books over enchanting tables, turned to the nearest player within three blocks.
     if (this.tables?.length) {
       const now = performance.now() / 1000, everyone = this.players();
@@ -2894,7 +2947,6 @@ export class Game {
       'overlay-fire': burning,
       water: p.headInWater,
       hurt: Math.round(this.hurtFlash * 0.9 * 20) / 20,
-      'resume-hint': this.state === 'play' && !this.input.locked && !this.touch.enabled,
       crosshair: this.state === 'play' || this.state === 'chat',
     });
     if (this.lastCam) this.renderTags();

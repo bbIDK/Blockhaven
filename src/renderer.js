@@ -752,12 +752,10 @@ export class Renderer {
     gl.uniform1f(u.u_alphaMul, Math.min(1, w.rain * 1.2));
     identity(this.model);
     translate(this.model, this.model, w.base[0] - cam.x, w.base[1] - cam.y, w.base[2] - cam.z);
-    const t = f.time;
-    gl.uniform3f(u.u_precip, (t * 7) % 1, 0, 0);
-    gl.uniform2f(u.u_precipScale, 4, 1);
+    const t = f.time % 3600;
+    gl.uniform4f(u.u_weather, 1, w.fall[0], t, 0);
     this.drawModel(this.rainMesh, this.model);
-    gl.uniform3f(u.u_precip, (t * 1.2) % 1, 0.05, (t * 0.9) % (Math.PI * 2));
-    gl.uniform2f(u.u_precipScale, 2, 2);
+    gl.uniform4f(u.u_weather, 2, w.fall[1], t, 0);
     this.drawModel(this.snowMesh, this.model);
     gl.uniform1f(u.u_alphaMul, 1);
     gl.enable(gl.CULL_FACE);

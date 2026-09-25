@@ -13,6 +13,8 @@ export class Input {
     this.wheel = 0;
     this.locked = false;
     this.lockFailed = false; // true once pointer lock looks unsupported: drag to look instead
+    this.lockUntil = 0;      // until when a refused lock is tried again
+    this.retry = 0;
     this.lockFailures = 0;
     this.capture = false; // true while the game (not a menu) has focus
     this.onUnlock = null;
@@ -82,9 +84,16 @@ export class Input {
     document.addEventListener('pointerlockerror', () => this.lockRefused());
   }
 
-  // A refusal can be temporary (Chrome blocks re-locking for a moment after Esc), so only give up
-  // on pointer lock after it has failed several times in a row.
+  // A refusal is often only for a moment (Chrome won't lock again for a second or so after Esc let
+  // go), so a request is tried again for a few seconds: the click that asked for it still counts
+  // as the player's say-so that long. Pointer lock is only given up on after it has failed like
+  // that several times in a row.
   lockRefused() {
+    if (this.capture && !this.locked && performance.now() < this.lockUntil) {
+      clearTimeout(this.retry);
+      this.retry = setTimeout(() => this.tryLock(), 250);
+      return;
+    }
     this.lockFailures++;
     if (this.lockFailures >= 3) this.lockFailed = true;
   }
@@ -92,6 +101,12 @@ export class Input {
   lock() {
     if (this.locked) return;
     if (!this.target.requestPointerLock) { this.lockFailed = true; return; }
+    this.lockUntil = performance.now() + 3000;
+    this.tryLock();
+  }
+
+  tryLock() {
+    if (this.locked || !this.capture) return;
     try {
       // Refusals are counted by the pointerlockerror event; the promise only handles the
       // browsers that don't support unadjusted movement.

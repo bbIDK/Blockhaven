@@ -1,7 +1,7 @@
 // Block-break particles: small textured squares with gravity, drawn as camera-facing quads in the
 // terrain vertex format (so they share the terrain shader and lighting).
 import { STRIDE } from './mesher.js';
-import { TEXL, FFLAGS, TINT, TINT_RGB, SOLID, F_TINT, F_OVERLAY } from './blocks.js';
+import { TEXL, FFLAGS, TINT, TINT_RGB, SOLID, F_TINT, F_OVERLAY, WATERLIKE } from './blocks.js';
 import { TEX } from './textures.js';
 
 const MAX = 600;
@@ -105,6 +105,28 @@ export class Particles {
     }
   }
 
+  // Something going into water at the surface (x, y, z), `s` 0..1 for how hard: drops thrown up
+  // and out that fall back in, and bubbles going down with it.
+  waterSplash(x, y, z, s) {
+    const add = (p) => { if (this.list.length >= MAX) this.list.shift(); this.list.push(p); };
+    const drops = Math.round(10 + 50 * s);
+    for (let i = 0; i < drops; i++) {
+      const a = Math.random() * Math.PI * 2, r = 0.15 + Math.random() * 0.4, out = (0.5 + Math.random() * 1.6) * (0.6 + s);
+      add({
+        x: x + Math.cos(a) * r, y: y + 0.05, z: z + Math.sin(a) * r, vx: Math.cos(a) * out, vy: (1.8 + Math.random() * 4.2) * (0.45 + 0.75 * s),
+        vz: Math.sin(a) * out, life: 0.7 + Math.random() * 0.6, age: 0, size: 0.03 + Math.random() * 0.035, layer: TEX.splash, flags: 0,
+        tint: [255, 255, 255], u: Math.floor(Math.random() * 13), v: Math.floor(Math.random() * 13), drop: true,
+      });
+    }
+    for (let i = 0; i < Math.round(4 + 14 * s); i++) {
+      add({
+        x: x + (Math.random() - 0.5) * 0.8, y: y - 0.3 - Math.random() * (0.4 + 1.4 * s), z: z + (Math.random() - 0.5) * 0.8,
+        vx: 0, vy: 0.3 + Math.random() * 0.5, vz: 0, life: 1 + Math.random() * 1.2, age: 0, size: 0.035 + Math.random() * 0.035,
+        layer: TEX.bubble, flags: 0, tint: [255, 255, 255], u: 0, v: 0, whole: true, bubble: Math.random() * 6.3,
+      });
+    }
+  }
+
   // A musical note popping up over a note block, in the colour of its pitch.
   note(x, y, z, colour) {
     if (this.list.length >= MAX) this.list.shift();
@@ -147,6 +169,17 @@ export class Particles {
         continue;
       }
       if (p.drift) { p.vy *= Math.exp(-4 * dt); p.y += p.vy * dt; continue; }
+      if (p.bubble !== undefined) {
+        // Bubbles rise, wobbling, and pop at the surface.
+        p.vy = Math.min(1.4, p.vy + 2 * dt);
+        p.y += p.vy * dt;
+        p.x += Math.sin(p.age * 9 + p.bubble) * 0.25 * dt;
+        p.z += Math.cos(p.age * 7 + p.bubble) * 0.25 * dt;
+        if (WATERLIKE[world.getBlock(Math.floor(p.x), Math.floor(p.y + 0.05), Math.floor(p.z))] !== 1) list.splice(i, 1);
+        continue;
+      }
+      // Drops falling back into water are gone.
+      if (p.drop && p.vy < 0 && WATERLIKE[world.getBlock(Math.floor(p.x), Math.floor(p.y - 0.1), Math.floor(p.z))] === 1) { list.splice(i, 1); continue; }
       if (p.smoke) {
         const k = Math.exp(-1.5 * dt);
         p.vx *= k; p.vz *= k; p.vy = p.vy * k + 0.6 * dt;

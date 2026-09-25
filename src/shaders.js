@@ -101,8 +101,7 @@ uniform vec4 u_lightOverride;
 uniform vec4 u_colorMul;
 uniform float u_hurt;
 uniform float u_glint;  // enchanted things shimmer
-uniform vec3 u_precip; // falling rain/snow: scroll, sway amount, sway phase
-uniform vec2 u_precipScale;
+uniform vec4 u_weather; // rain or snow: kind (1 rain, 2 snow), how far it has fallen (pixels), time
 in vec3 v_uv;
 in vec4 v_light;
 in vec3 v_tint;
@@ -118,6 +117,60 @@ vec3 glint() {
   float s2 = fract(-p.x * 0.3 + p.y * 0.8 - u_time * 0.3 + 0.37);
   float g = smoothstep(0.0, 0.08, s) * (1.0 - smoothstep(0.08, 0.3, s)) + 0.6 * smoothstep(0.0, 0.1, s2) * (1.0 - smoothstep(0.1, 0.25, s2));
   return vec3(0.45, 0.22, 0.85) * (0.2 + g * 0.9) * u_glint;
+}
+// Rain and snow on the sheets around the player (weather.js), in the manner of the original's
+// rain.png and snow.png: 64 pixels to a block, a streak or a flake here and there. They're worked
+// out here rather than read from a texture so that nothing repeats across a sheet. Across a sheet
+// uv runs 0..1, down it half a unit to a block; the tint holds the sheet's fade and a random number.
+uint ihash(uint x) { x ^= x >> 16; x *= 0x7feb352du; x ^= x >> 15; x *= 0x846ca68bu; x ^= x >> 16; return x; }
+float rnd(uint x) { return float(ihash(x) >> 8) * (1.0 / 16777216.0); }
+// Rain: a streak now and then down each one-pixel lane, fading towards its tail; the lanes fall at
+// slightly different speeds. (A whole number of eighths, so the pattern stays seamless where the
+// distance fallen wraps around.)
+float rainAt(vec2 p, uint seed) {
+  uint lane = ihash(uint(int(floor(p.x)) + 4096) + seed * 131u);
+  float y = p.y - u_weather.y * float(7u + (lane & 3u)) / 8.0 + float(lane >> 20);
+  float cell = floor(y / 72.0);
+  uint c = ihash(lane ^ uint(mod(cell, 64.0)) * 0x9e3779b1u);
+  if (rnd(c) > 0.17) return 0.0;
+  float len = 10.0 + 22.0 * rnd(c + 1u);
+  float f = (y - cell * 72.0 - rnd(c + 2u) * (72.0 - len)) / len;
+  return f < 0.0 || f > 1.0 ? 0.0 : mix(0.3, 0.9, f);
+}
+// Snow: a flake in some of the 16 x 16 pixel cells, a dot, a cross, a ring or a little square, each
+// rocking from side to side as it falls, and the whole sheet drifting a little.
+float snowAt(vec2 p, uint seed) {
+  p.x += sin(u_weather.z * 0.45 + float(seed & 255u)) * 6.0 + float(seed >> 8) * 16.0;
+  p.y -= u_weather.y;
+  vec2 cell = floor(p / 16.0);
+  uint c = ihash(uint(int(cell.x) + 8192) * 0x27d4eb2du ^ uint(mod(cell.y, 64.0)) * 0x165667b1u ^ seed);
+  if (rnd(c) > 0.6) return 0.0;
+  vec2 at = vec2(3.0) + floor(vec2(rnd(c + 1u), rnd(c + 2u)) * 10.0);
+  at.x += floor(sin(u_weather.z * (1.1 + rnd(c + 3u)) + rnd(c + 4u) * 6.2832) * 1.5 + 0.5);
+  vec2 q = floor(p - cell * 16.0) - at, a = abs(q);
+  uint shape = ihash(c + 5u) % 5u;
+  bool on = shape == 0u ? a.x + a.y < 0.5
+          : shape == 1u ? a.x + a.y < 1.5 && min(a.x, a.y) < 0.5
+          : shape == 2u ? a.x == a.y && a.x < 1.5
+          : shape == 3u ? a.x + a.y == 1.0
+          : q.x >= 0.0 && q.y >= 0.0 && q.x < 1.5 && q.y < 1.5;
+  return on ? 0.95 : 0.0;
+}
+vec4 precipitation(vec2 uv, vec2 dx, vec2 dy) {
+  uint seed = uint(v_tint.g * 255.0 + 0.5) | (uint(v_tint.b * 255.0 + 0.5) << 8);
+  vec2 p = uv * vec2(64.0, 128.0);
+  bool rain = u_weather.x < 1.5;
+  // Where a pixel is smaller than a screen pixel, two samples a screen pixel apart are averaged, so
+  // that far-off streaks and flakes don't flicker.
+  float fw = 64.0 * (abs(dx.x) + abs(dy.x));
+  float a;
+  if (fw > 1.2) {
+    vec2 o = vec2(fw * 0.25, 0.0);
+    a = rain ? (rainAt(p - o, seed) + rainAt(p + o, seed)) * 0.5 : (snowAt(p - o, seed) + snowAt(p + o, seed)) * 0.5;
+  } else a = rain ? rainAt(p, seed) : snowAt(p, seed);
+  // The sheet's own fade, and a softer top.
+  a *= v_tint.r * clamp(uv.y, 0.0, 1.0);
+  return vec4(rain ? vec3(0.5, 0.64, 1.0) : vec3(1.0), a);
 }
 #ifdef FANCY
 uniform vec3 u_camPos;
@@ -186,15 +239,11 @@ void main() {
     }
     uv += lava ? vec2(sin(u_time * 0.35 + uv.y * 3.1416) * 0.06, u_time * 0.02)
                : vec2(sin(u_time * 0.8 + uv.y * 6.2832) * 0.03, cos(u_time * 0.6 + uv.x * 6.2832) * 0.02);
-  } else if ((v_flags & 128u) != 0u) {
-    uv *= u_precipScale;
-    uv.y -= u_precip.x;
-    uv.x += sin(u_precip.z + uv.y * 2.0) * u_precip.y;
   }
   // (Derivatives are taken here, outside any branch, so mipmapping works inside texel().)
   vec2 dx = dFdx(uv), dy = dFdy(uv);
   float layer = floor(v_uv.z + 0.5);
-  vec4 tex = sampleLayer(uv, layer, dx, dy);
+  vec4 tex = (v_flags & 128u) != 0u ? precipitation(uv, dx, dy) : sampleLayer(uv, layer, dx, dy);
   vec3 col = tex.rgb;
   if ((v_flags & 2u) != 0u) {
     vec4 ov = texel(uv, layer + 1.0, dx, dy);
@@ -255,6 +304,8 @@ void main() {
   light *= mix(ao, 1.0, sun * 0.35);
   if ((v_flags & 32u) != 0u) light = vec3(1.8);
   if ((v_flags & 64u) != 0u) light = vec3(2.4);
+  // Rain and snow take their light mostly from the sky around them, not straight from the sun.
+  if ((v_flags & 128u) != 0u) light = amb * 1.3 + direct * 0.3 + torch + 0.02;
   vec3 c = albedo * light;
   vec3 V = normalize(-v_rel);
   // Water is clear: mostly the bed showing through, tinted, under what it reflects.

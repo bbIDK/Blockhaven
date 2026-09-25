@@ -127,6 +127,9 @@ Every sound here is public domain ([CC0 1.0](https://creativecommons.org/publicd
 | `water.splash1` | "Small Water Splash" by qubodup, https://freesound.org/people/qubodup/sounds/737233/ | CC0 1.0 |
 | `water.splash2` | "Water Splash" by qubodup, https://freesound.org/people/qubodup/sounds/737234/ | CC0 1.0 |
 | `water.splash3` | "Splash-eau-goudron1.wav" by rombart, https://freesound.org/people/rombart/sounds/186748/ | CC0 1.0 |
+| `water.enter1` | "Big Water Splash" by qubodup, https://freesound.org/people/qubodup/sounds/442773/ | CC0 1.0 |
+| `water.enter2` | "Cannonball off dock, splashing, swimming.wav" by SpliceSound, https://freesound.org/people/SpliceSound/sounds/260131/ | CC0 1.0 |
+| `water.enter3` | "Water splash.wav" by speedygonzo, https://freesound.org/people/speedygonzo/sounds/235725/ | CC0 1.0 |
 | `water.swim1` | "Short Water Squish" by qubodup, https://freesound.org/people/qubodup/sounds/737232/ | CC0 1.0 |
 | `water.swim2` | "Water Squirt" by qubodup, https://freesound.org/people/qubodup/sounds/737235/ | CC0 1.0 |
 | `lava.pop1` | "mutliple bubbles bursting" by florianreichelt, https://freesound.org/people/florianreichelt/sounds/683100/ | CC0 1.0 |

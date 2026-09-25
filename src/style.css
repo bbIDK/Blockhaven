@@ -492,14 +492,6 @@ kbd {
   pointer-events: auto;
 }
 @keyframes fade { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
-#resume-hint {
-  position: absolute;
-  left: 50%;
-  top: calc(50% + var(--u) * 20);
-  transform: translateX(-50%);
-  padding: calc(var(--u) * 2) calc(var(--u) * 4);
-  background: rgba(0, 0, 0, 0.5);
-}
 
 /* ------------------------------------------------------------------ containers (Minecraft style) */
 /* Sizes are in GUI pixels: --u CSS pixels each, set by gui.js to fit the screen. */
@@ -549,7 +541,7 @@ kbd {
   pointer-events: none;
 }
 .mc-win.creative { margin-top: calc(var(--u) * 28); }
-.mc-panel > *, .mc-tabs > *, .mc-bookgrid > * { position: absolute; }
+.mc-panel > *, .mc-tabs > *, .mc-bookgrid > *, .mc-booktab > img, .mc-bookbtn > img { position: absolute; }
 .mc-label { font: 400 calc(var(--u) * 9)/1 var(--font-ui); color: #404040; text-shadow: none; white-space: nowrap; pointer-events: none; }
 .mc-label.center { transform: translateX(-50%); }
 .mc-img { image-rendering: pixelated; pointer-events: none; }

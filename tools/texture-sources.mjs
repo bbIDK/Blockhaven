@@ -136,6 +136,12 @@ export const SOURCES = {
   red_sandstone_side: 'block/red_sandstone',
   tall_grass: 'block/grass',
   water: grayOf('block/water_still', 0.75),
+  // (Pixel Perfection colours these leaves itself, from autumn orange to deep green; the game
+  // tints them as Minecraft does, so they're taken as grey.)
+  birch_leaves: grayOf('block/birch_leaves', 0.62),
+  spruce_leaves: grayOf('block/spruce_leaves', 0.55),
+  acacia_leaves: grayOf('block/acacia_leaves', 0.55),
+  dark_oak_leaves: grayOf('block/dark_oak_leaves', 0.5),
   lava: 'block/lava_still',
   pumpkin_face: 'block/carved_pumpkin',
   jack_face: 'block/jack_o_lantern',
@@ -234,7 +240,8 @@ export const SOURCES = {
   angry: particle('angry'),
   happy: particle('glint'),
   bubble: particle('bubble'),
-  splash: particle('splash_0'),
+  // (splash: drawn in code as plain water, since particles show a few pixels of it and Pixel
+  // Perfection's is a single tiny drop.)
   crit: particle('critical_hit'),
   magic_crit: particle('enchanted_hit'),
   note: particle('note'),
@@ -255,6 +262,4 @@ export const SOURCES = {
   blood: null,
   gold_coin: null,
   shield: null,
-  rain_fall: null,
-  snow_fall: null,
 };

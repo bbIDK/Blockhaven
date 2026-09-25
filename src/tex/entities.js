@@ -16,21 +16,8 @@ def('arrow_entity', (t) => {
   t.set(2, 7, 0xd8d8d8); t.set(1, 7, 0xb8b8b8); t.set(0, 7, 0xa0a0a0);
 });
 
-// ---------------------------------------------------------------- particles and weather
-// Falling rain and snow, drawn in vertical sheets that scroll downwards, and rain splashes.
-// (The rain texture is tiled four times across a column, so its one-pixel streaks come out thin.)
-def('rain_fall', (t) => {
-  t.clear();
-  for (let x = 0; x < 16; x++) {
-    if (t.r() < 0.45) continue;
-    const y0 = t.ri(16), len = 5 + t.ri(6);
-    for (let k = 0; k < len; k++) t.set(x, (y0 + k) & 15, k >= len - 2 ? 0xe4ecff : 0xb4c8f0, 90 + t.ri(70));
-  }
-});
-def('snow_fall', (t) => {
-  t.clear();
-  for (let i = 0; i < 5; i++) t.set(t.ri(16), t.ri(16), 0xffffff, 225);
-});
+// ---------------------------------------------------------------- particles
+// Rain splashes. (Rain and snow themselves are drawn by the terrain shader: see shaders.js.)
 def('splash', (t) => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, pick([0x9fbef0, 0xc8dcff, 0x7fa4e0], t.r())); });
 // Blood from hits on animals and monsters.
 def('blood', (t) => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.set(x, y, pick([0x5c0808, 0x760c0c, 0x921212, 0xaa1a1a], t.r())); });

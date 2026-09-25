@@ -107,11 +107,11 @@ doubled in size (the particles). Anything not listed is drawn by the game's own 
 | `textures/cherry_log.png` | Mineclonia mods/ITEMS/mcl_cherry_blossom/textures/mcl_cherry_blossom_log.png |  |
 | `textures/cherry_log_top.png` | Mineclonia mods/ITEMS/mcl_cherry_blossom/textures/mcl_cherry_blossom_log_top.png |  |
 | `textures/oak_leaves.png` | Pixel Perfection CE block/oak_leaves.png |  |
-| `textures/birch_leaves.png` | Pixel Perfection CE block/birch_leaves.png |  |
-| `textures/spruce_leaves.png` | Pixel Perfection CE block/spruce_leaves.png |  |
+| `textures/birch_leaves.png` | Pixel Perfection CE block/birch_leaves.png | changed |
+| `textures/spruce_leaves.png` | Pixel Perfection CE block/spruce_leaves.png | changed |
 | `textures/jungle_leaves.png` | Pixel Perfection CE block/jungle_leaves.png |  |
-| `textures/acacia_leaves.png` | Pixel Perfection CE block/acacia_leaves.png |  |
-| `textures/dark_oak_leaves.png` | Pixel Perfection CE block/dark_oak_leaves.png |  |
+| `textures/acacia_leaves.png` | Pixel Perfection CE block/acacia_leaves.png | changed |
+| `textures/dark_oak_leaves.png` | Pixel Perfection CE block/dark_oak_leaves.png | changed |
 | `textures/cherry_leaves.png` | Mineclonia mods/ITEMS/mcl_cherry_blossom/textures/mcl_cherry_blossom_leaves.png |  |
 | `textures/oak_sapling.png` | Pixel Perfection CE block/oak_sapling.png |  |
 | `textures/spruce_sapling.png` | Pixel Perfection CE block/spruce_sapling.png |  |
@@ -486,7 +486,6 @@ doubled in size (the particles). Anything not listed is drawn by the game's own 
 | `textures/lantern_item.png` | Pixel Perfection CE item/lantern.png |  |
 | `textures/campfire_item.png` | Pixel Perfection CE item/campfire.png |  |
 | `textures/lever_item.png` | Pixel Perfection CE block/lever.png |  |
-| `textures/splash.png` | Pixel Perfection CE particle/splash_0.png | changed |
 | `textures/crit.png` | Pixel Perfection CE particle/critical_hit.png | changed |
 | `textures/heart.png` | Pixel Perfection CE particle/heart.png | changed |
 | `textures/happy.png` | Pixel Perfection CE particle/glint.png | changed |

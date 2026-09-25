@@ -1,7 +1,7 @@
-// Other players in the world. Each one is drawn with the player model (Minecraft's proportions)
-// in the look they picked, with the armour they wear and the item in their hand, animated from
-// what their presence reports: where they are and look, walking, sneaking, swinging and getting
-// hurt. A name tag floats above.
+// Other players in the world (and this one, seen from behind with F5). Each one is drawn with the
+// player model (Minecraft's proportions) in the look they picked, with the armour they wear and
+// the item in their hand, animated from what their presence reports: where they are and look,
+// walking, sneaking, swimming, swinging and getting hurt. A name tag floats above.
 import { skinMesh, MODEL_OFFSET } from './models.js';
 import { RIGS } from './rigs.js';
 import { skinLayer, SKIN_INDEX } from './skins.js';
@@ -30,7 +30,7 @@ export class RemotePlayer {
     this.armor = [0, 0, 0, 0];
     this.swingN = null; this.swing = 0;
     this.hurtN = null; this.hurt = 0;
-    this.walk = 0; this.walkPhase = 0;
+    this.walk = 0; this.walkPhase = 0; this.swimPhase = 0;
     this.lastX = 0; this.lastZ = 0;
     this.mountId = null; // the entity they ride, if any
   }
@@ -48,6 +48,7 @@ export class RemotePlayer {
   get creative() { return !!(this.flags & 64); }
   get invisible() { return !!(this.flags & 128); }
   get guarding() { return !!(this.flags & 256); }
+  get swimming() { return !!(this.flags & 512); }
 
   // Presence: { n: name, p: [x, y, z, yaw, pitch], f: flags, i: held item, a: armour, k: look,
   // s: swings, u: hurts }.
@@ -99,6 +100,11 @@ export class RemotePlayer {
       // Drop samples that are no longer needed.
       while (s.length > 2 && s[1].t <= rt) s.shift();
     }
+    this.animate(dt);
+  }
+
+  // Walking, turning, swinging and flinching, from how they've moved.
+  animate(dt) {
     const moved = Math.hypot(this.x - this.lastX, this.z - this.lastZ);
     this.lastX = this.x; this.lastZ = this.z;
     const speed = dt > 0 && this.mountId === null ? moved / dt : 0;
@@ -112,6 +118,7 @@ export class RemotePlayer {
     this.bodyYaw += d * Math.min(1, dt * (this.walk > 0.2 ? 8 : 1.5));
     if (this.swing > 0) { this.swing += dt * 3.4; if (this.swing >= 1) this.swing = 0; }
     this.hurt = Math.max(0, this.hurt - dt);
+    if (this.swimming) this.swimPhase = (this.swimPhase + dt * 4.2) % TAU;
   }
 }
 
@@ -189,12 +196,22 @@ export class Avatars {
       if (rx * rx + rz * rz > maxDist * maxDist) continue;
       const l = world.getLight(Math.floor(rp.x), Math.floor(rp.y + 1.2), Math.floor(rp.z));
       const m = this.model(playerSkin(rp.name, rp.look), rp.armor);
-      const sneak = rp.sneaking;
+      // Riding: sitting with the legs out in front, a little apart, and the hands forward.
+      const sit = rp.mountId !== null, swim = rp.swimming && !sit, sneak = rp.sneaking && !swim;
       const walkA = Math.sin(rp.walkPhase) * 0.9 * rp.walk;
-      const attack = rp.swing > 0 ? Math.sin(rp.swing * Math.PI) : 0;
+      const attack = rp.swing > 0 && !swim ? Math.sin(rp.swing * Math.PI) : 0;
       const parts = [];
       const base = (mat) => {
         identity(mat);
+        if (swim) {
+          // Swimming: laid out face down along the way they swim, turned about the hips (which
+          // sit in the middle of the 0.6-high swimmer).
+          translate(mat, mat, rx, ry + 0.3, rz);
+          rotateY(mat, mat, rp.bodyYaw);
+          rotateX(mat, mat, -Math.PI / 2 + clamp(rp.pitch, -1.2, 1.2));
+          translate(mat, mat, 0, -0.8, 0);
+          return mat;
+        }
         translate(mat, mat, rx, ry - (sneak ? 0.08 : 0), rz);
         rotateY(mat, mat, rp.bodyYaw);
         return mat;
@@ -215,9 +232,14 @@ export class Avatars {
       };
       const add = (g, mat) => { translate(mat, mat, -MODEL_OFFSET, -MODEL_OFFSET, -MODEL_OFFSET); parts.push({ mesh: g.mesh, model: mat }); };
       const legBack = sneak ? 0.3 : 0;
-      // Riding: sitting with the legs out in front, a little apart, and the hands forward.
-      const sit = rp.mountId !== null;
-      if (sit) {
+      // A front crawl: the arms wheel over one after the other, reaching out past the head and
+      // pulling back under the body, while the legs kick.
+      const stroke = (k) => -Math.PI + ((rp.swimPhase + k * Math.PI) % TAU);
+      if (swim) {
+        const kick = Math.sin(rp.swimPhase * 2.4) * 0.35;
+        add(m.rightLeg, joint(base(this.mat()), m.rightLeg.pivot, kick));
+        add(m.leftLeg, joint(base(this.mat()), m.leftLeg.pivot, -kick));
+      } else if (sit) {
         add(m.rightLeg, joint(base(this.mat()), m.rightLeg.pivot, 1.41, -0.31));
         add(m.leftLeg, joint(base(this.mat()), m.leftLeg.pivot, 1.41, 0.31));
       } else {
@@ -225,14 +247,16 @@ export class Avatars {
         add(m.leftLeg, joint(base(this.mat()), m.leftLeg.pivot, -walkA - legBack));
       }
       add(m.body, torso(this.mat()));
-      add(m.head, joint(torso(this.mat()), m.head.pivot, rp.pitch + (sneak ? 0.45 : 0), wrap(rp.yaw - rp.bodyYaw)));
-      const leftA = walkA * 0.7 + (sneak ? 0.35 : 0) + (sit ? 0.63 : 0);
-      add(m.leftArm, joint(torso(this.mat()), m.leftArm.pivot, leftA, 0, -0.05));
+      add(m.head, joint(torso(this.mat()), m.head.pivot, swim ? 0.85 : rp.pitch + (sneak ? 0.45 : 0), wrap(rp.yaw - rp.bodyYaw)));
+      // (Out of the water on the way over, the arm swings a little wide of the head.)
+      const wide = (a) => (swim ? 0.12 + 0.3 * Math.max(0, Math.sin(a)) : 0.05);
+      const leftA = swim ? stroke(1) : walkA * 0.7 + (sneak ? 0.35 : 0) + (sit ? 0.63 : 0);
+      add(m.leftArm, joint(torso(this.mat()), m.leftArm.pivot, leftA, 0, -wide(leftA)));
       // The right arm swings forward and up to hit or use something, and holds the item.
       // (A shield held up: the arm across in front, the shield facing out.)
       const shield = rp.held === I.shield, guard = shield && rp.guarding;
-      const rightA = guard ? 0.95 : -walkA * 0.7 + (sneak ? 0.35 : 0) + (rp.held ? 0.3 : 0) + attack * 1.3 + (sit ? 0.63 : 0);
-      const arm = joint(torso(this.mat()), m.rightArm.pivot, rightA, guard ? -0.5 : -attack * 0.4, 0.05);
+      const rightA = swim ? stroke(0) : guard ? 0.95 : -walkA * 0.7 + (sneak ? 0.35 : 0) + (rp.held ? 0.3 : 0) + attack * 1.3 + (sit ? 0.63 : 0);
+      const arm = joint(torso(this.mat()), m.rightArm.pivot, rightA, guard && !swim ? -0.5 : -attack * 0.4, wide(rightA));
       const held = rp.held ? this.renderer.itemMesh(rp.held) : null;
       if (held) parts.push({ mesh: held, model: shield ? this.heldShield(arm, rightA) : this.heldItem(arm, held), glint: rp.heldShiny ? 1 : 0 });
       add(m.rightArm, arm);

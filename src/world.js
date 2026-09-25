@@ -12,8 +12,12 @@ import { nextLevel } from './light.js';
 import { meshSection, P, P2, PADDED, ALL_OPEN } from './mesher.js';
 import { JobPool } from './workers.js';
 import { makeGenerator } from './worldgen.js';
+import { columnColors, fromByte } from './biomes.js';
 
 export const S_REQUESTED = 1, S_READY = 2;
+// Grass, leaves and water take the average colour of the columns up to this far around them, so
+// that one biome's colours shade gradually into the next's.
+const BLEND = 5;
 const QSIZE = 1 << 16, QMASK = QSIZE - 1;
 
 class Section {
@@ -40,6 +44,8 @@ export class Chunk {
     this.light = null;
     this.climate = null;
     this.biomes = null;
+    this.rawTints = null; // its columns' colours, and those blended with their surroundings
+    this.tints = null;
     this.modified = false;
     this.sections = Array.from({ length: SECTIONS }, () => new Section());
     this.nb = [null, null, null, null]; // neighbours at +X, -X, +Z, -Z
@@ -416,7 +422,47 @@ export class World {
     sec.dirty = false;
     sec.pending++;
     this.pool.submit({ type: 'mesh', cx: chunk.cx, cz: chunk.cz, sy, version: sec.version, blocks, light,
-      climate: chunk.climate, biomes: chunk.biomes }, [blocks.buffer, light.buffer]);
+      climate: chunk.climate, biomes: chunk.biomes, tints: this.chunkTints(chunk) }, [blocks.buffer, light.buffer]);
+  }
+
+  // A chunk's columns' own grass, foliage and water colours (768 bytes each), from their biome and
+  // climate.
+  rawTints(chunk) {
+    if (chunk.rawTints) return chunk.rawTints;
+    const out = new Uint8Array(2304), g = out.subarray(0, 768), f = out.subarray(768, 1536), w = out.subarray(1536);
+    const cl = chunk.climate, bi = chunk.biomes;
+    for (let c = 0; c < 256; c++) columnColors(bi ? bi[c] : 4, cl ? fromByte(cl[c * 2]) : 0, cl ? fromByte(cl[c * 2 + 1]) : 0, g, f, w, c * 3);
+    return (chunk.rawTints = out);
+  }
+
+  // The colours the mesher gives a chunk's columns: each the average of the columns within BLEND
+  // of it, reaching into the neighbouring chunks (all loaded by the time a chunk is meshed).
+  chunkTints(chunk) {
+    if (chunk.tints) return chunk.tints;
+    const W = 48, S = new Float64Array((W + 1) * (W + 1)), out = new Uint8Array(2304), n = (2 * BLEND + 1) ** 2;
+    const around = [];
+    let complete = true;
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      const c = dx || dz ? this.readyChunk(chunk.cx + dx, chunk.cz + dz) : chunk;
+      if (!c) complete = false;
+      around.push(this.rawTints(c ?? chunk));
+    }
+    // One channel at a time ([grass, foliage, water] x [r, g, b]): a summed-area table over the
+    // 3 x 3 chunks, then each column's box of it.
+    for (let ch = 0; ch < 9; ch++) {
+      const off = Math.floor(ch / 3) * 768 + (ch % 3);
+      for (let z = 0; z < W; z++) for (let x = 0; x < W; x++) {
+        const v = around[(z >> 4) * 3 + (x >> 4)][off + (((z & 15) << 4) | (x & 15)) * 3];
+        S[(z + 1) * (W + 1) + x + 1] = v + S[z * (W + 1) + x + 1] + S[(z + 1) * (W + 1) + x] - S[z * (W + 1) + x];
+      }
+      for (let z = 0; z < 16; z++) for (let x = 0; x < 16; x++) {
+        const x0 = x + 16 - BLEND, x1 = x + 17 + BLEND, z0 = z + 16 - BLEND, z1 = z + 17 + BLEND;
+        const sum = S[z1 * (W + 1) + x1] - S[z0 * (W + 1) + x1] - S[z1 * (W + 1) + x0] + S[z0 * (W + 1) + x0];
+        out[off + ((z << 4) | x) * 3] = Math.round(sum / n);
+      }
+    }
+    if (complete) chunk.tints = out;
+    return out;
   }
 
   onMesh(r) {
@@ -438,7 +484,7 @@ export class World {
     sec.meshVersion = sec.version;
     if (sec.count === 0) { sec.vis = ALL_OPEN; if (sec.solid || sec.trans) this.renderer.freeSection(sec); return; }
     this.buildPadded(chunk, sy, this.padB, this.padL);
-    const m = meshSection(this.padB, this.padL, chunk.climate, chunk.cx, chunk.cz, chunk.biomes);
+    const m = meshSection(this.padB, this.padL, chunk.climate, chunk.cx, chunk.cz, chunk.biomes, this.chunkTints(chunk));
     sec.vis = m.vis;
     this.renderer.uploadSection(sec, chunk, sy, m.solid, m.trans, m.groups);
   }

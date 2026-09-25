@@ -364,14 +364,20 @@ function campfire(bufs, other, blocks, light, x, y, z, p, id) {
   crossQuad(other, [[X + a, Y, Z + b], [X + b, Y, Z + a], [X + b, Y + H, Z + a], [X + a, Y + H, Z + b]], layer, flags, sky, 255);
 }
 
-// blocks/light: padded 18^3 arrays; climate: 512 bytes for the chunk's columns; biomes: 256.
-export function meshSection(blocks, light, climate, cx, cz, biomes = null) {
+// blocks/light: padded 18^3 arrays; climate: 512 bytes for the chunk's columns; biomes: 256;
+// tints: the columns' grass, foliage and water colours blended with their surroundings (768
+// bytes each, see World.chunkTints), or null to work them out from the climate alone.
+export function meshSection(blocks, light, climate, cx, cz, biomes = null, tints = null) {
   other.count = 0;
   for (const d of dirs) d.count = 0;
   trans.count = 0;
-  for (let c = 0; c < 256; c++) {
-    const t = fromByte(climate[c * 2]), h = fromByte(climate[c * 2 + 1]);
-    columnColors(biomes ? biomes[c] : 4, t, h, grassT, foliageT, waterT, c * 3);
+  if (tints) {
+    grassT.set(tints.subarray(0, 768)); foliageT.set(tints.subarray(768, 1536)); waterT.set(tints.subarray(1536, 2304));
+  } else {
+    for (let c = 0; c < 256; c++) {
+      const t = fromByte(climate[c * 2]), h = fromByte(climate[c * 2 + 1]);
+      columnColors(biomes ? biomes[c] : 4, t, h, grassT, foliageT, waterT, c * 3);
+    }
   }
   for (let y = 0; y < 16; y++) {
     for (let z = 0; z < 16; z++) {
