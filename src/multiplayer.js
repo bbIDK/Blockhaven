@@ -179,7 +179,7 @@ class Session {
       pres.p = [r2(p.x), r2(p.y), r2(p.z), r2(p.yaw), r2(p.pitch)];
       pres.f = (p.sneaking ? 1 : 0) | (p.sprinting ? 2 : 0) | (p.flying ? 4 : 0) | (p.onGround ? 8 : 0) |
         (g.state === 'dead' ? 16 : 0) | (g.state === 'sleeping' ? 32 : 0) | (g.creative ? 64 : 0);
-      pres.i = g.inv.heldId;
+      pres.i = g.handLook;
       pres.a = g.inv.armor.map((s) => s?.id ?? 0);
       pres.k = g.settings.look;
       pres.s = g.swingCount;
@@ -187,6 +187,9 @@ class Session {
       // What they ride: [entity, x, y, z, yaw] (a guest moves their own mount; see rideMove).
       const m = g.riding;
       if (m) pres.r = [m.nid ?? 0, r2(m.x), r2(m.y), r2(m.z), r2(m.yaw)];
+      // A fishing float out on the water.
+      const b = g.fishing?.bobber;
+      if (b) pres.fb = [r2(b.x), r2(b.y), r2(b.z)];
     }
     return pres;
   }

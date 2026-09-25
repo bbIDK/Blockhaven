@@ -334,6 +334,20 @@ def('fishing_rod', (t) => {
     '.....wW.......k.', '....wW........k.', '...wW........k..', '..wW.........h..', '.wW.........hh..', 'wW..............'],
   { w: 0x5a4020, W: 0x8a6838, k: 0xd8d8d8, h: 0x8a8a8a });
 });
+// The rod once it's cast: the line runs out from the tip instead of hanging down it.
+def('fishing_rod_cast', (t) => {
+  t.clear();
+  paint(t, ['', '............ww..', '...........wW...', '..........wW....', '.........wW.....', '........wW......', '.......wW.......', '......wW........',
+    '.....wW.........', '....wW..........', '...wW...........', '..wW............', '.wW.............', 'wW..............'], { w: 0x5a4020, W: 0x8a6838 });
+  t.set(14, 1, 0xd8d8d8); t.set(15, 0, 0xd8d8d8);
+});
+// The float on the end of a line: red over white, with a quill on top (see fishing.js).
+def('fishing_bobber', (t) => {
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    const edge = x === 0 || x === 15;
+    t.set(x, y, y < 8 ? (edge || y === 0 ? 0x8a1010 : x < 5 ? 0xf04030 : 0xd02418) : (edge || y === 15 ? 0xa8a8a8 : x < 5 ? 0xffffff : 0xe8e8e8));
+  }
+});
 def('saddle', (t) => shaded(t, ['', '', '', '', '...xx......xx...', '..xxxxxxxxxxxx..', '..xxxxxxxxxxxx..', '...xxxxxxxxxx...', '....xxxxxxxx....',
   '....x......x....', '....x......x....', '...xxx....xxx...'], MATERIAL.leather, {}, { outline: 'all', grain: 0.15 }));
 
@@ -423,6 +437,19 @@ def('cod', (t) => fish(t, [0x3a3222, 0x8a7a58, 0xaa9a72, 0xc4b690, 0xdcd0ae], 0x
 def('cooked_cod', (t) => fish(t, [0x3a2210, 0x9a7a4a, 0xb89660, 0xd0b07a, 0xe8cc9a], 0xf0e0c0, [0x8a6a3a, 0xb08a52]));
 def('salmon', (t) => fish(t, [0x3a1414, 0xa03a34, 0xbc4c42, 0xd46a5a, 0xe8907c], 0xe8b0a0, [0x6a2a24, 0x8a3a30]));
 def('cooked_salmon', (t) => fish(t, [0x3a1a0a, 0xa05a2a, 0xbc7438, 0xd4924e, 0xe8b070], 0xf0d0a0, [0x7a4a22, 0x9a6230]));
+// Tropical fish: a clownfish, orange with white bands; pufferfish: a spiky yellow ball.
+def('tropical_fish', (t) => {
+  fish(t, [0x5a1e02, 0xc85a10, 0xe8741c, 0xf8923a, 0xffb060], 0xffc890, [0xc85a10, 0xf8923a]);
+  for (let y = 5; y < 12; y++) for (const x of [5, 9]) if (t.alpha(x, y)) t.set(x, y, y === 5 || y === 11 ? 0x3a1402 : 0xfafafa);
+});
+def('pufferfish', (t) => {
+  shaded(t, ['', '', '', '.....xxxxx......', '....xxxxxxx.....', '...xxxxxxxxx..x.', '...xxxxxxxxxxxx.', '...xxxxxxxxxxxx.', '...xxxxxxxxx..x.',
+    '....xxxxxxx.....', '.....xxxxx......'], [0x5a4a02, 0xb8a010, 0xd8c020, 0xf0dc40, 0xfff080], {}, { outline: 'all' });
+  // Spines, a pale belly, an eye and a small mouth.
+  for (const [x, y] of [[4, 2], [7, 1], [10, 2], [2, 4], [2, 9], [4, 11], [7, 12], [10, 11]]) t.set(x, y, 0xe8e0c0);
+  for (let x = 5; x < 10; x++) t.set(x, 9, 0xf8f4d8);
+  t.set(5, 5, 0x101010); t.set(5, 6, 0x303030); t.set(3, 7, 0xa04a2a);
+});
 def('rotten_flesh', (t) => {
   meat(t, [0x2e2410, 0x6a5428, 0x86703a, 0x9e8a4c, 0xb8a466], null, null);
   for (const [x, y] of [[5, 5], [6, 5], [9, 7], [4, 8], [10, 10], [8, 9]]) t.set(x, y, 0x4e6a24);

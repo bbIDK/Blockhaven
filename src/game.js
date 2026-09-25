@@ -32,6 +32,7 @@ import { useItemOnBlock, useBucket, placeLilyPad, placeBoat, useWorkstation } fr
 import { nearestVillage } from './villages.js';
 import { TalkScreen } from './tradeui.js';
 import { seatY, startRide, driveFrom, dismountSpot } from './riding.js';
+import { Fishing, bobberMesh, bobberModel, linePoints } from './fishing.js';
 import { ITEMS, I, itemDef, itemLabel, breakTime, dropsFor, attackDamage, attackSpeed } from './items.js';
 import { BIOME_NAMES } from './biomes.js';
 import { CHUNK_VOLUME, HEIGHT, TICKS_PER_DAY, SAVE_VERSION } from './config.js';
@@ -97,6 +98,7 @@ export class Game {
     this.env = makeEnvironment();
     this.particles = new Particles();
     this.entities = new Entities(this);
+    this.fishing = new Fishing(this);
     this.player = new Player();
     this.inv = new Inventory();
     this.state = 'boot';
@@ -255,6 +257,9 @@ export class Game {
 
   saveSettings() { storage.savePrefs(SETTINGS_KEY, this.settings); }
 
+  // What others see in this player's hand (a fishing rod with its line out looks different).
+  get handLook() { const id = this.inv.heldId; return id === I.fishing_rod && this.fishing.out ? I.fishing_rod_cast : id; }
+
   // The skin this player wears: the one they picked, or one chosen by their name.
   get skinName() { return playerSkin(this.settings.name, this.settings.look); }
 
@@ -404,6 +409,7 @@ export class Game {
     }
     const p = this.player = new Player();
     this.riding = null;
+    this.fishing.retract();
     this.remount = !!meta.player?.riding;
     if (meta.player && (meta.player.health ?? 20) > 0) {
       Object.assign(p, { x: meta.player.x, y: meta.player.y, z: meta.player.z, yaw: meta.player.yaw, pitch: meta.player.pitch, flying: !!meta.player.flying });
@@ -1315,6 +1321,7 @@ export class Game {
       if (this.tickAcc > most) this.tickAcc = 0;
       this.particles.update(dt, w);
       this.entities.update(dt);
+      this.fishing.update(dt);
       this.weather.update(dt);
     }
     if (this.riding) this.sitOnMount();
@@ -1469,6 +1476,7 @@ export class Game {
     this.world.tick();
     if (!this.net?.guest) this.world.randomTicks(this.players().map((t) => [Math.floor(t.x) >> 4, Math.floor(t.z) >> 4]));
     this.entities.tick();
+    this.fishing.tick();
     if (!this.net?.guest) { this.tickFurnaces(); this.pressPlates(); }
     const p = this.player;
     if (!this.creative && this.state !== 'dead') {
@@ -1848,6 +1856,7 @@ export class Game {
     if (held && (held.id === I.bucket || held.id === I.water_bucket || held.id === I.lava_bucket)) { if (!repeat) useBucket(this, held); return; }
     if (held?.id === B.lily_pad) { if (!repeat) placeLilyPad(this); return; }
     if (def?.boat && !t?.entity && !t?.player) { if (!repeat) placeBoat(this, held); return; }
+    if (held?.id === I.fishing_rod) { if (!repeat) this.fishing.use(); return; }
     // Right-clicking with armor puts it on (swapping with what you were wearing).
     if (def?.armor) {
       if (repeat) return;
@@ -2333,8 +2342,11 @@ export class Game {
       particles: this.particles,
       weather: this.weather,
       entities: this.drawList(cam),
+      lines: this.fishingLines(),
+      rod: this.rodLine(),
       hand: loading || this.hideHud || this.state === 'dead' ? null : {
-        item: this.handItem, swing: this.swinging ? this.swing : 0, equip: 1 - this.handHeight,
+        item: this.handItem === I.fishing_rod && this.fishing.out ? I.fishing_rod_cast : this.handItem, swing: this.swinging ? this.swing : 0,
+        equip: 1 - this.handHeight,
         bob, walk, roll, lag: [(this.lagPitch - p.pitch) * 0.1, (this.lagYaw - p.yaw) * 0.1],
         eat: this.eating ? this.eating.left : undefined,
         light: [Math.max(heldLight >> 4, 0), heldLight & 15],
@@ -2345,7 +2357,31 @@ export class Game {
   drawList(cam) {
     const list = this.entities.renderList(cam);
     if (this.net) this.avatars.render(this.net.players.values(), cam, this.world, this.settings.renderDistance * 16, list);
+    // Fishing floats: this player's, and anyone else's.
+    const floats = [];
+    if (this.fishing.bobber) floats.push(this.fishing.bobber);
+    if (this.net) for (const rp of this.net.players.values()) if (rp.ready && rp.bobber) floats.push({ x: rp.bobber[0], y: rp.bobber[1], z: rp.bobber[2] });
+    this.floatMats ??= [];
+    floats.forEach((b, i) => {
+      const l = this.world.getLight(Math.floor(b.x), Math.floor(b.y + 0.3), Math.floor(b.z));
+      const m = this.floatMats[i] ??= mat4();
+      list.push({ parts: [{ mesh: bobberMesh(this.renderer), model: bobberModel(m, b.x - cam.x, b.y - cam.y, b.z - cam.z, this.player.yaw) }], light: [l >> 4, l & 15], tint: null });
+    });
     return list;
+  }
+
+  // Other players' fishing lines: from the tips of their rods to their floats.
+  fishingLines() {
+    const out = [];
+    if (this.net) for (const rp of this.net.players.values()) if (rp.ready && rp.bobber) out.push(linePoints(rp.rodTip(), [rp.bobber[0], rp.bobber[1] + 0.3, rp.bobber[2]], true));
+    return out;
+  }
+
+  // This player's line (the renderer starts it at the rod in hand), slack unless a fish is biting.
+  rodLine() {
+    const b = this.fishing.bobber;
+    if (!b || this.state === 'dead') return null;
+    return { from: this.fishing.rodTip(), to: [b.x, b.y + 0.3, b.z], slack: !(b.nibble > 0) && b.state !== 'hooked' };
   }
 
   updateHUD() {

@@ -17,6 +17,7 @@ import { SECTIONS } from './config.js';
 import { compile } from './gl.js';
 import { terrainVS, terrainFS, fullscreenVS, skyFS, cloudVS, cloudFS, lineVS, lineFS } from './shaders.js';
 import { Shadows, Post } from './post.js';
+import { linePoints } from './fishing.js';
 
 const OPPOSITE = [1, 0, 3, 2, 5, 4];
 const QCAP = 1 << 15;
@@ -115,6 +116,15 @@ export class Renderer {
     gl.enableVertexAttribArray(0);
     gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
     this.lineData = new Float32Array(24 * 3);
+    // Thin lines in the world (fishing lines), up to 1024 points a frame.
+    this.polyVao = gl.createVertexArray();
+    gl.bindVertexArray(this.polyVao);
+    this.polyBuf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.polyBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, 1024 * 3 * 4, gl.DYNAMIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+    this.polyData = new Float32Array(1024 * 3);
     gl.bindVertexArray(null);
     this.skyVao = gl.createVertexArray();
 
@@ -547,6 +557,12 @@ export class Renderer {
     gl.uniform1f(u.u_hurt, 0);
     gl.uniform4f(u.u_lightOverride, 0, 0, 0, 0);
     gl.uniform4f(u.u_colorMul, 1, 1, 1, 1);
+    // Fishing lines (this player's starts at the tip of the rod in hand).
+    if (f.rod) {
+      const tip = this.rodTip(f) ?? f.rod.from;
+      (f.lines ??= []).push(linePoints(tip, f.rod.to, f.rod.slack, this.rodLine ??= []));
+    }
+    if (f.lines?.length) this.drawLines(f.lines, cam);
 
     // Particles
     if (f.particles && f.particles.count) {
@@ -653,6 +669,30 @@ export class Renderer {
     gl.useProgram(this.terrain.prog);
   }
 
+  // Lines through the world: each a list of points [x, y, z, ...] joined up in order.
+  drawLines(lines, cam) {
+    const gl = this.gl, d = this.polyData;
+    let n = 0;
+    for (const pts of lines) {
+      for (let i = 0; i + 5 < pts.length && n + 6 <= d.length; i += 3) {
+        d[n++] = pts[i] - cam.x; d[n++] = pts[i + 1] - cam.y; d[n++] = pts[i + 2] - cam.z;
+        d[n++] = pts[i + 3] - cam.x; d[n++] = pts[i + 4] - cam.y; d[n++] = pts[i + 5] - cam.z;
+      }
+    }
+    if (!n) return;
+    gl.useProgram(this.lines.prog);
+    gl.uniformMatrix4fv(this.lines.u.u_viewProj, false, this.viewProj);
+    gl.uniform4f(this.lines.u.u_color, 0.06, 0.06, 0.06, 0.85);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.bindVertexArray(this.polyVao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.polyBuf);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, d, 0, n);
+    gl.drawArrays(gl.LINES, 0, n / 3);
+    gl.disable(gl.BLEND);
+    gl.useProgram(this.terrain.prog);
+  }
+
   drawClouds(f) {
     const gl = this.gl, u = this.clouds.u;
     gl.useProgram(this.clouds.prog);
@@ -713,22 +753,9 @@ export class Renderer {
   // when switching items, and each item's own "held in first person" placement.
   drawHand(f) {
     const gl = this.gl, u = this.terrain.u, hand = f.hand;
-    const deg = Math.PI / 180;
     gl.clear(gl.DEPTH_BUFFER_BIT);
     gl.useProgram(this.terrain.prog);
-    const proj = this.tmp, aspect = this.canvas.width / this.canvas.height;
-    perspective(proj, 70 * deg, aspect, 0.01, 10);
-    // The hand is laid out for a 16:9 screen. On narrower screens, shrink it evenly (keeping it on
-    // the bottom edge) so it lands where it would on 16:9, without being cut off or stretched.
-    const fit = Math.min(1, aspect / (16 / 9));
-    if (fit < 1) {
-      const k = this.handFit ?? (this.handFit = mat4());
-      identity(k);
-      // On portrait screens, lift it above the hotbar.
-      k[0] = fit; k[5] = fit; k[13] = fit - 1 + (aspect < 1 ? 0.16 : 0);
-      multiply(proj, k, proj);
-    }
-    gl.uniformMatrix4fv(u.u_proj, false, proj);
+    gl.uniformMatrix4fv(u.u_proj, false, this.handProjection(this.tmp));
     gl.uniformMatrix4fv(u.u_view, false, this.ident);
     gl.uniform2f(u.u_fog, 1e5, 2e5);
     gl.uniform1f(u.u_alphaCut, 0.5);
@@ -742,6 +769,34 @@ export class Renderer {
       gl.uniform1f(u.u_shadowOn, 0);
     }
     const m = identity(this.model);
+    const mesh = this.handModel(hand, m);
+    if (!mesh || mesh.kind !== 'block') gl.disable(gl.CULL_FACE);
+    this.drawModel(mesh ?? this.handMesh, m);
+    gl.enable(gl.CULL_FACE);
+    gl.uniform4f(u.u_lightOverride, 0, 0, 0, 0);
+  }
+
+  // The projection the hand is drawn with. It's laid out for a 16:9 screen: on narrower screens it
+  // shrinks evenly (keeping to the bottom edge) so it lands where it would on 16:9, without being
+  // cut off or stretched.
+  handProjection(proj) {
+    const aspect = this.canvas.width / this.canvas.height;
+    perspective(proj, 70 * Math.PI / 180, aspect, 0.01, 10);
+    const fit = Math.min(1, aspect / (16 / 9));
+    if (fit < 1) {
+      const k = this.handFit ?? (this.handFit = mat4());
+      identity(k);
+      // On portrait screens, lift it above the hotbar.
+      k[0] = fit; k[5] = fit; k[13] = fit - 1 + (aspect < 1 ? 0.16 : 0);
+      multiply(proj, k, proj);
+    }
+    return proj;
+  }
+
+  // Sets `m` to the model matrix of the hand, or of the item in it, this frame (in the camera's
+  // space). Returns the item's mesh, or null for the bare arm.
+  handModel(hand, m) {
+    const deg = Math.PI / 180;
     if (hand.roll) rotateZ(m, m, hand.roll);
     if (hand.bob) {
       const w = hand.walk * Math.PI, b = hand.bob;
@@ -767,44 +822,57 @@ export class Renderer {
       translate(m, m, -5 / 16, 2 / 16, 0);
       rotateZ(m, m, Math.PI);
       translate(m, m, -MODEL_OFFSET, -MODEL_OFFSET, -MODEL_OFFSET);
-      gl.disable(gl.CULL_FACE);
-      this.drawModel(this.handMesh, m);
-      gl.enable(gl.CULL_FACE);
-    } else {
-      if (hand.eat !== undefined) {
-        // Bringing food to the mouth and chewing.
-        const left = hand.eat, frac = left / 32;
-        if (frac < 0.8) translate(m, m, 0, Math.abs(Math.cos((left / 4) * Math.PI) * 0.1), 0);
-        const k = 1 - frac ** 27;
-        translate(m, m, k * 0.6, k * -0.5, 0);
-        rotateY(m, m, k * 90 * deg);
-        rotateX(m, m, k * 10 * deg);
-        rotateZ(m, m, k * 30 * deg);
-        translate(m, m, 0.56, -0.52 - eq * 0.6, -0.72);
-      } else {
-        translate(m, m, -0.4 * Math.sin(sq * Math.PI), 0.2 * Math.sin(sq * Math.PI * 2), -0.2 * Math.sin(s * Math.PI));
-        translate(m, m, 0.56, -0.52 - eq * 0.6, -0.72);
-        rotateY(m, m, (45 - Math.sin(s * s * Math.PI) * 20) * deg);
-        rotateZ(m, m, Math.sin(sq * Math.PI) * -20 * deg);
-        rotateX(m, m, Math.sin(sq * Math.PI) * -80 * deg);
-        rotateY(m, m, -45 * deg);
-      }
-      if (mesh.kind === 'block') {
-        // (Raised a little from the original so the hotbar doesn't hide it.)
-        translate(m, m, 0, 0.08, 0);
-        rotateY(m, m, 45 * deg);
-        scale(m, m, 0.4, 0.4, 0.4);
-      } else {
-        translate(m, m, 1.13 / 16, 3.2 / 16, 1.13 / 16);
-        rotateY(m, m, -90 * deg);
-        rotateZ(m, m, 25 * deg);
-        scale(m, m, 0.68, 0.68, 0.68);
-      }
-      translate(m, m, -0.5 - MODEL_OFFSET, -0.5 - MODEL_OFFSET, -0.5 - MODEL_OFFSET);
-      if (mesh.kind !== 'block') gl.disable(gl.CULL_FACE);
-      this.drawModel(mesh, m);
-      gl.enable(gl.CULL_FACE);
+      return null;
     }
-    gl.uniform4f(u.u_lightOverride, 0, 0, 0, 0);
+    if (hand.eat !== undefined) {
+      // Bringing food to the mouth and chewing.
+      const left = hand.eat, frac = left / 32;
+      if (frac < 0.8) translate(m, m, 0, Math.abs(Math.cos((left / 4) * Math.PI) * 0.1), 0);
+      const k = 1 - frac ** 27;
+      translate(m, m, k * 0.6, k * -0.5, 0);
+      rotateY(m, m, k * 90 * deg);
+      rotateX(m, m, k * 10 * deg);
+      rotateZ(m, m, k * 30 * deg);
+      translate(m, m, 0.56, -0.52 - eq * 0.6, -0.72);
+    } else {
+      translate(m, m, -0.4 * Math.sin(sq * Math.PI), 0.2 * Math.sin(sq * Math.PI * 2), -0.2 * Math.sin(s * Math.PI));
+      translate(m, m, 0.56, -0.52 - eq * 0.6, -0.72);
+      rotateY(m, m, (45 - Math.sin(s * s * Math.PI) * 20) * deg);
+      rotateZ(m, m, Math.sin(sq * Math.PI) * -20 * deg);
+      rotateX(m, m, Math.sin(sq * Math.PI) * -80 * deg);
+      rotateY(m, m, -45 * deg);
+    }
+    if (mesh.kind === 'block') {
+      // (Raised a little from the original so the hotbar doesn't hide it.)
+      translate(m, m, 0, 0.08, 0);
+      rotateY(m, m, 45 * deg);
+      scale(m, m, 0.4, 0.4, 0.4);
+    } else {
+      translate(m, m, 1.13 / 16, 3.2 / 16, 1.13 / 16);
+      rotateY(m, m, -90 * deg);
+      rotateZ(m, m, 25 * deg);
+      scale(m, m, 0.68, 0.68, 0.68);
+    }
+    translate(m, m, -0.5 - MODEL_OFFSET, -0.5 - MODEL_OFFSET, -0.5 - MODEL_OFFSET);
+    return mesh;
+  }
+
+  // Where the tip of the fishing rod in hand appears, as a point in the world a little in front of
+  // the camera (so a fishing line drawn from it meets the rod on screen). Null without a hand.
+  rodTip(f) {
+    if (!f.hand) return null;
+    const m = identity(this.tipModel ??= mat4());
+    if (!this.handModel(f.hand, m)) return null;
+    const P = this.handProjection(this.tipProj ??= mat4()), O = MODEL_OFFSET;
+    // The tip of the rod: the top right corner of its picture.
+    const vx = 15.5 / 16 + O, vy = 1 - 0.5 / 16 + O, vz = 0.5 + O;
+    const x = m[0] * vx + m[4] * vy + m[8] * vz + m[12], y = m[1] * vx + m[5] * vy + m[9] * vz + m[13], z = m[2] * vx + m[6] * vy + m[10] * vz + m[14];
+    const cw = P[3] * x + P[7] * y + P[11] * z + P[15];
+    const nx = (P[0] * x + P[4] * y + P[8] * z + P[12]) / cw, ny = (P[1] * x + P[5] * y + P[9] * z + P[13]) / cw;
+    // Back out through the world's camera, 0.9 blocks along that line of sight.
+    const I = this.inv, ww = I[3] * nx + I[7] * ny + I[11] + I[15];
+    const dx = (I[0] * nx + I[4] * ny + I[8] + I[12]) / ww, dy = (I[1] * nx + I[5] * ny + I[9] + I[13]) / ww, dz = (I[2] * nx + I[6] * ny + I[10] + I[14]) / ww;
+    const len = Math.hypot(dx, dy, dz) || 1;
+    return [f.cam.x + (dx / len) * 0.9, f.cam.y + (dy / len) * 0.9, f.cam.z + (dz / len) * 0.9];
   }
 }

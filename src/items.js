@@ -105,6 +105,10 @@ item(377, 'rabbit_stew', { label: 'Rabbit Stew', stack: 1, food: 10, sat: 0.6, l
 item(378, 'fishing_rod', { label: 'Fishing Rod', stack: 1, durability: 64 });
 item(379, 'saddle', { stack: 1 });
 ['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'cherry'].forEach((wood, i) => item(400 + i, `${wood}_boat`, { stack: 1, boat: wood }));
+item(407, 'tropical_fish', { label: 'Tropical Fish', food: 1, sat: 0.1 });
+item(408, 'pufferfish', { food: 1, sat: 0.1, effects: [['poison', 60, 2], ['hunger', 15, 3]] });
+// (Only ever seen in a hand: the rod while its line is out.)
+item(1020, 'fishing_rod_cast', { label: 'Fishing Rod', stack: 1, hidden: true });
 // Dyes are one texture in sixteen colours.
 DYES.forEach((d, i) => item(380 + i, `${d.name}_dye`, { tex: TEX.dye, tint: rgb(d.dye),
   label: `${d.name === 'light_gray' ? 'Light Gray' : d.name === 'light_blue' ? 'Light Blue' : d.name[0].toUpperCase() + d.name.slice(1)} Dye` }));

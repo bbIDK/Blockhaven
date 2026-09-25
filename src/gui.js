@@ -115,7 +115,7 @@ function creativeTab(id) {
   if (d.tool || d.weapon || d.armor || d.boat || GEAR.has(d.name)) return 'equipment';
   return 'materials';
 }
-const PALETTE = [...CREATIVE_BLOCKS, ...[...ITEMS.keys()].filter((id) => id >= 256)];
+const PALETTE = [...CREATIVE_BLOCKS, ...[...ITEMS.keys()].filter((id) => id >= 256 && !ITEMS.get(id).hidden)];
 
 const px = (n) => `calc(var(--u) * ${n})`;
 function place(el, x, y, w, h) {

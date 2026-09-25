@@ -36,6 +36,13 @@ export class RemotePlayer {
   }
 
   get sneaking() { return !!(this.flags & 1); }
+
+  // Roughly where the tip of their fishing rod is: out in front of their right hand.
+  rodTip() {
+    const cp = Math.cos(this.pitch), fx = -Math.sin(this.yaw) * cp, fy = Math.sin(this.pitch), fz = -Math.cos(this.yaw) * cp;
+    const rx = Math.cos(this.bodyYaw), rz = -Math.sin(this.bodyYaw);
+    return [this.x + rx * 0.35 + fx * 1.1, this.y + (this.sneaking ? 1.2 : 1.35) + fy * 1.1 + 0.25, this.z + rz * 0.35 + fz * 1.1];
+  }
   get dead() { return !!(this.flags & 16); }
   get sleeping() { return !!(this.flags & 32); }
   get creative() { return !!(this.flags & 64); }
@@ -57,6 +64,7 @@ export class RemotePlayer {
     }
     this.flags = Number.isInteger(pres.f) ? pres.f : 0;
     this.mountId = Array.isArray(pres.r) && Number.isInteger(pres.r[0]) && pres.r[0] > 0 ? pres.r[0] : null;
+    this.bobber = Array.isArray(pres.fb) && pres.fb.length === 3 && pres.fb.every(num) ? pres.fb : null;
     this.held = Number.isInteger(pres.i) && itemDef(pres.i) ? pres.i : 0;
     this.look = Number.isInteger(pres.k) ? pres.k : -1;
     const a = Array.isArray(pres.a) ? pres.a : [];
