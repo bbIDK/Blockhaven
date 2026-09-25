@@ -1,6 +1,6 @@
 // Player movement: walking, sprinting, sneaking (with edge protection), swimming and flying,
 // with axis-separated AABB collision against the voxel world.
-import { WATERLIKE, liquidHeight } from './blocks.js';
+import { B, WATERLIKE, liquidHeight } from './blocks.js';
 import { Body } from './body.js';
 
 export const HALF_W = 0.3;
@@ -150,6 +150,13 @@ export class Player extends Body {
     }
 
     let dx = this.vx * dt, dy = this.vy * dt, dz = this.vz * dt;
+    // Cobwebs hold you fast: you wade through at a crawl and sink through them slowly.
+    this.inWeb = !this.flying && world.touchesBlock(b0[0], b0[1], b0[2], b0[3], b0[4], b0[5], B.cobweb);
+    if (this.inWeb) {
+      dx *= 0.25; dz *= 0.25; dy *= 0.05;
+      this.vy = Math.max(this.vy, -1.6);
+      this.fallDistance = 0;
+    }
     // Sneaking keeps you from walking off ledges.
     if (this.sneaking && this.onGround) {
       const stepBack = (v) => (Math.abs(v) < 0.02 ? 0 : v - Math.sign(v) * 0.02);

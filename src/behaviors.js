@@ -3,7 +3,7 @@
 // water and lava, and workstations do their jobs. Each returns true when it handled the click
 // (see Game.useItem).
 import { B, CROP, SAPLING, FACE_DIRS, WATERLIKE, REPLACEABLE, waterLevel, lavaLevel, DOUBLE, COMPOSTER, POTTED, POT_FOR,
-  WOOD_NAMES, liquidHeight } from './blocks.js';
+  WOOD_NAMES, liquidHeight, SOLID, CAVE_VINES, caveVineId } from './blocks.js';
 import { I, itemDef } from './items.js';
 import { TEX } from './textures.js';
 import { growCrop, growSapling } from './growth.js';
@@ -66,10 +66,25 @@ function boneMeal(game, t) {
   return consumed(game);
 }
 
+// Glow berries planted under a ceiling (or at the foot of a cave vine) start a new vine.
+export function plantGlowBerries(game, t) {
+  const w = game.world;
+  let y = t.y - 1;
+  if (CAVE_VINES[t.id]) while (CAVE_VINES[w.getBlock(t.x, y, t.z)]) y--;
+  else if (t.face !== 3 || !SOLID[t.id]) return false;
+  if (y < 1 || w.getBlock(t.x, y, t.z) !== 0) return false;
+  w.setBlock(t.x, y, t.z, caveVineId(true, false));
+  game.audio.place('grass', { x: t.x + 0.5, y: y + 0.5, z: t.z + 0.5 });
+  return consumed(game);
+}
+
 // Plant matter a composter takes, and the chance each item adds a layer (Minecraft's numbers).
 const COMPOST = new Map();
 const compost = (names, chance) => { for (const n of names) { const id = I[n] ?? B[n]; if (id !== undefined) COMPOST.set(id, chance); } };
-compost(['wheat_seeds', 'beetroot_seeds', 'tall_grass', ...WOOD_NAMES.flatMap((w) => [`${w}_leaves`, `${w}_sapling`])], 0.3);
+compost(['wheat_seeds', 'beetroot_seeds', 'tall_grass', 'glow_berries', 'hanging_roots', 'moss_carpet', ...WOOD_NAMES.flatMap((w) => [`${w}_leaves`, `${w}_sapling`])], 0.3);
+compost(['azalea_leaves', 'big_dripleaf', 'glow_lichen'], 0.5);
+compost(['azalea', 'moss_block', 'spore_blossom'], 0.65);
+compost(['flowering_azalea', 'flowering_azalea_leaves'], 0.85);
 compost(['melon_slice', 'cactus', 'sugar_cane', 'vine', 'tall_grass_double', 'dead_bush'], 0.5);
 compost(['apple', 'beetroot', 'carrot', 'potato', 'wheat', 'fern', 'large_fern', 'lily_pad', 'pumpkin', 'melon', 'red_mushroom',
   'brown_mushroom', 'dandelion', 'poppy', 'cornflower', 'allium', 'azure_bluet', 'blue_orchid', 'oxeye_daisy', 'red_tulip', 'orange_tulip',
@@ -121,6 +136,14 @@ export function useWorkstation(game, held, t) {
     w.setBlock(t.x, t.y, t.z, POT_FOR[held.id]);
     game.audio.place('grass', at);
     return consumed(game);
+  }
+  // Glow berries are picked off cave vines.
+  if (CAVE_VINES[id]?.lit) {
+    w.setBlock(t.x, t.y, t.z, caveVineId(CAVE_VINES[id].tip, false));
+    game.entities.spawnItem(t.x + 0.5, t.y + 0.3, t.z + 0.5, I.glow_berries, 1);
+    game.audio.place('grass', at);
+    game.swingArm();
+    return true;
   }
   if (POTTED[id] !== undefined && !held) {
     w.setBlock(t.x, t.y, t.z, B.flower_pot);

@@ -4,7 +4,8 @@ import { CHUNK, HEIGHT, SECTIONS, chunkKey } from './config.js';
 import {
   B, BLOCKS, OPAQUE, SOLID, FILTER, EMIT, RENDER, R, SELECTABLE, REPLACEABLE, TORCH_LEAN, FACE_DIRS,
   WATERLIKE, isWater, waterLevel, lavaLevel, WATER_FLOW_BASE, LAVA_FLOW_BASE, SHAPE, shapeBoxes, DOOR, doorId, LADDER_SIDE, BED,
-  SPREAD, BURN, CLIMB, VINE_SIDE, DOUBLE, GATE, gateId, TICKS, LOG, NATURAL_LEAVES, SWITCH, SIGN, RAIL,
+  SPREAD, BURN, CLIMB, VINE_SIDE, DOUBLE, GATE, gateId, TICKS, LOG, NATURAL_LEAVES, SWITCH, SIGN, RAIL, CAVE_VINES, DRIPSTONE,
+  LICHEN_SIDE,
 } from './blocks.js';
 import { powerChanged, powerMatters } from './power.js';
 import { randomTick, logRemoved, leafTick } from './growth.js';
@@ -12,6 +13,7 @@ import { nextLevel } from './light.js';
 import { meshSection, P, P2, PADDED, ALL_OPEN } from './mesher.js';
 import { JobPool } from './workers.js';
 import { makeGenerator } from './worldgen.js';
+import { reshapeDripstone, reshapeVine } from './caves.js';
 import { columnColors, fromByte } from './biomes.js';
 
 export const S_REQUESTED = 1, S_READY = 2;
@@ -92,7 +94,10 @@ function unionBounds(boxes) {
   return u.map((v) => v / 16);
 }
 
-export const SOIL = new Set([B.grass_block, B.dirt, B.snowy_grass, B.coarse_dirt, B.podzol, B.farmland, B.farmland_moist]);
+export const SOIL = new Set([B.grass_block, B.dirt, B.snowy_grass, B.coarse_dirt, B.podzol, B.farmland, B.farmland_moist, B.moss_block,
+  B.rooted_dirt]);
+// What a big dripleaf takes root in.
+const DRIPLEAF_SOIL = new Set([...SOIL, B.clay]);
 const FARMLAND = new Set([B.farmland, B.farmland_moist]);
 const posKey = (x, y, z) => (x + 1048576) * 536870912 + (z + 1048576) * 256 + y;
 
@@ -746,7 +751,10 @@ export class World {
     if (def.support && !this.supported(x, y, z, id)) {
       this.setBlock(x, y, z, 0, { remesh: true });
       this.listener?.blockDropped?.(x, y, z, id);
+      return;
     }
+    if (DRIPSTONE[id]) reshapeDripstone(this, x, y, z);
+    else if (CAVE_VINES[id]) reshapeVine(this, x, y, z);
   }
 
   supported(x, y, z, id) {
@@ -765,6 +773,20 @@ export class World {
         return !!OPAQUE[this.getBlock(x + d[0], y, z + d[2])] || this.getBlock(x, y + 1, z) === id;
       }
       case 'sand': return below === B.sand || SOIL.has(below);
+      // The cave update's: things hanging from a ceiling, pointed dripstone and amethyst either way
+      // up, glow lichen on any face and the big dripleaf's stalk.
+      case 'hanging': return !!SOLID[this.getBlock(x, y + 1, z)];
+      case 'cave_vines': { const above = this.getBlock(x, y + 1, z); return !!SOLID[above] || !!CAVE_VINES[above]; }
+      case 'dripstone_up': return !!SOLID[below] || DRIPSTONE[below]?.up === true;
+      case 'dripstone_down': { const above = this.getBlock(x, y + 1, z); return !!SOLID[above] || DRIPSTONE[above]?.up === false; }
+      case 'amethyst_up': return !!SOLID[below];
+      case 'amethyst_down': return !!SOLID[this.getBlock(x, y + 1, z)];
+      case 'lichen': { const d = FACE_DIRS[LICHEN_SIDE[id]]; return !!OPAQUE[this.getBlock(x + d[0], y + d[1], z + d[2])]; }
+      case 'dripleaf': return DRIPLEAF_SOIL.has(below) || below === B.big_dripleaf_stem || below === B.big_dripleaf;
+      case 'dripleaf_stem': {
+        const above = this.getBlock(x, y + 1, z);
+        return (DRIPLEAF_SOIL.has(below) || below === B.big_dripleaf_stem) && (above === B.big_dripleaf || above === B.big_dripleaf_stem);
+      }
       case 'solid': return !!SOLID[below];
       case 'attached': {
         const d = FACE_DIRS[SWITCH[id].attach];
@@ -1145,6 +1167,15 @@ export class World {
   }
 
   // Is the box touching a ladder (for climbing)?
+  // Whether the box overlaps a block of kind `id` (cobwebs).
+  touchesBlock(x0, y0, z0, x1, y1, z1, id) {
+    for (let y = Math.floor(y0); y <= Math.floor(y1 - 1e-9); y++)
+      for (let z = Math.floor(z0); z <= Math.floor(z1 - 1e-9); z++)
+        for (let x = Math.floor(x0); x <= Math.floor(x1 - 1e-9); x++)
+          if (this.getBlock(x, y, z) === id) return true;
+    return false;
+  }
+
   touchesClimbable(x0, y0, z0, x1, y1, z1) {
     for (let y = Math.floor(y0); y <= Math.floor(y1 - 1e-9); y++)
       for (let z = Math.floor(z0); z <= Math.floor(z1 - 1e-9); z++)

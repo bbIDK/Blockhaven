@@ -535,6 +535,8 @@ export class Renderer {
     gl.uniform1f(su.u_starAngle, f.env.sunAngle);
     gl.uniform1f(su.u_underwater, f.underwater ? 1 : 0);
     gl.uniform1f(su.u_rain, f.weather?.rain ?? 0);
+    gl.uniform1f(su.u_dark, f.caveDark ?? 0);
+    gl.uniform3fv(su.u_darkColor, fancy ? this.linear.fog : f.fogColor);
     if (fancy) {
       gl.uniform1f(su.u_time, f.time);
       gl.uniform3fv(su.u_sunGlow, f.env.sunGlow);

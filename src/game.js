@@ -25,10 +25,11 @@ import {
   RENDER, R, SLAB, STAIRS, DOOR, doorId, CLIMB, LADDER, oppositeFace, CHEST, CHEST_PAIR, CHEST_RIGHT, chestId, chestHalf, BED, bedId,
   FURNACE_IDS, furnaceVariant, isLitFurnace, FURNACE_KIND, FURNACE_FRONT, LOG_AXES, GATE, gateId, VINE, DOUBLE, LEAVES_WOOD,
   TRAPDOOR, trapdoorId, SWITCH, SIGN, WALL_SIGN, CAKE, NOTE, JUKEBOX, RAIL,
-  NATURAL_LEAVES, WOOD, LOOT_KIND, LOOT_FRONT, liquidHeight,
+  NATURAL_LEAVES, WOOD, LOOT_KIND, LOOT_FRONT, liquidHeight, AMETHYST, GLOW_LICHEN,
 } from './blocks.js';
+import { dripId } from './caves.js';
 import { rollLoot } from './loot.js';
-import { useItemOnBlock, useBucket, placeLilyPad, placeBoat, useWorkstation } from './behaviors.js';
+import { useItemOnBlock, useBucket, placeLilyPad, placeBoat, useWorkstation, plantGlowBerries } from './behaviors.js';
 import { nearestVillage, KINDS } from './villages.js';
 import { TalkScreen } from './tradeui.js';
 import { seatY, startRide, driveFrom, dismountSpot } from './riding.js';
@@ -407,7 +408,7 @@ export class Game {
     const { mode, type } = this.ui.createState;
     const meta = {
       id: `w${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`,
-      name, seed, seedText, mode, type, gen: 4, created: Date.now(), lastPlayed: Date.now(), time: 1000,
+      name, seed, seedText, mode, type, gen: 5, created: Date.now(), lastPlayed: Date.now(), time: 1000,
       spawn: null, player: null, inventory: null, version: SAVE_VERSION,
     };
     await storage.saveWorld(meta);
@@ -527,7 +528,7 @@ export class Game {
     const world = w.w;
     const meta = {
       id: `mp-${session.gid}`, name: String(world.name ?? 'World').slice(0, 32), seed: world.seed >>> 0,
-      type: world.type === 'flat' ? 'flat' : 'default', gen: [2, 3, 4].includes(world.gen) ? world.gen : 1,
+      type: world.type === 'flat' ? 'flat' : 'default', gen: [2, 3, 4, 5].includes(world.gen) ? world.gen : 1,
       mode: you?.mode === 'creative' || (!you?.mode && world.mode === 'creative') ? 'creative' : 'survival',
       spawn: world.spawn && Number.isFinite(world.spawn.x) && Number.isFinite(world.spawn.z) ? { x: world.spawn.x, y: world.spawn.y ?? null, z: world.spawn.z } : { x: 0.5, y: null, z: 0.5 },
       time: Number.isFinite(world.time) ? world.time : 1000, weather: { raining: !!world.rain },
@@ -2227,6 +2228,8 @@ export class Game {
       }
       return;
     }
+    // Glow berries go up under a ceiling (or onto the end of a cave vine) as a new vine.
+    if (held?.id === I.glow_berries && t && !t.entity && !t.player && !repeat && plantGlowBerries(this, t)) return;
     if ((def?.food || def?.drink || def?.potion) && (!this.creative || def.potion)) return; // eaten by holding right click (see handleActions)
     if (def?.splash) { if (!repeat) this.throwItem({ potion: def.splash }); return; }
     if (def?.throws === 'snowball') { if (!repeat) this.throwItem({ snowball: true }); return; }
@@ -2338,6 +2341,17 @@ export class Game {
       id = LADDER[oppositeFace(face)];
     } else if (blockId === B.lantern) {
       if (face === 3) id = B.lantern_hanging;
+    } else if (blockId === B.pointed_dripstone) {
+      // Up from a floor or down from a ceiling (see caves.js for how the spike then shapes itself).
+      if (face !== 2 && face !== 3) return;
+      id = dripId(face === 2, 'tip');
+    } else if (AMETHYST[blockId]) {
+      if (face !== 2 && face !== 3) return;
+      if (face === 3) id = blockId + 1;
+    } else if (blockId === B.glow_lichen) {
+      id = GLOW_LICHEN[oppositeFace(face)];
+    } else if (blockId === B.hanging_roots || blockId === B.spore_blossom) {
+      if (face !== 3) return;
     } else if (GATE[blockId]) {
       id = gateId(blockId, this.lookFace(), false);
     } else if (TRAPDOOR[blockId]) {
@@ -2407,6 +2421,8 @@ export class Game {
 
   afterPlace(id, x, y, z) {
     if (CHEST[id] !== undefined) this.pairChest(x, y, z);
+    // A big dripleaf on another turns the one below into more stalk.
+    if (id === B.big_dripleaf && this.world.getBlock(x, y - 1, z) === B.big_dripleaf) this.world.setBlock(x, y - 1, z, B.big_dripleaf_stem);
     // A rail turns to join the track beside it (running the way it was laid, if there's none).
     if (RAIL[id]) layRail(this.world, x, y, z, Math.abs(Math.sin(this.player.yaw)) > Math.SQRT1_2 ? 'ew' : 'ns');
     this.audio.place(BLOCKS[id].sound, { x: x + 0.5, y: y + 0.5, z: z + 0.5 });
@@ -2783,13 +2799,19 @@ export class Game {
     } else if (WATERLIKE[eyeBlock] === 2) {
       fogColor = [0.8, 0.3, 0.05]; fogStart = 0; fogEnd = 2.5;
     }
+    // Deep underground, where no daylight reaches, the distance fades into darkness rather than
+    // into the colour of the sky (eased, so it comes on as you go down into a cave).
+    const skyAtEye = loading ? 1 : (this.world.getLight(Math.floor(cam.x), Math.floor(cam.y), Math.floor(cam.z)) >> 4) / 15;
+    this.skyFog = (this.skyFog ?? 1) + (skyAtEye - (this.skyFog ?? 1)) * Math.min(1, dt * 1.5);
+    const caveDark = underwater ? 0 : (1 - this.skyFog) * (1 - 0.6 * this.nightVision());
+    if (caveDark > 0.001 && !WATERLIKE[eyeBlock]) fogColor = fogColor.map((c) => c * (1 - 0.9 * caveDark));
     if (!loading) this.updateWeatherEffects(cam, dt);
     const target = !loading && this.target && !this.target.entity && !this.target.player ? this.target : null;
     const heldLight = this.world.getLight(Math.floor(p.x), Math.floor(p.eyeY), Math.floor(p.z));
     this.particles.build(cam, this.world);
     this.renderer.render({
       cam, fov: s.fov * this.fovMul, env: this.env, time: performance.now() / 1000, renderDist: rd, world: this.world,
-      fogColor, fogStart, fogEnd, underwater, clouds: s.clouds, cloudHeight: CLOUD_HEIGHT, brightness: s.brightness / 100,
+      fogColor, fogStart, fogEnd, underwater, caveDark, clouds: s.clouds, cloudHeight: CLOUD_HEIGHT, brightness: s.brightness / 100,
       wave: true, shaders: Math.min(s.shaders, this.shaderCap), nightVision: this.nightVision(),
       selection: target && this.state !== 'dead' ? { x: target.x, y: target.y, z: target.z, box: this.world.selectionBox(target.x, target.y, target.z, target.id) } : null,
       crack: this.mining && this.mining.progress > 0 ? { x: this.mining.x, y: this.mining.y, z: this.mining.z, stage: Math.floor(this.mining.progress * 10) } : null,

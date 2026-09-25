@@ -20,6 +20,7 @@ import './tex/magic.js';
 import './tex/decor.js';
 import './tex/paintings.js';
 import './tex/rails.js';
+import './tex/caves.js';
 
 export const ARRAY_LAYERS = 256;
 

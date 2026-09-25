@@ -9,6 +9,9 @@ const MCL = {
   copper: 'mcl:mods/ITEMS/mcl_copper/textures/mcl_copper',
   cherry: 'mcl:mods/ITEMS/mcl_cherry_blossom/textures/mcl_cherry_blossom',
   raw: 'mcl:mods/ITEMS/mcl_raw_ores/textures/mcl_raw_ores',
+  drip: 'mcl:mods/ITEMS/mcl_dripstone/textures',
+  lush: 'mcl:mods/ITEMS/mcl_lush_caves/textures/mcl_lush_caves',
+  amethyst: 'mcl:mods/ITEMS/mcl_amethyst/textures/mcl_amethyst',
 };
 const mcl = (path) => `${path}.png`;
 
@@ -172,6 +175,37 @@ export const SOURCES = {
   cherry_door_top: mcl(`${MCL.cherry}_door_top`),
   cherry_door_bottom: mcl(`${MCL.cherry}_door_bottom`),
   cherry_trapdoor: mcl(`${MCL.cherry}_trapdoor`),
+  // The cave update's blocks. (Mineclonia draws pointed dripstone hanging down, and amethyst
+  // growing up; the other way round is the same picture turned over.)
+  tuff: 'mcl:mods/ITEMS/mcl_deepslate/textures/mcl_deepslate_tuff.png',
+  smooth_basalt: 'mcl:mods/ITEMS/mcl_blackstone/textures/mcl_blackstone_basalt_smooth.png',
+  raw_copper_block: mcl(`${MCL.copper}_block_raw`),
+  raw_gold_block: mcl(`${MCL.raw}_raw_gold_block`),
+  dripstone_block: mcl(`${MCL.drip}/dripstone_block`),
+  ...Object.fromEntries(['tip', 'frustum', 'middle', 'base', 'tip_merge'].flatMap((part) => [
+    [`pointed_dripstone_down_${part}`, mcl(`${MCL.drip}/pointed_dripstone_${part}`)],
+    [`pointed_dripstone_up_${part}`, (H) => H.flipY(H.load(mcl(`${MCL.drip}/pointed_dripstone_${part}`)))]])),
+  moss_block: mcl(`${MCL.lush}_moss_block`),
+  rooted_dirt: mcl(`${MCL.lush}_rooted_dirt`),
+  hanging_roots: mcl(`${MCL.lush}_hanging_roots`),
+  glow_lichen: 'mcl:mods/ITEMS/mcl_core/textures/mcl_core_glow_lichen.png',
+  ...Object.fromEntries(['cave_vines', 'cave_vines_lit', 'cave_vines_plant', 'cave_vines_plant_lit'].map((n) => [n, mcl(`${MCL.lush}_${n}`)])),
+  spore_blossom_hanging: (H) => H.flipY(H.load(mcl(`${MCL.lush}_spore_blossom`))),
+  azalea_leaves: mcl(`${MCL.lush}_azalea_leaves`),
+  flowering_azalea_leaves: mcl(`${MCL.lush}_azalea_leaves_flowering`),
+  azalea_top: mcl(`${MCL.lush}_azalea_top`),
+  azalea_side: mcl(`${MCL.lush}_azalea_side`),
+  flowering_azalea_top: mcl(`${MCL.lush}_azalea_flowering_top`),
+  flowering_azalea_side: mcl(`${MCL.lush}_azalea_flowering_side`),
+  azalea_plant: mcl(`${MCL.lush}_azalea_plant`),
+  big_dripleaf_top: mcl(`${MCL.lush}_big_dripleaf_top`),
+  big_dripleaf_side: mcl(`${MCL.lush}_big_dripleaf_side`),
+  big_dripleaf_stem: mcl(`${MCL.lush}_big_dripleaf_stem`),
+  amethyst_block: mcl(`${MCL.amethyst}_amethyst_block`),
+  budding_amethyst: mcl(`${MCL.amethyst}_budding_amethyst`),
+  ...Object.fromEntries([['amethyst_cluster', 'amethyst_cluster'], ['large_amethyst_bud', 'amethyst_bud_large'],
+    ['medium_amethyst_bud', 'amethyst_bud_medium'], ['small_amethyst_bud', 'amethyst_bud_small']].flatMap(([name, file]) => [
+    [name, mcl(`${MCL.amethyst}_${file}`)], [`${name}_down`, (H) => H.flipY(H.load(mcl(`${MCL.amethyst}_${file}`)))]])),
   // Crops, a picture per stage.
   ...Object.fromEntries([...Array(8)].map((_, k) => [`wheat_${k}`, `block/wheat_stage${k}`])),
   ...Object.fromEntries(['carrots', 'potatoes', 'beetroots'].flatMap((c) => [0, 1, 2, 3].map((k) => [`${c}_${k}`, `block/${c}_stage${k}`]))),
@@ -215,6 +249,8 @@ export const SOURCES = {
   raw_copper: mcl(`${MCL.copper}_raw`),
   raw_iron: mcl(`${MCL.raw}_raw_iron`),
   raw_gold: mcl(`${MCL.raw}_raw_gold`),
+  glow_berries: mcl(`${MCL.lush}_glow_berries`),
+  amethyst_shard: mcl(`${MCL.amethyst}_amethyst_shard`),
   dye: grayOf('item/white_dye', 0.67),
   minecart_item: 'item/minecart',
   item_frame_item: 'item/item_frame',

@@ -975,12 +975,107 @@ export const RAIL_ID = { rail: [[], []], powered: [[], []], detector: [[], []] }
   }
 });
 
+// ================================================================ the cave update's blocks
+// ---------------------------------------------------------------- rock
+block(2400, 'tuff', { tex: 'tuff', ...rock(), ...natural });
+block(2401, 'dripstone_block', { tex: 'dripstone_block', ...rock(), ...natural });
+block(2443, 'smooth_basalt', { tex: 'smooth_basalt', ...rock({ hardness: 1.25 }), ...natural });
+// Raw ore by the block (as the great ore veins have it).
+block(2445, 'raw_copper_block', { label: 'Block of Raw Copper', tex: 'raw_copper_block', ...rock({ hardness: 5, tier: 2 }), ...natural });
+block(2446, 'raw_iron_block', { label: 'Block of Raw Iron', tex: 'raw_iron_block', ...rock({ hardness: 5, tier: 2 }), ...natural });
+block(2447, 'raw_gold_block', { label: 'Block of Raw Gold', tex: 'raw_gold_block', ...rock({ hardness: 5, tier: 3 }), ...natural });
+
+// Pointed dripstone: stalagmites point up from the floor and stalactites hang from the ceiling,
+// each thick at the root and thinning to a tip (a column is re-shaped whenever it changes; see
+// caves.js). Where a stalactite meets a stalagmite their tips merge. DRIPSTONE: id -> { up, part };
+// DRIPSTONE_ID[up ? 1 : 0][part].
+export const DRIP_PARTS = ['tip', 'frustum', 'middle', 'base', 'tip_merge'];
+export const DRIPSTONE = {};
+export const DRIPSTONE_ID = [{}, {}];
+[true, false].forEach((up, u) => DRIP_PARTS.forEach((part, k) => {
+  const id = 2402 + u * 5 + k;
+  block(id, id === 2402 ? 'pointed_dripstone' : `pointed_dripstone_${up ? 'up' : 'down'}_${part}`, { label: 'Pointed Dripstone',
+    render: R.CROSS, tex: `pointed_dripstone_${up ? 'up' : 'down'}_${part}`, cutout: true, solid: false, hardness: 1.5, tool: 'pickaxe',
+    sound: 'stone', base: 2402, item: id === 2402, drop: 'pointed_dripstone', support: up ? 'dripstone_up' : 'dripstone_down', ...natural });
+  DRIPSTONE[id] = { up, part };
+  DRIPSTONE_ID[up ? 1 : 0][part] = id;
+}));
+
+// ---------------------------------------------------------------- lush caves
+block(2412, 'moss_block', { tex: 'moss_block', hardness: 0.1, tool: 'hoe', sound: 'grass', ...natural });
+shaped(2413, 'moss_carpet', [[0, 0, 0, 16, 1, 16]], { tex: 'moss_block', hardness: 0.1, sound: 'grass', support: 'carpet', ...natural });
+block(2414, 'rooted_dirt', { tex: 'rooted_dirt', hardness: 0.5, tool: 'shovel', sound: 'gravel', ...natural });
+block(2415, 'hanging_roots', plant({ tex: 'hanging_roots', support: 'hanging', replaceable: true, drop: null, ...natural }));
+// Glow lichen grows over any face of a block: GLOW_LICHEN[side] lies against the block on that side
+// of it (the item is the one on the floor).
+export const GLOW_LICHEN = {};
+export const LICHEN_SIDE = {};
+const LICHEN_PANEL = { 0: [15, 0, 0, 16, 16, 16], 1: [0, 0, 0, 1, 16, 16], 2: [0, 15, 0, 16, 16, 16], 3: [0, 0, 0, 16, 1, 16],
+  4: [0, 0, 15, 16, 16, 16], 5: [0, 0, 0, 16, 16, 1] };
+for (let side = 0; side < 6; side++) {
+  const id = 2416 + side;
+  shaped(id, side === 3 ? 'glow_lichen' : `glow_lichen_${side}`, [LICHEN_PANEL[side]], { label: 'Glow Lichen', tex: 'glow_lichen', cutout: true,
+    solid: false, emit: 7, hardness: 0.2, sound: 'grass', base: 2419, item: side === 3, drop: null, support: 'lichen', replaceable: true, ...natural });
+  GLOW_LICHEN[side] = id;
+  LICHEN_SIDE[id] = side;
+}
+// Cave vines hang from the ceiling, their lowest piece the growing tip; some bear glow berries,
+// which light them up (pick them with a right click). They can be climbed. CAVE_VINES: id -> { tip, lit }.
+export const CAVE_VINES = {};
+[['cave_vines', true, false], ['cave_vines_lit', true, true], ['cave_vines_plant', false, false], ['cave_vines_plant_lit', false, true]]
+  .forEach(([name, tip, lit], i) => {
+    block(2422 + i, name, plant({ label: 'Cave Vines', tex: name, support: 'cave_vines', emit: lit ? 14 : 0, base: 2422, item: false, drop: null,
+      replaceable: false, ...natural }));
+    CAVE_VINES[2422 + i] = { tip, lit };
+    CLIMB[2422 + i] = 1;
+  });
+export const caveVineId = (tip, lit) => 2422 + (tip ? 0 : 2) + (lit ? 1 : 0);
+block(2426, 'spore_blossom', plant({ tex: 'spore_blossom_hanging', support: 'hanging', ...natural }));
+const leafy = { cutout: true, filter: 1, ao: true, wave: true, hardness: 0.2, sound: 'grass', drop: null, ...natural };
+block(2427, 'azalea_leaves', { tex: 'azalea_leaves', ...leafy });
+block(2428, 'flowering_azalea_leaves', { tex: 'flowering_azalea_leaves', ...leafy });
+// Azalea bushes: a leafy top on a little trunk.
+[['azalea', 'azalea'], ['flowering_azalea', 'flowering_azalea']].forEach(([name, tex], i) => {
+  shaped(2429 + i, name, [tb([0, 8, 0, 16, 16, 16], { side: `${tex}_side`, top: `${tex}_top` }), tb([7, 0, 7, 9, 8, 9], 'azalea_plant')],
+    { tex: `${tex}_top`, cutout: true, hardness: 0, sound: 'grass', support: 'soil', ...natural });
+});
+// Big dripleaf: a broad leaf to stand on, held up on a stem (more stem below makes it taller).
+const STEM = [tb([8, 0, 2, 8, 15, 14], 'big_dripleaf_stem'), tb([2, 0, 8, 14, 15, 8], 'big_dripleaf_stem')];
+shaped(2431, 'big_dripleaf', [tb([0, 15, 0, 16, 16, 16], { side: 'big_dripleaf_side', top: 'big_dripleaf_top' }), ...STEM],
+  { tex: 'big_dripleaf_top', cutout: true, hardness: 0.1, tool: 'axe', sound: 'grass', support: 'dripleaf', ...natural });
+COLLISION[2431] = [[0, 15, 0, 16, 16, 16]];
+block(2432, 'big_dripleaf_stem', plant({ label: 'Big Dripleaf', tex: 'big_dripleaf_stem', support: 'dripleaf_stem', base: 2431, item: false,
+  drop: 'big_dripleaf', ...natural }));
+
+// ---------------------------------------------------------------- amethyst geodes
+block(2433, 'amethyst_block', { label: 'Block of Amethyst', tex: 'amethyst_block', ...rock(), sound: 'glass', ...natural });
+block(2434, 'budding_amethyst', { tex: 'budding_amethyst', ...rock(), sound: 'glass', drop: null, ...natural });
+// Crystals grow up from a floor or down from a ceiling: small, medium and large buds, then a
+// cluster, each shining a little brighter. AMETHYST: id -> { up, size (0 small .. 3 cluster) }.
+export const AMETHYST = {};
+[['small_amethyst_bud', 1], ['medium_amethyst_bud', 2], ['large_amethyst_bud', 4], ['amethyst_cluster', 5]].forEach(([name, emit], size) => {
+  [true, false].forEach((up, u) => {
+    const id = 2435 + size * 2 + u;
+    block(id, up ? name : `${name}_down`, { label: title(name), render: R.CROSS, tex: up ? name : `${name}_down`, cutout: true, solid: false,
+      emit, hardness: 1.5, tool: 'pickaxe', tier: 1, sound: 'glass', base: 2435 + size * 2, item: up, drop: size === 3 ? 'amethyst_shard' : null,
+      support: up ? 'amethyst_up' : 'amethyst_down', ...natural });
+    AMETHYST[id] = { up, size };
+  });
+});
+
+// ---------------------------------------------------------------- cobwebs
+// Cobwebs catch anything that blunders into them (see Player.step); swords and shears cut through.
+block(2444, 'cobweb', { render: R.CROSS, tex: 'cobweb', cutout: true, solid: false, hardness: 4, tool: 'sword', sound: 'cloth',
+  drop: null, ...natural });
+
 // Blocks shown in the inventory and in the hand as a flat picture rather than a little model
 // (-1 for the rest). Tall flowers show their flowering top.
 export function spriteOf(block) {
   if (DOOR[block]) return TEX[`${DOOR[block].wood}_door_item`];
   if (BED[block]) return TEX.bed_item;
   if (VINE_SIDE[block] !== undefined) return TEX.vine;
+  if (LICHEN_SIDE[block] !== undefined) return TEX.glow_lichen;
+  if (block === B.big_dripleaf) return TEX.big_dripleaf_top;
   if (CLIMB[block]) return TEX.ladder;
   if (block === B.iron_bars) return TEX.iron_bars;
   if (SHAPE_KIND[block] === 3) return TEX.glass;
@@ -1105,6 +1200,9 @@ flammable(['bookshelf'], 30, 20);
 flammable(['tnt'], 15, 100);
 flammable(['chest'], 5, 20);
 flammable(['hay_block'], 60, 20);
+flammable(['azalea_leaves', 'flowering_azalea_leaves', 'azalea', 'flowering_azalea', 'glow_lichen', 'hanging_roots', 'spore_blossom',
+  'cave_vines', 'big_dripleaf', 'moss_carpet'], 30, 60);
+flammable(['moss_block'], 5, 20);
 
 // Blocks worth listing in the creative inventory, in display order (anything not named here
 // follows in id order).

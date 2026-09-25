@@ -617,6 +617,53 @@ doubled in size (the particles). Anything not listed is drawn by the game's own 
 | `textures/detector_rail.png` | Pixel Perfection CE block/detector_rail.png |  |
 | `textures/detector_rail_on.png` | Pixel Perfection CE block/detector_rail_on.png |  |
 | `textures/minecart.png` | Pixel Perfection CE item/minecart.png |  |
+| `textures/tuff.png` | Mineclonia mods/ITEMS/mcl_deepslate/textures/mcl_deepslate_tuff.png |  |
+| `textures/dripstone_block.png` | Mineclonia mods/ITEMS/mcl_dripstone/textures/dripstone_block.png |  |
+| `textures/smooth_basalt.png` | Mineclonia mods/ITEMS/mcl_blackstone/textures/mcl_blackstone_basalt_smooth.png |  |
+| `textures/raw_copper_block.png` | Mineclonia mods/ITEMS/mcl_copper/textures/mcl_copper_block_raw.png |  |
+| `textures/raw_gold_block.png` | Mineclonia mods/ITEMS/mcl_raw_ores/textures/mcl_raw_ores_raw_gold_block.png |  |
+| `textures/moss_block.png` | Mineclonia mods/ITEMS/mcl_lush_caves/textures/mcl_lush_caves_moss_block.png |  |
+| `textures/rooted_dirt.png` | Mineclonia mods/ITEMS/mcl_lush_caves/textures/mcl_lush_caves_rooted_dirt.png |  |
+| `textures/amethyst_block.png` | Mineclonia mods/ITEMS/mcl_amethyst/textures/mcl_amethyst_amethyst_block.png |  |
+| `textures/budding_amethyst.png` | Mineclonia mods/ITEMS/mcl_amethyst/textures/mcl_amethyst_budding_amethyst.png |  |
+| `textures/azalea_leaves.png` | Mineclonia mods/ITEMS/mcl_lush_caves/textures/mcl_lush_caves_azalea_leaves.png |  |
+| `textures/azalea_top.png` | Mineclonia mods/ITEMS/mcl_lush_caves/textures/mcl_lush_caves_azalea_top.png |  |
+| `textures/flowering_azalea_leaves.png` | Mineclonia mods/ITEMS/mcl_lush_caves/textures/mcl_lush_caves_azalea_leaves_flowering.png |  |
+| `textures/flowering_azalea_top.png` | Mineclonia mods/ITEMS/mcl_lush_caves/textures/mcl_lush_caves_azalea_flowering_top.png |  |
+| `textures/azalea_side.png` | Mineclonia mods/ITEMS/mcl_lush_caves/textures/mcl_lush_caves_azalea_side.png |  |
+| `textures/flowering_azalea_side.png` | Mineclonia mods/ITEMS/mcl_lush_caves/textures/mcl_lush_caves_azalea_flowering_side.png |  |
+| `textures/azalea_plant.png` | Mineclonia mods/ITEMS/mcl_lush_caves/textures/mcl_lush_caves_azalea_plant.png |  |
+| `textures/pointed_dripstone_up_base.png` | Mineclonia mods/ITEMS/mcl_dripstone/textures/pointed_dripstone_base.png | changed |
+| `textures/pointed_dripstone_down_base.png` | Mineclonia mods/ITEMS/mcl_dripstone/textures/pointed_dripstone_base.png |  |
+| `textures/pointed_dripstone_up_middle.png` | Mineclonia mods/ITEMS/mcl_dripstone/textures/pointed_dripstone_middle.png | changed |
+| `textures/pointed_dripstone_down_middle.png` | Mineclonia mods/ITEMS/mcl_dripstone/textures/pointed_dripstone_middle.png |  |
+| `textures/pointed_dripstone_up_frustum.png` | Mineclonia mods/ITEMS/mcl_dripstone/textures/pointed_dripstone_frustum.png | changed |
+| `textures/pointed_dripstone_down_frustum.png` | Mineclonia mods/ITEMS/mcl_dripstone/textures/pointed_dripstone_frustum.png |  |
+| `textures/pointed_dripstone_up_tip.png` | Mineclonia mods/ITEMS/mcl_dripstone/textures/pointed_dripstone_tip.png | changed |
+| `textures/pointed_dripstone_down_tip.png` | Mineclonia mods/ITEMS/mcl_dripstone/textures/pointed_dripstone_tip.png |  |
+| `textures/pointed_dripstone_up_tip_merge.png` | Mineclonia mods/ITEMS/mcl_dripstone/textures/pointed_dripstone_tip_merge.png | changed |
+| `textures/pointed_dripstone_down_tip_merge.png` | Mineclonia mods/ITEMS/mcl_dripstone/textures/pointed_dripstone_tip_merge.png |  |
+| `textures/cave_vines.png` | Mineclonia mods/ITEMS/mcl_lush_caves/textures/mcl_lush_caves_cave_vines.png |  |
+| `textures/cave_vines_lit.png` | Mineclonia mods/ITEMS/mcl_lush_caves/textures/mcl_lush_caves_cave_vines_lit.png |  |
+| `textures/cave_vines_plant.png` | Mineclonia mods/ITEMS/mcl_lush_caves/textures/mcl_lush_caves_cave_vines_plant.png |  |
+| `textures/cave_vines_plant_lit.png` | Mineclonia mods/ITEMS/mcl_lush_caves/textures/mcl_lush_caves_cave_vines_plant_lit.png |  |
+| `textures/hanging_roots.png` | Mineclonia mods/ITEMS/mcl_lush_caves/textures/mcl_lush_caves_hanging_roots.png |  |
+| `textures/spore_blossom_hanging.png` | Mineclonia mods/ITEMS/mcl_lush_caves/textures/mcl_lush_caves_spore_blossom.png | changed |
+| `textures/glow_lichen.png` | Mineclonia mods/ITEMS/mcl_core/textures/mcl_core_glow_lichen.png |  |
+| `textures/big_dripleaf_top.png` | Mineclonia mods/ITEMS/mcl_lush_caves/textures/mcl_lush_caves_big_dripleaf_top.png |  |
+| `textures/big_dripleaf_side.png` | Mineclonia mods/ITEMS/mcl_lush_caves/textures/mcl_lush_caves_big_dripleaf_side.png |  |
+| `textures/big_dripleaf_stem.png` | Mineclonia mods/ITEMS/mcl_lush_caves/textures/mcl_lush_caves_big_dripleaf_stem.png |  |
+| `textures/small_amethyst_bud.png` | Mineclonia mods/ITEMS/mcl_amethyst/textures/mcl_amethyst_amethyst_bud_small.png |  |
+| `textures/small_amethyst_bud_down.png` | Mineclonia mods/ITEMS/mcl_amethyst/textures/mcl_amethyst_amethyst_bud_small.png | changed |
+| `textures/medium_amethyst_bud.png` | Mineclonia mods/ITEMS/mcl_amethyst/textures/mcl_amethyst_amethyst_bud_medium.png |  |
+| `textures/medium_amethyst_bud_down.png` | Mineclonia mods/ITEMS/mcl_amethyst/textures/mcl_amethyst_amethyst_bud_medium.png | changed |
+| `textures/large_amethyst_bud.png` | Mineclonia mods/ITEMS/mcl_amethyst/textures/mcl_amethyst_amethyst_bud_large.png |  |
+| `textures/large_amethyst_bud_down.png` | Mineclonia mods/ITEMS/mcl_amethyst/textures/mcl_amethyst_amethyst_bud_large.png | changed |
+| `textures/amethyst_cluster.png` | Mineclonia mods/ITEMS/mcl_amethyst/textures/mcl_amethyst_amethyst_cluster.png |  |
+| `textures/amethyst_cluster_down.png` | Mineclonia mods/ITEMS/mcl_amethyst/textures/mcl_amethyst_amethyst_cluster.png | changed |
+| `textures/cobweb.png` | Pixel Perfection CE block/cobweb.png |  |
+| `textures/glow_berries.png` | Mineclonia mods/ITEMS/mcl_lush_caves/textures/mcl_lush_caves_glow_berries.png |  |
+| `textures/amethyst_shard.png` | Mineclonia mods/ITEMS/mcl_amethyst/textures/mcl_amethyst_amethyst_shard.png |  |
 | `skins/zombie.png` | Pixel Perfection CE entity/zombie/zombie.png | changed |
 | `skins/husk.png` | Pixel Perfection CE entity/zombie/husk.png | changed |
 | `skins/drowned.png` | Pixel Perfection CE entity/zombie/drowned.png; Pixel Perfection CE entity/zombie/drowned_outer_layer.png | changed |

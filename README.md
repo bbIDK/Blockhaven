@@ -58,7 +58,7 @@ On phones and tablets, on-screen controls appear automatically. The left stick m
 ## What's in it
 
 - **Endless worlds** from a seed, in 37 biomes: mountain ranges with stony, jagged and frozen peaks, snowy slopes and meadows; plains, flower forests, dark forests, birch and old-growth forests, taiga, jungles, swamps, savannas, badlands, deserts, cherry groves and ice spikes; rivers, beaches and warm, cold and deep oceans. Grass, leaves and water shade gradually from one biome's colours into the next's. Trees grow big, and there's a flat world option.
-- **Underground:** winding caves and caverns, deepslate, ores by depth (coal, copper, iron, gold, lapis, redstone, diamond, emerald), lava lakes, and dungeons with loot chests. On the surface you'll also find desert wells, icebergs, boulders and fallen trees.
+- **Underground:** great caverns held up by stone pillars, tunnels of every width winding between them with narrow passages off those, deep ravines, underground lakes, and a sea of lava at the very bottom where the distance fades to darkness. Thick deepslate with tuff in it, great veins of copper and iron, and ores by depth (coal, copper, iron, gold, lapis, redstone, diamond, emerald). Caves of their own kinds: dripstone caves full of stalactites and stalagmites, lush caves with moss, azaleas, big dripleaves, spore blossoms and vines hung with glow berries (and azalea trees growing above them), and amethyst geodes; glow lichen on the walls, and cobwebs to get stuck in. Dungeons hold loot chests. (Worlds made before the cave update keep their old caves.) On the surface you'll also find desert wells, icebergs, boulders and fallen trees.
 - **Settlements of every size, no two alike:** tents round a campfire in the woods (hunters', woodcutters' and travellers' camps); hamlets of a few houses behind a fence, a dry-stone wall or a log palisade with watchtowers; walled villages; towns with tall walls, towers along them, a grid of streets, a church and a market square with a fountain; and kingdoms, whose great walls under spired towers ring a city with a castle at its heart. Each picks its own shape, walls, streets, roofs and stone from the land it stands in, and the bigger it is, the more people live there. (Worlds made before this keep their walled villages.)
 - **Castles:** a curtain wall with round towers, a gatehouse with a portcullis, knights' barracks, an armoury, stables and a chapel round the courtyard, and a keep whose great hall has the thrones of the king and queen, with their chamber, the royal library and the treasury upstairs.
 - **Buildings:** some forty kinds - cottages, long houses, terraces, manors, a smithy, butcher's, hunter's lodge, library, inn, bakery, church, stables, mason's yard, windmill, farms, pens and a mine.
@@ -98,7 +98,7 @@ src/style.css       interface styling
 src/main.js         entry point
 src/game.js         game states, main loop, player actions, survival rules, commands
 src/world.js        chunk streaming, block access, lighting updates, water and sand ticks
-src/worldgen.js     terrain, biomes, caves, ores, trees
+src/worldgen.js     terrain, biomes, ores, trees;  src/cavegen.js the caves and what grows in them;  src/caves.js dripstone and vines
 src/mesher.js       turns chunk sections into vertex data (face culling, AO, smooth light)
 src/light.js        per-chunk light flood fill (runs in workers)
 src/renderer.js     WebGL 2 renderer: terrain, sky, clouds, entities, particles, held item
@@ -132,7 +132,7 @@ The bundler has no dependencies. It needs Node 18 or newer. After changing the M
 
 ### Textures
 
-The textures come from two openly licensed resource packs: [Pixel Perfection](https://github.com/Athemis/PixelPerfectionCE) (in its Community Edition) and, for the newest blocks (deepslate, copper, cherry wood), [Mineclonia](https://codeberg.org/mineclonia/mineclonia). To import them again, check both out and run
+The textures come from two openly licensed resource packs: [Pixel Perfection](https://github.com/Athemis/PixelPerfectionCE) (in its Community Edition) and, for the newest blocks (deepslate, copper, cherry wood, and the cave blocks: tuff, dripstone, moss, lush-cave plants, glow lichen and amethyst), [Mineclonia](https://codeberg.org/mineclonia/mineclonia). To import them again, check both out and run
 
 ```sh
 node tools/import-textures.mjs <PixelPerfectionCE checkout> <mineclonia checkout>

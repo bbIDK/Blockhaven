@@ -1,7 +1,7 @@
 // Tree shapes, shared by the world generator and by saplings. Each grows from (x, y, z), the
 // block above the ground, through `put(x, y, z, id, isLog, onlyAir)`, which decides what may be
 // overwritten and returns whether the block went in (see worldgen.js and growth.js).
-import { WOOD, LOG_AXES, VINE } from './blocks.js';
+import { B, WOOD, LOG_AXES, VINE } from './blocks.js';
 
 // A log running from a to b, turned along its main direction.
 function branch(put, log, [x0, y0, z0], [x1, y1, z1]) {
@@ -234,7 +234,30 @@ function cherry(put, x, y, z, rnd) {
 
 // ---------------------------------------------------------------- choosing
 // Kinds of tree, by name. Two-wide trees also need the three columns beside their root.
+// Azalea: a short oak trunk, bent partway up, under a round crown of azalea leaves, some of them
+// in flower. (They grow over lush caves.)
+function azalea(put, x, y, z, rnd) {
+  const log = WOOD.oak.log, h = 4 + Math.floor(rnd() * 2);
+  let tx = x, tz = z;
+  for (let i = 0; i < h; i++) {
+    put(tx, y + i, tz, log, true);
+    if (i === 1 && rnd() < 0.6) { if (rnd() < 0.5) tx += rnd() < 0.5 ? 1 : -1; else tz += rnd() < 0.5 ? 1 : -1; }
+  }
+  const leaf = () => (rnd() < 0.3 ? B.flowering_azalea_leaves : B.azalea_leaves);
+  const top = y + h - 1;
+  for (let dy = -1; dy <= 1; dy++) {
+    const r = dy === 1 ? 1.6 : 2.6;
+    for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) {
+      const d = Math.hypot(dx, dz);
+      if (d > r || (d > r - 0.9 && rnd() < 0.35)) continue;
+      put(tx + dx, top + dy, tz + dz, leaf(), false);
+    }
+  }
+  put(tx, top + 1, tz, leaf(), false);
+}
+
 export const TREES = {
+  azalea,
   oak: (put, x, y, z, rnd) => small(put, x, y, z, rnd, 'oak'),
   big_oak: bigOak,
   swamp_oak: swampOak,

@@ -387,6 +387,8 @@ uniform float u_rain;
 uniform float u_time;
 uniform vec3 u_sunGlow;
 uniform float u_outScale;
+uniform float u_dark;       // deep underground, the sky fades to the dark of the fog
+uniform vec3 u_darkColor;
 in vec2 v_ndc;
 out vec4 o_color;
 float hash(vec3 p) {
@@ -446,6 +448,7 @@ void main() {
       col = mix(col, vec3(0.85, 0.88, 0.97) * crater * moonBright, clamp(u_stars * 1.2, 0.2, 1.0) * (1.0 - u_rain));
     }
   }
+  col = mix(col, u_darkColor, u_dark);
 #ifndef FANCY
   if (u_underwater > 0.5) col = vec3(0.05, 0.16, 0.42);
   o_color = vec4(col, 1.0);

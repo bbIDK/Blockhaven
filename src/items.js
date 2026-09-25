@@ -1,6 +1,6 @@
 // Item registry: every placeable block is also an item (same id); tools and materials use ids 256+.
 // Recipes live in crafting.js.
-import { BLOCKS, B, BASE, CROP, LEAVES_WOOD, DOUBLE, POTTED } from './blocks.js';
+import { BLOCKS, B, BASE, CROP, LEAVES_WOOD, DOUBLE, POTTED, CAVE_VINES } from './blocks.js';
 import { TEX } from './textures.js';
 import { DYES, rgb } from './colors.js';
 import { leafDrops } from './growth.js';
@@ -132,6 +132,9 @@ POTION_NAMES.forEach((name, i) => {
   item(412 + i, `potion_${name}`, { label: `Potion of ${label}`, stack: 1, potion: name, leftover: 'glass_bottle' });
   item(424 + i, `splash_potion_${name}`, { label: `Splash Potion of ${label}`, stack: 1, splash: name });
 });
+// The cave update's: glow berries (eaten, or planted under a ceiling as cave vines) and amethyst.
+item(451, 'glow_berries', { label: 'Glow Berries', food: 2, sat: 0.1 });
+item(452, 'amethyst_shard', { label: 'Amethyst Shard' });
 // (Only ever seen in a hand: the rod while its line is out.)
 item(1020, 'fishing_rod_cast', { label: 'Fishing Rod', stack: 1, hidden: true });
 // Dyes are one texture in sixteen colours.
@@ -222,6 +225,8 @@ export function canHarvest(block, tool) {
 export function breakTime(block, tool, efficiency = 0) {
   if (block.hardness < 0) return Infinity;
   if (block.hardness === 0) return 0;
+  // (A sword or shears slice through cobwebs.)
+  if (block.name === 'cobweb' && (ITEMS.get(tool)?.weapon || ITEMS.get(tool)?.shears)) return 0.4;
   const t = tool && ITEMS.get(tool)?.tool;
   let speed = t && t.type === block.tool ? t.speed : 1;
   if (efficiency && speed > 1) speed += efficiency * efficiency + 1;
@@ -229,7 +234,8 @@ export function breakTime(block, tool, efficiency = 0) {
 }
 
 // What a block drops in survival: [{ id, count }].
-const SHEARABLE = new Set(['tall_grass', 'fern', 'tall_grass_double', 'large_fern', 'dead_bush', 'vine']);
+const SHEARABLE = new Set(['tall_grass', 'fern', 'tall_grass_double', 'large_fern', 'dead_bush', 'vine', 'glow_lichen', 'hanging_roots',
+  'azalea_leaves', 'flowering_azalea_leaves', 'cobweb']);
 export function dropsFor(blockId, tool, rand = Math.random) {
   const block = BLOCKS[blockId];
   if (!block) return [];
@@ -265,6 +271,13 @@ export function dropsFor(blockId, tool, rand = Math.random) {
     case 'copper_ore': case 'deepslate_copper_ore': return one('raw_copper', n(2, 5));
     case 'redstone_ore': case 'deepslate_redstone_ore': return one('redstone', n(4, 5));
     case 'lapis_ore': case 'deepslate_lapis_ore': return one('lapis_lazuli', n(4, 9));
+    case 'amethyst_cluster': return one('amethyst_shard', 4);
+    case 'cave_vines': return CAVE_VINES[blockId]?.lit ? one('glow_berries') : [];
+    // (Swords cut the string out of a cobweb; shears, above, take it whole.)
+    case 'cobweb': return ITEMS.get(tool)?.weapon ? one('string') : [];
+    // Azalea leaves now and then drop a bush to plant, or a stick.
+    case 'azalea_leaves': case 'flowering_azalea_leaves':
+      return rand() < 0.05 ? one(base.name === 'azalea_leaves' ? 'azalea' : 'flowering_azalea') : rand() < 0.02 ? one('stick', n(1, 2)) : [];
     default:
   }
   if (!block.drop) return [];

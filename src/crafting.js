@@ -89,7 +89,8 @@ shaped('bricks', 1, ['##', '##'], { '#': 'brick' }, 'building');
 shaped('clay', 1, ['##', '##'], { '#': 'clay_ball' }, 'building');
 for (const [block, material] of [['iron_block', 'iron_ingot'], ['gold_block', 'gold_ingot'], ['diamond_block', 'diamond'], ['coal_block', 'coal'],
   ['copper_block', 'copper_ingot'], ['lapis_block', 'lapis_lazuli'], ['redstone_block', 'redstone'], ['emerald_block', 'emerald'],
-  ['hay_block', 'wheat'], ['iron_ingot', 'iron_nugget'], ['gold_ingot', 'gold_nugget']]) {
+  ['hay_block', 'wheat'], ['iron_ingot', 'iron_nugget'], ['gold_ingot', 'gold_nugget'], ['raw_copper_block', 'raw_copper'],
+  ['raw_iron_block', 'raw_iron'], ['raw_gold_block', 'raw_gold']]) {
   shaped(block, 1, ['###', '###', '###'], { '#': material }, 'building');
   shapeless(material, 9, [block], 'misc');
 }
@@ -125,6 +126,12 @@ shaped('chiseled_stone_bricks', 1, ['#', '#'], { '#': 'stone_brick_slab' }, 'bui
 shaped('chiseled_sandstone', 1, ['#', '#'], { '#': 'sandstone_slab' }, 'building');
 shaped('chiseled_red_sandstone', 1, ['#', '#'], { '#': 'red_sandstone_slab' }, 'building');
 shapeless('mossy_cobblestone', 1, ['cobblestone', 'vine'], 'building');
+shapeless('mossy_cobblestone', 1, ['cobblestone', 'moss_block'], 'building');
+shapeless('mossy_stone_bricks', 1, ['stone_bricks', 'moss_block'], 'building');
+// The cave update's: dripstone from its spikes, moss carpets, amethyst from its shards.
+shaped('dripstone_block', 1, ['##', '##'], { '#': 'pointed_dripstone' }, 'building');
+shaped('moss_carpet', 3, ['##'], { '#': 'moss_block' }, 'building');
+shaped('amethyst_block', 1, ['##', '##'], { '#': 'amethyst_shard' }, 'building');
 shapeless('mossy_stone_bricks', 1, ['stone_bricks', 'vine'], 'building');
 // Colours: dyes from flowers and minerals, mixed dyes, and dyed blocks.
 for (const [dye, from, n] of [['yellow', 'dandelion', 1], ['red', 'poppy', 1], ['blue', 'cornflower', 1], ['magenta', 'allium', 1],

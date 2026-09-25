@@ -2,7 +2,8 @@
 // peaks and overhanging cliffs, some thirty biomes with their own ground, plants and trees,
 // caves, ores by depth, deepslate, and small structures (dungeons, wells, ice spikes, icebergs,
 // boulders, fallen trees). Pure functions of (seed, chunk), so it runs inside Web Workers and
-// every chunk agrees with its neighbours.
+// every chunk agrees with its neighbours. (Worlds made since the cave update have the caves of
+// cavegen.js.)
 import { CHUNK, HEIGHT, SEA_LEVEL, CHUNK_VOLUME } from './config.js';
 import { Noise } from './noise.js';
 import { B, REPLACEABLE, FACING_VARIANTS, SOLID, WATERLIKE, NATURAL_LEAVES, DOUBLE, LOOT_CHEST } from './blocks.js';
@@ -11,6 +12,7 @@ import { hash2, hash3, hashString, mulberry32, smoothstep, lerp, clamp } from '.
 import { TREES, WIDE_TREES, TREE_REACH } from './trees.js';
 import { WorldGenV1 } from './worldgen1.js';
 import { villagePieces, villagesNear, groundLevel, insideVillage, villageAt } from './villages.js';
+import { CaveGen } from './cavegen.js';
 
 const PAD = 1; // neighbour columns kept for slopes
 const GW = CHUNK + PAD * 2;
@@ -123,15 +125,38 @@ const ORES = [
   ['gravel', 'gravel', 4, 20, 1, 120, null],
   ['dirt', 'dirt', 5, 20, 20, 120, null],
 ].map(([a, b, ...r]) => [B[a], B[b], ...r]);
+// The fifth generator's ores, deeper down for its thicker deepslate, with tuff in the deepslate.
+const ORES5 = [
+  ['coal_ore', 'deepslate_coal_ore', 22, 13, 12, 190, 96],
+  ['copper_ore', 'deepslate_copper_ore', 11, 10, 1, 100, 48],
+  ['iron_ore', 'deepslate_iron_ore', 14, 9, 1, 72, 16],
+  ['iron_ore', 'deepslate_iron_ore', 7, 9, 90, 220, null],
+  ['gold_ore', 'deepslate_gold_ore', 4, 8, 1, 34, 10],
+  ['redstone_ore', 'deepslate_redstone_ore', 7, 8, 1, 16, null],
+  ['lapis_ore', 'deepslate_lapis_ore', 3, 7, 1, 60, 26],
+  ['diamond_ore', 'deepslate_diamond_ore', 2, 7, 1, 16, 5],
+  ['granite', 'granite', 3, 30, 24, 120, null],
+  ['diorite', 'diorite', 3, 30, 24, 120, null],
+  ['andesite', 'andesite', 3, 30, 24, 120, null],
+  ['stone', 'tuff', 4, 30, 1, 26, null],
+  ['gravel', 'gravel', 4, 20, 1, 120, null],
+  ['dirt', 'dirt', 5, 20, 26, 120, null],
+].map(([a, b, ...r]) => [B[a], B[b], ...r]);
+// The badlands have gold high in their hills as well.
+const BADLANDS_GOLD = [B.gold_ore, B.deepslate_gold_ore, 18, 8, 32, 90, null];
+// Azalea trees grow over lush caves, where the ground is green.
+const AZALEA_GROUND = new Set([BIOME.PLAINS, BIOME.FOREST, BIOME.FLOWER_FOREST, BIOME.BIRCH_FOREST, BIOME.MEADOW, BIOME.SAVANNA,
+  BIOME.JUNGLE, BIOME.SPARSE_JUNGLE, BIOME.SUNFLOWER_PLAINS, BIOME.DARK_FOREST, BIOME.TAIGA, BIOME.SWAMP, BIOME.CHERRY_GROVE]);
 const STONEY = new Set([B.stone, B.deepslate]);
 // Only the bare heights get cliffs and overhangs worn into them (see step 2 of generate); the
 // wooded slopes stay a plain height map so trees rooted in one chunk line up with the next.
 const CARVED = new Set([BIOME.JAGGED_PEAKS, BIOME.FROZEN_PEAKS, BIOME.STONY_PEAKS, BIOME.SNOWY_SLOPES]);
 
 export class WorldGen {
-  // `version`: 2 for worlds made before villages were spread further apart, 3 since, and 4 for
-  // worlds with settlements of every size (camps, hamlets, villages, towns and kingdoms).
-  constructor(seed, type = 'default', version = 4) {
+  // `version`: 2 for worlds made before villages were spread further apart, 3 since, 4 for worlds
+  // with settlements of every size (camps, hamlets, villages, towns and kingdoms), and 5 for those
+  // with the cave update's caves.
+  constructor(seed, type = 'default', version = 5) {
     this.seed = seed >>> 0;
     this.type = type;
     this.version = version;
@@ -143,6 +168,7 @@ export class WorldGen {
     this.nCaveA = n('caveA'); this.nCaveB = n('caveB'); this.nCheese = n('cheese'); this.nSurf = n('surface');
     this.col = {};
     this.columns = new Map(); // columns looked up outside the chunk being made (tree roots)
+    this.caves = version >= 5 ? new CaveGen(this.seed) : null;
   }
 
   // Terrain shape and climate of one column. Returns the (fractional) surface height and fills
@@ -358,7 +384,7 @@ export class WorldGen {
       const l1 = (at(0, 1, 0) * (1 - tx) + at(1, 1, 0) * tx) * (1 - tz) + (at(0, 1, 1) * (1 - tx) + at(1, 1, 1) * tx) * tz;
       return l0 * (1 - ty) + l1 * ty;
     };
-    const TOP = new Int16Array(256);
+    const TOP = new Int16Array(256), caves = this.caves;
     for (let z = 0; z < 16; z++) {
       for (let x = 0; x < 16; x++) {
         const gi = (z + PAD) * GW + x + PAD, h = H[gi], wx = x0 + x, wz = z0 + z;
@@ -373,7 +399,7 @@ export class WorldGen {
           if (!solid) continue;
           let id;
           if (y === 0 || (y < bedrockTop && hash3(wx, y, wz, seed) < 0.5)) id = B.bedrock;
-          else id = y < deep ? B.deepslate : B.stone;
+          else id = (caves ? caves.isDeep(wx, y, wz) : y < deep) ? B.deepslate : B.stone;
           blocks[idx(x, y, z)] = id;
           top = y;
         }
@@ -444,47 +470,54 @@ export class WorldGen {
     }
 
     // 4. Caves: two noise fields whose shared zero-crossings form tunnels, plus caverns deep down.
-    const GY = HEIGHT / 4 + 1;
-    const SA = new Float32Array(25 * GY), SB = new Float32Array(25 * GY), SC = new Float32Array(25 * GY);
-    const caveTop = Math.min(HEIGHT - 1, maxH + 8);
-    for (let iz = 0; iz < 5; iz++) for (let ix = 0; ix < 5; ix++) {
-      const sx = x0 + ix * 4, sz = z0 + iz * 4;
-      for (let iy = 0; iy < GY; iy++) {
-        const sy = iy * 4, k = (iz * 5 + ix) * GY + iy;
-        if (sy > caveTop + 4) { SA[k] = SB[k] = 1; SC[k] = -1; continue; }
-        SA[k] = this.nCaveA.noise3(sx / 52, sy / 34, sz / 52);
-        SB[k] = this.nCaveB.noise3(sx / 52, sy / 34, sz / 52 + 70);
-        SC[k] = sy < 56 ? this.nCheese.noise3(sx / 90, sy / 44, sz / 90) : -1;
-      }
-    }
-    const ca = new Float32Array(GY), cb = new Float32Array(GY), cc = new Float32Array(GY);
-    for (let z = 0; z < 16; z++) {
-      for (let x = 0; x < 16; x++) {
-        const gi = (z + PAD) * GW + x + PAD, h = TOP[z * 16 + x];
-        let minN = H[gi];
-        for (const o of [1, -1, GW, -GW, GW + 1, GW - 1, -GW + 1, -GW - 1]) minN = Math.min(minN, H[gi + o]);
-        let maxY = h;
-        // Keep caves from breaking out under the sea and rivers.
-        if (h <= SEA_LEVEL + 1 || minN < SEA_LEVEL) maxY = Math.min(h, minN) - 5;
-        if (VIN[z * 16 + x]) maxY = Math.min(maxY, h - 8);
-        if (maxY < 6) continue;
-        const ix = x >> 2, iz = z >> 2, fx = (x & 3) / 4, fz = (z & 3) / 4;
-        const k00 = (iz * 5 + ix) * GY, k10 = (iz * 5 + ix + 1) * GY, k01 = ((iz + 1) * 5 + ix) * GY, k11 = ((iz + 1) * 5 + ix + 1) * GY;
-        const w00 = (1 - fx) * (1 - fz), w10 = fx * (1 - fz), w01 = (1 - fx) * fz, w11 = fx * fz;
-        const topSample = Math.min(GY - 1, (maxY >> 2) + 1);
-        for (let iy = 0; iy <= topSample; iy++) {
-          ca[iy] = SA[k00 + iy] * w00 + SA[k10 + iy] * w10 + SA[k01 + iy] * w01 + SA[k11 + iy] * w11;
-          cb[iy] = SB[k00 + iy] * w00 + SB[k10 + iy] * w10 + SB[k01 + iy] * w01 + SB[k11 + iy] * w11;
-          cc[iy] = SC[k00 + iy] * w00 + SC[k10 + iy] * w10 + SC[k01 + iy] * w01 + SC[k11 + iy] * w11;
+    // (Since the cave update: the caves of cavegen.js, and their lakes.)
+    const cg = caves && { blocks, x0, z0, H, GW, TOP, VIN, BIO, maxH, surface: (x, z) => this.rootColumn(x, z).h };
+    if (caves) {
+      caves.carve(cg);
+      caves.fill(cg);
+    } else {
+      const GY = HEIGHT / 4 + 1;
+      const SA = new Float32Array(25 * GY), SB = new Float32Array(25 * GY), SC = new Float32Array(25 * GY);
+      const caveTop = Math.min(HEIGHT - 1, maxH + 8);
+      for (let iz = 0; iz < 5; iz++) for (let ix = 0; ix < 5; ix++) {
+        const sx = x0 + ix * 4, sz = z0 + iz * 4;
+        for (let iy = 0; iy < GY; iy++) {
+          const sy = iy * 4, k = (iz * 5 + ix) * GY + iy;
+          if (sy > caveTop + 4) { SA[k] = SB[k] = 1; SC[k] = -1; continue; }
+          SA[k] = this.nCaveA.noise3(sx / 52, sy / 34, sz / 52);
+          SB[k] = this.nCaveB.noise3(sx / 52, sy / 34, sz / 52 + 70);
+          SC[k] = sy < 56 ? this.nCheese.noise3(sx / 90, sy / 44, sz / 90) : -1;
         }
-        for (let y = 6; y <= maxY; y++) {
-          const iy = y >> 2, fy = (y & 3) / 4;
-          const a = ca[iy] + (ca[iy + 1] - ca[iy]) * fy;
-          const b = cb[iy] + (cb[iy + 1] - cb[iy]) * fy;
-          const c = cc[iy] + (cc[iy + 1] - cc[iy]) * fy;
-          if (a * a + b * b < CAVE_T || c > 0.6) {
-            const i = idx(x, y, z);
-            if (blocks[i] !== B.bedrock) blocks[i] = y <= 10 ? B.lava : 0;
+      }
+      const ca = new Float32Array(GY), cb = new Float32Array(GY), cc = new Float32Array(GY);
+      for (let z = 0; z < 16; z++) {
+        for (let x = 0; x < 16; x++) {
+          const gi = (z + PAD) * GW + x + PAD, h = TOP[z * 16 + x];
+          let minN = H[gi];
+          for (const o of [1, -1, GW, -GW, GW + 1, GW - 1, -GW + 1, -GW - 1]) minN = Math.min(minN, H[gi + o]);
+          let maxY = h;
+          // Keep caves from breaking out under the sea and rivers.
+          if (h <= SEA_LEVEL + 1 || minN < SEA_LEVEL) maxY = Math.min(h, minN) - 5;
+          if (VIN[z * 16 + x]) maxY = Math.min(maxY, h - 8);
+          if (maxY < 6) continue;
+          const ix = x >> 2, iz = z >> 2, fx = (x & 3) / 4, fz = (z & 3) / 4;
+          const k00 = (iz * 5 + ix) * GY, k10 = (iz * 5 + ix + 1) * GY, k01 = ((iz + 1) * 5 + ix) * GY, k11 = ((iz + 1) * 5 + ix + 1) * GY;
+          const w00 = (1 - fx) * (1 - fz), w10 = fx * (1 - fz), w01 = (1 - fx) * fz, w11 = fx * fz;
+          const topSample = Math.min(GY - 1, (maxY >> 2) + 1);
+          for (let iy = 0; iy <= topSample; iy++) {
+            ca[iy] = SA[k00 + iy] * w00 + SA[k10 + iy] * w10 + SA[k01 + iy] * w01 + SA[k11 + iy] * w11;
+            cb[iy] = SB[k00 + iy] * w00 + SB[k10 + iy] * w10 + SB[k01 + iy] * w01 + SB[k11 + iy] * w11;
+            cc[iy] = SC[k00 + iy] * w00 + SC[k10 + iy] * w10 + SC[k01 + iy] * w01 + SC[k11 + iy] * w11;
+          }
+          for (let y = 6; y <= maxY; y++) {
+            const iy = y >> 2, fy = (y & 3) / 4;
+            const a = ca[iy] + (ca[iy + 1] - ca[iy]) * fy;
+            const b = cb[iy] + (cb[iy + 1] - cb[iy]) * fy;
+            const c = cc[iy] + (cc[iy + 1] - cc[iy]) * fy;
+            if (a * a + b * b < CAVE_T || c > 0.6) {
+              const i = idx(x, y, z);
+              if (blocks[i] !== B.bedrock) blocks[i] = y <= 10 ? B.lava : 0;
+            }
           }
         }
       }
@@ -494,7 +527,9 @@ export class WorldGen {
     // neighbouring chunks may reach into this one.
     for (let ncz = cz - 1; ncz <= cz + 1; ncz++) {
       for (let ncx = cx - 1; ncx <= cx + 1; ncx++) {
-        ORES.forEach(([ore, deepOre, count, size, minY, maxY, peak], oi) => {
+        // (In badlands chunks gold comes high in the hills too.)
+        const ores = !caves ? ORES : this.rootColumn(ncx * 16 + 8, ncz * 16 + 8).biome === BIOME.BADLANDS ? [...ORES5, BADLANDS_GOLD] : ORES5;
+        ores.forEach(([ore, deepOre, count, size, minY, maxY, peak], oi) => {
           const rnd = mulberry32(Math.floor(hash3(ncx, oi, ncz, seed ^ 0x0e5) * 4294967296));
           const n = Math.floor(count) + (rnd() < count % 1 ? 1 : 0);
           for (let v = 0; v < n; v++) {
@@ -526,6 +561,8 @@ export class WorldGen {
       }
     }
 
+    if (caves) caves.veins(cg);
+
     // 6. Seas, rivers and swamp pools.
     for (let z = 0; z < 16; z++) {
       for (let x = 0; x < 16; x++) {
@@ -537,6 +574,9 @@ export class WorldGen {
         }
       }
     }
+
+    // (The caves' own growths, and amethyst geodes.)
+    if (caves) { caves.decorate(cg); caves.geodes(cg); }
 
     // 7. Small structures: dungeons, wells, ice spikes, icebergs, boulders, fallen logs.
     const put = (wx, y, wz, id, isLog = false, onlyAir = false) => {
@@ -635,7 +675,9 @@ export class WorldGen {
         const inside = wx >= x0 && wx < x0 + 16 && wz >= z0 && wz < z0 + 16;
         const col = inside ? this.columns.get(`${wx},${wz}`) : this.rootColumn(wx, wz);
         const table = TREE_TABLE[col.biome];
-        if (!table || roll >= table[0]) continue;
+        // (Azalea trees stand over lush caves.)
+        const azalea = caves && roll < 0.005 && AZALEA_GROUND.has(col.biome) && caves.lushAt(wx, wz);
+        if (!azalea && (!table || roll >= table[0])) continue;
         if (vplans.length && insideVillage(vplans, wx, wz, 4)) continue;
         let h = col.h;
         if (inside) h = TOP[(wz - z0) * 16 + wx - x0];
@@ -644,10 +686,14 @@ export class WorldGen {
           const g = blocks[idx(wx - x0, h, wz - z0)];
           if (g !== B.grass_block && g !== B.podzol && g !== B.dirt && g !== B.coarse_dirt && g !== B.snowy_grass && !(col.biome === BIOME.SWAMP && g === B.water)) continue;
         }
-        if (this.caveAt(wx, h, wz)) continue;
+        if (caves ? caves.surfaceCarved(wx, h, wz) : this.caveAt(wx, h, wz)) continue;
         const rnd = mulberry32(Math.floor(hash2(wx, wz, seed ^ 0x1ee7) * 4294967296));
-        let pickT = rnd() * table[1].reduce((a, [w]) => a + w, 0), kind = table[1][0][1];
-        for (const [w, k] of table[1]) { if ((pickT -= w) <= 0) { kind = k; break; } }
+        let kind = 'azalea';
+        if (!azalea) {
+          let pickT = rnd() * table[1].reduce((a, [w]) => a + w, 0);
+          kind = table[1][0][1];
+          for (const [w, k] of table[1]) { if ((pickT -= w) <= 0) { kind = k; break; } }
+        }
         // Two-wide trees need level ground under all four trunk columns.
         if (WIDE_TREES.has(kind)) {
           const ok = [[1, 0], [0, 1], [1, 1]].every(([a, b]) => {
@@ -658,6 +704,15 @@ export class WorldGen {
         }
         // In a swamp the trunk may stand in shallow water.
         TREES[kind](put, wx, h + 1, wz, rnd);
+        // An azalea's roots reach down through rooted dirt towards the cave below.
+        if (azalea && inside) {
+          const depth = 4 + Math.floor(hash2(wz, wx, seed ^ 0x2007) * 5);
+          for (let y = h; y > h - depth && y > 1; y--) {
+            const i = idx(wx - x0, y, wz - z0);
+            if (blocks[i] === 0 || WATERLIKE[blocks[i]]) break;
+            blocks[i] = B.rooted_dirt;
+          }
+        }
       }
     }
 
