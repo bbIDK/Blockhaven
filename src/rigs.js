@@ -19,6 +19,52 @@ const HUMANOID = {
   leftLeg: { pivot: [-2, 12, 0], cubes: [c([-4, 0, -2], [4, 12, 4], [16, 48]), c([-4, 0, -2], [4, 12, 4], [0, 48], { inflate: 0.25 })] },
 };
 
+// Horses, donkeys and mules, built as Minecraft builds them (so its horse skins fit): a long body,
+// the neck held up and leaning forward with the head on top of it and the muzzle out in front,
+// small ears (a donkey's long ones splay out), the mane down the back of the neck, a tail that hangs
+// back, and long legs. The saddle and bridle come from the same skin and show when there's a
+// saddle; the reins only while someone rides. Markings (white socks, a blaze, spots) are a second
+// skin drawn over the coat.
+const NECK = { pivot: [0, 20, -12], rest: [-Math.PI / 6, 0, 0] };
+const HORSE_EARS = [c([-2.55, 30, -8], [2, 3, 1], [19, 16]), c([0.55, 30, -8], [2, 3, 1], [19, 16])];
+const DONKEY_EARS = {
+  earL: { parent: 'head', pivot: [-1.25, 30, -8], rest: [-0.26, 0, 0.26], cubes: [c([-2.25, 30, -8], [2, 7, 1], [0, 12])] },
+  earR: { parent: 'head', pivot: [1.25, 30, -8], rest: [-0.26, 0, -0.26], cubes: [c([0.25, 30, -8], [2, 7, 1], [0, 12])] },
+};
+function horseBones(ears, extra = {}) {
+  const bones = {
+    body: { pivot: [0, 13, 5], cubes: [c([-5, 11, -12], [10, 10, 22], [0, 32])] },
+    head: {
+      ...NECK,
+      cubes: [c([-2, 14, -14], [4, 12, 7], [0, 35]), c([-3, 26, -14], [6, 5, 7], [0, 13]), c([-2, 26, -19], [4, 5, 5], [0, 25]),
+        c([-1, 15, -6.99], [2, 16, 2], [56, 36]), ...ears],
+    },
+    ...extra,
+    legFR: { pivot: [4, 10, -12], cubes: [c([1, 0, -13.9], [4, 11, 4], [48, 21])] },
+    legFL: { pivot: [-4, 10, -12], cubes: [c([-5, 0, -13.9], [4, 11, 4], [48, 21], { mirror: true })] },
+    legBR: { pivot: [4, 10, 7], cubes: [c([1, 0, 6], [4, 11, 4], [48, 21])] },
+    legBL: { pivot: [-4, 10, 7], cubes: [c([-5, 0, 6], [4, 11, 4], [48, 21], { mirror: true })] },
+    tail: { pivot: [0, 18, 7], rest: [-Math.PI / 6, 0, 0], cubes: [c([-1.5, 4, 7], [3, 14, 4], [42, 36])] },
+    saddle: { pivot: [0, 13, 5], saddle: true, follows: 'body', cubes: [c([-5, 12, -4], [10, 9, 9], [26, 0], { inflate: 0.5 })] },
+    bridle: {
+      ...NECK, saddle: true, follows: 'head',
+      cubes: [c([-3, 26, -13.9], [6, 5, 6], [1, 1], { inflate: 0.22 }), c([-2, 26, -16], [4, 5, 2], [19, 0], { inflate: 0.2 }),
+        c([2, 27, -18], [1, 2, 2], [29, 5]), c([-3, 27, -18], [1, 2, 2], [29, 5])],
+    },
+    reins: {
+      pivot: NECK.pivot, saddle: true, ridden: true, follows: 'head',
+      cubes: [c([3.1, 23, -20], [0, 3, 16], [32, 2]), c([-3.1, 23, -20], [0, 3, 16], [32, 2])],
+    },
+  };
+  // The markings: the coat's boxes again, a hair larger, in the markings skin.
+  for (const name of ['body', 'head', 'legFR', 'legFL', 'legBR', 'legBL', 'tail', ...Object.keys(extra)]) {
+    const b = bones[name];
+    bones[`${name}Marks`] = { ...b, follows: b.follows ?? name, markings: true,
+      cubes: b.cubes.map((cb) => ({ ...cb, skin: 'markings', inflate: (cb.inflate ?? 0) + 0.02 })) };
+  }
+  return bones;
+}
+
 export const RIGS = {
   humanoid: { bones: HUMANOID, hand: { bone: 'rightArm', at: [6, 13, -1] }, height: 32 },
   skeleton: {
@@ -186,49 +232,9 @@ export const RIGS = {
       legBL: { pivot: [-2.5, 10, 5], cubes: [c([-4, 0, 4], [3, 10, 3], [0, 14], { mirror: true })] },
     },
   },
-  // Horses: long legs, the neck held up and forward (the head, ears and mane go with it), a
-  // tail, and a saddle when there is one (its own skin).
-  horse: {
-    bones: {
-      body: { pivot: [0, 16, 0], cubes: [c([-5, 11, -11], [10, 10, 22], [0, 32])] },
-      head: {
-        pivot: [0, 19, -9], rest: [-0.52, 0, 0],
-        cubes: [c([-2, 17, -12], [4, 12, 7], [0, 0]), c([-3, 24, -19], [6, 5, 8], [22, 0]), c([-2.5, 29, -13], [2, 3, 1], [50, 0]),
-          c([0.5, 29, -13], [2, 3, 1], [50, 0], { mirror: true }), c([-1, 17, -5], [2, 12, 2], [56, 0])],
-      },
-      legFR: { pivot: [3, 11, -8], cubes: [c([1, 0, -10], [4, 11, 4], [22, 13])] },
-      legFL: { pivot: [-3, 11, -8], cubes: [c([-5, 0, -10], [4, 11, 4], [22, 13], { mirror: true })] },
-      legBR: { pivot: [3, 11, 8], cubes: [c([1, 0, 6], [4, 11, 4], [22, 13])] },
-      legBL: { pivot: [-3, 11, 8], cubes: [c([-5, 0, 6], [4, 11, 4], [22, 13], { mirror: true })] },
-      tail: { pivot: [0, 20, 11], cubes: [c([-1.5, 8, 11], [3, 12, 3], [38, 13])], rest: [-0.45, 0, 0] },
-      saddle: {
-        pivot: [0, 16, 0], saddle: true, follows: 'body',
-        cubes: [c([-5, 21, -5], [10, 1, 10], [0, 0], { skin: 'saddle', inflate: 0.3 }), c([-1.5, 22, -5], [3, 2, 2], [40, 0], { skin: 'saddle' }),
-          c([5, 14, -1], [1, 6, 2], [50, 0], { skin: 'saddle' }), c([-6, 14, -1], [1, 6, 2], [50, 0], { skin: 'saddle', mirror: true })],
-      },
-    },
-  },
-  // Donkeys: a horse's build, smaller (see MOBS), with long ears.
-  donkey: {
-    bones: {
-      body: { pivot: [0, 16, 0], cubes: [c([-5, 11, -11], [10, 10, 22], [0, 32])] },
-      head: {
-        pivot: [0, 19, -9], rest: [-0.52, 0, 0],
-        cubes: [c([-2, 17, -12], [4, 12, 7], [0, 0]), c([-3, 24, -19], [6, 5, 8], [22, 0]), c([-2.5, 29, -13], [2, 7, 1], [50, 0]),
-          c([0.5, 29, -13], [2, 7, 1], [50, 0], { mirror: true }), c([-1, 17, -5], [2, 12, 2], [56, 0])],
-      },
-      legFR: { pivot: [3, 11, -8], cubes: [c([1, 0, -10], [4, 11, 4], [22, 13])] },
-      legFL: { pivot: [-3, 11, -8], cubes: [c([-5, 0, -10], [4, 11, 4], [22, 13], { mirror: true })] },
-      legBR: { pivot: [3, 11, 8], cubes: [c([1, 0, 6], [4, 11, 4], [22, 13])] },
-      legBL: { pivot: [-3, 11, 8], cubes: [c([-5, 0, 6], [4, 11, 4], [22, 13], { mirror: true })] },
-      tail: { pivot: [0, 20, 11], cubes: [c([-1.5, 8, 11], [3, 12, 3], [38, 13])], rest: [-0.45, 0, 0] },
-      saddle: {
-        pivot: [0, 16, 0], saddle: true, follows: 'body',
-        cubes: [c([-5, 21, -5], [10, 1, 10], [0, 0], { skin: 'saddle', inflate: 0.3 }), c([-1.5, 22, -5], [3, 2, 2], [40, 0], { skin: 'saddle' }),
-          c([5, 14, -1], [1, 6, 2], [50, 0], { skin: 'saddle' }), c([-6, 14, -1], [1, 6, 2], [50, 0], { skin: 'saddle', mirror: true })],
-      },
-    },
-  },
+  // Horses, donkeys and mules: Minecraft's horse model and skin layout (see horseBones).
+  horse: { bones: horseBones(HORSE_EARS) },
+  donkey: { bones: horseBones([], DONKEY_EARS) },
   // Snow golems: two balls of snow, a carved pumpkin for a head, and sticks for arms.
   snow_golem: {
     bones: {
@@ -408,7 +414,8 @@ export function rigMeshes(renderer, rigName, skins, tint = null) {
   const rig = RIGS[rigName];
   out = [];
   for (const [name, bone] of Object.entries(rig.bones)) {
-    const cubes = bone.cubes.map((cb) => (cb.skin ? { ...cb, layer: skinLayer(skins[cb.skin]) } : cb));
+    // (A part whose skin this creature doesn't have - markings on a plain coat - isn't drawn.)
+    const cubes = bone.cubes.map((cb) => (cb.skin ? { ...cb, layer: skinLayer(skins[cb.skin] ?? skins.main) } : cb));
     const t = (bone.wool || bone.collar) && tint ? [(tint >> 16) & 255, (tint >> 8) & 255, tint & 255] : null;
     out.push({ name, bone, mesh: renderer.createMesh(skinMesh(cubes, skinLayer(skins.main), bone.pivot, t)) });
   }
@@ -417,11 +424,22 @@ export function rigMeshes(renderer, rigName, skins, tint = null) {
 }
 
 // The matrix of each bone: `base` (the creature's own transform) then the bone's pivot and turn.
-// `pose[name]` = [rx, ry, rz] added to the rest turn; bones that `follow` another take its pose.
-export function boneMatrix(m, base, bone, pose, name) {
-  m.set(base);
-  const p = bone.pivot;
-  translate(m, m, p[0] / 16, p[1] / 16, p[2] / 16);
+// `pose[name]` = [rx, ry, rz] added to the rest turn; bones that `follow` another take its pose,
+// and a bone with a `parent` (in `bones`) turns with it first (a donkey's ears on its head).
+export function boneMatrix(m, base, bone, pose, name, bones = null) {
+  boneFrame(m, base, bone, pose, name, bones);
+  translate(m, m, -MODEL_OFFSET, -MODEL_OFFSET, -MODEL_OFFSET);
+  return m;
+}
+function boneFrame(m, base, bone, pose, name, bones) {
+  const p = bone.pivot, parent = bone.parent && bones?.[bone.parent];
+  if (parent) {
+    boneFrame(m, base, parent, pose, bone.parent, bones);
+    translate(m, m, (p[0] - parent.pivot[0]) / 16, (p[1] - parent.pivot[1]) / 16, (p[2] - parent.pivot[2]) / 16);
+  } else {
+    m.set(base);
+    translate(m, m, p[0] / 16, p[1] / 16, p[2] / 16);
+  }
   const r = pose[bone.follows ?? name], rest = bone.rest;
   const rx = (r?.[0] ?? 0) + (rest?.[0] ?? 0), ry = (r?.[1] ?? 0) + (rest?.[1] ?? 0), rz = (r?.[2] ?? 0) + (rest?.[2] ?? 0);
   if (ry) rotateY(m, m, ry);
@@ -429,7 +447,5 @@ export function boneMatrix(m, base, bone, pose, name) {
   if (rz) rotateZ(m, m, rz);
   const o = pose[`${bone.follows ?? name}@`];
   if (o) translate(m, m, o[0] / 16, o[1] / 16, o[2] / 16);
-  translate(m, m, -MODEL_OFFSET, -MODEL_OFFSET, -MODEL_OFFSET);
-  return m;
 }
 export const identityBase = (m) => identity(m);

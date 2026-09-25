@@ -135,6 +135,12 @@ export const SKIN_SOURCES = {
     rotBox(H, out, src, [21, 0], [8, 7, 6], [21, 0]);
     return out;
   }])),
+  // Horses, donkeys and mules: the model is Minecraft's (rigs.js horseBones), so the skins fit as
+  // they are; markings are a second skin drawn over the coat.
+  ...Object.fromEntries(['white', 'creamy', 'chestnut', 'brown', 'black', 'gray', 'dark_brown'].map((n) => [`horse_${n}`, whole(E(`horse/horse_${n.replace('_', '')}`))])),
+  ...Object.fromEntries(['white', 'whitefield', 'whitedots', 'blackdots'].map((n) => [`horse_markings_${n}`, whole(E(`horse/horse_markings_${n}`))])),
+  donkey: whole(E('horse/donkey')),
+  mule: whole(E('horse/mule')),
   snow_golem: (H) => {
     const src = H.load(E('snow_golem')), out = skin64(H);
     box(H, out, src, [0, 0], [8, 8, 8]); box(H, out, src, [0, 16], [10, 10, 10]); box(H, out, src, [0, 36], [12, 12, 12]);

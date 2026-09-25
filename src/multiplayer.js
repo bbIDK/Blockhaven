@@ -1098,6 +1098,7 @@ export class GuestSession extends Session {
     else if (msg.k === 'splash' && POTIONS[msg.n]) game.entities.splashFx(at.x, at.y, at.z, msg.n);
     else if (msg.k === 'snow') game.entities.snowFx(at.x, at.y, at.z);
     else if (msg.k === 'note') game.playNote(Math.floor(at.x), Math.floor(at.y), Math.floor(at.z));
+    else if (msg.k === 'hearts') game.particles.hearts(at.x, at.y, at.z, Math.max(1, Math.min(12, msg.n | 0)), 0.5);
   }
 
   // Game hooks.

@@ -9,7 +9,7 @@ import { DYES } from './colors.js';
 import { HEIGHT } from './config.js';
 import { identity, translate, rotateX, rotateY, rotateZ, scale, hash2, clamp } from './math.js';
 import { TEX } from './textures.js';
-import { HORSE_COATS } from './tex/mobskins.js';
+import { HORSE_COATS, HORSE_MARKINGS } from './tex/mobskins.js';
 import { horseDrive, tameTick } from './riding.js';
 import { leashTick, leashPull } from './leads.js';
 
@@ -40,7 +40,9 @@ export const MOBS = {
     kind: 'neutral', anim: 'quad', damage: 4, drops: [], sound: 'wolf', pack: true, tameWith: ['bone'], tameHealth: 20, defends: true,
     petFood: ['raw_beef', 'cooked_beef', 'raw_porkchop', 'cooked_porkchop', 'raw_chicken', 'cooked_chicken', 'raw_mutton', 'cooked_mutton',
       'raw_rabbit', 'cooked_rabbit', 'rotten_flesh'] },
-  horse: { label: 'Horse', rig: 'horse', skins: HORSE_COATS.map(([n]) => `horse_${n}`), variants: true, saddleSkin: 'horse_saddle', hw: 0.65, h: 1.6, health: 22,
+  // (A horse's variant is its coat plus seven times its markings: 0 for none.)
+  horse: { label: 'Horse', rig: 'horse', skins: HORSE_COATS.map(([n]) => `horse_${n}`), markings: HORSE_MARKINGS.map((n) => `horse_markings_${n}`),
+    variants: true, variantCount: HORSE_COATS.length * (HORSE_MARKINGS.length + 1), hw: 0.65, h: 1.6, health: 22,
     speed: 1.2, rideSpeed: 9, kind: 'animal', anim: 'horse', food: ['wheat', 'apple', 'sugar', 'carrot', 'hay_block', 'golden_apple', 'golden_carrot'],
     breedFood: ['golden_apple', 'golden_carrot'], drops: [d('leather', 0, 2)], sound: 'horse', rideable: true },
   polar_bear: { label: 'Polar Bear', rig: 'polar_bear', skins: ['polar_bear'], hw: 0.7, h: 1.4, health: 30, speed: 1.3, kind: 'neutral',
@@ -68,9 +70,13 @@ export const MOBS = {
     damage: 7, teleports: true, drops: [d('ender_pearl', 0, 1)], sound: 'enderman' },
   slime: { label: 'Slime', rig: 'slime', skins: ['slime'], hw: 0.26, h: 0.52, health: 1, speed: 2.2, kind: 'hostile', anim: 'slime',
     drops: [d('slime_ball', 0, 2)], sound: 'slime', sized: true, noBlood: true },
-  donkey: { label: 'Donkey', rig: 'donkey', skins: ['donkey'], saddleSkin: 'horse_saddle', hw: 0.6, h: 1.4, health: 20, speed: 1.1, rideSpeed: 7,
+  donkey: { label: 'Donkey', rig: 'donkey', skins: ['donkey'], hw: 0.6, h: 1.4, health: 20, speed: 1.1, rideSpeed: 7,
     kind: 'animal', anim: 'horse', food: ['wheat', 'apple', 'sugar', 'carrot', 'hay_block', 'golden_apple', 'golden_carrot'],
     breedFood: ['golden_apple', 'golden_carrot'], drops: [d('leather', 0, 2)], sound: 'donkey', rideable: true, scale: 0.87, seat: 1.22 },
+  // Mules: a horse and a donkey's foal, which can't have foals of its own.
+  mule: { label: 'Mule', rig: 'donkey', skins: ['mule'], hw: 0.65, h: 1.6, health: 22, speed: 1.15, rideSpeed: 8, kind: 'animal', anim: 'horse',
+    food: ['wheat', 'apple', 'sugar', 'carrot', 'hay_block', 'golden_apple', 'golden_carrot'], drops: [d('leather', 0, 2)], sound: 'donkey',
+    rideable: true, scale: 0.92, seat: 1.28 },
   llama: { label: 'Llama', rig: 'llama', skins: ['llama_creamy', 'llama_white', 'llama_brown', 'llama_gray'], variants: true, hw: 0.45, h: 1.87, health: 22,
     speed: 1.1, kind: 'animal', anim: 'quad', food: ['wheat', 'hay_block'], drops: [d('leather', 0, 2)], sound: 'llama', scale: 0.85 },
   cat: { label: 'Cat', rig: 'cat', skins: ['cat_tabby', 'cat_black', 'cat_white', 'cat_siamese', 'cat_calico', 'cat_ginger'], extraSkins: { collar: 'collar' },
@@ -138,7 +144,7 @@ export function initMob(e, type, o = {}) {
     // (A name given with a name tag; who holds its lead, or the fence post it's tied to.)
     named: o.named ?? null, leash: o.leash ?? null,
   });
-  if (type === 'horse' && o.health === undefined) e.health = 15 + Math.floor(Math.random() * 16);
+  if ((type === 'horse' || type === 'mule') && o.health === undefined) e.health = 15 + Math.floor(Math.random() * 16);
   if (e.owner && t.tameHealth) e.health = t.tameHealth;
   e.maxHealth = e.health;
   if (t.sized) { e.hw = 0.26 * size; e.h = 0.52 * size; }
@@ -173,7 +179,7 @@ export function mobTick(ents, e) {
   e.attackCd = Math.max(0, e.attackCd - 1);
   e.breedCd = Math.max(0, e.breedCd - 1);
   e.teleportCd = Math.max(0, e.teleportCd - 1);
-  if (e.love > 0) { e.love--; if (e.love % 10 === 0) game.particles.bits(e.x, e.y + e.h + 0.2, e.z, TEX.heart, 1, 0.5, 0.2); }
+  if (e.love > 0) { e.love--; if (e.love % 10 === 0) game.particles.hearts(e.x, e.y + e.h * 0.5 + 0.3, e.z, 1, e.hw + 0.1); }
   if (e.baby && --e.grow <= 0) { e.baby = false; e.hw = t.hw; e.h = t.h; }
   const feetId = w.getBlock(Math.floor(e.x), Math.floor(e.y + 0.2), Math.floor(e.z));
   const inWater = WATERLIKE[feetId] === 1 || WATERLIKE[w.getBlock(Math.floor(e.x), Math.floor(e.y + e.h * 0.6), Math.floor(e.z))] === 1;
@@ -248,17 +254,24 @@ function becomeDrowned(ents, e) {
   ents.game.audio.mob('zombie', 'hurt', { x: e.x, y: e.y + 1.6, z: e.z }, 0.75);
 }
 
+// A burst of love hearts over creature `e` (everyone in a multiplayer game sees them).
+function loveHearts(game, e, n) {
+  const y = e.y + e.h * 0.5 + 0.3;
+  game.particles.hearts(e.x, y, e.z, n, e.hw + 0.1);
+  if (game.net?.host) game.net.effect('hearts', e.x, y, e.z, n);
+}
+
 // With someone on its back: an untamed horse makes up its mind whether to keep them; a tame one
 // without a saddle wanders where it likes. (The rider's keys steer a saddled one; see riding.js.)
 function riddenTick(ents, e) {
   const game = ents.game, at = { x: e.x, y: e.y + e.h, z: e.z };
   const verdict = tameTick(e);
   if (verdict === 'tame') {
-    game.particles.bits(e.x, e.y + e.h + 0.3, e.z, TEX.heart, 7, 1, 0.5);
+    loveHearts(game, e, 7);
     game.audio.mob('horse', 'say', at, 1.1);
   } else if (verdict === 'buck') {
     game.audio.mob('horse', 'angry', at);
-    game.particles.bits(e.x, e.y + e.h + 0.3, e.z, TEX.angry, 5, 0.8, 0.4);
+    game.particles.icons(TEX.angry, e.x, e.y + e.h + 0.1, e.z, 3, 0.4, 0.3, 0.12);
     ents.throwRider(e);
   } else if (e.tame && !e.saddled) wander(e, 0.5);
   e.headYaw *= 0.8; e.headPitch *= 0.8;
@@ -349,19 +362,24 @@ function animalTick(ents, e) {
   if (e.home && dist2(e, e.home) > (t.homeRange ?? 4)) { faceTowards(e, e.home.x, e.home.z); e.moving = true; }
 }
 
-// In love: go to a partner (another of its kind in love nearby) and have a baby with them.
+// In love: go to a partner (another of its kind in love nearby, or a horse and a donkey, whose foal
+// is a mule) and have a baby with them.
+const CROSS = { horse: 'donkey', donkey: 'horse' };
 function seekMate(ents, e) {
   const game = ents.game;
-  const mate = ents.list.find((o) => o !== e && o.kind === 'mob' && o.type === e.type && o.love > 0 && !o.baby && !o.dead && !o.dying && dist2(o, e) < 8);
+  const mate = ents.list.find((o) => o !== e && o.kind === 'mob' && (o.type === e.type || o.type === CROSS[e.type]) && o.love > 0 && !o.baby &&
+    !o.dead && !o.dying && dist2(o, e) < 8);
   if (!mate) return false;
   faceTowards(e, mate.x, mate.z);
   e.moving = dist2(mate, e) > 1.2;
   if (!e.moving && e.love > 0 && mate.love > 0) {
     e.love = mate.love = 0; e.breedCd = mate.breedCd = 6000;
     // (A foal of two tame horses is born tame; puppies and kittens belong to their parents' owner.)
-    const baby = ents.spawnMob(e.type, (e.x + mate.x) / 2, e.y, (e.z + mate.z) / 2, { baby: true, variant: Math.random() < 0.5 ? e.variant : mate.variant,
+    const same = mate.type === e.type;
+    const baby = ents.spawnMob(same ? e.type : 'mule', (e.x + mate.x) / 2, e.y, (e.z + mate.z) / 2, { baby: true,
+      variant: !same ? 0 : Math.random() < 0.5 ? e.variant : mate.variant,
       colour: Math.random() < 0.5 ? e.colour : mate.colour, tame: e.tame && mate.tame, owner: e.owner && e.owner === mate.owner ? e.owner : null });
-    game.particles.bits(baby.x, baby.y + 0.5, baby.z, TEX.heart, 6, 1, 0.5);
+    loveHearts(game, baby, 7);
     ents.spawnXp(baby.x, baby.y + 0.5, baby.z, 1 + Math.floor(Math.random() * 7));
   }
   return true;
@@ -628,7 +646,7 @@ function witchTick(ents, e, tg, dist) {
     e.drinking = 32;
     e.held = I.potion_healing ?? null;
     e.health = Math.min(e.maxHealth, e.health + 6);
-    game.particles.bits(e.x, e.y + 2, e.z, TEX.happy, 6, 0.8, 0.5);
+    game.particles.icons(TEX.happy, e.x, e.y + 1.7, e.z, 6, 0.4);
     game.audio.mob('witch', 'drink', { x: e.x, y: e.y + 1.6, z: e.z });
   }
   const ex = e.x, ey = e.y + 1.6, ez = e.z, ty = tg.y + (tg.kind === 'mob' ? tg.h * 0.6 : 1.2);
@@ -900,7 +918,7 @@ export function applyMobUse(ents, e, id, effect, uid = null, name = null) {
         // (Wolves and parrots sit down to wait for their new owner.)
         e.sitting = e.type !== 'cat';
         if (e.def.tameHealth) { e.maxHealth = e.def.tameHealth; e.health = e.maxHealth; }
-        game.particles.bits(e.x, e.y + e.h + 0.3, e.z, TEX.heart, 7, 1, 0.5);
+        loveHearts(game, e, 7);
         game.audio.mob(e.def.sound, 'say', at);
         game.net?.resend?.(e);
       } else game.particles.smoke(e.x, e.y + e.h + 0.2, e.z, 5, 0.3);
@@ -908,7 +926,7 @@ export function applyMobUse(ents, e, id, effect, uid = null, name = null) {
     case 'sit': e.sitting = !e.sitting; e.target = null; e.moving = false; e.vx = e.vz = 0; break;
     case 'heal':
       e.health = Math.min(e.maxHealth ?? e.health, e.health + 4);
-      game.particles.bits(e.x, e.y + e.h + 0.2, e.z, TEX.heart, 3, 0.8, 0.4);
+      loveHearts(game, e, 3);
       break;
     case 'collar': e.collar = DYE_OF[id] ?? e.collar; game.net?.resend?.(e); break;
     case 'milk': game.audio.bucket('fill', at); break;
@@ -919,14 +937,14 @@ export function applyMobUse(ents, e, id, effect, uid = null, name = null) {
       game.audio.shear?.(at);
       break;
     }
-    case 'breed': e.love = 600; game.particles.bits(e.x, e.y + e.h + 0.3, e.z, TEX.heart, 5, 0.8, 0.4); break;
-    case 'grow': e.grow = Math.max(0, e.grow - 2400); game.particles.bits(e.x, e.y + e.h + 0.2, e.z, TEX.happy, 5, 0.8, 0.4); break;
+    case 'breed': e.love = 600; loveHearts(game, e, 7); break;
+    case 'grow': e.grow = Math.max(0, e.grow - 2400); game.particles.icons(TEX.happy, e.x, e.y + e.h * 0.5, e.z, 5, e.hw + 0.1); break;
     case 'dye': e.colour = DYE_OF[id]; break;
     case 'saddle': e.saddled = true; game.audio.equip('leather'); break;
     case 'feed':
       e.health = Math.min(e.maxHealth ?? e.health, e.health + (id === I.wheat ? 2 : 4));
       if (!e.tame) e.temper = Math.min(100, (e.temper ?? 0) + (id === I.golden_apple || id === I.golden_carrot ? 10 : 3));
-      game.particles.bits(e.x, e.y + e.h + 0.2, e.z, TEX.happy, 5, 0.8, 0.4);
+      game.particles.icons(TEX.happy, e.x, e.y + e.h * 0.5, e.z, 5, e.hw + 0.1);
       game.audio.mob('horse', 'eat', at);
       break;
     default:
@@ -1274,9 +1292,11 @@ function sitPose(rigName) {
 // Adds creature `e` to the render list `out` (camera-relative position rx, ry, rz).
 export function renderMob(ents, e, rx, ry, rz, light, out) {
   const t = e.def, r = ents.game.renderer;
-  const skins = { ...t.extraSkins, main: t.skins[Math.max(0, Math.min(e.variant | 0, t.skins.length - 1))] };
+  const v = Math.max(0, e.variant | 0), n = t.skins.length;
+  const skins = { ...t.extraSkins, main: t.skins[Math.min(t.markings ? v % n : v, n - 1)] };
+  const marks = t.markings?.[Math.floor(v / n) - 1];
+  if (marks) skins.markings = marks;
   if (t.wool) skins.wool = t.wool;
-  if (t.saddleSkin) skins.saddle = t.saddleSkin;
   if (t.type === 'wolf' && e.angry > 0) skins.main = 'wolf_angry';
   if (t.kind === 'civilian') skins.main = e.skin;
   const pet = !!e.owner || (e.tame && t.tameIds.size > 0);
@@ -1314,8 +1334,9 @@ export function renderMob(ents, e, rx, ry, rz, light, out) {
   poseMob(e, pose);
   const parts = [];
   for (const m of meshes) {
-    if ((m.bone.wool && e.sheared) || (m.bone.saddle && !e.saddled) || (m.bone.collar && !pet)) continue;
-    parts.push({ mesh: m.mesh, model: boneMatrix(ents.mat(), base, m.bone, pose, m.name) });
+    if ((m.bone.wool && e.sheared) || (m.bone.saddle && !e.saddled) || (m.bone.collar && !pet) || (m.bone.markings && !marks) ||
+      (m.bone.ridden && !(e.rider || e.ridden))) continue;
+    parts.push({ mesh: m.mesh, model: boneMatrix(ents.mat(), base, m.bone, pose, m.name, t.rigDef.bones) });
   }
   // What it holds: attached to the hand of the arm bone.
   const held = e.held ?? (e.drinking ? I.potion_healing ?? null : null) ?? (t.held ? I[t.held] : null);
@@ -1324,7 +1345,7 @@ export function renderMob(ents, e, rx, ry, rz, light, out) {
     const mesh = r.itemMesh(held);
     const armBone = t.rigDef.bones[hand.bone];
     if (mesh && armBone) {
-      const m = boneMatrix(ents.mat(), base, armBone, pose, hand.bone);
+      const m = boneMatrix(ents.mat(), base, armBone, pose, hand.bone, t.rigDef.bones);
       translate(m, m, 8 + (hand.at[0] - armBone.pivot[0]) / 16, 8 + (hand.at[1] - armBone.pivot[1]) / 16, 8 + (hand.at[2] - armBone.pivot[2]) / 16);
       holdItem(m, held, mesh.kind);
       parts.push({ mesh, model: m });
@@ -1426,7 +1447,7 @@ export function herdFor(chunk, seed) {
         const yy = water ? y - 1 - Math.floor(Math.random() * 2) : y + 1;
         if (water && WATERLIKE[chunk.blocks[(yy << 8) | (lz << 4) | lx]] !== 1) break;
         out.push({ type, x: chunk.cx * 16 + lx + 0.5, y: yy, z: chunk.cz * 16 + lz + 0.5,
-          o: { variant: MOBS[type].variants ? Math.floor(Math.random() * MOBS[type].skins.length) : variant,
+          o: { variant: MOBS[type].variants ? Math.floor(Math.random() * (MOBS[type].variantCount ?? MOBS[type].skins.length)) : variant,
             colour: type === 'sheep' ? sheepColour(Math.random()) : 0, baby: Math.random() < 0.1 } });
       }
       break;

@@ -636,6 +636,19 @@ doubled in size (the particles). Anything not listed is drawn by the game's own 
 | `skins/chicken.png` | Pixel Perfection CE entity/chicken.png | changed |
 | `skins/wolf.png` | Pixel Perfection CE entity/wolf/wolf.png | changed |
 | `skins/wolf_angry.png` | Pixel Perfection CE entity/wolf/wolf_angry.png | changed |
+| `skins/horse_white.png` | Pixel Perfection CE entity/horse/horse_white.png | changed |
+| `skins/horse_creamy.png` | Pixel Perfection CE entity/horse/horse_creamy.png | changed |
+| `skins/horse_chestnut.png` | Pixel Perfection CE entity/horse/horse_chestnut.png | changed |
+| `skins/horse_brown.png` | Pixel Perfection CE entity/horse/horse_brown.png | changed |
+| `skins/horse_black.png` | Pixel Perfection CE entity/horse/horse_black.png | changed |
+| `skins/horse_gray.png` | Pixel Perfection CE entity/horse/horse_gray.png | changed |
+| `skins/horse_dark_brown.png` | Pixel Perfection CE entity/horse/horse_darkbrown.png | changed |
+| `skins/horse_markings_white.png` | Pixel Perfection CE entity/horse/horse_markings_white.png | changed |
+| `skins/horse_markings_whitefield.png` | Pixel Perfection CE entity/horse/horse_markings_whitefield.png | changed |
+| `skins/horse_markings_whitedots.png` | Pixel Perfection CE entity/horse/horse_markings_whitedots.png | changed |
+| `skins/horse_markings_blackdots.png` | Pixel Perfection CE entity/horse/horse_markings_blackdots.png | changed |
+| `skins/donkey.png` | Pixel Perfection CE entity/horse/donkey.png | changed |
+| `skins/mule.png` | Pixel Perfection CE entity/horse/mule.png | changed |
 | `skins/snow_golem.png` | Pixel Perfection CE entity/snow_golem.png | changed |
 | `skins/armor_leather.png` | Pixel Perfection CE models/armor/leather_layer_1.png; Pixel Perfection CE models/armor/leather_layer_1_overlay.png | changed |
 | `skins/armor_leather_legs.png` | Pixel Perfection CE models/armor/leather_layer_2.png; Pixel Perfection CE models/armor/leather_layer_2_overlay.png | changed |

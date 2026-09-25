@@ -74,7 +74,8 @@ On phones and tablets, on-screen controls appear automatically. The left stick m
 - **Armor:** leather, chainmail, iron, gold and diamond, with Minecraft's damage reduction and wear. Your character wears it, and so do other players.
 - **Experience and enchanting:** orbs and levels, an enchanting table with 24 enchantments, and anvils and grindstones.
 - **Potions:** 12 kinds, to drink or throw as splash potions. Witches throw them at you, and status effects show on the HUD.
-- **Getting about:** boats, horses, donkeys and mules to tame and saddle, and minecarts on rails, including powered and detector rails.
+- **Getting about:** boats, horses (seven coats, with or without markings), donkeys and mules to tame and saddle, and minecarts on rails, including powered and detector rails. Breed a horse with a donkey for a mule.
+- **Breeding:** feed two animals of a kind their food and love hearts float over them until they meet and have a baby; tamed animals show hearts too.
 - **Fishing:** cast, wait for a bite, and reel in fish, junk or treasure.
 - **And more:** cake, name tags and leads, item frames, 15 paintings, flower pots, note blocks, and a jukebox with 8 music discs.
 - **Shaders:** **Options → Shaders** (Low or High) adds sunlight with soft shadows, glinting water, a glowing sky, bloom and light shafts.

@@ -46,6 +46,9 @@ function declaredNames(src, i) {
       continue;
     }
     const ch = src[i];
+    // (Comments are skipped: an apostrophe in one isn't a quote.)
+    if (ch === '/' && src[i + 1] === '/') { while (i < src.length && src[i] !== '\n') i++; continue; }
+    if (ch === '/' && src[i + 1] === '*') { i = src.indexOf('*/', i + 2) + 2; if (i < 2) break; continue; }
     if (ch === '"' || ch === "'" || ch === '`') {
       for (i++; i < src.length && src[i] !== ch; i++) if (src[i] === '\\') i++;
     } else if (ch === '(' || ch === '[' || ch === '{') depth++;

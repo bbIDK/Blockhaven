@@ -62,7 +62,7 @@ function boneMeal(game, t) {
     }
   }
   if (!did) return false;
-  game.particles.bits(t.x + 0.5, t.y + 0.6, t.z + 0.5, TEX.happy, 12, 1.2, 0.6);
+  game.particles.icons(TEX.happy, t.x + 0.5, t.y + 0.4, t.z + 0.5, 10, 0.45);
   return consumed(game);
 }
 
@@ -107,7 +107,7 @@ export function useWorkstation(game, held, t) {
     if (level === 0 || Math.random() < chance) {
       w.setBlock(t.x, t.y, t.z, id + 1);
       if (level + 1 === 7) w.scheduleTick(t.x, t.y, t.z, 20);
-      game.particles.bits(t.x + 0.5, t.y + 0.4 + level * 0.12, t.z + 0.5, TEX.happy, 6, 0.6, 0.4);
+      game.particles.icons(TEX.happy, t.x + 0.5, t.y + 0.3 + level * 0.12, t.z + 0.5, 5, 0.35);
     }
     game.audio.place('grass', at);
     return consumed(game);

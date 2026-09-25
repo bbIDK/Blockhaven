@@ -67,7 +67,7 @@ export const cleanTagName = (text) => String(text ?? '').replace(/\p{C}/gu, '').
 export function mobFlags(e) {
   return (e.hurt > 0 ? 1 : 0) | (e.dying ? 2 : 0) | (e.swing > 0.3 ? 4 : 0) | (e.burning ? 8 : 0) | (e.sheared ? 16 : 0) | (e.angry > 0 ? 32 : 0) |
     (e.fuse > 0 ? 64 : 0) | (e.aim > 0 ? 128 : 0) | (e.pose === 'sleep' ? 256 : 0) | (e.saddled ? 512 : 0) | (e.tame ? 1024 : 0) | (e.rider ? 2048 : 0) |
-    (e.roost ? 4096 : 0) | (e.drinking > 0 ? 8192 : 0) | (e.sitting ? 16384 : 0);
+    (e.roost ? 4096 : 0) | (e.drinking > 0 ? 8192 : 0) | (e.sitting ? 16384 : 0) | (e.love > 0 ? 32768 : 0);
 }
 
 export class Entities {
@@ -954,6 +954,9 @@ export class Entities {
         e.hurt = Math.max(0, e.hurt - 1);
         e.fuse = e.fuseOn ? e.fuse + 1 : 0;
         if (e.burning && Math.random() < 0.25) game.particles.smoke(e.x, e.y + 1 + Math.random() * 0.9, e.z, 1, 0.3);
+        // In love (the host says so): a heart every half second, as on the host.
+        e.loveTick = ((e.loveTick ?? 0) + 1) % 10;
+        if ((e.flags & 32768) && e.loveTick === 0) game.particles.hearts(e.x, e.y + e.h * 0.5 + 0.3, e.z, 1, e.hw + 0.1);
         if (e.def.sound && Math.random() < (e.def.hostile ? 0.005 : 0.003)) game.audio.mob(e.def.sound, 'say', { x: e.x, y: e.y + e.h * 0.8, z: e.z }, e.def.pitch);
       }
     }

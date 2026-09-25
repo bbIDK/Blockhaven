@@ -211,41 +211,38 @@ skin('goat', (sk) => {
 });
 
 // Horses: a coat in seven colours with a darker (or, on creamy horses, flaxen) mane and tail,
-// eyes set on the sides of the head, a soft muzzle and dark hooves.
+// eyes set on the sides of the head, a darker muzzle and dark hooves, in Minecraft's horse layout.
+// (These are stand-ins: the game uses Pixel Perfection's horses, see tools/skin-sources.mjs.)
 export const HORSE_COATS = [
   ['white', 0xe8e4dc, 0xcdc8be], ['creamy', 0xc9a878, 0xeadcbc], ['chestnut', 0x9c5a2e, 0x6a3818], ['brown', 0x6e4a2e, 0x2e1c10],
   ['black', 0x2c2826, 0x121010], ['gray', 0x8c8884, 0x4c4846], ['dark_brown', 0x40291c, 0x1a100a],
 ];
-for (const [name, coatC, maneC] of HORSE_COATS) {
-  skin(`horse_${name}`, (sk) => {
-    const coat = ramp(coatC, 5, 0.1, 6), mane = ramp(maneC, 4, 0.1, 6);
-    fur(sk, 'horse', ['body', 'head', 'legFR'], coat, { cell: 2, grain: 0.25 });
-    const [, head, earR, , maneCube] = cubesOf('horse', 'head');
-    sk.box(maneCube, (face, r) => sk.fill(r, mane, { cell: 1, cy: 2, grain: 0.35 }));
-    sk.box(earR, (face, r) => sk.fill(r, coat.slice(0, 3), { cell: 1 }));
-    for (const cube of cubesOf('horse', 'tail')) sk.box(cube, (face, r) => sk.fill(r, mane, { cell: 1, cy: 3, grain: 0.4 }));
-    // Eyes on the sides, towards the front; nostrils and a darker muzzle at the end of the nose.
-    const R = reg(head);
-    at(sk, R.right, 5, 1, 0x141010); at(sk, R.right, 6, 1, 0x2a2420);
-    at(sk, R.left, 1, 1, 0x2a2420); at(sk, R.left, 2, 1, 0x141010);
-    for (const face of ['front', 'bottom']) tone(sk, [R[face][0], R[face][1] + R[face][3] - 2, R[face][2], 2], 0.82);
-    for (const side of ['right', 'left']) tone(sk, [R[side][0] + (side === 'right' ? 6 : 0), R[side][1] + 2, 2, 3], 0.85);
-    at(sk, R.front, 1, 3, 0x1a1412); at(sk, R.front, 4, 3, 0x1a1412);
-    // A lighter blaze down the face of the darker coats.
-    if (['chestnut', 'brown', 'dark_brown'].includes(name)) for (let y = 0; y < 3; y++) { at(sk, R.front, 2, y, coat[4]); at(sk, R.front, 3, y, coat[4]); }
-    feet(sk, 'horse', ['legFR'], 2, [0x2a2420, 0x3a322c]);
-  });
+// Markings drawn over the coat: white socks and blaze, a white field, white spots, black spots.
+export const HORSE_MARKINGS = ['white', 'whitefield', 'whitedots', 'blackdots'];
+const LEATHER = [0x3a2010, 0x5a3218, 0x6e4122, 0x8e5832];
+// The saddle and bridle, which come in the horse's own skin.
+function tack(sk, rig) {
+  for (const b of ['saddle', 'bridle', 'reins']) each(sk, rig, [b], (face, r) => sk.fill(r, face === 'top' ? LEATHER.slice(1) : LEATHER.slice(0, 3), { cell: 1, grain: 0.3 }));
 }
-// The saddle: dark leather, a lighter seat, iron stirrups.
-skin('horse_saddle', (sk) => {
-  const leather = [0x3a2010, 0x5a3218, 0x6e4122, 0x8e5832];
-  for (const cube of cubesOf('horse', 'saddle')) {
-    sk.box(cube, (face, r) => {
-      if (cube.size[1] === 6) { sk.fill(r, [0x5a5a5a, 0x8a8a8a, 0xb0b0b0], { cell: 1 }); if (face !== 'top' && face !== 'bottom') row(sk, r, 0, leather[1]); }
-      else sk.fill(r, face === 'top' ? leather.slice(1) : leather.slice(0, 3), { cell: 1, grain: 0.3 });
-    });
+function horseSkin(sk, rig, coatC, maneC, paleC = null) {
+  const coat = ramp(coatC, 5, 0.1, 6), mane = ramp(maneC, 4, 0.1, 6);
+  fur(sk, rig, ['body', 'head', 'legFR', ...(RIGS[rig].bones.earL ? ['earL'] : [])], coat, { cell: 2, grain: 0.25 });
+  const [, head, muzzle, maneCube] = cubesOf(rig, 'head');
+  sk.box(maneCube, (face, r) => sk.fill(r, mane, { cell: 1, cy: 2, grain: 0.35 }));
+  for (const cube of cubesOf(rig, 'tail')) sk.box(cube, (face, r) => sk.fill(r, mane, { cell: 1, cy: 3, grain: 0.4 }));
+  const R = reg(head), M = reg(muzzle);
+  at(sk, R.right, 4, 1, 0x141010); at(sk, R.left, 2, 1, 0x141010);
+  for (const face of ['front', 'bottom', 'right', 'left']) {
+    if (paleC) sk.fill(M[face], ramp(paleC, 3, 0.05, 4), { cell: 1 }); else tone(sk, M[face], 0.84);
   }
-});
+  at(sk, M.front, 0, 1, 0x1a1412); at(sk, M.front, 3, 1, 0x1a1412);
+  feet(sk, rig, ['legFR'], 2, [0x2a2420, 0x3a322c]);
+  tack(sk, rig);
+}
+for (const [name, coatC, maneC] of HORSE_COATS) skin(`horse_${name}`, (sk) => horseSkin(sk, 'horse', coatC, maneC));
+for (const name of HORSE_MARKINGS) skin(`horse_markings_${name}`, () => {});
+skin('donkey', (sk) => horseSkin(sk, 'donkey', 0x8a7a68, 0x3a3028, 0xcfc4b4));
+skin('mule', (sk) => horseSkin(sk, 'donkey', 0x5e3f28, 0x2a1c12, 0x9a7a5a));
 
 const BEAR = ramp(0xecebe4, 5, 0.07, 6);
 skin('polar_bear', (sk) => {
@@ -573,24 +570,6 @@ for (const mat of Object.keys(ARMOR_MATERIALS)) {
 // ---------------------------------------------------------------- more creatures
 // Donkeys: grey-brown, with a pale muzzle and belly, a dark mane and stripe, and long ears lined
 // with dark fur.
-skin('donkey', (sk) => {
-  const coat = ramp(0x8a7a68, 5, 0.1, 6), mane = ramp(0x3a3028, 4, 0.1, 6), pale = ramp(0xcfc4b4, 3, 0.05, 4);
-  fur(sk, 'donkey', ['body', 'head', 'legFR'], coat, { cell: 2, grain: 0.3 });
-  const [, head, earR, , maneCube] = cubesOf('donkey', 'head');
-  sk.box(maneCube, (face, r) => sk.fill(r, mane, { cell: 1, cy: 2 }));
-  sk.box(earR, (face, r) => { sk.fill(r, coat.slice(0, 3), { cell: 1 }); if (face === 'front') for (let y = 1; y < r[3]; y++) at(sk, r, 1, y, mane[0]); });
-  for (const cube of cubesOf('donkey', 'tail')) sk.box(cube, (face, r) => sk.fill(r, mane, { cell: 1, cy: 3 }));
-  const R = reg(head);
-  at(sk, R.right, 5, 1, 0x141010); at(sk, R.right, 6, 1, 0x2a2420);
-  at(sk, R.left, 1, 1, 0x2a2420); at(sk, R.left, 2, 1, 0x141010);
-  for (const face of ['front', 'bottom']) sk.fill([R[face][0], R[face][1] + R[face][3] - 3, R[face][2], 3], pale, { cell: 1 });
-  at(sk, R.front, 1, 3, 0x2a2018); at(sk, R.front, 4, 3, 0x2a2018);
-  const body = reg(cubesOf('donkey', 'body')[0]);
-  sk.fill(body.bottom, pale, { cell: 2 });
-  for (let y = 0; y < body.top[3]; y++) { at(sk, body.top, 4, y, mane[1]); at(sk, body.top, 5, y, mane[2]); }
-  feet(sk, 'donkey', ['legFR'], 2, [0x2a2420, 0x3a322c]);
-});
-
 // Iron golems: iron plates gone rusty in places, vines hanging off them, a heavy brow over
 // deep-set eyes, and a long nose.
 const IRON_G = [0x7a746c, 0x948e84, 0xaaa398, 0xbdb6aa, 0xcfc8bc];

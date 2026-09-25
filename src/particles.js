@@ -127,6 +127,23 @@ export class Particles {
     }
   }
 
+  // Little pictures, whole (love hearts, green sparkles, a storm cloud), that float up and slow to
+  // a stop, spread over `w` each way. `rise`: roughly how far they go (blocks).
+  icons(layer, x, y, z, n = 1, w = 0.4, rise = 0.25, size = 0.09) {
+    for (let i = 0; i < n; i++) {
+      if (this.list.length >= MAX) this.list.shift();
+      this.list.push({
+        x: x + (Math.random() - 0.5) * 2 * w, y: y + Math.random() * 0.5, z: z + (Math.random() - 0.5) * 2 * w,
+        vx: 0, vy: rise * 4 * (0.8 + Math.random() * 0.4), vz: 0, life: 0.8 + Math.random() * 0.25, age: 0, size: size * (1 + Math.random() * 0.3),
+        layer, flags: 0, tint: [255, 255, 255], u: 0, v: 0, whole: true, drift: true,
+      });
+    }
+  }
+
+  // Love hearts, as in the original (an animal in love, one just tamed or fed for breeding, a
+  // newborn): they float up about half a block.
+  hearts(x, y, z, n = 1, w = 0.4) { this.icons(TEX.heart, x, y, z, n, w, 0.5, 0.1); }
+
   // A musical note popping up over a note block, in the colour of its pitch.
   note(x, y, z, colour) {
     if (this.list.length >= MAX) this.list.shift();

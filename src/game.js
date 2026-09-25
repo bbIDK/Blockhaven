@@ -1307,7 +1307,7 @@ export class Game {
     if (!p || this.state === 'dead' || scale <= 0) return;
     if (p.effect === 'healing') {
       this.health = Math.min(20, this.health + Math.max(1, Math.round(4 * scale)));
-      this.particles.bits(this.player.x, this.player.y + 1.5, this.player.z, TEX.heart, 4, 0.8, 0.4);
+      this.particles.hearts(this.player.x, this.player.y + 1.2, this.player.z, 4, 0.4);
     } else if (p.effect === 'harming') this.damage(Math.max(1, Math.round(6 * scale)), 'You were killed by magic', true);
     else if (!this.creative || !EFFECTS[p.effect].bad) this.addEffect(p.effect, Math.round(p.seconds * (splash ? 0.75 : 1) * scale), 1);
   }
@@ -2509,7 +2509,7 @@ export class Game {
   // A block did something audible on its own (a composter finishing).
   blockSound(x, y, z, kind) {
     const at = { x: x + 0.5, y: y + 0.5, z: z + 0.5 };
-    if (kind === 'composter') { this.audio.place('grass', at); this.particles.bits(at.x, y + 1, at.z, TEX.happy, 8, 0.6, 0.4); }
+    if (kind === 'composter') { this.audio.place('grass', at); this.particles.icons(TEX.happy, at.x, y + 0.8, at.z, 6, 0.35); }
     else if (kind === 'open' || kind === 'close') this.audio.door(kind === 'open', at);
     else if (kind === 'click_on' || kind === 'click_off') this.audio.switchClick(kind === 'click_on', at);
   }

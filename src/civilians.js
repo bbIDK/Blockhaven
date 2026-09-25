@@ -627,7 +627,7 @@ export class Civilians {
       rec.used[offer.key] = (rec.used[offer.key] ?? 0) + 1;
       rec.rep = Math.min(30, rec.rep + 0.5);
     }
-    game.particles.bits(e.x, e.y + 2.1, e.z, TEX.happy, 6, 0.8, 0.5);
+    game.particles.icons(TEX.happy, e.x, e.y + 1.8, e.z, 6, 0.4);
     game.audio.trade?.();
     game.dropXp(e.x, e.y + 1, e.z, 3 + Math.floor(Math.random() * 4));
     game.invChanged();
