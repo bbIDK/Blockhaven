@@ -132,6 +132,10 @@ const spawnEgg = (a, b) => (H) => H.paste(H.tint(H.load('item/spawn_egg'), rgb(a
 // Music discs: Pixel Perfection's discs with labels of about the game's colours.
 const DISCS = ['cat', 'mall', 'blocks', 'wait', '13', 'mellohi', 'ward', 'strad'];
 
+// Bamboo's greens (dark to light): the cane, and its leaves a shade darker.
+const BAMBOO_CANE = [0x2c4812, 0x385c16, 0x45711b, 0x538522, 0x62992a, 0x74ab36];
+const BAMBOO_LEAF = [0x1d3c0b, 0x284f10, 0x336415, 0x3f781a, 0x4c8c20];
+const bambooCane = (H) => H.paste(H.blank(), H.remap(H.crop(H.frame(H.load('block/bamboo_stalk')), 0, 0, 3, 16), () => true, BAMBOO_CANE), 7, 0);
 export const SOURCES = {
   // ---------------------------------------------------------------- terrain
   grass_top: 'block/grass_block_top',
@@ -266,10 +270,13 @@ export const SOURCES = {
   cooked_venison: (H) => H.remap(H.load('item/cooked_mutton'), () => true, [0x2a1810, 0x44261a, 0x5e3624, 0x74462e, 0x8c5a3a, 0xa87250]),
   raw_bear: (H) => H.remap(H.load('item/beef'), () => true, [0x2e1216, 0x48181e, 0x642228, 0x7c2c34, 0x983e44, 0xb45a5c, 0xcc8078]),
   cooked_bear: (H) => H.remap(H.load('item/cooked_beef'), () => true, [0x241410, 0x3a2016, 0x52301e, 0x684028, 0x805236, 0x9a6a48]),
-  // Bamboo: its cane (the three-pixel stalk in the pack's model texture) standing up the middle
-  // of the block, with its leaves over it, like sugar cane.
-  bamboo: (H) => H.paste(H.paste(H.blank(), H.crop(H.frame(H.load('block/bamboo_stalk')), 0, 0, 3, 16), 7, 0), H.load('block/bamboo_small_leaves')),
-  bamboo_item: 'item/bamboo',
+  // Bamboo: its cane (the three-pixel stalk in the pack's model texture) standing up the middle of
+  // the block, in a deeper green than the pack's pale one: bare down the stalk, with the small
+  // leaves on the segment below the top and the big ones on the top (the mesher picks which).
+  bamboo: (H) => H.paste(bambooCane(H), H.remap(H.load('block/bamboo_large_leaves'), () => true, BAMBOO_LEAF)),
+  bamboo_mid: (H) => H.paste(bambooCane(H), H.remap(H.load('block/bamboo_small_leaves'), () => true, BAMBOO_LEAF)),
+  bamboo_stalk: (H) => bambooCane(H),
+  bamboo_item: (H) => H.remap(H.load('item/bamboo'), () => true, BAMBOO_CANE),
   amethyst_shard: mcl(`${MCL.amethyst}_amethyst_shard`),
   dye: grayOf('item/white_dye', 0.67),
   minecart_item: 'item/minecart',

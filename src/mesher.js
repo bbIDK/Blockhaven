@@ -8,6 +8,7 @@ import {
   LEAFY, FAST_LEAF_LAYER,
 } from './blocks.js';
 import { columnColors, fromByte } from './biomes.js';
+import { TEX } from './textures.js';
 import { hash2 } from './math.js';
 
 export const P = 18, P2 = P * P, PADDED = P * P2;
@@ -242,7 +243,7 @@ function rail(buf, light, x, y, z, p, id) {
 const JITTER = new Set(['tall_grass', 'fern', 'dandelion', 'poppy', 'cornflower', 'dead_bush', 'red_mushroom', 'brown_mushroom', 'allium',
   'azure_bluet', 'blue_orchid', 'oxeye_daisy', 'red_tulip', 'orange_tulip', 'white_tulip', 'pink_tulip', 'lily_of_the_valley'].map((n) => B[n]));
 
-function cross(buf, light, x, y, z, p, id, wx, wz) {
+function cross(buf, blocks, light, x, y, z, p, id, wx, wz) {
   const l = light[p];
   const sky = (l >> 4) * 17, blk = (l & 15) * 17;
   let ox = 0, oz = 0;
@@ -250,7 +251,11 @@ function cross(buf, light, x, y, z, p, id, wx, wz) {
     ox = Math.round((hash2(wx, wz, 77) - 0.5) * 0.3 * U);
     oz = Math.round((hash2(wz, wx, 91) - 0.5) * 0.3 * U);
   }
-  const layer = TEXL[id * 6], flags = FFLAGS[id * 6] & FLAG_MASK;
+  let layer = TEXL[id * 6];
+  const flags = FFLAGS[id * 6] & FLAG_MASK;
+  // Bamboo is bare cane but for its top: big leaves on the top segment, small ones on the one below
+  // (two blocks up is past the section's edge for its top layer, which then stays bare).
+  if (id === B.bamboo && blocks[p + P2] === B.bamboo) layer = y < 15 && blocks[p + 2 * P2] !== B.bamboo ? TEX.bamboo_mid : TEX.bamboo_stalk;
   if (TINT[id]) tintFor(id, (z << 4) | x, tint); else tint[0] = tint[1] = tint[2] = 255;
   const a = Math.round(0.08 * U), b = Math.round(0.92 * U);
   const X = x * U + ox, Y = y * U, Z = z * U + oz;
@@ -397,7 +402,7 @@ export function meshSection(blocks, light, climate, cx, cz, biomes = null, tints
           const tr = TRANSLUCENT[id];
           for (let f = 0; f < 6; f++) if (faceVisible(id, blocks[p + NOFF[f]])) cubeFace(tr ? trans : dirs[f], blocks, light, x, y, z, p, id, f);
         } else if (rt === R.LIQUID) liquid(TRANSLUCENT[id] ? trans : other, blocks, light, x, y, z, p, id);
-        else if (rt === R.CROSS) cross(other, light, x, y, z, p, id, cx * 16 + x, cz * 16 + z);
+        else if (rt === R.CROSS) cross(other, blocks, light, x, y, z, p, id, cx * 16 + x, cz * 16 + z);
         else if (rt === R.FIRE) fire(other, light, x, y, z, p, id);
         else if (rt === R.TORCH) torch(other, light, x, y, z, p, id);
         else if (rt === R.CACTUS) cactus(dirs, blocks, light, x, y, z, p, id);

@@ -697,8 +697,10 @@ doubled in size (the particles). Anything not listed is drawn by the game's own 
 | `textures/cooked_venison.png` | Pixel Perfection CE item/cooked_mutton.png | changed |
 | `textures/raw_bear.png` | Pixel Perfection CE item/beef.png | changed |
 | `textures/cooked_bear.png` | Pixel Perfection CE item/cooked_beef.png | changed |
-| `textures/bamboo.png` | Pixel Perfection CE block/bamboo_stalk.png; Pixel Perfection CE block/bamboo_small_leaves.png | changed |
-| `textures/bamboo_item.png` | Pixel Perfection CE item/bamboo.png |  |
+| `textures/bamboo.png` | Pixel Perfection CE block/bamboo_stalk.png; Pixel Perfection CE block/bamboo_large_leaves.png | changed |
+| `textures/bamboo_mid.png` | Pixel Perfection CE block/bamboo_stalk.png; Pixel Perfection CE block/bamboo_small_leaves.png | changed |
+| `textures/bamboo_stalk.png` | Pixel Perfection CE block/bamboo_stalk.png | changed |
+| `textures/bamboo_item.png` | Pixel Perfection CE item/bamboo.png | changed |
 | `textures/pig_spawn_egg.png` | Pixel Perfection CE item/spawn_egg.png; Pixel Perfection CE item/spawn_egg_overlay.png | changed |
 | `textures/cow_spawn_egg.png` | Pixel Perfection CE item/spawn_egg.png; Pixel Perfection CE item/spawn_egg_overlay.png | changed |
 | `textures/sheep_spawn_egg.png` | Pixel Perfection CE item/spawn_egg.png; Pixel Perfection CE item/spawn_egg_overlay.png | changed |
