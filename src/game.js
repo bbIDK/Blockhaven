@@ -1189,7 +1189,6 @@ export class Game {
   // Morning: time jumps to the next day, the rain stops, and everyone in bed wakes up.
   skipNight() {
     this.time = (Math.floor(this.time / TICKS_PER_DAY) + 1) * TICKS_PER_DAY + 300;
-    this.meta.lastSleep = this.time;
     this.weather.set(false);
     this.weather.rain = 0;
     this.wake(true);

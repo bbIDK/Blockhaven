@@ -10,7 +10,7 @@ import { mat4, identity, translate, rotateX, rotateY, rotateZ, scale, hash2, box
 import { B, BLOCKS, BASE, SOLID, WATERLIKE, FILTER, REPLACEABLE, RAIL, RAIL_ID } from './blocks.js';
 import { I, itemDef, DISCS } from './items.js';
 import { rayBox } from './world.js';
-import { HEIGHT, TICKS_PER_DAY, SEA_LEVEL } from './config.js';
+import { HEIGHT, SEA_LEVEL } from './config.js';
 import { villageAt } from './villages.js';
 import { BIOME } from './biomes.js';
 import { MOBS, initMob, mobTick, mobPhysics, renderMob, provoked, mobUseEffect, applyMobUse, applyHeldUse, mobDrops, mobXp, herdFor, monsterFor, HOSTILE_TYPES, seaLifeFor, ambientFor,
@@ -112,7 +112,9 @@ export class Entities {
     if (!saved) return;
     for (const s of saved) {
       if (s.k === 'item' && itemDef(s.id)) this.spawnItem(s.x, s.y, s.z, s.id, s.count, s.dmg, 0, null, cleanExtras(s.ex));
-      else if (s.k === 'mob' && MOBS[s.t] && MOBS[s.t].kind !== 'civilian') {
+      // (Phantoms no longer come at night; any a world was saved with are gone, but for those
+      // hatched from spawn eggs.)
+      else if (s.k === 'mob' && MOBS[s.t] && MOBS[s.t].kind !== 'civilian' && (s.t !== 'phantom' || s.ht)) {
         const m = this.spawnMob(s.t, s.x, s.y, s.z, extraOpts(s));
         m.yaw = s.yaw ?? 0; m.health = s.hp ?? m.health;
         if (Number.isFinite(s.mh)) m.maxHealth = s.mh;
@@ -574,22 +576,6 @@ export class Entities {
     }
   }
 
-  // Phantoms come for those who haven't slept for three nights or more: out of the night sky,
-  // over anyone standing in the open.
-  trySpawnPhantoms() {
-    const game = this.game, w = this.world;
-    if (game.env.daylight > 0.25 || game.time - (game.meta.lastSleep ?? 0) < 3 * TICKS_PER_DAY) return;
-    if (this.list.filter((e) => e.type === 'phantom' && !e.dead).length >= 3 || Math.random() < 0.5) return;
-    const open = this.players.filter((p) => !p.creative && !p.dead && p.y > 50 &&
-      (w.getLight(Math.floor(p.x), Math.floor(p.y + 1.7), Math.floor(p.z)) >> 4) >= 15);
-    if (!open.length) return;
-    const p = open[Math.floor(Math.random() * open.length)];
-    for (let k = 1 + Math.floor(Math.random() * 2); k > 0; k--) {
-      const a = Math.random() * Math.PI * 2;
-      this.spawnMob('phantom', p.x + Math.cos(a) * 10, Math.min(HEIGHT - 4, p.y + 20 + Math.random() * 10), p.z + Math.sin(a) * 10);
-    }
-  }
-
   // ---------------------------------------------------------------- simulation
   tick() {
     const game = this.game;
@@ -603,7 +589,6 @@ export class Entities {
       if (Math.random() < 0.6) this.trySpawnSea();
       if (Math.random() < 0.7) this.trySpawnAmbient();
     }
-    if ((this.phantomTimer = (this.phantomTimer ?? 0) + 1) >= 600) { this.phantomTimer = 0; this.trySpawnPhantoms(); }
     this.civilians.tick();
     this.detectorTick();
     const checkHung = ++this.hungTimer % 10 === 0;
