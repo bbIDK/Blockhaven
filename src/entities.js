@@ -62,6 +62,8 @@ export function mobExtra(e) {
 const isWild = (e) => !e.def.hostile && e.def.kind !== 'civilian' && e.def.kind !== 'water' && !e.def.flies && !e.pinned && !e.tame &&
   !e.named && !e.made && !e.hatched && !e.saddled && !e.leash;
 
+// The monsters that no longer come on their own: only from spawn eggs (see reset).
+const NOT_WILD = new Set(['phantom', 'drowned']);
 // The animals that may turn up inside a settlement (see spawnHerds).
 const FARM = new Set(['pig', 'cow', 'sheep', 'chicken', 'horse', 'donkey']);
 // The birds and insects that come and go about the land (see trySpawnAmbient).
@@ -112,9 +114,9 @@ export class Entities {
     if (!saved) return;
     for (const s of saved) {
       if (s.k === 'item' && itemDef(s.id)) this.spawnItem(s.x, s.y, s.z, s.id, s.count, s.dmg, 0, null, cleanExtras(s.ex));
-      // (Phantoms no longer come at night; any a world was saved with are gone, but for those
-      // hatched from spawn eggs.)
-      else if (s.k === 'mob' && MOBS[s.t] && MOBS[s.t].kind !== 'civilian' && (s.t !== 'phantom' || s.ht)) {
+      // (Phantoms no longer come at night, nor the drowned out of the water; any a world was saved
+      // with are gone, but for those hatched from spawn eggs or given names.)
+      else if (s.k === 'mob' && MOBS[s.t] && MOBS[s.t].kind !== 'civilian' && (!NOT_WILD.has(s.t) || s.ht || s.nm)) {
         const m = this.spawnMob(s.t, s.x, s.y, s.z, extraOpts(s));
         m.yaw = s.yaw ?? 0; m.health = s.hp ?? m.health;
         if (Number.isFinite(s.mh)) m.maxHealth = s.mh;
@@ -457,12 +459,7 @@ export class Entities {
       for (let y = Math.min(HEIGHT - 4, Math.floor(p.y) + 14); y > Math.max(1, Math.floor(p.y) - 24); y--) {
         const below = w.getBlock(x, y - 1, z);
         if (!SOLID[below] || BLOCKS[below].name.endsWith('leaves') || SOLID[w.getBlock(x, y, z)] || SOLID[w.getBlock(x, y + 1, z)]) continue;
-        if (WATERLIKE[w.getBlock(x, y, z)] === 1 && WATERLIKE[w.getBlock(x, y + 1, z)] === 1) {
-          // The drowned rise from the beds of dark rivers and seas.
-          const l = w.getLight(x, y, z);
-          if (Math.random() < 0.4 && (l & 15) <= 7 && (l >> 4) * day <= 7) { this.spawnMob('drowned', x + 0.5, y, z + 0.5); return; }
-          break;
-        }
+        // (Nothing comes up out of the water: no drowned.)
         if (WATERLIKE[w.getBlock(x, y, z)] || FILTER[w.getBlock(x, y, z)]) break;
         const l = w.getLight(x, y, z);
         if ((l & 15) > 0 || (l >> 4) * day > 7) break;

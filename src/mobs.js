@@ -333,10 +333,6 @@ export function mobTick(ents, e) {
     }
     e.cell = e.onGround ? cell : e.cell;
   }
-  // A zombie kept under water turns into a drowned.
-  if (t.type === 'zombie' && WATERLIKE[w.getBlock(Math.floor(e.x), Math.floor(e.y + 1.7), Math.floor(e.z))] === 1) {
-    if ((e.drowning = (e.drowning ?? 0) + 1) >= 600) { becomeDrowned(ents, e); return; }
-  } else e.drowning = 0;
   if (e.rider) { riddenTick(ents, e); return; }
   if (e.leash && leashTick(ents, e)) { lookTick(ents, e); return; }
   if (e.owner && petTick(ents, e)) { lookTick(ents, e); return; }
@@ -354,15 +350,6 @@ export function mobTick(ents, e) {
   }
   lookTick(ents, e);
   if (t.sound && Math.random() < (t.hostile ? 0.005 : 0.003)) game.audio.mob(t.sound, 'say', { x: e.x, y: e.y + e.h * 0.8, z: e.z }, t.pitch);
-}
-
-function becomeDrowned(ents, e) {
-  const d = ents.spawnMob('drowned', e.x, e.y, e.z, { baby: e.baby });
-  d.yaw = e.yaw; d.health = Math.min(d.health, e.health);
-  e.dead = true;
-  ents.game.net?.entityGone(e, 'x');
-  ents.game.particles.smoke(e.x, e.y + 1, e.z, 8, 0.4);
-  ents.game.audio.mob('zombie', 'hurt', { x: e.x, y: e.y + 1.6, z: e.z }, 0.75);
 }
 
 // A burst of love hearts over creature `e` (everyone in a multiplayer game sees them).
