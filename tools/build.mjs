@@ -6,7 +6,7 @@
 //   node tools/build.mjs --fragment out.html  also write the page body without <html>/<head>
 //
 // No dependencies: ES modules are wrapped in a tiny CommonJS-style loader.
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { dirname, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -128,6 +128,13 @@ html = html.replace(jsTag, () => `<script>\n${safe(peerjs)}</script>\n<script ty
 
 mkdirSync(resolve(root, 'dist'), { recursive: true });
 writeFileSync(resolve(root, 'dist/blockhaven.html'), html);
+
+// version.json, for the site: the newest update, and every file a page loads, which a page that's
+// out of date fetches afresh before reloading (see src/updates.js).
+const { BUILD } = await import('../src/version.js');
+const files = (dir) => readdirSync(resolve(root, dir), { withFileTypes: true }).flatMap((f) => (f.isDirectory() ? files(`${dir}/${f.name}`)
+  : /\.(js|css|woff2)$/.test(f.name) ? [`${dir}/${f.name}`] : []));
+writeFileSync(resolve(root, 'version.json'), `${JSON.stringify({ build: BUILD, files: ['./', 'index.html', ...files('src').sort()] })}\n`);
 console.log(`dist/blockhaven.html  ${(html.length / 1024).toFixed(0)} KB`);
 
 if (fragmentPath) {

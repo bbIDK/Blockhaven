@@ -16,6 +16,8 @@ Pick whichever is easiest:
 
 Worlds save automatically in your browser (IndexedDB), on that device only.
 
+The title screen shows which update of the game you're running (bottom left). A browser can keep running an old copy for a while after the site is updated (a tab left open, or files it kept); when the site has a newer update, a notice at the top of the title screen and the game menu says so, and its **Update** button saves your world and loads the new one. (`tools/build.mjs` writes `version.json`, which the notice reads; bump `src/version.js` with each update.)
+
 ## Play with friends
 
 One player hosts: open a world, press `Esc` and choose **Open to Friends**. Everyone else chooses **Multiplayer** on the title screen.

@@ -20,6 +20,7 @@ import { Entities } from './entities.js';
 import { TouchControls } from './touch.js';
 import { HostSession, GuestSession, openRoom, openGames, cleanName, COLORS, playerUid, playerKey } from './multiplayer.js';
 import { spacedCode } from './net.js';
+import { watchForUpdates, updateNow } from './updates.js';
 import { Avatars, RemotePlayer, playerSkin } from './avatars.js';
 import * as storage from './storage.js';
 import { makeEnvironment, updateEnvironment, clockText } from './sky.js';
@@ -272,6 +273,20 @@ export class Game {
     this.startPanorama();
     this.ui.show('screen-title');
     this.state = 'title';
+    // A newer version on the site: a notice on the title and pause screens (and a word in the chat
+    // if you're playing), whose button saves and loads it.
+    this.checkForUpdate = watchForUpdates((files) => {
+      this.ui.updateFiles = files;
+      this.ui.updateNote();
+      if (this.state === 'play') this.ui.message('A new version of Blockhaven is out: press Esc, then Update.', '#ffff55');
+    });
+    $('update-btn').addEventListener('click', async () => {
+      const b = $('update-btn');
+      if (b.disabled || !this.ui.updateFiles) return;
+      b.disabled = true; b.textContent = 'Updating…';
+      try { await this.save(); } catch (err) { console.warn(err); }
+      await updateNow(this.ui.updateFiles);
+    });
     requestAnimationFrame(this.frame);
     if (hot.worldId) storage.loadWorld(hot.worldId).then((meta) => meta && this.enterWorld(meta));
   }

@@ -893,6 +893,15 @@ kbd {
 @keyframes fire-flip { from { background-position: 0 0; } to { background-position: 0 -368vh; } }
 @media (prefers-reduced-motion: reduce) { #overlay-fire i { animation: none; } }
 
+/* A newer version of the game is on the site (updates.js): on the title and pause screens. */
+.update-note {
+  position: absolute; top: calc(env(safe-area-inset-top) + var(--u) * 4); left: 50%; transform: translateX(-50%); z-index: 30;
+  display: flex; align-items: center; gap: calc(var(--u) * 8); padding: calc(var(--u) * 3) calc(var(--u) * 3) calc(var(--u) * 3) calc(var(--u) * 8);
+  background: rgba(0, 0, 0, 0.8); box-shadow: inset 0 0 0 var(--u) #ffff55; color: #ffff55; text-shadow: var(--u) var(--u) 0 #3f3f15;
+  white-space: nowrap; pointer-events: auto;
+}
+.update-note .btn { width: auto; padding: 0 calc(var(--u) * 10); }
+
 /* ------------------------------------------------------------------ talking to villagers (tradeui.js) */
 .talk-win { margin: auto; }
 .talk-face {
@@ -988,6 +997,7 @@ kbd {
     </div>
   </div>
 
+  <div class="update-note" id="update-note" hidden><span>A new version of Blockhaven is out.</span><button class="btn" id="update-btn">Update</button></div>
   <section class="screen" id="screen-boot">
     <p class="boot-text">Loading…</p>
   </section>
@@ -23408,6 +23418,14 @@ __exports.PeerTransport = PeerTransport;
 __exports.Link = Link;
 });
 
+__define("src/version.js", function (__exports) {
+// Which update of the game this is: shown on the title screen, and compared with the site's
+// version.json (which tools/build.mjs writes) to tell when this copy is out of date (see updates.js).
+const BUILD = 17;
+
+__exports.BUILD = BUILD;
+});
+
 __define("src/keys.js", function (__exports) {
 // Key binds, as in Minecraft's Options → Controls → Key Binds: every action has a key, which the
 // player can change. The settings keep only the ones changed (`settings.keys`, action → key code).
@@ -23528,6 +23546,7 @@ const { itemDef } = __require("src/items.js");
 const { EFFECTS, clock, roman } = __require("src/potions.js");
 const { DIFFICULTIES } = __require("src/config.js");
 const { spacedCode } = __require("src/net.js");
+const { BUILD } = __require("src/version.js");
 const { BINDINGS, DEFAULT_KEYS, RESERVED, keyName } = __require("src/keys.js");
 
 const $ = (id) => document.getElementById(id);
@@ -23910,6 +23929,7 @@ class UI {
   show(id) {
     for (const s of this.screens) s.hidden = s.id !== id;
     this.current = id;
+    this.updateNote();
     if (this.listening) { this.listening = null; this.refreshKeys(); }
     if (id === 'screen-title') this.splash();
     const field = id && $(id)?.querySelector('input[type=text]');
@@ -23956,8 +23976,15 @@ class UI {
     cv.style.width = `calc(var(--u) * ${w})`;
   }
 
+  // The notice that a newer version is out (see updates.js), on the title and pause screens.
+  updateNote() {
+    const el = $('update-note');
+    if (el) el.hidden = !(this.updateFiles && (this.current === 'screen-title' || this.current === 'screen-pause'));
+  }
+
   splash() {
     $('splash').textContent = SPLASHES[Math.floor(Math.random() * SPLASHES.length)];
+    $('title-foot').textContent = `Blockhaven 1.5 · update ${BUILD}`;
   }
 
   // ---------------------------------------------------------------- HUD
@@ -37295,6 +37322,41 @@ __exports.HostSession = HostSession;
 __exports.GuestSession = GuestSession;
 });
 
+__define("src/updates.js", function (__exports) {
+// A copy of the game can be older than the one on the site: a tab left open, or files the browser
+// kept from before (the site's files can be kept for ten minutes, and each is kept on its own, so a
+// page can even end up with some old and some new). The site's version.json says which update is
+// newest; when it's newer than this one, `onNewer(files)` is called (once), and updateNow fetches
+// every one of those files afresh before reloading, so they're all the new ones.
+const { BUILD } = __require("src/version.js");
+
+function watchForUpdates(onNewer, every = 15 * 60 * 1000) {
+  // (Not the single-file build, nor a page opened from disk: they have no site to ask.)
+  if (globalThis.BLOCKHAVEN_WORKER_SRC || !/^https?:$/.test(location.protocol)) return () => {};
+  let found = false;
+  const check = async () => {
+    if (found) return;
+    try {
+      const r = await fetch(new URL('version.json', document.baseURI), { cache: 'no-store' });
+      if (!r.ok) return;
+      const v = await r.json();
+      if (Number.isInteger(v.build) && v.build > BUILD && Array.isArray(v.files)) { found = true; onNewer(v.files, v.build); }
+    } catch { /* offline, or no version.json here */ }
+  };
+  check();
+  setInterval(check, every);
+  return check;
+}
+
+async function updateNow(files) {
+  await Promise.all(files.filter((f) => typeof f === 'string').map((f) => fetch(new URL(f, document.baseURI), { cache: 'reload' }).catch(() => null)));
+  location.reload();
+}
+
+__exports.watchForUpdates = watchForUpdates;
+__exports.updateNow = updateNow;
+});
+
 __define("src/sky.js", function (__exports) {
 // Time of day -> sun direction, sky/fog colours and daylight strength.
 const { smoothstep, lerp } = __require("src/math.js");
@@ -37969,6 +38031,7 @@ const { Entities } = __require("src/entities.js");
 const { TouchControls } = __require("src/touch.js");
 const { HostSession, GuestSession, openRoom, openGames, cleanName, COLORS, playerUid, playerKey } = __require("src/multiplayer.js");
 const { spacedCode } = __require("src/net.js");
+const { watchForUpdates, updateNow } = __require("src/updates.js");
 const { Avatars, RemotePlayer, playerSkin } = __require("src/avatars.js");
 const storage = __require("src/storage.js");
 const { makeEnvironment, updateEnvironment, clockText } = __require("src/sky.js");
@@ -38215,6 +38278,20 @@ class Game {
     this.startPanorama();
     this.ui.show('screen-title');
     this.state = 'title';
+    // A newer version on the site: a notice on the title and pause screens (and a word in the chat
+    // if you're playing), whose button saves and loads it.
+    this.checkForUpdate = watchForUpdates((files) => {
+      this.ui.updateFiles = files;
+      this.ui.updateNote();
+      if (this.state === 'play') this.ui.message('A new version of Blockhaven is out: press Esc, then Update.', '#ffff55');
+    });
+    $('update-btn').addEventListener('click', async () => {
+      const b = $('update-btn');
+      if (b.disabled || !this.ui.updateFiles) return;
+      b.disabled = true; b.textContent = 'Updating…';
+      try { await this.save(); } catch (err) { console.warn(err); }
+      await updateNow(this.ui.updateFiles);
+    });
     requestAnimationFrame(this.frame);
     if (hot.worldId) storage.loadWorld(hot.worldId).then((meta) => meta && this.enterWorld(meta));
   }

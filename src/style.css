@@ -885,6 +885,15 @@ kbd {
 @keyframes fire-flip { from { background-position: 0 0; } to { background-position: 0 -368vh; } }
 @media (prefers-reduced-motion: reduce) { #overlay-fire i { animation: none; } }
 
+/* A newer version of the game is on the site (updates.js): on the title and pause screens. */
+.update-note {
+  position: absolute; top: calc(env(safe-area-inset-top) + var(--u) * 4); left: 50%; transform: translateX(-50%); z-index: 30;
+  display: flex; align-items: center; gap: calc(var(--u) * 8); padding: calc(var(--u) * 3) calc(var(--u) * 3) calc(var(--u) * 3) calc(var(--u) * 8);
+  background: rgba(0, 0, 0, 0.8); box-shadow: inset 0 0 0 var(--u) #ffff55; color: #ffff55; text-shadow: var(--u) var(--u) 0 #3f3f15;
+  white-space: nowrap; pointer-events: auto;
+}
+.update-note .btn { width: auto; padding: 0 calc(var(--u) * 10); }
+
 /* ------------------------------------------------------------------ talking to villagers (tradeui.js) */
 .talk-win { margin: auto; }
 .talk-face {

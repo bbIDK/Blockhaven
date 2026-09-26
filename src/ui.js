@@ -6,6 +6,7 @@ import { itemDef } from './items.js';
 import { EFFECTS, clock, roman } from './potions.js';
 import { DIFFICULTIES } from './config.js';
 import { spacedCode } from './net.js';
+import { BUILD } from './version.js';
 import { BINDINGS, DEFAULT_KEYS, RESERVED, keyName } from './keys.js';
 
 export const $ = (id) => document.getElementById(id);
@@ -388,6 +389,7 @@ export class UI {
   show(id) {
     for (const s of this.screens) s.hidden = s.id !== id;
     this.current = id;
+    this.updateNote();
     if (this.listening) { this.listening = null; this.refreshKeys(); }
     if (id === 'screen-title') this.splash();
     const field = id && $(id)?.querySelector('input[type=text]');
@@ -434,8 +436,15 @@ export class UI {
     cv.style.width = `calc(var(--u) * ${w})`;
   }
 
+  // The notice that a newer version is out (see updates.js), on the title and pause screens.
+  updateNote() {
+    const el = $('update-note');
+    if (el) el.hidden = !(this.updateFiles && (this.current === 'screen-title' || this.current === 'screen-pause'));
+  }
+
   splash() {
     $('splash').textContent = SPLASHES[Math.floor(Math.random() * SPLASHES.length)];
+    $('title-foot').textContent = `Blockhaven 1.5 · update ${BUILD}`;
   }
 
   // ---------------------------------------------------------------- HUD
