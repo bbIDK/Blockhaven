@@ -14,7 +14,8 @@ const TOPIC = 'bh';
 // PeerJS (MIT licence) comes with the game, in src/vendor (the single-file build has it inline),
 // with a CDN to fall back on.
 const PEERJS_URLS = [new URL('./vendor/peerjs.min.js', import.meta.url).href, 'https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js'];
-const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+// (Join codes leave out the characters easily taken for others: 0 O, 1 I, 2 Z, 5 S, 6 G, 8 B.)
+const CODE_CHARS = 'ACDEFGHJKLMNPQRTUVWXY3479';
 const PEER_PREFIX = 'blockhaven-';
 
 // UTF-8 size of a string.
@@ -296,6 +297,8 @@ export function randomCode() {
 }
 
 export const cleanCode = (text) => text.toUpperCase().replace(/[^A-Z0-9]/g, '');
+// A code as shown to people: two groups of three, easier to read out ("ACD 479").
+export const spacedCode = (code) => (code?.length === 6 ? `${code.slice(0, 3)} ${code.slice(3)}` : code ?? '');
 
 export const NO_GAME = 'No game with that code is running. Check the code, and that your friend’s game is open.';
 const PEER_ERRORS = {

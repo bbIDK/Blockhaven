@@ -111,7 +111,11 @@ const safe = (js) => js.replace(/<\/script/gi, '<\\/script');
 
 const workerSrc = bundle('src/worker.js');
 const mainSrc = `globalThis.BLOCKHAVEN_WORKER_SRC = ${JSON.stringify(workerSrc)};\n${bundle('src/main.js')}`;
-const css = readFileSync(resolve(root, 'src/style.css'), 'utf8');
+// (The font goes in whole too, as a data URL.)
+const fontUrl = "url('fonts/blockhaven-pixel.woff2')";
+const cssSrc = readFileSync(resolve(root, 'src/style.css'), 'utf8');
+if (!cssSrc.includes(fontUrl)) throw new Error('style.css no longer loads the font as expected');
+const css = cssSrc.replace(fontUrl, () => `url(data:font/woff2;base64,${readFileSync(resolve(root, 'src/fonts/blockhaven-pixel.woff2')).toString('base64')})`);
 let html = readFileSync(resolve(root, 'index.html'), 'utf8');
 
 const cssTag = '<link rel="stylesheet" href="src/style.css">';

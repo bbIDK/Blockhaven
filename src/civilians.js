@@ -838,13 +838,15 @@ export class Civilians {
     };
     if (e.role === 'king') return `I am ${e.name}, and ${v} is my kingdom. My knights keep its roads, my people its fields.`;
     if (e.role === 'queen') return `I am ${e.name} of ${v}. The king and I hold court here in the great hall.`;
-    return `I'm ${e.name}, the ${title.toLowerCase()}${kind === 'camp' ? '' : ` of ${v}`}. ${bits[e.role] ?? ''}`;
+    return `I'm ${e.name}, the ${title.toLowerCase()}${kind === 'camp' || !e.village ? '' : ` of ${v}`}. ${bits[e.role] ?? ''}`;
   }
   // "Where is the smithy?" - from where the player stands.
   directions(e, place) {
     const v = e.village, p = this.game.player;
     if (!v) return "I'm not from round here, sorry.";
-    const b = [...v.buildings, ...(v.landmarks ?? [])].find((x) => x.type === place && (x.doors?.length || x.landmark || place === 'farm'));
+    // (One with a way in if there is one, but an open-fronted smithy is a smithy too.)
+    const all = [...v.buildings, ...(v.landmarks ?? [])].filter((x) => x.type === place);
+    const b = all.find((x) => x.doors?.length || x.landmark || place === 'farm') ?? all[0];
     const name = PLACES.find(([k]) => k === place)?.[1] ?? place;
     if (!b) return `We haven't got ${name} in ${villageName(v)}, I'm afraid.`;
     const [x0, z0, x1, z1] = b.box;

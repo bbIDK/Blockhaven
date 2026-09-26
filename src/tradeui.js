@@ -7,7 +7,7 @@ import { ROLES } from './civilians.js';
 import { SKIN_INDEX, SKIN_SIZE } from './skins.js';
 import { HR } from './tex/mobskins.js';
 
-const W = 276, H = 214;
+const W = 300, H = 214;
 const px = (n) => `calc(var(--u) * ${n})`;
 
 export class TalkScreen {
@@ -56,24 +56,31 @@ export class TalkScreen {
   build() {
     const e = this.who, civ = this.game.entities.civilians, win = this.win;
     win.replaceChildren();
-    // The face, drawn from their skin.
-    const face = div('talk-face', win, 8, 8, 40, 40);
+    // Who they are, as the title of the window, then their face, drawn from their skin, and what
+    // they say, in a box of its own.
+    const title = label(e.name, win, 8, 6), job = ROLES[e.role]?.title ?? 'Villager';
+    // ("King Edgar", not "King Edgar - King".)
+    if (!e.name.startsWith(`${job} `)) {
+      const role = document.createElement('span');
+      role.className = 't-sub';
+      role.textContent = ` - ${job}`;
+      title.append(role);
+    }
+    const face = div('talk-face', win, 8, 17, 52, 52);
     face.appendChild(this.portrait(e));
-    label(e.name, win, 8, 52);
-    label(ROLES[e.role]?.title ?? 'Villager', win, 8, 62).classList.add('t-sub');
-    const speech = div('talk-speech', win, 56, 10, W - 64, 56);
+    const speech = div('talk-speech', win, 66, 17, W - 74, 52);
     speech.textContent = `“${this.line}”`;
-    // What you can say.
+    // What you can say: a row of buttons, each as wide as its words.
     const buttons = [['Trade', () => { this.mode = 'trade'; this.build(); }], ['Chat', () => this.say(civ.chatLine(e))],
       ['Who are you?', () => this.say(civ.intro(e))], ['Ask the way', () => { this.mode = 'ways'; this.say('Where are you headed?'); }],
       ['Goodbye', () => this.game.closeTalk()]];
+    const row = div('talk-buttons', win, 8, 74, W - 16, 17);
     buttons.forEach(([text, fn], i) => {
       const b = document.createElement('button');
       b.className = `btn talk-btn${(this.mode === 'trade' && i === 0) || (this.mode === 'ways' && i === 3) ? ' active' : ''}`;
       b.textContent = text;
-      b.style.left = px(8 + i * 52.4); b.style.top = px(76); b.style.width = px(50); b.style.height = px(15);
       b.addEventListener('click', () => { this.game.audio.click(); fn(); });
-      win.appendChild(b);
+      row.appendChild(b);
     });
     const coins = this.game.creative ? '∞' : this.game.inv.count(I.gold_coin);
     const purse = label(`Gold coins: ${coins}`, win, W - 8, H - 14);
@@ -81,7 +88,7 @@ export class TalkScreen {
     if (this.mode === 'trade') this.buildTrades(win, e);
     else if (this.mode === 'ways') this.buildWays(win, e);
     else {
-      const hint = div('talk-hint', win, 8, 100, W - 16, 60);
+      const hint = div('talk-hint', win, 8, 99, W - 16, 60);
       hint.textContent = ROLES[e.role]?.trades?.length ? 'Villagers trade for gold coins. Find them in chests, or sell what you gather.' : '';
     }
   }
@@ -89,15 +96,15 @@ export class TalkScreen {
   buildTrades(win, e) {
     const civ = this.game.entities.civilians;
     const offers = civ.offers(e);
-    if (!offers.length) { label("I've nothing to trade.", win, 8, 100); return; }
+    if (!offers.length) { label("I've nothing to trade.", win, 8, 97); return; }
     const inv = this.game.inv;
     offers.forEach((o, i) => {
       const col = i % 2, row = Math.floor(i / 2);
-      const x = 8 + col * 132, y = 96 + row * 26;
+      const x = 8 + col * 144, y = 96 + row * 26;
       const give = o.kind === 'buy' ? { id: I.gold_coin, count: o.price } : { id: o.id, count: o.count };
       const get = o.kind === 'buy' ? { id: o.id, count: o.count, ench: o.ench ?? undefined } : { id: I.gold_coin, count: o.price };
       const can = o.left > 0 && (this.game.creative && o.kind === 'buy' ? true : inv.count(give.id) >= give.count);
-      const rowEl = div(`talk-offer${can ? '' : ' off'}${o.left <= 0 ? ' sold' : ''}`, win, x, y, 128, 22);
+      const rowEl = div(`talk-offer${can ? '' : ' off'}${o.left <= 0 ? ' sold' : ''}`, win, x, y, 140, 22);
       const a = slotBox(rowEl, 2, 2);
       fillSlot(a, give);
       const arrow = div('talk-arrow', rowEl, 24, 6, 16, 10);
@@ -120,12 +127,13 @@ export class TalkScreen {
   buildWays(win, e) {
     const civ = this.game.entities.civilians;
     const places = civ.places(e);
-    if (!places.length) { label("I don't know my way round here.", win, 8, 100); return; }
+    if (!places.length) { label("I don't know my way round here.", win, 8, 97); return; }
     places.forEach(([key, name], i) => {
       const b = document.createElement('button');
       b.className = 'btn talk-btn';
-      b.textContent = name[0].toUpperCase() + name.slice(1);
-      b.style.left = px(8 + (i % 3) * 87); b.style.top = px(98 + Math.floor(i / 3) * 18); b.style.width = px(83); b.style.height = px(15);
+      // ("Hunter's lodge": the place without its "the", to fit the button.)
+      b.textContent = name.replace(/^the /, '').replace(/^./, (c) => c.toUpperCase());
+      b.style.left = px(8 + (i % 3) * 95); b.style.top = px(97 + Math.floor(i / 3) * 20); b.style.width = px(91); b.style.height = px(17);
       b.addEventListener('click', () => { this.game.audio.click(); this.mode = 'ways'; this.say(civ.directions(e, key)); });
       win.appendChild(b);
     });

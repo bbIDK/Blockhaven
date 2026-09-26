@@ -19,6 +19,7 @@ import { Weather } from './weather.js';
 import { Entities } from './entities.js';
 import { TouchControls } from './touch.js';
 import { HostSession, GuestSession, openRoom, openGames, cleanName, COLORS, playerUid, playerKey } from './multiplayer.js';
+import { spacedCode } from './net.js';
 import { Avatars, RemotePlayer, playerSkin } from './avatars.js';
 import * as storage from './storage.js';
 import { makeEnvironment, updateEnvironment, clockText } from './sky.js';
@@ -638,7 +639,7 @@ export class Game {
     try {
       this.net = await HostSession.start(this, kind);
       this.ui.renderShare(this.net, !!(await openRoom()));
-      this.ui.message(kind === 'room' ? 'Your world is open to friends on this page' : `Your world is open to friends. Join code: ${this.net.code}`, COLORS.y);
+      this.ui.message(kind === 'room' ? 'Your world is open to friends on this page' : `Your world is open to friends. Join code: ${spacedCode(this.net.code)}`, COLORS.y);
     } catch (err) {
       console.warn(err);
       this.ui.shareStatus(err.message || 'Couldn’t open your world.', true);
@@ -884,7 +885,7 @@ export class Game {
     const day = Math.floor(this.time / TICKS_PER_DAY) + 1;
     const net = this.net;
     const online = !net ? '' : net.host
-      ? ` · ${net.count} player${net.count === 1 ? '' : 's'}${net.code ? ` · Code ${net.code}` : ''}`
+      ? ` · ${net.count} player${net.count === 1 ? '' : 's'}${net.code ? ` · Code ${spacedCode(net.code)}` : ''}`
       : ` · ${net.count} players online`;
     $('pause-info').textContent = `${this.meta.name} · ${this.creative ? 'Creative' : 'Survival'} · Day ${day}, ${clockText(this.time)}${online}`;
     this.ui.setPauseMenu(net ? (net.host ? 'host' : 'guest') : 'single');
@@ -3205,7 +3206,7 @@ export class Game {
       `Food: ${this.food} (saturation ${this.saturation.toFixed(1)}) · Weather: ${this.weather.raining ? 'rain' : 'clear'} ${Math.round(this.weather.rain * 100)}%`,
       `Entities: ${this.entities.list.length} · Particles: ${this.particles.list.length}`,
       t?.player ? `Looking at: ${t.player.name}` : t && !t.entity ? `Looking at: ${BLOCKS[t.id].label} (${t.x}, ${t.y}, ${t.z}) face ${FACE_NAMES[t.face] ?? '-'}` : t?.entity ? `Looking at: ${t.entity.label}` : 'Looking at: nothing',
-      ...(this.net ? [`Multiplayer: ${this.net.host ? 'hosting' : 'guest'} via ${this.net.via === 'room' ? 'this page' : `code ${this.net.code}`} · ${this.net.count} players`] : []),
+      ...(this.net ? [`Multiplayer: ${this.net.host ? 'hosting' : 'guest'} via ${this.net.via === 'room' ? 'this page' : `code ${spacedCode(this.net.code)}`} · ${this.net.count} players`] : []),
     ];
   }
 }

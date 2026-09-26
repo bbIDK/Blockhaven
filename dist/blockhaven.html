@@ -5,17 +5,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>Blockhaven</title>
 <meta name="description" content="A block-building sandbox game that runs in your browser: explore endless worlds, mine, craft and build.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400..700&family=Silkscreen:wght@400;700&display=swap">
 <style>
 /* Everything is measured in GUI pixels: --u CSS pixels each, set from the GUI Scale option
-   (ui.js). Text is 10 GUI pixels tall, buttons 20, like the classic game's interface. */
+   (ui.js). Buttons are 20 GUI pixels tall, like the classic game's interface. The font is drawn on
+   a grid of 9 pixels to the em, so text set at 9 GUI pixels (or 18, 27) has one font pixel to each
+   GUI pixel and stays sharp. */
+/* Blockhaven Pixel: Monocraft (SIL OFL 1.1, Idrees Hassan) spaced like Minecraft's font; see
+   tools/make-font.py and src/fonts/OFL-Monocraft.txt. Its 2, 5 and 8 look nothing like Z, S and B. */
+@font-face {
+  font-family: 'Blockhaven Pixel';
+  src: url(data:font/woff2;base64,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) format('woff2');
+  font-display: block;
+}
 :root {
   color-scheme: dark;
   --u: 3px;
-  --font-ui: 'Pixelify Sans', ui-monospace, 'Cascadia Mono', 'Courier New', monospace;
-  --font-display: 'Silkscreen', 'Pixelify Sans', ui-monospace, 'Courier New', monospace;
+  --font-ui: 'Blockhaven Pixel', ui-monospace, 'Cascadia Mono', 'Courier New', monospace;
+  --font-display: var(--font-ui);
   --text: #ffffff;
   --text-dim: #a0a0a0;
   --shade: #3f3f3f;
@@ -29,7 +35,7 @@ body {
   margin: 0;
   background: #000;
   color: var(--text);
-  font: 400 calc(var(--u) * 10)/1.2 var(--font-ui);
+  font: 400 calc(var(--u) * 9)/1.2 var(--font-ui);
   overflow: hidden;
   -webkit-user-select: none;
   user-select: none;
@@ -51,7 +57,7 @@ p { margin: 0; }
   width: calc(var(--u) * 150);
   height: calc(var(--u) * 20);
   padding: 0 calc(var(--u) * 4);
-  font: 400 calc(var(--u) * 10)/1 var(--font-ui);
+  font: 400 calc(var(--u) * 9)/1 var(--font-ui);
   color: var(--text);
   text-shadow: var(--u) var(--u) 0 var(--shade);
   white-space: nowrap;
@@ -124,7 +130,7 @@ p { margin: 0; }
 
 .field { display: flex; flex-direction: column; gap: calc(var(--u) * 3); width: calc(var(--u) * 204); color: var(--text-dim); text-shadow: var(--u) var(--u) 0 var(--shade-dim); }
 input[type='text'], input[type='search'] {
-  font: 400 calc(var(--u) * 10)/1 var(--font-ui);
+  font: 400 calc(var(--u) * 9)/1 var(--font-ui);
   color: #e0e0e0;
   text-shadow: var(--u) var(--u) 0 var(--shade);
   background: #000;
@@ -157,7 +163,7 @@ input::placeholder { color: #6a6a6a; text-shadow: none; }
 /* Menus over the title panorama or the game: blurred and darkened, like the modern classic. */
 .menu-bg, .dim { background: rgba(0, 0, 0, 0.5); -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px); }
 .dim { background: linear-gradient(rgba(16, 16, 16, 0.6), rgba(16, 16, 16, 0.75)); }
-.screen-title { flex: none; margin: 0 0 calc(var(--u) * 6); font: 400 calc(var(--u) * 10)/1.2 var(--font-ui); text-align: center; }
+.screen-title { flex: none; margin: 0 0 calc(var(--u) * 6); font: 400 calc(var(--u) * 9)/1.2 var(--font-ui); text-align: center; }
 .row { display: flex; gap: calc(var(--u) * 8); justify-content: center; flex-wrap: wrap; }
 .button-rows { display: flex; flex-direction: column; align-items: center; gap: var(--gap); }
 .button-rows .row { gap: calc(var(--u) * 8); }
@@ -194,7 +200,7 @@ input::placeholder { color: #6a6a6a; text-shadow: none; }
   from { transform: rotate(-20deg) scale(1.04); }
   to { transform: rotate(-20deg) scale(0.92); }
 }
-.corner { position: absolute; bottom: max(calc(var(--u) * 2), env(safe-area-inset-bottom)); max-width: 48%; margin: 0; font-size: calc(var(--u) * 8); }
+.corner { position: absolute; bottom: max(calc(var(--u) * 2), env(safe-area-inset-bottom)); max-width: 48%; margin: 0; font-size: calc(var(--u) * 9); }
 .corner.right { text-align: right; }
 .corner.left { left: max(calc(var(--u) * 2), env(safe-area-inset-left)); }
 .corner.right { right: max(calc(var(--u) * 2), env(safe-area-inset-right)); }
@@ -259,7 +265,7 @@ input::placeholder { color: #6a6a6a; text-shadow: none; }
 .options h3 {
   grid-column: 1 / -1;
   margin: calc(var(--u) * 6) 0 0;
-  font: 400 calc(var(--u) * 10)/1.2 var(--font-ui);
+  font: 400 calc(var(--u) * 9)/1.2 var(--font-ui);
   color: var(--text-dim);
   text-shadow: var(--u) var(--u) 0 var(--shade-dim);
   text-align: center;
@@ -280,7 +286,7 @@ input::placeholder { color: #6a6a6a; text-shadow: none; }
 .keys dt { white-space: nowrap; text-align: right; }
 .keys dd { margin: 0; color: var(--text-dim); text-shadow: var(--u) var(--u) 0 var(--shade-dim); }
 .hint-text { text-align: left; max-width: none; }
-.hint-text.credits { font-size: 0.85em; opacity: 0.85; }
+.hint-text.credits { opacity: 0.85; }
 .hint-text.credits a { color: inherit; }
 kbd {
   display: inline-block;
@@ -304,7 +310,7 @@ kbd {
 
 /* ------------------------------------------------------------------ death and confirm */
 .death { background: linear-gradient(rgba(80, 0, 0, 0.38), rgba(128, 48, 48, 0.63)); }
-.death-title { margin: 0 0 calc(var(--u) * 10); font: 400 calc(var(--u) * 20)/1 var(--font-ui); text-shadow: calc(var(--u) * 2) calc(var(--u) * 2) 0 var(--shade); }
+.death-title { margin: 0 0 calc(var(--u) * 10); font: 400 calc(var(--u) * 18)/1 var(--font-ui); text-shadow: calc(var(--u) * 2) calc(var(--u) * 2) 0 var(--shade); }
 .death-cause { margin-bottom: calc(var(--u) * 20); text-align: center; }
 .modal {
   position: absolute;
@@ -395,7 +401,7 @@ kbd {
   position: absolute;
   right: calc(var(--u) * -1);
   bottom: calc(var(--u) * -1.5);
-  font: 400 calc(var(--u) * 8)/1 var(--font-display);
+  font: 400 calc(var(--u) * 9)/1 var(--font-display);
   text-shadow: var(--u) var(--u) 0 var(--shade);
   pointer-events: none;
   z-index: 2;
@@ -426,7 +432,7 @@ kbd {
   left: 50%;
   bottom: calc(var(--u) * 3);
   transform: translateX(-50%);
-  font: 400 calc(var(--u) * 8)/1 var(--font-display);
+  font: 400 calc(var(--u) * 9)/1 var(--font-display);
   color: #80ff20;
   text-shadow: var(--u) 0 0 #000, calc(var(--u) * -1) 0 0 #000, 0 var(--u) 0 #000, 0 calc(var(--u) * -1) 0 #000;
 }
@@ -456,7 +462,8 @@ kbd {
   max-width: calc(var(--u) * 150);
 }
 #effects .effect {
-  width: calc(var(--u) * 24);
+  position: relative;
+  width: calc(var(--u) * 30);
   height: calc(var(--u) * 28);
   background: rgba(20, 20, 30, 0.72);
   border: var(--u) solid #6f7ab8;
@@ -470,7 +477,9 @@ kbd {
 #effects .effect.bad { border-color: #a8484a; }
 #effects .effect.blink i { opacity: 0.35; }
 #effects .effect i { width: calc(var(--u) * 14); height: calc(var(--u) * 14); background-size: 100% 100%; image-rendering: pixelated; }
-#effects .effect span { font: 400 calc(var(--u) * 6)/1 var(--font-display); color: #e8e8f0; text-shadow: calc(var(--u) * 0.5) calc(var(--u) * 0.5) 0 #222; white-space: nowrap; }
+#effects .effect span { font: 400 calc(var(--u) * 9)/1 var(--font-display); color: #e8e8f0; text-shadow: var(--u) var(--u) 0 #222; white-space: nowrap; }
+#effects .effect.lv i { margin-right: calc(var(--u) * 8); }
+#effects .effect b { position: absolute; right: calc(var(--u) * 2); top: calc(var(--u) * 1); font: 400 calc(var(--u) * 9)/1 var(--font-display); color: #fff; text-shadow: var(--u) var(--u) 0 #3f3f3f; }
 #item-name {
   position: absolute;
   left: 50%;
@@ -536,7 +545,7 @@ kbd {
 .mc-screen { background: rgba(16, 16, 16, 0.7); touch-action: none; }
 /* Writing on a sign: the board drawn big, its four lines typed straight onto it. */
 .sign-screen { background: rgba(16, 16, 16, 0.6); gap: 0; }
-.sign-screen h2 { font: 400 calc(var(--u) * 10)/1.2 var(--font-ui); color: #fff; text-shadow: var(--u) var(--u) 0 #3f3f3f; margin: 0 0 calc(var(--u) * 10); }
+.sign-screen h2 { font: 400 calc(var(--u) * 9)/1.2 var(--font-ui); color: #fff; text-shadow: var(--u) var(--u) 0 #3f3f3f; margin: 0 0 calc(var(--u) * 10); }
 .sign-board {
   width: calc(var(--u) * 192);
   height: calc(var(--u) * 96);
@@ -558,7 +567,7 @@ kbd {
   border: 0;
   outline: 0;
   text-align: center;
-  font: 400 calc(var(--u) * 12)/1 var(--font-display);
+  font: 400 calc(var(--u) * 9)/1 var(--font-display);
   color: #1c140c;
   text-transform: uppercase;
   height: calc(var(--u) * 17);
@@ -606,7 +615,7 @@ kbd {
   position: absolute;
   right: 0;
   bottom: calc(var(--u) * 0.5);
-  font: 400 calc(var(--u) * 8)/1 var(--font-display);
+  font: 400 calc(var(--u) * 9)/1 var(--font-display);
   color: #fff;
   text-shadow: var(--u) var(--u) 0 #3f3f3f;
   pointer-events: none;
@@ -657,15 +666,15 @@ kbd {
 .mc-recipe.no:hover { background: #b25a5a; }
 .mc-recipe.ghost { outline: var(--u) solid #fff; }
 .mc-recipe > img { position: absolute; left: calc(var(--u) * 4.5); top: calc(var(--u) * 4.5); width: calc(var(--u) * 16); height: calc(var(--u) * 16); image-rendering: pixelated; pointer-events: none; }
-.mc-recipe > b { position: absolute; right: calc(var(--u) * 2); bottom: calc(var(--u) * 2); font: 400 calc(var(--u) * 8)/1 var(--font-display); color: #fff; text-shadow: var(--u) var(--u) 0 #3f3f3f; pointer-events: none; }
+.mc-recipe > b { position: absolute; right: calc(var(--u) * 2); bottom: calc(var(--u) * 2); font: 400 calc(var(--u) * 9)/1 var(--font-display); color: #fff; text-shadow: var(--u) var(--u) 0 #3f3f3f; pointer-events: none; }
 .mc-page { background: #e0e0e0; box-shadow: none; }
 .mc-page.next { clip-path: polygon(0 0, 100% 50%, 0 100%); }
 .mc-page.prev { clip-path: polygon(100% 0, 0 50%, 100% 100%); }
 .mc-page:hover { background: #fff; }
 .mc-pagenum { font: 400 calc(var(--u) * 9)/1 var(--font-ui); color: #fff; text-shadow: var(--u) var(--u) 0 #3f3f3f; text-align: center; pointer-events: none; }
-.mc-empty { color: #404040; text-shadow: none; font-size: calc(var(--u) * 8); }
+.mc-empty { color: #404040; text-shadow: none; font-size: calc(var(--u) * 9); }
 .mc-screen input.mc-search {
-  font: 400 calc(var(--u) * 8)/1 var(--font-ui);
+  font: 400 calc(var(--u) * 9)/1 var(--font-ui);
   color: #fff;
   background: #000;
   border: 0;
@@ -687,7 +696,7 @@ kbd {
 @media (hover: hover) { .mc-enchant.ok:hover { background: #bcac8c; } }
 .mc-enchant .lvl {
   position: absolute; left: calc(var(--u) * 3); top: calc(var(--u) * 3); width: calc(var(--u) * 13); height: calc(var(--u) * 13);
-  font: 400 calc(var(--u) * 8)/calc(var(--u) * 13) var(--font-display); text-align: center; color: #c8ff8c; background: #3c6e18;
+  font: 400 calc(var(--u) * 9)/calc(var(--u) * 13) var(--font-display); text-align: center; color: #c8ff8c; background: #3c6e18;
   border-radius: 50%; box-shadow: inset 0 0 0 var(--u) #1f3e0a; text-shadow: var(--u) var(--u) 0 #16300a;
 }
 .mc-enchant:not(.ok) .lvl { color: #7a8a6a; background: #3a3a2e; box-shadow: inset 0 0 0 var(--u) #2a2a20; text-shadow: none; }
@@ -700,19 +709,19 @@ kbd {
 @media (hover: hover) { .mc-enchant.ok:hover .runes { background: #ffff80; } }
 .mc-enchant .cost {
   position: absolute; right: calc(var(--u) * 3); bottom: calc(var(--u) * 2);
-  font: 400 calc(var(--u) * 8)/1 var(--font-display); color: #80ff20; text-shadow: var(--u) var(--u) 0 #183008;
+  font: 400 calc(var(--u) * 9)/1 var(--font-display); color: #80ff20; text-shadow: var(--u) var(--u) 0 #183008;
 }
 .mc-enchant:not(.ok) .cost { color: #407f10; text-shadow: none; }
 /* The anvil's name box and the price of the job. */
 .mc-screen input.mc-name {
-  font: 400 calc(var(--u) * 8)/1 var(--font-ui); color: #fff; background: #000; border: 0; min-height: 0;
+  font: 400 calc(var(--u) * 9)/1 var(--font-ui); color: #fff; background: #000; border: 0; min-height: 0;
   box-shadow: inset 0 0 0 var(--u) #a0a0a0; padding: 0 calc(var(--u) * 3);
 }
 .mc-screen input.mc-name:focus { box-shadow: inset 0 0 0 var(--u) #fff; }
 .mc-screen input.mc-name:disabled { color: #707070; box-shadow: inset 0 0 0 var(--u) #505050; }
 .mc-cost {
   width: calc(var(--u) * 108); text-align: right; padding-right: calc(var(--u) * 2);
-  font: 400 calc(var(--u) * 8)/calc(var(--u) * 12) var(--font-ui); background: rgba(0, 0, 0, 0.3);
+  font: 400 calc(var(--u) * 9)/calc(var(--u) * 12) var(--font-ui); background: rgba(0, 0, 0, 0.3);
 }
 .mc-cost.ok { color: #80ff20; }
 .mc-cost.no { color: #ff6060; }
@@ -758,7 +767,7 @@ kbd {
   padding: calc(var(--u) * 3) calc(var(--u) * 4);
   background: rgba(16, 0, 16, 0.94);
   box-shadow: inset 0 0 0 var(--u) #2b0f5e, 0 0 0 var(--u) rgba(16, 0, 16, 0.94);
-  font: 400 calc(var(--u) * 8)/1.3 var(--font-ui);
+  font: 400 calc(var(--u) * 9)/1.3 var(--font-ui);
   color: #fff;
   white-space: nowrap;
   max-width: none;
@@ -802,15 +811,15 @@ kbd {
 .tbtn {
   width: 58px;
   height: 58px;
-  font: 400 16px var(--font-ui);
+  font: 400 18px var(--font-ui);
   color: #fff;
   text-shadow: 2px 2px 0 var(--shade);
   background: rgba(0, 0, 0, 0.35);
   border: 2px solid rgba(255, 255, 255, 0.3);
   touch-action: none;
 }
-.tbtn.small { width: 44px; height: 44px; font-size: 14px; }
-.tbtn.big { width: 72px; height: 72px; font-size: 22px; }
+.tbtn.small { width: 44px; height: 44px; font-size: 18px; }
+.tbtn.big { width: 72px; height: 72px; font-size: 27px; }
 .tbtn.on { background: rgba(255, 255, 255, 0.28); border-color: #fff; }
 .tbtn:active { background: rgba(255, 255, 255, 0.3); }
 
@@ -835,8 +844,8 @@ kbd {
 .share-box .confirm-text { margin-bottom: calc(var(--u) * 8); }
 .share-code { display: flex; align-items: center; gap: calc(var(--u) * 8); margin-bottom: calc(var(--u) * 10); }
 .share-code span {
-  font: 400 calc(var(--u) * 20)/1 var(--font-display);
-  letter-spacing: calc(var(--u) * 3);
+  font: 400 calc(var(--u) * 18)/1 var(--font-display);
+  letter-spacing: calc(var(--u) * 2);
   color: #ffff55;
   text-shadow: calc(var(--u) * 2) calc(var(--u) * 2) 0 #3f3f15;
   padding: calc(var(--u) * 4) calc(var(--u) * 8);
@@ -894,10 +903,22 @@ kbd {
   position: absolute; left: calc(var(--u) * 2); top: calc(var(--u) * 2); width: calc(100% - var(--u) * 4); height: calc(100% - var(--u) * 4);
   image-rendering: pixelated;
 }
-.talk-speech { font: 400 calc(var(--u) * 9)/1.35 var(--font-ui); color: #2e2e2e; white-space: normal; overflow: hidden; }
-.talk-hint { font: 400 calc(var(--u) * 8)/1.35 var(--font-ui); color: #5a5a5a; white-space: normal; }
-.talk-win .t-sub { color: #6e6e6e; font-size: calc(var(--u) * 8); }
-.talk-btn { position: absolute; font-size: calc(var(--u) * 7); padding: 0; }
+.talk-speech {
+  box-sizing: border-box;
+  padding: calc(var(--u) * 4) calc(var(--u) * 5);
+  font: 400 calc(var(--u) * 9)/calc(var(--u) * 11) var(--font-ui);
+  color: #1e1e1e;
+  text-shadow: none;
+  background: #ececec;
+  box-shadow: inset var(--u) var(--u) 0 #8b8b8b, inset calc(var(--u) * -1) calc(var(--u) * -1) 0 #fff;
+  white-space: normal;
+  overflow: hidden;
+}
+.talk-hint { font: 400 calc(var(--u) * 9)/calc(var(--u) * 11) var(--font-ui); color: #404040; text-shadow: none; white-space: normal; }
+.talk-win .t-sub { color: #5a5a5a; }
+.talk-buttons { display: flex; gap: calc(var(--u) * 3); }
+.talk-buttons .btn { position: static; flex: 1 1 auto; width: auto; height: 100%; padding: 0 calc(var(--u) * 3); }
+.talk-btn { position: absolute; padding: 0; }
 .talk-btn.active { border-color: #fff; background: #9a9a9a; }
 .talk-offer { cursor: pointer; background: rgba(0, 0, 0, 0.08); }
 .talk-offer > * { position: absolute; }
@@ -905,11 +926,11 @@ kbd {
 .talk-offer.off { opacity: 0.6; }
 .talk-offer.sold { opacity: 0.35; }
 .talk-offer .mc-slot { pointer-events: none; }
-.talk-arrow { font: 400 calc(var(--u) * 10)/1 var(--font-ui); color: #555; text-align: center; pointer-events: none; }
+.talk-arrow { font: 400 calc(var(--u) * 9)/1 var(--font-ui); color: #555; text-align: center; pointer-events: none; }
 #talk-tip {
   position: fixed; z-index: 50; pointer-events: none; padding: calc(var(--u) * 3) calc(var(--u) * 4);
   background: rgba(16, 0, 16, 0.94); box-shadow: inset 0 0 0 var(--u) #2b0f5e, 0 0 0 var(--u) rgba(16, 0, 16, 0.94);
-  font: 400 calc(var(--u) * 8)/1.3 var(--font-ui); color: #fff; white-space: nowrap;
+  font: 400 calc(var(--u) * 9)/1.3 var(--font-ui); color: #fff; white-space: nowrap;
 }
 #talk-tip b { font-weight: 400; }
 /* The name of a village as you walk in. */
@@ -918,8 +939,8 @@ kbd {
   opacity: 0; transition: opacity 1.2s ease;
 }
 #place-title.show { opacity: 1; transition: opacity 0.6s ease; }
-#place-title .big { font: 400 calc(var(--u) * 26)/1.1 var(--font-ui); color: #fff; text-shadow: calc(var(--u) * 2) calc(var(--u) * 2) 0 #3f3f3f; }
-#place-title .small { font: 400 calc(var(--u) * 10)/1.3 var(--font-ui); color: #e0e0e0; text-shadow: var(--u) var(--u) 0 #3f3f3f; }
+#place-title .big { font: 400 calc(var(--u) * 27)/1.1 var(--font-ui); color: #fff; text-shadow: calc(var(--u) * 2) calc(var(--u) * 2) 0 #3f3f3f; }
+#place-title .small { font: 400 calc(var(--u) * 9)/1.3 var(--font-ui); color: #e0e0e0; text-shadow: var(--u) var(--u) 0 #3f3f3f; }
 </style>
 </head>
 <body>
@@ -1136,7 +1157,7 @@ kbd {
       <p class="hint-text">Each animal lives where it belongs: deer, bears and boar in the woods, zebras, giraffes and elephants on the savanna, pandas and tigers in the jungle, polar bears and penguins in the snow. In Creative, the Spawn Eggs tab (or <kbd>/summon tiger</kbd>) brings out any creature you like.</p>
       <p class="hint-text">To play with friends, open a world, press Esc and choose Open to Friends. On claude.ai, people you've shared this page with see your world under Multiplayer; anywhere else, give them the join code.</p>
       <p class="hint-text">On a touch screen the left stick walks, dragging looks around, a tap places and holding breaks.</p>
-      <p class="hint-text credits">Textures: the Pixel Perfection resource pack by XSSheep and its community, with Mineclonia's for the newest blocks (<a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener">CC BY-SA 4.0</a>). Sounds: public-domain recordings by Kenney and Freesound contributors.</p>
+      <p class="hint-text credits">Textures: the Pixel Perfection resource pack by XSSheep and its community, with Mineclonia's for the newest blocks (<a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener">CC BY-SA 4.0</a>). Sounds: public-domain recordings by Kenney and Freesound contributors. Font: made from Monocraft by Idrees Hassan (<a href="https://openfontlicense.org" target="_blank" rel="noopener">SIL Open Font License</a>).</p>
     </div>
     <button class="btn wide" data-action="back">Done</button>
   </section>
@@ -9700,7 +9721,7 @@ const GLYPHS = {
   M: 'x.xxxxxxxx.xx.x', N: 'xx.x.xx.xx.xx.x', O: '.x.x.xx.xx.x.x.', P: 'xx.x.xxx.x..x..', Q: '.x.x.xx.xxx..xx', R: 'xx.x.xxx.x.xx.x',
   S: '.xxx...x...xxx.', T: 'xxx.x..x..x..x.', U: 'x.xx.xx.xx.xxxx', V: 'x.xx.xx.x.x..x.', W: 'x.xx.xxxxxxxx.x', X: 'x.xx.x.x.x.xx.x',
   Y: 'x.xx.x.x..x..x.', Z: 'xxx..x.x.x..xxx',
-  0: 'xxxx.xx.xx.xxxx', 1: '.x.xx..x..x.xxx', 2: 'xx...x.x.x..xxx', 3: 'xx...x.x...xxx.', 4: 'x.xx.xxxx..x..x', 5: 'xxxx..xx...xxx.',
+  0: 'xxxx.xx.xx.xxxx', 1: '.x.xx..x..x.xxx', 2: 'xxx..xxxxx..xxx', 3: 'xx...x.x...xxx.', 4: 'x.xx.xxxx..x..x', 5: 'xxxx..xx...xxx.',
   6: '.xxx..xxxx.xxxx', 7: 'xxx..x.x..x..x.', 8: 'xxxx.xxxxx.xxxx', 9: 'xxxx.xxxx..xxx.',
   ' ': '...............', '.': '.............x.', ',': '..........x.x..', '!': '.x..x..x.....x.', '?': 'xx...x.x.....x.',
   "'": '.x..x..........', '"': 'x.xx.x.........', '-': '......xxx......', '+': '....x.xxx.x....', ':': '....x.....x....',
@@ -22459,6 +22480,782 @@ __exports.warmIcons = warmIcons;
 __exports.iconFor = iconFor;
 });
 
+__define("src/net.js", function (__exports) {
+// Multiplayer networking, in two layers.
+//
+// Transports carry small JSON packets and each player's "presence" (a little public object: name,
+// position, held item) between browsers:
+//   - RoomTransport uses the claude.ai room: everyone who has this page open there right now.
+//   - PeerTransport uses PeerJS (WebRTC) with a six-letter join code, and works anywhere else;
+//     where two browsers can't connect directly, RelayTransport (relay.js) carries the game instead.
+// Link turns packets into reliable, ordered message streams: it packs small messages together,
+// splits big ones, numbers everything, and asks again for whatever a transport dropped.
+// The game protocol on top lives in multiplayer.js.
+
+const PROTOCOL = 3;
+const TOPIC = 'bh';
+// PeerJS (MIT licence) comes with the game, in src/vendor (the single-file build has it inline),
+// with a CDN to fall back on.
+const PEERJS_URLS = [new URL('./vendor/peerjs.min.js', import.meta.url).href, 'https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js'];
+// (Join codes leave out the characters easily taken for others: 0 O, 1 I, 2 Z, 5 S, 6 G, 8 B.)
+const CODE_CHARS = 'ACDEFGHJKLMNPQRTUVWXY3479';
+const PEER_PREFIX = 'blockhaven-';
+
+// UTF-8 size of a string.
+function utf8Length(s) {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    n += c < 0x80 ? 1 : c < 0x800 || (c >= 0xd800 && c <= 0xdfff) ? 2 : 3;
+  }
+  return n;
+}
+
+// Splits a string into pieces that each take at most `max` bytes once written as a JSON string
+// (quotes and backslashes are escaped, control characters become \u00XX).
+function splitForJSON(str, max) {
+  const out = [];
+  let start = 0, cost = 0;
+  for (let i = 0; i < str.length; i++) {
+    const c = str.charCodeAt(i);
+    const pair = c >= 0xd800 && c <= 0xdbff && i + 1 < str.length;
+    const w = pair ? 4 : c === 0x22 || c === 0x5c ? 2 : c < 0x20 ? 6 : c < 0x80 ? 1 : c < 0x800 ? 2 : c <= 0xdfff && c >= 0xd800 ? 6 : 3;
+    if (cost + w > max && i > start) { out.push(str.slice(start, i)); start = i; cost = 0; }
+    cost += w;
+    if (pair) i++;
+  }
+  out.push(str.slice(start));
+  return out;
+}
+
+class Bucket {
+  constructor(rate, burst) { this.rate = rate; this.burst = burst; this.tokens = burst; this.t = performance.now(); }
+  take() {
+    const now = performance.now();
+    this.tokens = Math.min(this.burst, this.tokens + ((now - this.t) / 1000) * this.rate);
+    this.t = now;
+    if (this.tokens < 1) return false;
+    this.tokens--;
+    return true;
+  }
+}
+
+const same = (a, b) => a === b || JSON.stringify(a) === JSON.stringify(b);
+
+// ---------------------------------------------------------------- claude.ai room
+// Everyone in the room hears every event, so packets carry who they are for. Events are rate
+// limited by the platform (about 40 a second), so ours go out at a steady 22 a second at most.
+// A viewer who may not send events (view-only access) posts packets for the host in their
+// presence instead, as a small mailbox the host empties and acknowledges.
+class RoomTransport {
+  static async open() {
+    if (typeof globalThis.claude?.use !== 'function') return null;
+    let room = null;
+    try { room = await globalThis.claude.use('room'); } catch { room = null; }
+    return room ? new RoomTransport(room) : null;
+  }
+
+  constructor(room) {
+    this.room = room;
+    this.kind = 'room';
+    this.prefix = 'r:';
+    this.me = room.peers().find((p) => p.sameTab)?.peer ?? null;
+    this.connected = room.connected();
+    this.canEmit = true;
+    this.dead = false;
+    this.queue = [];
+    this.bucket = new Bucket(22, 40);
+    this.presence = {};
+    this.sent = {};
+    this.presenceDirty = false;
+    this.lastPresence = 0;
+    this.mailbox = [];
+    this.mailboxNext = 1;
+    this.inbox = new Map(); // peer -> last mailbox entry read (host side)
+    this.acks = new Map();  // peer -> mailbox entry to acknowledge (host side)
+    this.others = new Map(); // peer -> presence
+    this.onPacket = null;
+    this.onPresence = null;
+    this.onStatus = null;
+    const failed = (e) => this.failed(e);
+    this.subs = [
+      room.on(TOPIC, (m) => this.receive(m), failed),
+      room.onPeers((ch) => this.peersChanged(ch), failed),
+      room.onConnection((c) => { this.connected = c; this.onStatus?.(c); }, failed),
+    ];
+    this.timer = setInterval(() => this.pump(), 50);
+  }
+
+  get maxPacket() { return this.canEmit ? 3200 : 1400; }
+  get ready() { return !this.dead && !!this.me; }
+  // (Packets still waiting their turn to go out, or not yet acknowledged from the mailbox.)
+  get busy() { return !this.dead && this.connected && (this.queue.length > 0 || this.mailbox.length > 0); }
+  get self() { return this.me ? `r:${this.me}` : null; }
+
+  // Resolves true once the room knows who we are and we're connected (false after `ms`).
+  async whenReady(ms) {
+    const end = performance.now() + ms;
+    while (!this.dead && !(this.me && this.connected)) {
+      if (performance.now() > end) return false;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return !this.dead;
+  }
+
+  // Can this viewer send room events? (Needed to host.)
+  async probe() {
+    try {
+      await this.room.emit(TOPIC, { to: this.me, probe: 1 });
+      return true;
+    } catch (e) {
+      if (e?.code === 'not_permitted') { this.canEmit = false; return false; }
+      return true;
+    }
+  }
+
+  failed(e) {
+    if (this.dead) return;
+    console.warn('Room unavailable:', e?.code, e?.message);
+    this.dead = true;
+    this.connected = false;
+    this.onStatus?.(false);
+  }
+
+  addr(peer) { return `r:${peer}`; }
+
+  receive(m) {
+    if (m.sameTab) { this.me = m.peer; return; }
+    if (m.kind !== 'viewer') return;
+    const d = m.data;
+    if (!d || typeof d !== 'object' || (d.to !== '*' && d.to !== this.me)) return;
+    if (typeof d.ack === 'number') {
+      const before = this.mailbox.length;
+      this.mailbox = this.mailbox.filter((e) => e.i > d.ack);
+      if (this.mailbox.length !== before) this.presenceDirty = true;
+      return;
+    }
+    if (d.p !== undefined) this.onPacket?.(this.addr(m.peer), d.p);
+  }
+
+  peersChanged(ch) {
+    const self = ch.peers.find((p) => p.sameTab);
+    if (self) this.me = self.peer;
+    for (const p of [...ch.joined, ...ch.updated]) {
+      if (p.sameTab || p.kind !== 'viewer') continue;
+      const pres = p.presence ?? {};
+      this.others.set(p.peer, pres);
+      this.readMailbox(p.peer, pres.mb);
+      this.onPresence?.(this.addr(p.peer), pres);
+    }
+    for (const p of ch.left) {
+      if (p.sameTab || !this.others.has(p.peer)) continue;
+      this.others.delete(p.peer);
+      this.inbox.delete(p.peer);
+      this.acks.delete(p.peer);
+      this.onPresence?.(this.addr(p.peer), null);
+    }
+  }
+
+  readMailbox(peer, mb) {
+    if (!Array.isArray(mb?.q)) return;
+    let last = this.inbox.get(peer) ?? 0;
+    for (const e of mb.q) {
+      if (!Array.isArray(e) || typeof e[0] !== 'number' || e[0] <= last) continue;
+      last = e[0];
+      if (e[1] === this.me) this.onPacket?.(this.addr(peer), e[2]);
+    }
+    if (last !== (this.inbox.get(peer) ?? 0)) { this.inbox.set(peer, last); this.acks.set(peer, last); }
+  }
+
+  send(to, pkt) {
+    const target = to === '*' ? '*' : to.slice(2);
+    if (!this.canEmit) { this.post(target, pkt); return; }
+    this.queue.push([target, pkt]);
+    if (this.queue.length === 1) this.pump();
+  }
+
+  // Keeps the room up to date with our presence (a whole object; fields left out are removed).
+  setPresence(obj) {
+    this.presence = obj;
+    this.presenceDirty = true;
+  }
+
+  post(to, pkt) {
+    if (this.mailbox.length > 400) this.mailbox.shift();
+    this.mailbox.push({ i: this.mailboxNext++, to, p: pkt, size: utf8Length(JSON.stringify(pkt)) + 24 });
+    this.presenceDirty = true;
+  }
+
+  emit(env) {
+    this.room.emit(TOPIC, env).catch((e) => {
+      if (e?.code === 'not_permitted') {
+        if (this.canEmit) console.warn('This viewer may not send room events; using presence instead');
+        this.canEmit = false;
+        if (env.p !== undefined && env.to !== '*') this.post(env.to, env.p);
+      } else if (e?.code === 'invalid_argument') console.warn('Room packet refused:', e.message);
+    });
+  }
+
+  pump() {
+    if (this.dead) return;
+    const now = performance.now();
+    if (this.presenceDirty && now - this.lastPresence >= 50) this.flushPresence(now);
+    if (!this.connected) return;
+    for (const [peer, n] of this.acks) {
+      if (!this.bucket.take()) return;
+      this.emit({ to: peer, ack: n });
+      this.acks.delete(peer);
+    }
+    while (this.queue.length && this.bucket.take()) {
+      const [to, p] = this.queue.shift();
+      this.emit({ to, p });
+    }
+  }
+
+  flushPresence(now) {
+    this.presenceDirty = false;
+    this.lastPresence = now;
+    const obj = { ...this.presence };
+    if (this.mailbox.length) {
+      let budget = 3300 - utf8Length(JSON.stringify(obj));
+      const q = [];
+      for (const e of this.mailbox) {
+        if (e.size > budget) break;
+        budget -= e.size;
+        q.push([e.i, e.to, e.p]);
+      }
+      if (q.length) obj.mb = { q };
+    }
+    const patch = {};
+    let changed = false;
+    for (const k of Object.keys(obj)) if (!same(obj[k], this.sent[k])) { patch[k] = obj[k]; changed = true; }
+    for (const k of Object.keys(this.sent)) if (!(k in obj)) { patch[k] = null; changed = true; }
+    this.sent = obj;
+    if (changed) this.room.presence(patch).catch((e) => console.warn('Presence refused:', e?.code, e?.message));
+  }
+
+  // Other viewers' presence right now (address -> object).
+  list() { return [...this.others].map(([peer, pres]) => [this.addr(peer), pres]); }
+
+  close() {
+    for (const off of this.subs) off();
+    clearInterval(this.timer);
+    this.dead = true;
+  }
+}
+
+// ---------------------------------------------------------------- PeerJS (join codes)
+let peerjsPromise = null;
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.async = true;
+    s.onload = resolve;
+    s.onerror = () => { s.remove(); reject(new Error('load failed')); };
+    document.head.appendChild(s);
+  });
+}
+
+// PeerJS is loaded the first time it's needed (three tries, for flaky connections).
+function loadPeerJS() {
+  if (globalThis.Peer) return Promise.resolve(globalThis.Peer);
+  peerjsPromise ??= (async () => {
+    for (let i = 0; i < 3; i++) {
+      try {
+        await loadScript(i < 2 ? PEERJS_URLS[i] : `${PEERJS_URLS[1]}?retry=${i}`);
+        if (globalThis.Peer) return globalThis.Peer;
+      } catch { await new Promise((r) => setTimeout(r, 600 * (i + 1))); }
+    }
+    peerjsPromise = null;
+    throw new Error('Couldn’t load the networking library. Are you online?');
+  })();
+  return peerjsPromise;
+}
+
+function randomCode() {
+  let s = '';
+  for (let i = 0; i < 6; i++) s += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
+  return s;
+}
+
+const cleanCode = (text) => text.toUpperCase().replace(/[^A-Z0-9]/g, '');
+// A code as shown to people: two groups of three, easier to read out ("ACD 479").
+const spacedCode = (code) => (code?.length === 6 ? `${code.slice(0, 3)} ${code.slice(3)}` : code ?? '');
+
+const NO_GAME = 'No game with that code is running. Check the code, and that your friend’s game is open.';
+const PEER_ERRORS = {
+  'peer-unavailable': NO_GAME,
+  network: 'Couldn’t reach the multiplayer server. Check your internet connection.',
+  'server-error': 'The multiplayer server isn’t answering right now. Try again in a minute.',
+  'socket-error': 'Couldn’t reach the multiplayer server. Check your internet connection.',
+  'socket-closed': 'Lost the connection to the multiplayer server.',
+  'browser-incompatible': 'This browser can’t make direct connections (WebRTC).',
+  webrtc: 'Couldn’t connect to your friend directly. One of your networks may be blocking it.',
+};
+const peerError = (e) => Object.assign(new Error(PEER_ERRORS[e?.type] ?? e?.message ?? 'Connection failed'), { type: e?.type });
+
+// Direct connections find their way through each side's router with STUN, and where there's no way
+// through, by a TURN relay. PeerJS's own TURN servers are gone, so these are the Open Relay
+// Project's free ones (metered.ca), on ports 80 and 443 over UDP, TCP and TLS so that they get
+// through most firewalls. They take short-lived passwords made from a shared secret.
+const enc = (s) => new TextEncoder().encode(s);
+async function iceServers() {
+  const list = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }];
+  try {
+    const username = `${Math.floor(Date.now() / 1000) + 24 * 3600}:blockhaven`;
+    const key = await crypto.subtle.importKey('raw', enc('openrelayprojectsecret'), { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
+    const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, enc(username)));
+    const host = 'staticauth.openrelay.metered.ca';
+    list.push({
+      urls: [`turn:${host}:80`, `turn:${host}:80?transport=tcp`, `turn:${host}:443`, `turns:${host}:443?transport=tcp`],
+      username, credential: btoa(String.fromCharCode(...sig)),
+    });
+  } catch { /* (no WebCrypto off a secure page: STUN alone) */ }
+  return list;
+}
+
+// The host listens under a join code; guests connect to it. Presence goes through the host,
+// which passes everyone's on to everyone else.
+class PeerTransport {
+  // `first`: the code to try first (another is picked if it's taken).
+  static async host(tries = 4, first = null) {
+    const Peer = await loadPeerJS();
+    for (let i = 0; i < tries; i++) {
+      const code = i === 0 && first ? first : randomCode();
+      try {
+        const peer = await PeerTransport.openPeer(Peer, PEER_PREFIX + code);
+        return new PeerTransport(peer, code, null);
+      } catch (e) {
+        if (e.type !== 'unavailable-id') throw peerError(e);
+      }
+    }
+    throw new Error('Couldn’t get a join code. Try again.');
+  }
+
+  static async join(code) {
+    const Peer = await loadPeerJS();
+    const peer = await PeerTransport.openPeer(Peer, null).catch((e) => { throw peerError(e); });
+    const conn = peer.connect(PEER_PREFIX + code, { reliable: true, serialization: 'json' });
+    await new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject(Object.assign(new Error('Your friend’s game didn’t answer. Check the code and try again.'), { type: 'timeout' })), 15000);
+      conn.on('open', () => { clearTimeout(t); resolve(); });
+      conn.on('error', (e) => { clearTimeout(t); reject(peerError(e)); });
+      peer.on('error', (e) => { clearTimeout(t); reject(peerError(e)); });
+    }).catch((e) => { peer.destroy(); throw e; });
+    return new PeerTransport(peer, code, conn);
+  }
+
+  static async openPeer(Peer, id) {
+    const config = { iceServers: await iceServers() };
+    return new Promise((resolve, reject) => {
+      // (BLOCKHAVEN_PEER_SERVER can point at another PeerJS server: { host, port, path, secure }.)
+      const opts = { debug: 0, config, ...(globalThis.BLOCKHAVEN_PEER_SERVER ?? {}) };
+      const peer = id ? new Peer(id, opts) : new Peer(opts);
+      const t = setTimeout(() => { peer.destroy(); reject({ type: 'network' }); }, 15000);
+      const onOpen = () => { clearTimeout(t); peer.off('error', onError); resolve(peer); };
+      const onError = (e) => { clearTimeout(t); peer.off('open', onOpen); peer.destroy(); reject(e); };
+      peer.on('open', onOpen);
+      peer.on('error', onError);
+    });
+  }
+
+  constructor(peer, code, hostConn) {
+    this.peer = peer;
+    this.code = code;
+    this.kind = 'peer';
+    this.prefix = 'p:';
+    this.isHost = !hostConn;
+    this.hostAddr = `p:${PEER_PREFIX}${code}`;
+    this.me = `p:${peer.id}`;
+    this.maxPacket = 15000;
+    this.conns = new Map(); // address -> DataConnection
+    this.presence = null;
+    this.sentPresence = null;
+    this.lastPresence = 0;
+    this.states = new Map(); // host: address -> presence of each guest (relayed)
+    this.relay = new Map();  // host: address -> presence waiting to be passed on (null: left)
+    this.onPacket = null;
+    this.onPresence = null;
+    this.onStatus = null;
+    this.connected = true;
+    this.dead = false;
+    if (hostConn) this.attach(hostConn, this.hostAddr);
+    else {
+      peer.on('connection', (conn) => conn.on('open', () => this.attach(conn, `p:${conn.peer}`)));
+      // Keep the code working for new guests if the link to the server drops.
+      peer.on('disconnected', () => { if (!this.dead) setTimeout(() => !this.dead && peer.reconnect(), 1500); });
+      peer.on('error', (e) => console.warn('PeerJS:', e?.type, e?.message));
+    }
+    this.timer = setInterval(() => this.pump(), 50);
+  }
+
+  get ready() { return !this.dead; }
+  get self() { return this.me; }
+
+  attach(conn, addr) {
+    this.conns.set(addr, conn);
+    conn.on('data', (d) => this.receive(addr, d));
+    conn.on('close', () => this.lost(addr));
+    conn.on('error', () => this.lost(addr));
+    if (this.isHost) {
+      // A newcomer hears about everyone already here.
+      const all = {};
+      if (this.presence) all[this.me] = this.presence;
+      for (const [a, s] of this.states) all[a] = s;
+      this.sendRaw(addr, { pr: all });
+    }
+  }
+
+  lost(addr) {
+    if (!this.conns.has(addr)) return;
+    this.conns.delete(addr);
+    if (this.isHost) {
+      this.states.delete(addr);
+      this.relay.set(addr, null);
+      this.onPresence?.(addr, null);
+    } else {
+      this.connected = false;
+      this.onStatus?.(false);
+      for (const a of this.states.keys()) this.onPresence?.(a, null);
+      this.states.clear();
+      this.onPresence?.(this.hostAddr, null);
+    }
+  }
+
+  receive(addr, d) {
+    if (!d || typeof d !== 'object') return;
+    if (d.pr && typeof d.pr === 'object') {
+      if (this.isHost) {
+        // A guest's own presence: keep it and pass it on.
+        const s = d.pr[addr];
+        if (s && typeof s === 'object') { this.states.set(addr, s); this.relay.set(addr, s); this.onPresence?.(addr, s); }
+      } else {
+        for (const [a, s] of Object.entries(d.pr)) {
+          if (a === this.me) continue;
+          if (s) this.states.set(a, s); else this.states.delete(a);
+          this.onPresence?.(a, s ?? null);
+        }
+      }
+      return;
+    }
+    if (d.p !== undefined) this.onPacket?.(addr, d.p);
+  }
+
+  sendRaw(addr, obj) {
+    const c = this.conns.get(addr);
+    if (c?.open) { try { c.send(obj); } catch (e) { console.warn('Send failed', e); } }
+  }
+
+  send(to, pkt) {
+    if (to === '*') { for (const a of this.conns.keys()) this.sendRaw(a, { p: pkt }); }
+    else this.sendRaw(to, { p: pkt });
+  }
+
+  setPresence(obj) { this.presence = obj; }
+
+  // Another transport's player (a host's guests here and through the relay see each other).
+  injectPresence(addr, pres) {
+    if (!this.isHost) return;
+    if (pres) this.states.set(addr, pres); else this.states.delete(addr);
+    this.relay.set(addr, pres ?? null);
+  }
+
+  pump() {
+    const now = performance.now();
+    if (now - this.lastPresence < 66) return;
+    this.lastPresence = now;
+    if (this.isHost) {
+      if (this.presence && !same(this.presence, this.sentPresence)) { this.sentPresence = this.presence; this.relay.set(this.me, this.presence); }
+      if (!this.relay.size) return;
+      for (const a of this.conns.keys()) {
+        const out = {};
+        for (const [k, v] of this.relay) if (k !== a) out[k] = v;
+        if (Object.keys(out).length) this.sendRaw(a, { pr: out });
+      }
+      this.relay.clear();
+    } else if (this.presence && !same(this.presence, this.sentPresence)) {
+      this.sentPresence = this.presence;
+      this.sendRaw(this.hostAddr, { pr: { [this.me]: this.presence } });
+    }
+  }
+
+  list() { return [...this.states]; }
+
+  close() {
+    this.dead = true;
+    clearInterval(this.timer);
+    // Give the last packets a moment to leave before the connections close.
+    setTimeout(() => this.peer.destroy(), 300);
+  }
+}
+
+// ---------------------------------------------------------------- reliable streams
+// Each sender numbers its packets per stream: one direct stream to each other player ('d') and,
+// for a host, one broadcast stream to all its guests ('b'). A packet holds several small
+// messages, or one fragment of a big one. Receivers deliver strictly in order, hold packets that
+// arrive early, and ask for missing ones (nack). Heartbeats reveal losses at the end of a burst.
+// When a sender can no longer resend what was lost it says so (reset) and the receiver starts
+// over from there, reporting the loss so the game can resynchronise.
+const KEEP_DIRECT = 1500, KEEP_BROADCAST = 4000;
+
+class Link {
+  constructor() {
+    this.epoch = Math.random().toString(36).slice(2, 7);
+    this.transports = [];
+    this.out = new Map();  // stream key ('*' or address) -> outgoing stream
+    this.in = new Map();   // `${from}|${st}|${epoch}` -> incoming stream
+    this.follows = new Map(); // host address -> { epoch, from, early: [] } (broadcast streams we listen to)
+    this.onMessage = null;  // (from, msg, broadcast)
+    this.onPresence = null; // (address, presence | null)
+    this.onLoss = null;     // (from, broadcast)
+    this.lastBeat = 0;
+    this.closed = false;
+  }
+
+  addTransport(t) {
+    this.transports.push(t);
+    t.onPacket = (from, pkt) => this.receive(from, pkt);
+    t.onPresence = (addr, pres) => {
+      this.onPresence?.(addr, pres);
+      // (A host's guests on one transport hear about those on another.)
+      for (const o of this.transports) if (o !== t) o.injectPresence?.(addr, pres);
+    };
+  }
+
+  transportFor(addr) { return this.transports.find((t) => addr.startsWith(t.prefix)); }
+
+  stream(key) {
+    let s = this.out.get(key);
+    if (!s) {
+      s = { key, seq: 0, queue: [], sent: new Map(), lastSend: 0, beats: 0 };
+      this.out.set(key, s);
+    }
+    return s;
+  }
+
+  send(to, msg) { this.stream(to).queue.push(msg); }
+  broadcast(msg) { this.stream('*').queue.push(msg); }
+  // True while anything handed over hasn't gone out yet.
+  get busy() { return [...this.out.values()].some((s) => s.queue.length > 0) || this.transports.some((t) => t.busy); }
+
+  setPresence(obj) { for (const t of this.transports) t.setPresence(obj); }
+
+  maxFor(key) {
+    let m = Infinity;
+    for (const t of key === '*' ? this.transports : [this.transportFor(key)]) if (t) m = Math.min(m, t.maxPacket);
+    return m === Infinity ? 3000 : m;
+  }
+
+  // Packs queued messages into packets and hands them to the transports. Call often (each frame).
+  flush() {
+    if (this.closed) return;
+    const now = performance.now();
+    for (const s of this.out.values()) {
+      if (!s.queue.length) continue;
+      const max = this.maxFor(s.key) - 80;
+      const st = s.key === '*' ? 'b' : 'd';
+      let batch = [], size = 0;
+      const emit = (pkt) => this.emitPacket(s, pkt, now);
+      const pack = () => { if (batch.length) emit({ st, e: this.epoch, m: batch }); batch = []; size = 0; };
+      for (const msg of s.queue) {
+        const text = JSON.stringify(msg);
+        const n = utf8Length(text) + 1;
+        if (n > max) {
+          pack();
+          const parts = splitForJSON(text, max - 20);
+          parts.forEach((d, i) => emit({ st, e: this.epoch, fr: [i, parts.length], d }));
+          continue;
+        }
+        if (size + n > max) pack();
+        batch.push(msg);
+        size += n;
+      }
+      pack();
+      s.queue = [];
+    }
+    // Heartbeats: after anything is sent, the latest number goes out a few more times so a lost
+    // last packet is noticed.
+    if (now - this.lastBeat > 800) {
+      this.lastBeat = now;
+      for (const s of this.out.values()) {
+        if (!s.seq || s.beats >= 3) continue;
+        s.beats++;
+        this.sendPacket(s.key, { c: 'hb', st: s.key === '*' ? 'b' : 'd', e: this.epoch, s: s.seq });
+      }
+    }
+  }
+
+  emitPacket(s, pkt, now) {
+    pkt.s = ++s.seq;
+    s.sent.set(pkt.s, pkt);
+    const keep = s.key === '*' ? KEEP_BROADCAST : KEEP_DIRECT;
+    if (s.sent.size > keep) s.sent.delete(pkt.s - keep);
+    s.lastSend = now;
+    s.beats = 0;
+    this.sendPacket(s.key, pkt);
+  }
+
+  sendPacket(key, pkt) {
+    if (key === '*') { for (const t of this.transports) t.send('*', pkt); }
+    else this.transportFor(key)?.send(key, pkt);
+  }
+
+  // The broadcast stream of `host`, from sequence number `after` + 1 on. Packets that arrived
+  // before we knew where to start are kept and delivered now.
+  follow(host, epoch, after) {
+    const f = this.follows.get(host) ?? { early: [] };
+    this.follows.set(host, { epoch, early: [] });
+    const s = this.incoming(host, 'b', epoch);
+    s.expect = after + 1;
+    for (const [from, pkt] of f.early) this.receive(from, pkt);
+  }
+
+  // Start keeping `host`'s broadcast packets (we're about to join and follow it).
+  listen(host) { if (!this.follows.has(host)) this.follows.set(host, { epoch: null, early: [] }); }
+
+  unfollow(host) { this.follows.delete(host); }
+
+  incoming(from, st, epoch) {
+    const key = `${from}|${st}|${epoch}`;
+    let s = this.in.get(key);
+    if (!s) {
+      s = { from, st, epoch, expect: 1, pending: new Map(), frag: null, nackAt: 0, top: 0 };
+      this.in.set(key, s);
+    }
+    return s;
+  }
+
+  receive(from, pkt) {
+    if (this.closed || !pkt || typeof pkt !== 'object') return;
+    if (pkt.c) { this.control(from, pkt); return; }
+    if (typeof pkt.s !== 'number' || (pkt.st !== 'd' && pkt.st !== 'b')) return;
+    if (pkt.st === 'b') {
+      const f = this.follows.get(from);
+      if (!f) return;
+      if (f.epoch === null) { if (f.early.length < 4000) f.early.push([from, pkt]); return; }
+      if (pkt.e !== f.epoch) return;
+    }
+    const s = this.incoming(from, pkt.st, pkt.e);
+    if (pkt.s < s.expect) return;
+    s.top = Math.max(s.top, pkt.s);
+    if (pkt.s > s.expect) {
+      s.pending.set(pkt.s, pkt);
+      this.checkGap(s);
+      return;
+    }
+    this.deliver(s, pkt);
+    s.expect++;
+    while (s.pending.has(s.expect)) {
+      const next = s.pending.get(s.expect);
+      s.pending.delete(s.expect);
+      this.deliver(s, next);
+      s.expect++;
+    }
+  }
+
+  deliver(s, pkt) {
+    const b = s.st === 'b';
+    if (pkt.m) {
+      s.frag = null;
+      for (const msg of pkt.m) this.dispatch(s.from, msg, b);
+    } else if (pkt.fr) {
+      const [i, n] = pkt.fr;
+      if (i === 0) s.frag = [];
+      if (!s.frag) return;
+      s.frag.push(pkt.d);
+      if (i === n - 1) {
+        const text = s.frag.join('');
+        s.frag = null;
+        let msg;
+        try { msg = JSON.parse(text); } catch { return; }
+        this.dispatch(s.from, msg, b);
+      }
+    }
+  }
+
+  dispatch(from, msg, b) {
+    try { this.onMessage?.(from, msg, b); } catch (err) { console.error('Multiplayer message failed', msg?.t, err); }
+  }
+
+  // Ask for what's missing, after a short wait in case it is only late.
+  checkGap(s, now = performance.now()) {
+    if (s.expect > s.top) return;
+    if (!s.gapSince) s.gapSince = now;
+    if (now - s.gapSince < 150 || now < s.nackAt) return;
+    let end = s.expect;
+    while (end + 1 <= s.top && !s.pending.has(end + 1) && end - s.expect < 400) end++;
+    s.nackAt = now + 700;
+    this.sendPacket(s.from, { c: 'nack', st: s.st, e: s.epoch, a: s.expect, b: end });
+  }
+
+  control(from, pkt) {
+    if (pkt.c === 'hb') {
+      if (pkt.st === 'b' && this.follows.get(from)?.epoch !== pkt.e) return;
+      const s = this.incoming(from, pkt.st, pkt.e);
+      if (typeof pkt.s === 'number' && pkt.s >= s.expect) { s.top = Math.max(s.top, pkt.s); this.checkGap(s); }
+    } else if (pkt.c === 'nack') {
+      if (pkt.e !== this.epoch) return;
+      const s = this.out.get(pkt.st === 'b' ? '*' : from);
+      if (!s) return;
+      const a = Math.max(1, pkt.a | 0), b = Math.min(s.seq, pkt.b | 0);
+      for (let q = a; q <= b; q++) {
+        const p = s.sent.get(q);
+        if (!p) { this.sendPacket(from, { c: 'reset', st: pkt.st, e: this.epoch, s: b + 1 }); return; }
+        this.sendPacket(from, p);
+      }
+    } else if (pkt.c === 'reset') {
+      if (pkt.st === 'b' && this.follows.get(from)?.epoch !== pkt.e) return;
+      const s = this.incoming(from, pkt.st, pkt.e);
+      if (typeof pkt.s !== 'number' || pkt.s <= s.expect) return;
+      s.expect = pkt.s;
+      s.frag = null;
+      for (const k of [...s.pending.keys()]) if (k < s.expect) s.pending.delete(k);
+      this.onLoss?.(from, pkt.st === 'b');
+      // Deliver whatever was already waiting beyond the gap.
+      while (s.pending.has(s.expect)) {
+        const next = s.pending.get(s.expect);
+        s.pending.delete(s.expect);
+        this.deliver(s, next);
+        s.expect++;
+      }
+    }
+  }
+
+  // Periodic upkeep: re-ask for gaps that are still open.
+  tick() {
+    const now = performance.now();
+    for (const s of this.in.values()) {
+      if (s.expect <= s.top) this.checkGap(s, now);
+      else s.gapSince = 0;
+    }
+  }
+
+  forget(addr) {
+    this.out.delete(addr);
+    for (const [k, s] of this.in) if (s.from === addr) this.in.delete(k);
+    this.follows.delete(addr);
+  }
+
+  close() {
+    this.closed = true;
+    for (const t of this.transports) { t.onPacket = null; t.onPresence = null; }
+  }
+}
+
+__exports.PROTOCOL = PROTOCOL;
+__exports.cleanCode = cleanCode;
+__exports.spacedCode = spacedCode;
+__exports.NO_GAME = NO_GAME;
+__exports.utf8Length = utf8Length;
+__exports.RoomTransport = RoomTransport;
+__exports.loadPeerJS = loadPeerJS;
+__exports.randomCode = randomCode;
+__exports.iceServers = iceServers;
+__exports.PeerTransport = PeerTransport;
+__exports.Link = Link;
+});
+
 __define("src/keys.js", function (__exports) {
 // Key binds, as in Minecraft's Options → Controls → Key Binds: every action has a key, which the
 // player can change. The settings keep only the ones changed (`settings.keys`, action → key code).
@@ -22578,6 +23375,7 @@ const { shiny } = __require("src/enchanting.js");
 const { itemDef } = __require("src/items.js");
 const { EFFECTS, clock, roman } = __require("src/potions.js");
 const { DIFFICULTIES } = __require("src/config.js");
+const { spacedCode } = __require("src/net.js");
 const { BINDINGS, DEFAULT_KEYS, RESERVED, keyName } = __require("src/keys.js");
 
 const $ = (id) => document.getElementById(id);
@@ -23085,9 +23883,11 @@ class UI {
       const box = document.createElement('div'), icon = document.createElement('i'), time = document.createElement('span');
       box.className = `effect${EFFECTS[e.name].bad ? ' bad' : ''}${e.ticks < 200 && Math.floor(e.ticks / 10) % 2 ? ' blink' : ''}`;
       icon.style.backgroundImage = `url(${EFFECT_ICONS[e.name]})`;
-      time.textContent = `${roman(e.level).trim()} ${clock(e.ticks)}`.trim();
+      time.textContent = clock(e.ticks);
       box.title = `${EFFECTS[e.name].label}${roman(e.level)}`;
       box.append(icon, time);
+      // (Its level, II and up, in the corner like a stack's count.)
+      if (e.level > 1) { const lv = document.createElement('b'); lv.textContent = roman(e.level).trim(); box.append(lv); box.classList.add('lv'); }
       return box;
     }));
   }
@@ -23296,7 +24096,7 @@ class UI {
         : 'Let friends join this world while you play. You get a six-letter code to give them; they type it under Multiplayer on the title screen.';
     }
     $('share-code').hidden = !net?.code;
-    $('share-code-text').textContent = net?.code ?? '';
+    $('share-code-text').textContent = spacedCode(net?.code);
     $('share-room').hidden = !!net || !room;
     $('share-code-btn').hidden = !!net;
     $('share-name-field').hidden = !!net;
@@ -32504,13 +33304,15 @@ class Civilians {
     };
     if (e.role === 'king') return `I am ${e.name}, and ${v} is my kingdom. My knights keep its roads, my people its fields.`;
     if (e.role === 'queen') return `I am ${e.name} of ${v}. The king and I hold court here in the great hall.`;
-    return `I'm ${e.name}, the ${title.toLowerCase()}${kind === 'camp' ? '' : ` of ${v}`}. ${bits[e.role] ?? ''}`;
+    return `I'm ${e.name}, the ${title.toLowerCase()}${kind === 'camp' || !e.village ? '' : ` of ${v}`}. ${bits[e.role] ?? ''}`;
   }
   // "Where is the smithy?" - from where the player stands.
   directions(e, place) {
     const v = e.village, p = this.game.player;
     if (!v) return "I'm not from round here, sorry.";
-    const b = [...v.buildings, ...(v.landmarks ?? [])].find((x) => x.type === place && (x.doors?.length || x.landmark || place === 'farm'));
+    // (One with a way in if there is one, but an open-fronted smithy is a smithy too.)
+    const all = [...v.buildings, ...(v.landmarks ?? [])].filter((x) => x.type === place);
+    const b = all.find((x) => x.doors?.length || x.landmark || place === 'farm') ?? all[0];
     const name = PLACES.find(([k]) => k === place)?.[1] ?? place;
     if (!b) return `We haven't got ${name} in ${villageName(v)}, I'm afraid.`;
     const [x0, z0, x1, z1] = b.box;
@@ -34497,778 +35299,6 @@ class TouchControls {
 }
 
 __exports.TouchControls = TouchControls;
-});
-
-__define("src/net.js", function (__exports) {
-// Multiplayer networking, in two layers.
-//
-// Transports carry small JSON packets and each player's "presence" (a little public object: name,
-// position, held item) between browsers:
-//   - RoomTransport uses the claude.ai room: everyone who has this page open there right now.
-//   - PeerTransport uses PeerJS (WebRTC) with a six-letter join code, and works anywhere else;
-//     where two browsers can't connect directly, RelayTransport (relay.js) carries the game instead.
-// Link turns packets into reliable, ordered message streams: it packs small messages together,
-// splits big ones, numbers everything, and asks again for whatever a transport dropped.
-// The game protocol on top lives in multiplayer.js.
-
-const PROTOCOL = 3;
-const TOPIC = 'bh';
-// PeerJS (MIT licence) comes with the game, in src/vendor (the single-file build has it inline),
-// with a CDN to fall back on.
-const PEERJS_URLS = [new URL('./vendor/peerjs.min.js', import.meta.url).href, 'https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js'];
-const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const PEER_PREFIX = 'blockhaven-';
-
-// UTF-8 size of a string.
-function utf8Length(s) {
-  let n = 0;
-  for (let i = 0; i < s.length; i++) {
-    const c = s.charCodeAt(i);
-    n += c < 0x80 ? 1 : c < 0x800 || (c >= 0xd800 && c <= 0xdfff) ? 2 : 3;
-  }
-  return n;
-}
-
-// Splits a string into pieces that each take at most `max` bytes once written as a JSON string
-// (quotes and backslashes are escaped, control characters become \u00XX).
-function splitForJSON(str, max) {
-  const out = [];
-  let start = 0, cost = 0;
-  for (let i = 0; i < str.length; i++) {
-    const c = str.charCodeAt(i);
-    const pair = c >= 0xd800 && c <= 0xdbff && i + 1 < str.length;
-    const w = pair ? 4 : c === 0x22 || c === 0x5c ? 2 : c < 0x20 ? 6 : c < 0x80 ? 1 : c < 0x800 ? 2 : c <= 0xdfff && c >= 0xd800 ? 6 : 3;
-    if (cost + w > max && i > start) { out.push(str.slice(start, i)); start = i; cost = 0; }
-    cost += w;
-    if (pair) i++;
-  }
-  out.push(str.slice(start));
-  return out;
-}
-
-class Bucket {
-  constructor(rate, burst) { this.rate = rate; this.burst = burst; this.tokens = burst; this.t = performance.now(); }
-  take() {
-    const now = performance.now();
-    this.tokens = Math.min(this.burst, this.tokens + ((now - this.t) / 1000) * this.rate);
-    this.t = now;
-    if (this.tokens < 1) return false;
-    this.tokens--;
-    return true;
-  }
-}
-
-const same = (a, b) => a === b || JSON.stringify(a) === JSON.stringify(b);
-
-// ---------------------------------------------------------------- claude.ai room
-// Everyone in the room hears every event, so packets carry who they are for. Events are rate
-// limited by the platform (about 40 a second), so ours go out at a steady 22 a second at most.
-// A viewer who may not send events (view-only access) posts packets for the host in their
-// presence instead, as a small mailbox the host empties and acknowledges.
-class RoomTransport {
-  static async open() {
-    if (typeof globalThis.claude?.use !== 'function') return null;
-    let room = null;
-    try { room = await globalThis.claude.use('room'); } catch { room = null; }
-    return room ? new RoomTransport(room) : null;
-  }
-
-  constructor(room) {
-    this.room = room;
-    this.kind = 'room';
-    this.prefix = 'r:';
-    this.me = room.peers().find((p) => p.sameTab)?.peer ?? null;
-    this.connected = room.connected();
-    this.canEmit = true;
-    this.dead = false;
-    this.queue = [];
-    this.bucket = new Bucket(22, 40);
-    this.presence = {};
-    this.sent = {};
-    this.presenceDirty = false;
-    this.lastPresence = 0;
-    this.mailbox = [];
-    this.mailboxNext = 1;
-    this.inbox = new Map(); // peer -> last mailbox entry read (host side)
-    this.acks = new Map();  // peer -> mailbox entry to acknowledge (host side)
-    this.others = new Map(); // peer -> presence
-    this.onPacket = null;
-    this.onPresence = null;
-    this.onStatus = null;
-    const failed = (e) => this.failed(e);
-    this.subs = [
-      room.on(TOPIC, (m) => this.receive(m), failed),
-      room.onPeers((ch) => this.peersChanged(ch), failed),
-      room.onConnection((c) => { this.connected = c; this.onStatus?.(c); }, failed),
-    ];
-    this.timer = setInterval(() => this.pump(), 50);
-  }
-
-  get maxPacket() { return this.canEmit ? 3200 : 1400; }
-  get ready() { return !this.dead && !!this.me; }
-  // (Packets still waiting their turn to go out, or not yet acknowledged from the mailbox.)
-  get busy() { return !this.dead && this.connected && (this.queue.length > 0 || this.mailbox.length > 0); }
-  get self() { return this.me ? `r:${this.me}` : null; }
-
-  // Resolves true once the room knows who we are and we're connected (false after `ms`).
-  async whenReady(ms) {
-    const end = performance.now() + ms;
-    while (!this.dead && !(this.me && this.connected)) {
-      if (performance.now() > end) return false;
-      await new Promise((r) => setTimeout(r, 100));
-    }
-    return !this.dead;
-  }
-
-  // Can this viewer send room events? (Needed to host.)
-  async probe() {
-    try {
-      await this.room.emit(TOPIC, { to: this.me, probe: 1 });
-      return true;
-    } catch (e) {
-      if (e?.code === 'not_permitted') { this.canEmit = false; return false; }
-      return true;
-    }
-  }
-
-  failed(e) {
-    if (this.dead) return;
-    console.warn('Room unavailable:', e?.code, e?.message);
-    this.dead = true;
-    this.connected = false;
-    this.onStatus?.(false);
-  }
-
-  addr(peer) { return `r:${peer}`; }
-
-  receive(m) {
-    if (m.sameTab) { this.me = m.peer; return; }
-    if (m.kind !== 'viewer') return;
-    const d = m.data;
-    if (!d || typeof d !== 'object' || (d.to !== '*' && d.to !== this.me)) return;
-    if (typeof d.ack === 'number') {
-      const before = this.mailbox.length;
-      this.mailbox = this.mailbox.filter((e) => e.i > d.ack);
-      if (this.mailbox.length !== before) this.presenceDirty = true;
-      return;
-    }
-    if (d.p !== undefined) this.onPacket?.(this.addr(m.peer), d.p);
-  }
-
-  peersChanged(ch) {
-    const self = ch.peers.find((p) => p.sameTab);
-    if (self) this.me = self.peer;
-    for (const p of [...ch.joined, ...ch.updated]) {
-      if (p.sameTab || p.kind !== 'viewer') continue;
-      const pres = p.presence ?? {};
-      this.others.set(p.peer, pres);
-      this.readMailbox(p.peer, pres.mb);
-      this.onPresence?.(this.addr(p.peer), pres);
-    }
-    for (const p of ch.left) {
-      if (p.sameTab || !this.others.has(p.peer)) continue;
-      this.others.delete(p.peer);
-      this.inbox.delete(p.peer);
-      this.acks.delete(p.peer);
-      this.onPresence?.(this.addr(p.peer), null);
-    }
-  }
-
-  readMailbox(peer, mb) {
-    if (!Array.isArray(mb?.q)) return;
-    let last = this.inbox.get(peer) ?? 0;
-    for (const e of mb.q) {
-      if (!Array.isArray(e) || typeof e[0] !== 'number' || e[0] <= last) continue;
-      last = e[0];
-      if (e[1] === this.me) this.onPacket?.(this.addr(peer), e[2]);
-    }
-    if (last !== (this.inbox.get(peer) ?? 0)) { this.inbox.set(peer, last); this.acks.set(peer, last); }
-  }
-
-  send(to, pkt) {
-    const target = to === '*' ? '*' : to.slice(2);
-    if (!this.canEmit) { this.post(target, pkt); return; }
-    this.queue.push([target, pkt]);
-    if (this.queue.length === 1) this.pump();
-  }
-
-  // Keeps the room up to date with our presence (a whole object; fields left out are removed).
-  setPresence(obj) {
-    this.presence = obj;
-    this.presenceDirty = true;
-  }
-
-  post(to, pkt) {
-    if (this.mailbox.length > 400) this.mailbox.shift();
-    this.mailbox.push({ i: this.mailboxNext++, to, p: pkt, size: utf8Length(JSON.stringify(pkt)) + 24 });
-    this.presenceDirty = true;
-  }
-
-  emit(env) {
-    this.room.emit(TOPIC, env).catch((e) => {
-      if (e?.code === 'not_permitted') {
-        if (this.canEmit) console.warn('This viewer may not send room events; using presence instead');
-        this.canEmit = false;
-        if (env.p !== undefined && env.to !== '*') this.post(env.to, env.p);
-      } else if (e?.code === 'invalid_argument') console.warn('Room packet refused:', e.message);
-    });
-  }
-
-  pump() {
-    if (this.dead) return;
-    const now = performance.now();
-    if (this.presenceDirty && now - this.lastPresence >= 50) this.flushPresence(now);
-    if (!this.connected) return;
-    for (const [peer, n] of this.acks) {
-      if (!this.bucket.take()) return;
-      this.emit({ to: peer, ack: n });
-      this.acks.delete(peer);
-    }
-    while (this.queue.length && this.bucket.take()) {
-      const [to, p] = this.queue.shift();
-      this.emit({ to, p });
-    }
-  }
-
-  flushPresence(now) {
-    this.presenceDirty = false;
-    this.lastPresence = now;
-    const obj = { ...this.presence };
-    if (this.mailbox.length) {
-      let budget = 3300 - utf8Length(JSON.stringify(obj));
-      const q = [];
-      for (const e of this.mailbox) {
-        if (e.size > budget) break;
-        budget -= e.size;
-        q.push([e.i, e.to, e.p]);
-      }
-      if (q.length) obj.mb = { q };
-    }
-    const patch = {};
-    let changed = false;
-    for (const k of Object.keys(obj)) if (!same(obj[k], this.sent[k])) { patch[k] = obj[k]; changed = true; }
-    for (const k of Object.keys(this.sent)) if (!(k in obj)) { patch[k] = null; changed = true; }
-    this.sent = obj;
-    if (changed) this.room.presence(patch).catch((e) => console.warn('Presence refused:', e?.code, e?.message));
-  }
-
-  // Other viewers' presence right now (address -> object).
-  list() { return [...this.others].map(([peer, pres]) => [this.addr(peer), pres]); }
-
-  close() {
-    for (const off of this.subs) off();
-    clearInterval(this.timer);
-    this.dead = true;
-  }
-}
-
-// ---------------------------------------------------------------- PeerJS (join codes)
-let peerjsPromise = null;
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = src;
-    s.async = true;
-    s.onload = resolve;
-    s.onerror = () => { s.remove(); reject(new Error('load failed')); };
-    document.head.appendChild(s);
-  });
-}
-
-// PeerJS is loaded the first time it's needed (three tries, for flaky connections).
-function loadPeerJS() {
-  if (globalThis.Peer) return Promise.resolve(globalThis.Peer);
-  peerjsPromise ??= (async () => {
-    for (let i = 0; i < 3; i++) {
-      try {
-        await loadScript(i < 2 ? PEERJS_URLS[i] : `${PEERJS_URLS[1]}?retry=${i}`);
-        if (globalThis.Peer) return globalThis.Peer;
-      } catch { await new Promise((r) => setTimeout(r, 600 * (i + 1))); }
-    }
-    peerjsPromise = null;
-    throw new Error('Couldn’t load the networking library. Are you online?');
-  })();
-  return peerjsPromise;
-}
-
-function randomCode() {
-  let s = '';
-  for (let i = 0; i < 6; i++) s += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
-  return s;
-}
-
-const cleanCode = (text) => text.toUpperCase().replace(/[^A-Z0-9]/g, '');
-
-const NO_GAME = 'No game with that code is running. Check the code, and that your friend’s game is open.';
-const PEER_ERRORS = {
-  'peer-unavailable': NO_GAME,
-  network: 'Couldn’t reach the multiplayer server. Check your internet connection.',
-  'server-error': 'The multiplayer server isn’t answering right now. Try again in a minute.',
-  'socket-error': 'Couldn’t reach the multiplayer server. Check your internet connection.',
-  'socket-closed': 'Lost the connection to the multiplayer server.',
-  'browser-incompatible': 'This browser can’t make direct connections (WebRTC).',
-  webrtc: 'Couldn’t connect to your friend directly. One of your networks may be blocking it.',
-};
-const peerError = (e) => Object.assign(new Error(PEER_ERRORS[e?.type] ?? e?.message ?? 'Connection failed'), { type: e?.type });
-
-// Direct connections find their way through each side's router with STUN, and where there's no way
-// through, by a TURN relay. PeerJS's own TURN servers are gone, so these are the Open Relay
-// Project's free ones (metered.ca), on ports 80 and 443 over UDP, TCP and TLS so that they get
-// through most firewalls. They take short-lived passwords made from a shared secret.
-const enc = (s) => new TextEncoder().encode(s);
-async function iceServers() {
-  const list = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }];
-  try {
-    const username = `${Math.floor(Date.now() / 1000) + 24 * 3600}:blockhaven`;
-    const key = await crypto.subtle.importKey('raw', enc('openrelayprojectsecret'), { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
-    const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, enc(username)));
-    const host = 'staticauth.openrelay.metered.ca';
-    list.push({
-      urls: [`turn:${host}:80`, `turn:${host}:80?transport=tcp`, `turn:${host}:443`, `turns:${host}:443?transport=tcp`],
-      username, credential: btoa(String.fromCharCode(...sig)),
-    });
-  } catch { /* (no WebCrypto off a secure page: STUN alone) */ }
-  return list;
-}
-
-// The host listens under a join code; guests connect to it. Presence goes through the host,
-// which passes everyone's on to everyone else.
-class PeerTransport {
-  // `first`: the code to try first (another is picked if it's taken).
-  static async host(tries = 4, first = null) {
-    const Peer = await loadPeerJS();
-    for (let i = 0; i < tries; i++) {
-      const code = i === 0 && first ? first : randomCode();
-      try {
-        const peer = await PeerTransport.openPeer(Peer, PEER_PREFIX + code);
-        return new PeerTransport(peer, code, null);
-      } catch (e) {
-        if (e.type !== 'unavailable-id') throw peerError(e);
-      }
-    }
-    throw new Error('Couldn’t get a join code. Try again.');
-  }
-
-  static async join(code) {
-    const Peer = await loadPeerJS();
-    const peer = await PeerTransport.openPeer(Peer, null).catch((e) => { throw peerError(e); });
-    const conn = peer.connect(PEER_PREFIX + code, { reliable: true, serialization: 'json' });
-    await new Promise((resolve, reject) => {
-      const t = setTimeout(() => reject(Object.assign(new Error('Your friend’s game didn’t answer. Check the code and try again.'), { type: 'timeout' })), 15000);
-      conn.on('open', () => { clearTimeout(t); resolve(); });
-      conn.on('error', (e) => { clearTimeout(t); reject(peerError(e)); });
-      peer.on('error', (e) => { clearTimeout(t); reject(peerError(e)); });
-    }).catch((e) => { peer.destroy(); throw e; });
-    return new PeerTransport(peer, code, conn);
-  }
-
-  static async openPeer(Peer, id) {
-    const config = { iceServers: await iceServers() };
-    return new Promise((resolve, reject) => {
-      // (BLOCKHAVEN_PEER_SERVER can point at another PeerJS server: { host, port, path, secure }.)
-      const opts = { debug: 0, config, ...(globalThis.BLOCKHAVEN_PEER_SERVER ?? {}) };
-      const peer = id ? new Peer(id, opts) : new Peer(opts);
-      const t = setTimeout(() => { peer.destroy(); reject({ type: 'network' }); }, 15000);
-      const onOpen = () => { clearTimeout(t); peer.off('error', onError); resolve(peer); };
-      const onError = (e) => { clearTimeout(t); peer.off('open', onOpen); peer.destroy(); reject(e); };
-      peer.on('open', onOpen);
-      peer.on('error', onError);
-    });
-  }
-
-  constructor(peer, code, hostConn) {
-    this.peer = peer;
-    this.code = code;
-    this.kind = 'peer';
-    this.prefix = 'p:';
-    this.isHost = !hostConn;
-    this.hostAddr = `p:${PEER_PREFIX}${code}`;
-    this.me = `p:${peer.id}`;
-    this.maxPacket = 15000;
-    this.conns = new Map(); // address -> DataConnection
-    this.presence = null;
-    this.sentPresence = null;
-    this.lastPresence = 0;
-    this.states = new Map(); // host: address -> presence of each guest (relayed)
-    this.relay = new Map();  // host: address -> presence waiting to be passed on (null: left)
-    this.onPacket = null;
-    this.onPresence = null;
-    this.onStatus = null;
-    this.connected = true;
-    this.dead = false;
-    if (hostConn) this.attach(hostConn, this.hostAddr);
-    else {
-      peer.on('connection', (conn) => conn.on('open', () => this.attach(conn, `p:${conn.peer}`)));
-      // Keep the code working for new guests if the link to the server drops.
-      peer.on('disconnected', () => { if (!this.dead) setTimeout(() => !this.dead && peer.reconnect(), 1500); });
-      peer.on('error', (e) => console.warn('PeerJS:', e?.type, e?.message));
-    }
-    this.timer = setInterval(() => this.pump(), 50);
-  }
-
-  get ready() { return !this.dead; }
-  get self() { return this.me; }
-
-  attach(conn, addr) {
-    this.conns.set(addr, conn);
-    conn.on('data', (d) => this.receive(addr, d));
-    conn.on('close', () => this.lost(addr));
-    conn.on('error', () => this.lost(addr));
-    if (this.isHost) {
-      // A newcomer hears about everyone already here.
-      const all = {};
-      if (this.presence) all[this.me] = this.presence;
-      for (const [a, s] of this.states) all[a] = s;
-      this.sendRaw(addr, { pr: all });
-    }
-  }
-
-  lost(addr) {
-    if (!this.conns.has(addr)) return;
-    this.conns.delete(addr);
-    if (this.isHost) {
-      this.states.delete(addr);
-      this.relay.set(addr, null);
-      this.onPresence?.(addr, null);
-    } else {
-      this.connected = false;
-      this.onStatus?.(false);
-      for (const a of this.states.keys()) this.onPresence?.(a, null);
-      this.states.clear();
-      this.onPresence?.(this.hostAddr, null);
-    }
-  }
-
-  receive(addr, d) {
-    if (!d || typeof d !== 'object') return;
-    if (d.pr && typeof d.pr === 'object') {
-      if (this.isHost) {
-        // A guest's own presence: keep it and pass it on.
-        const s = d.pr[addr];
-        if (s && typeof s === 'object') { this.states.set(addr, s); this.relay.set(addr, s); this.onPresence?.(addr, s); }
-      } else {
-        for (const [a, s] of Object.entries(d.pr)) {
-          if (a === this.me) continue;
-          if (s) this.states.set(a, s); else this.states.delete(a);
-          this.onPresence?.(a, s ?? null);
-        }
-      }
-      return;
-    }
-    if (d.p !== undefined) this.onPacket?.(addr, d.p);
-  }
-
-  sendRaw(addr, obj) {
-    const c = this.conns.get(addr);
-    if (c?.open) { try { c.send(obj); } catch (e) { console.warn('Send failed', e); } }
-  }
-
-  send(to, pkt) {
-    if (to === '*') { for (const a of this.conns.keys()) this.sendRaw(a, { p: pkt }); }
-    else this.sendRaw(to, { p: pkt });
-  }
-
-  setPresence(obj) { this.presence = obj; }
-
-  // Another transport's player (a host's guests here and through the relay see each other).
-  injectPresence(addr, pres) {
-    if (!this.isHost) return;
-    if (pres) this.states.set(addr, pres); else this.states.delete(addr);
-    this.relay.set(addr, pres ?? null);
-  }
-
-  pump() {
-    const now = performance.now();
-    if (now - this.lastPresence < 66) return;
-    this.lastPresence = now;
-    if (this.isHost) {
-      if (this.presence && !same(this.presence, this.sentPresence)) { this.sentPresence = this.presence; this.relay.set(this.me, this.presence); }
-      if (!this.relay.size) return;
-      for (const a of this.conns.keys()) {
-        const out = {};
-        for (const [k, v] of this.relay) if (k !== a) out[k] = v;
-        if (Object.keys(out).length) this.sendRaw(a, { pr: out });
-      }
-      this.relay.clear();
-    } else if (this.presence && !same(this.presence, this.sentPresence)) {
-      this.sentPresence = this.presence;
-      this.sendRaw(this.hostAddr, { pr: { [this.me]: this.presence } });
-    }
-  }
-
-  list() { return [...this.states]; }
-
-  close() {
-    this.dead = true;
-    clearInterval(this.timer);
-    // Give the last packets a moment to leave before the connections close.
-    setTimeout(() => this.peer.destroy(), 300);
-  }
-}
-
-// ---------------------------------------------------------------- reliable streams
-// Each sender numbers its packets per stream: one direct stream to each other player ('d') and,
-// for a host, one broadcast stream to all its guests ('b'). A packet holds several small
-// messages, or one fragment of a big one. Receivers deliver strictly in order, hold packets that
-// arrive early, and ask for missing ones (nack). Heartbeats reveal losses at the end of a burst.
-// When a sender can no longer resend what was lost it says so (reset) and the receiver starts
-// over from there, reporting the loss so the game can resynchronise.
-const KEEP_DIRECT = 1500, KEEP_BROADCAST = 4000;
-
-class Link {
-  constructor() {
-    this.epoch = Math.random().toString(36).slice(2, 7);
-    this.transports = [];
-    this.out = new Map();  // stream key ('*' or address) -> outgoing stream
-    this.in = new Map();   // `${from}|${st}|${epoch}` -> incoming stream
-    this.follows = new Map(); // host address -> { epoch, from, early: [] } (broadcast streams we listen to)
-    this.onMessage = null;  // (from, msg, broadcast)
-    this.onPresence = null; // (address, presence | null)
-    this.onLoss = null;     // (from, broadcast)
-    this.lastBeat = 0;
-    this.closed = false;
-  }
-
-  addTransport(t) {
-    this.transports.push(t);
-    t.onPacket = (from, pkt) => this.receive(from, pkt);
-    t.onPresence = (addr, pres) => {
-      this.onPresence?.(addr, pres);
-      // (A host's guests on one transport hear about those on another.)
-      for (const o of this.transports) if (o !== t) o.injectPresence?.(addr, pres);
-    };
-  }
-
-  transportFor(addr) { return this.transports.find((t) => addr.startsWith(t.prefix)); }
-
-  stream(key) {
-    let s = this.out.get(key);
-    if (!s) {
-      s = { key, seq: 0, queue: [], sent: new Map(), lastSend: 0, beats: 0 };
-      this.out.set(key, s);
-    }
-    return s;
-  }
-
-  send(to, msg) { this.stream(to).queue.push(msg); }
-  broadcast(msg) { this.stream('*').queue.push(msg); }
-  // True while anything handed over hasn't gone out yet.
-  get busy() { return [...this.out.values()].some((s) => s.queue.length > 0) || this.transports.some((t) => t.busy); }
-
-  setPresence(obj) { for (const t of this.transports) t.setPresence(obj); }
-
-  maxFor(key) {
-    let m = Infinity;
-    for (const t of key === '*' ? this.transports : [this.transportFor(key)]) if (t) m = Math.min(m, t.maxPacket);
-    return m === Infinity ? 3000 : m;
-  }
-
-  // Packs queued messages into packets and hands them to the transports. Call often (each frame).
-  flush() {
-    if (this.closed) return;
-    const now = performance.now();
-    for (const s of this.out.values()) {
-      if (!s.queue.length) continue;
-      const max = this.maxFor(s.key) - 80;
-      const st = s.key === '*' ? 'b' : 'd';
-      let batch = [], size = 0;
-      const emit = (pkt) => this.emitPacket(s, pkt, now);
-      const pack = () => { if (batch.length) emit({ st, e: this.epoch, m: batch }); batch = []; size = 0; };
-      for (const msg of s.queue) {
-        const text = JSON.stringify(msg);
-        const n = utf8Length(text) + 1;
-        if (n > max) {
-          pack();
-          const parts = splitForJSON(text, max - 20);
-          parts.forEach((d, i) => emit({ st, e: this.epoch, fr: [i, parts.length], d }));
-          continue;
-        }
-        if (size + n > max) pack();
-        batch.push(msg);
-        size += n;
-      }
-      pack();
-      s.queue = [];
-    }
-    // Heartbeats: after anything is sent, the latest number goes out a few more times so a lost
-    // last packet is noticed.
-    if (now - this.lastBeat > 800) {
-      this.lastBeat = now;
-      for (const s of this.out.values()) {
-        if (!s.seq || s.beats >= 3) continue;
-        s.beats++;
-        this.sendPacket(s.key, { c: 'hb', st: s.key === '*' ? 'b' : 'd', e: this.epoch, s: s.seq });
-      }
-    }
-  }
-
-  emitPacket(s, pkt, now) {
-    pkt.s = ++s.seq;
-    s.sent.set(pkt.s, pkt);
-    const keep = s.key === '*' ? KEEP_BROADCAST : KEEP_DIRECT;
-    if (s.sent.size > keep) s.sent.delete(pkt.s - keep);
-    s.lastSend = now;
-    s.beats = 0;
-    this.sendPacket(s.key, pkt);
-  }
-
-  sendPacket(key, pkt) {
-    if (key === '*') { for (const t of this.transports) t.send('*', pkt); }
-    else this.transportFor(key)?.send(key, pkt);
-  }
-
-  // The broadcast stream of `host`, from sequence number `after` + 1 on. Packets that arrived
-  // before we knew where to start are kept and delivered now.
-  follow(host, epoch, after) {
-    const f = this.follows.get(host) ?? { early: [] };
-    this.follows.set(host, { epoch, early: [] });
-    const s = this.incoming(host, 'b', epoch);
-    s.expect = after + 1;
-    for (const [from, pkt] of f.early) this.receive(from, pkt);
-  }
-
-  // Start keeping `host`'s broadcast packets (we're about to join and follow it).
-  listen(host) { if (!this.follows.has(host)) this.follows.set(host, { epoch: null, early: [] }); }
-
-  unfollow(host) { this.follows.delete(host); }
-
-  incoming(from, st, epoch) {
-    const key = `${from}|${st}|${epoch}`;
-    let s = this.in.get(key);
-    if (!s) {
-      s = { from, st, epoch, expect: 1, pending: new Map(), frag: null, nackAt: 0, top: 0 };
-      this.in.set(key, s);
-    }
-    return s;
-  }
-
-  receive(from, pkt) {
-    if (this.closed || !pkt || typeof pkt !== 'object') return;
-    if (pkt.c) { this.control(from, pkt); return; }
-    if (typeof pkt.s !== 'number' || (pkt.st !== 'd' && pkt.st !== 'b')) return;
-    if (pkt.st === 'b') {
-      const f = this.follows.get(from);
-      if (!f) return;
-      if (f.epoch === null) { if (f.early.length < 4000) f.early.push([from, pkt]); return; }
-      if (pkt.e !== f.epoch) return;
-    }
-    const s = this.incoming(from, pkt.st, pkt.e);
-    if (pkt.s < s.expect) return;
-    s.top = Math.max(s.top, pkt.s);
-    if (pkt.s > s.expect) {
-      s.pending.set(pkt.s, pkt);
-      this.checkGap(s);
-      return;
-    }
-    this.deliver(s, pkt);
-    s.expect++;
-    while (s.pending.has(s.expect)) {
-      const next = s.pending.get(s.expect);
-      s.pending.delete(s.expect);
-      this.deliver(s, next);
-      s.expect++;
-    }
-  }
-
-  deliver(s, pkt) {
-    const b = s.st === 'b';
-    if (pkt.m) {
-      s.frag = null;
-      for (const msg of pkt.m) this.dispatch(s.from, msg, b);
-    } else if (pkt.fr) {
-      const [i, n] = pkt.fr;
-      if (i === 0) s.frag = [];
-      if (!s.frag) return;
-      s.frag.push(pkt.d);
-      if (i === n - 1) {
-        const text = s.frag.join('');
-        s.frag = null;
-        let msg;
-        try { msg = JSON.parse(text); } catch { return; }
-        this.dispatch(s.from, msg, b);
-      }
-    }
-  }
-
-  dispatch(from, msg, b) {
-    try { this.onMessage?.(from, msg, b); } catch (err) { console.error('Multiplayer message failed', msg?.t, err); }
-  }
-
-  // Ask for what's missing, after a short wait in case it is only late.
-  checkGap(s, now = performance.now()) {
-    if (s.expect > s.top) return;
-    if (!s.gapSince) s.gapSince = now;
-    if (now - s.gapSince < 150 || now < s.nackAt) return;
-    let end = s.expect;
-    while (end + 1 <= s.top && !s.pending.has(end + 1) && end - s.expect < 400) end++;
-    s.nackAt = now + 700;
-    this.sendPacket(s.from, { c: 'nack', st: s.st, e: s.epoch, a: s.expect, b: end });
-  }
-
-  control(from, pkt) {
-    if (pkt.c === 'hb') {
-      if (pkt.st === 'b' && this.follows.get(from)?.epoch !== pkt.e) return;
-      const s = this.incoming(from, pkt.st, pkt.e);
-      if (typeof pkt.s === 'number' && pkt.s >= s.expect) { s.top = Math.max(s.top, pkt.s); this.checkGap(s); }
-    } else if (pkt.c === 'nack') {
-      if (pkt.e !== this.epoch) return;
-      const s = this.out.get(pkt.st === 'b' ? '*' : from);
-      if (!s) return;
-      const a = Math.max(1, pkt.a | 0), b = Math.min(s.seq, pkt.b | 0);
-      for (let q = a; q <= b; q++) {
-        const p = s.sent.get(q);
-        if (!p) { this.sendPacket(from, { c: 'reset', st: pkt.st, e: this.epoch, s: b + 1 }); return; }
-        this.sendPacket(from, p);
-      }
-    } else if (pkt.c === 'reset') {
-      if (pkt.st === 'b' && this.follows.get(from)?.epoch !== pkt.e) return;
-      const s = this.incoming(from, pkt.st, pkt.e);
-      if (typeof pkt.s !== 'number' || pkt.s <= s.expect) return;
-      s.expect = pkt.s;
-      s.frag = null;
-      for (const k of [...s.pending.keys()]) if (k < s.expect) s.pending.delete(k);
-      this.onLoss?.(from, pkt.st === 'b');
-      // Deliver whatever was already waiting beyond the gap.
-      while (s.pending.has(s.expect)) {
-        const next = s.pending.get(s.expect);
-        s.pending.delete(s.expect);
-        this.deliver(s, next);
-        s.expect++;
-      }
-    }
-  }
-
-  // Periodic upkeep: re-ask for gaps that are still open.
-  tick() {
-    const now = performance.now();
-    for (const s of this.in.values()) {
-      if (s.expect <= s.top) this.checkGap(s, now);
-      else s.gapSince = 0;
-    }
-  }
-
-  forget(addr) {
-    this.out.delete(addr);
-    for (const [k, s] of this.in) if (s.from === addr) this.in.delete(k);
-    this.follows.delete(addr);
-  }
-
-  close() {
-    this.closed = true;
-    for (const t of this.transports) { t.onPacket = null; t.onPresence = null; }
-  }
-}
-
-__exports.PROTOCOL = PROTOCOL;
-__exports.cleanCode = cleanCode;
-__exports.NO_GAME = NO_GAME;
-__exports.utf8Length = utf8Length;
-__exports.RoomTransport = RoomTransport;
-__exports.loadPeerJS = loadPeerJS;
-__exports.randomCode = randomCode;
-__exports.iceServers = iceServers;
-__exports.PeerTransport = PeerTransport;
-__exports.Link = Link;
 });
 
 __define("src/relay.js", function (__exports) {
@@ -37536,7 +37566,7 @@ const { ROLES } = __require("src/civilians.js");
 const { SKIN_INDEX, SKIN_SIZE } = __require("src/skins.js");
 const { HR } = __require("src/tex/mobskins.js");
 
-const W = 276, H = 214;
+const W = 300, H = 214;
 const px = (n) => `calc(var(--u) * ${n})`;
 
 class TalkScreen {
@@ -37585,24 +37615,31 @@ class TalkScreen {
   build() {
     const e = this.who, civ = this.game.entities.civilians, win = this.win;
     win.replaceChildren();
-    // The face, drawn from their skin.
-    const face = div('talk-face', win, 8, 8, 40, 40);
+    // Who they are, as the title of the window, then their face, drawn from their skin, and what
+    // they say, in a box of its own.
+    const title = label(e.name, win, 8, 6), job = ROLES[e.role]?.title ?? 'Villager';
+    // ("King Edgar", not "King Edgar - King".)
+    if (!e.name.startsWith(`${job} `)) {
+      const role = document.createElement('span');
+      role.className = 't-sub';
+      role.textContent = ` - ${job}`;
+      title.append(role);
+    }
+    const face = div('talk-face', win, 8, 17, 52, 52);
     face.appendChild(this.portrait(e));
-    label(e.name, win, 8, 52);
-    label(ROLES[e.role]?.title ?? 'Villager', win, 8, 62).classList.add('t-sub');
-    const speech = div('talk-speech', win, 56, 10, W - 64, 56);
+    const speech = div('talk-speech', win, 66, 17, W - 74, 52);
     speech.textContent = `“${this.line}”`;
-    // What you can say.
+    // What you can say: a row of buttons, each as wide as its words.
     const buttons = [['Trade', () => { this.mode = 'trade'; this.build(); }], ['Chat', () => this.say(civ.chatLine(e))],
       ['Who are you?', () => this.say(civ.intro(e))], ['Ask the way', () => { this.mode = 'ways'; this.say('Where are you headed?'); }],
       ['Goodbye', () => this.game.closeTalk()]];
+    const row = div('talk-buttons', win, 8, 74, W - 16, 17);
     buttons.forEach(([text, fn], i) => {
       const b = document.createElement('button');
       b.className = `btn talk-btn${(this.mode === 'trade' && i === 0) || (this.mode === 'ways' && i === 3) ? ' active' : ''}`;
       b.textContent = text;
-      b.style.left = px(8 + i * 52.4); b.style.top = px(76); b.style.width = px(50); b.style.height = px(15);
       b.addEventListener('click', () => { this.game.audio.click(); fn(); });
-      win.appendChild(b);
+      row.appendChild(b);
     });
     const coins = this.game.creative ? '∞' : this.game.inv.count(I.gold_coin);
     const purse = label(`Gold coins: ${coins}`, win, W - 8, H - 14);
@@ -37610,7 +37647,7 @@ class TalkScreen {
     if (this.mode === 'trade') this.buildTrades(win, e);
     else if (this.mode === 'ways') this.buildWays(win, e);
     else {
-      const hint = div('talk-hint', win, 8, 100, W - 16, 60);
+      const hint = div('talk-hint', win, 8, 99, W - 16, 60);
       hint.textContent = ROLES[e.role]?.trades?.length ? 'Villagers trade for gold coins. Find them in chests, or sell what you gather.' : '';
     }
   }
@@ -37618,15 +37655,15 @@ class TalkScreen {
   buildTrades(win, e) {
     const civ = this.game.entities.civilians;
     const offers = civ.offers(e);
-    if (!offers.length) { label("I've nothing to trade.", win, 8, 100); return; }
+    if (!offers.length) { label("I've nothing to trade.", win, 8, 97); return; }
     const inv = this.game.inv;
     offers.forEach((o, i) => {
       const col = i % 2, row = Math.floor(i / 2);
-      const x = 8 + col * 132, y = 96 + row * 26;
+      const x = 8 + col * 144, y = 96 + row * 26;
       const give = o.kind === 'buy' ? { id: I.gold_coin, count: o.price } : { id: o.id, count: o.count };
       const get = o.kind === 'buy' ? { id: o.id, count: o.count, ench: o.ench ?? undefined } : { id: I.gold_coin, count: o.price };
       const can = o.left > 0 && (this.game.creative && o.kind === 'buy' ? true : inv.count(give.id) >= give.count);
-      const rowEl = div(`talk-offer${can ? '' : ' off'}${o.left <= 0 ? ' sold' : ''}`, win, x, y, 128, 22);
+      const rowEl = div(`talk-offer${can ? '' : ' off'}${o.left <= 0 ? ' sold' : ''}`, win, x, y, 140, 22);
       const a = slotBox(rowEl, 2, 2);
       fillSlot(a, give);
       const arrow = div('talk-arrow', rowEl, 24, 6, 16, 10);
@@ -37649,12 +37686,13 @@ class TalkScreen {
   buildWays(win, e) {
     const civ = this.game.entities.civilians;
     const places = civ.places(e);
-    if (!places.length) { label("I don't know my way round here.", win, 8, 100); return; }
+    if (!places.length) { label("I don't know my way round here.", win, 8, 97); return; }
     places.forEach(([key, name], i) => {
       const b = document.createElement('button');
       b.className = 'btn talk-btn';
-      b.textContent = name[0].toUpperCase() + name.slice(1);
-      b.style.left = px(8 + (i % 3) * 87); b.style.top = px(98 + Math.floor(i / 3) * 18); b.style.width = px(83); b.style.height = px(15);
+      // ("Hunter's lodge": the place without its "the", to fit the button.)
+      b.textContent = name.replace(/^the /, '').replace(/^./, (c) => c.toUpperCase());
+      b.style.left = px(8 + (i % 3) * 95); b.style.top = px(97 + Math.floor(i / 3) * 20); b.style.width = px(91); b.style.height = px(17);
       b.addEventListener('click', () => { this.game.audio.click(); this.mode = 'ways'; this.say(civ.directions(e, key)); });
       win.appendChild(b);
     });
@@ -37782,6 +37820,7 @@ const { Weather } = __require("src/weather.js");
 const { Entities } = __require("src/entities.js");
 const { TouchControls } = __require("src/touch.js");
 const { HostSession, GuestSession, openRoom, openGames, cleanName, COLORS, playerUid, playerKey } = __require("src/multiplayer.js");
+const { spacedCode } = __require("src/net.js");
 const { Avatars, RemotePlayer, playerSkin } = __require("src/avatars.js");
 const storage = __require("src/storage.js");
 const { makeEnvironment, updateEnvironment, clockText } = __require("src/sky.js");
@@ -38395,7 +38434,7 @@ class Game {
     try {
       this.net = await HostSession.start(this, kind);
       this.ui.renderShare(this.net, !!(await openRoom()));
-      this.ui.message(kind === 'room' ? 'Your world is open to friends on this page' : `Your world is open to friends. Join code: ${this.net.code}`, COLORS.y);
+      this.ui.message(kind === 'room' ? 'Your world is open to friends on this page' : `Your world is open to friends. Join code: ${spacedCode(this.net.code)}`, COLORS.y);
     } catch (err) {
       console.warn(err);
       this.ui.shareStatus(err.message || 'Couldn’t open your world.', true);
@@ -38641,7 +38680,7 @@ class Game {
     const day = Math.floor(this.time / TICKS_PER_DAY) + 1;
     const net = this.net;
     const online = !net ? '' : net.host
-      ? ` · ${net.count} player${net.count === 1 ? '' : 's'}${net.code ? ` · Code ${net.code}` : ''}`
+      ? ` · ${net.count} player${net.count === 1 ? '' : 's'}${net.code ? ` · Code ${spacedCode(net.code)}` : ''}`
       : ` · ${net.count} players online`;
     $('pause-info').textContent = `${this.meta.name} · ${this.creative ? 'Creative' : 'Survival'} · Day ${day}, ${clockText(this.time)}${online}`;
     this.ui.setPauseMenu(net ? (net.host ? 'host' : 'guest') : 'single');
@@ -40962,7 +41001,7 @@ class Game {
       `Food: ${this.food} (saturation ${this.saturation.toFixed(1)}) · Weather: ${this.weather.raining ? 'rain' : 'clear'} ${Math.round(this.weather.rain * 100)}%`,
       `Entities: ${this.entities.list.length} · Particles: ${this.particles.list.length}`,
       t?.player ? `Looking at: ${t.player.name}` : t && !t.entity ? `Looking at: ${BLOCKS[t.id].label} (${t.x}, ${t.y}, ${t.z}) face ${FACE_NAMES[t.face] ?? '-'}` : t?.entity ? `Looking at: ${t.entity.label}` : 'Looking at: nothing',
-      ...(this.net ? [`Multiplayer: ${this.net.host ? 'hosting' : 'guest'} via ${this.net.via === 'room' ? 'this page' : `code ${this.net.code}`} · ${this.net.count} players`] : []),
+      ...(this.net ? [`Multiplayer: ${this.net.host ? 'hosting' : 'guest'} via ${this.net.via === 'room' ? 'this page' : `code ${spacedCode(this.net.code)}`} · ${this.net.count} players`] : []),
     ];
   }
 }

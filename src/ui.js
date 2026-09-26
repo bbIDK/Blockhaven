@@ -5,6 +5,7 @@ import { shiny } from './enchanting.js';
 import { itemDef } from './items.js';
 import { EFFECTS, clock, roman } from './potions.js';
 import { DIFFICULTIES } from './config.js';
+import { spacedCode } from './net.js';
 import { BINDINGS, DEFAULT_KEYS, RESERVED, keyName } from './keys.js';
 
 export const $ = (id) => document.getElementById(id);
@@ -512,9 +513,11 @@ export class UI {
       const box = document.createElement('div'), icon = document.createElement('i'), time = document.createElement('span');
       box.className = `effect${EFFECTS[e.name].bad ? ' bad' : ''}${e.ticks < 200 && Math.floor(e.ticks / 10) % 2 ? ' blink' : ''}`;
       icon.style.backgroundImage = `url(${EFFECT_ICONS[e.name]})`;
-      time.textContent = `${roman(e.level).trim()} ${clock(e.ticks)}`.trim();
+      time.textContent = clock(e.ticks);
       box.title = `${EFFECTS[e.name].label}${roman(e.level)}`;
       box.append(icon, time);
+      // (Its level, II and up, in the corner like a stack's count.)
+      if (e.level > 1) { const lv = document.createElement('b'); lv.textContent = roman(e.level).trim(); box.append(lv); box.classList.add('lv'); }
       return box;
     }));
   }
@@ -723,7 +726,7 @@ export class UI {
         : 'Let friends join this world while you play. You get a six-letter code to give them; they type it under Multiplayer on the title screen.';
     }
     $('share-code').hidden = !net?.code;
-    $('share-code-text').textContent = net?.code ?? '';
+    $('share-code-text').textContent = spacedCode(net?.code);
     $('share-room').hidden = !!net || !room;
     $('share-code-btn').hidden = !!net;
     $('share-name-field').hidden = !!net;

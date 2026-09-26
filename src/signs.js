@@ -16,7 +16,7 @@ const GLYPHS = {
   M: 'x.xxxxxxxx.xx.x', N: 'xx.x.xx.xx.xx.x', O: '.x.x.xx.xx.x.x.', P: 'xx.x.xxx.x..x..', Q: '.x.x.xx.xxx..xx', R: 'xx.x.xxx.x.xx.x',
   S: '.xxx...x...xxx.', T: 'xxx.x..x..x..x.', U: 'x.xx.xx.xx.xxxx', V: 'x.xx.xx.x.x..x.', W: 'x.xx.xxxxxxxx.x', X: 'x.xx.x.x.x.xx.x',
   Y: 'x.xx.x.x..x..x.', Z: 'xxx..x.x.x..xxx',
-  0: 'xxxx.xx.xx.xxxx', 1: '.x.xx..x..x.xxx', 2: 'xx...x.x.x..xxx', 3: 'xx...x.x...xxx.', 4: 'x.xx.xxxx..x..x', 5: 'xxxx..xx...xxx.',
+  0: 'xxxx.xx.xx.xxxx', 1: '.x.xx..x..x.xxx', 2: 'xxx..xxxxx..xxx', 3: 'xx...x.x...xxx.', 4: 'x.xx.xxxx..x..x', 5: 'xxxx..xx...xxx.',
   6: '.xxx..xxxx.xxxx', 7: 'xxx..x.x..x..x.', 8: 'xxxx.xxxxx.xxxx', 9: 'xxxx.xxxx..xxx.',
   ' ': '...............', '.': '.............x.', ',': '..........x.x..', '!': '.x..x..x.....x.', '?': 'xx...x.x.....x.',
   "'": '.x..x..........', '"': 'x.xx.x.........', '-': '......xxx......', '+': '....x.xxx.x....', ':': '....x.....x....',

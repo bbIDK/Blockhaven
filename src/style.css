@@ -1,10 +1,19 @@
 /* Everything is measured in GUI pixels: --u CSS pixels each, set from the GUI Scale option
-   (ui.js). Text is 10 GUI pixels tall, buttons 20, like the classic game's interface. */
+   (ui.js). Buttons are 20 GUI pixels tall, like the classic game's interface. The font is drawn on
+   a grid of 9 pixels to the em, so text set at 9 GUI pixels (or 18, 27) has one font pixel to each
+   GUI pixel and stays sharp. */
+/* Blockhaven Pixel: Monocraft (SIL OFL 1.1, Idrees Hassan) spaced like Minecraft's font; see
+   tools/make-font.py and src/fonts/OFL-Monocraft.txt. Its 2, 5 and 8 look nothing like Z, S and B. */
+@font-face {
+  font-family: 'Blockhaven Pixel';
+  src: url('fonts/blockhaven-pixel.woff2') format('woff2');
+  font-display: block;
+}
 :root {
   color-scheme: dark;
   --u: 3px;
-  --font-ui: 'Pixelify Sans', ui-monospace, 'Cascadia Mono', 'Courier New', monospace;
-  --font-display: 'Silkscreen', 'Pixelify Sans', ui-monospace, 'Courier New', monospace;
+  --font-ui: 'Blockhaven Pixel', ui-monospace, 'Cascadia Mono', 'Courier New', monospace;
+  --font-display: var(--font-ui);
   --text: #ffffff;
   --text-dim: #a0a0a0;
   --shade: #3f3f3f;
@@ -18,7 +27,7 @@ body {
   margin: 0;
   background: #000;
   color: var(--text);
-  font: 400 calc(var(--u) * 10)/1.2 var(--font-ui);
+  font: 400 calc(var(--u) * 9)/1.2 var(--font-ui);
   overflow: hidden;
   -webkit-user-select: none;
   user-select: none;
@@ -40,7 +49,7 @@ p { margin: 0; }
   width: calc(var(--u) * 150);
   height: calc(var(--u) * 20);
   padding: 0 calc(var(--u) * 4);
-  font: 400 calc(var(--u) * 10)/1 var(--font-ui);
+  font: 400 calc(var(--u) * 9)/1 var(--font-ui);
   color: var(--text);
   text-shadow: var(--u) var(--u) 0 var(--shade);
   white-space: nowrap;
@@ -113,7 +122,7 @@ p { margin: 0; }
 
 .field { display: flex; flex-direction: column; gap: calc(var(--u) * 3); width: calc(var(--u) * 204); color: var(--text-dim); text-shadow: var(--u) var(--u) 0 var(--shade-dim); }
 input[type='text'], input[type='search'] {
-  font: 400 calc(var(--u) * 10)/1 var(--font-ui);
+  font: 400 calc(var(--u) * 9)/1 var(--font-ui);
   color: #e0e0e0;
   text-shadow: var(--u) var(--u) 0 var(--shade);
   background: #000;
@@ -146,7 +155,7 @@ input::placeholder { color: #6a6a6a; text-shadow: none; }
 /* Menus over the title panorama or the game: blurred and darkened, like the modern classic. */
 .menu-bg, .dim { background: rgba(0, 0, 0, 0.5); -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px); }
 .dim { background: linear-gradient(rgba(16, 16, 16, 0.6), rgba(16, 16, 16, 0.75)); }
-.screen-title { flex: none; margin: 0 0 calc(var(--u) * 6); font: 400 calc(var(--u) * 10)/1.2 var(--font-ui); text-align: center; }
+.screen-title { flex: none; margin: 0 0 calc(var(--u) * 6); font: 400 calc(var(--u) * 9)/1.2 var(--font-ui); text-align: center; }
 .row { display: flex; gap: calc(var(--u) * 8); justify-content: center; flex-wrap: wrap; }
 .button-rows { display: flex; flex-direction: column; align-items: center; gap: var(--gap); }
 .button-rows .row { gap: calc(var(--u) * 8); }
@@ -183,7 +192,7 @@ input::placeholder { color: #6a6a6a; text-shadow: none; }
   from { transform: rotate(-20deg) scale(1.04); }
   to { transform: rotate(-20deg) scale(0.92); }
 }
-.corner { position: absolute; bottom: max(calc(var(--u) * 2), env(safe-area-inset-bottom)); max-width: 48%; margin: 0; font-size: calc(var(--u) * 8); }
+.corner { position: absolute; bottom: max(calc(var(--u) * 2), env(safe-area-inset-bottom)); max-width: 48%; margin: 0; font-size: calc(var(--u) * 9); }
 .corner.right { text-align: right; }
 .corner.left { left: max(calc(var(--u) * 2), env(safe-area-inset-left)); }
 .corner.right { right: max(calc(var(--u) * 2), env(safe-area-inset-right)); }
@@ -248,7 +257,7 @@ input::placeholder { color: #6a6a6a; text-shadow: none; }
 .options h3 {
   grid-column: 1 / -1;
   margin: calc(var(--u) * 6) 0 0;
-  font: 400 calc(var(--u) * 10)/1.2 var(--font-ui);
+  font: 400 calc(var(--u) * 9)/1.2 var(--font-ui);
   color: var(--text-dim);
   text-shadow: var(--u) var(--u) 0 var(--shade-dim);
   text-align: center;
@@ -269,7 +278,7 @@ input::placeholder { color: #6a6a6a; text-shadow: none; }
 .keys dt { white-space: nowrap; text-align: right; }
 .keys dd { margin: 0; color: var(--text-dim); text-shadow: var(--u) var(--u) 0 var(--shade-dim); }
 .hint-text { text-align: left; max-width: none; }
-.hint-text.credits { font-size: 0.85em; opacity: 0.85; }
+.hint-text.credits { opacity: 0.85; }
 .hint-text.credits a { color: inherit; }
 kbd {
   display: inline-block;
@@ -293,7 +302,7 @@ kbd {
 
 /* ------------------------------------------------------------------ death and confirm */
 .death { background: linear-gradient(rgba(80, 0, 0, 0.38), rgba(128, 48, 48, 0.63)); }
-.death-title { margin: 0 0 calc(var(--u) * 10); font: 400 calc(var(--u) * 20)/1 var(--font-ui); text-shadow: calc(var(--u) * 2) calc(var(--u) * 2) 0 var(--shade); }
+.death-title { margin: 0 0 calc(var(--u) * 10); font: 400 calc(var(--u) * 18)/1 var(--font-ui); text-shadow: calc(var(--u) * 2) calc(var(--u) * 2) 0 var(--shade); }
 .death-cause { margin-bottom: calc(var(--u) * 20); text-align: center; }
 .modal {
   position: absolute;
@@ -384,7 +393,7 @@ kbd {
   position: absolute;
   right: calc(var(--u) * -1);
   bottom: calc(var(--u) * -1.5);
-  font: 400 calc(var(--u) * 8)/1 var(--font-display);
+  font: 400 calc(var(--u) * 9)/1 var(--font-display);
   text-shadow: var(--u) var(--u) 0 var(--shade);
   pointer-events: none;
   z-index: 2;
@@ -415,7 +424,7 @@ kbd {
   left: 50%;
   bottom: calc(var(--u) * 3);
   transform: translateX(-50%);
-  font: 400 calc(var(--u) * 8)/1 var(--font-display);
+  font: 400 calc(var(--u) * 9)/1 var(--font-display);
   color: #80ff20;
   text-shadow: var(--u) 0 0 #000, calc(var(--u) * -1) 0 0 #000, 0 var(--u) 0 #000, 0 calc(var(--u) * -1) 0 #000;
 }
@@ -445,7 +454,8 @@ kbd {
   max-width: calc(var(--u) * 150);
 }
 #effects .effect {
-  width: calc(var(--u) * 24);
+  position: relative;
+  width: calc(var(--u) * 30);
   height: calc(var(--u) * 28);
   background: rgba(20, 20, 30, 0.72);
   border: var(--u) solid #6f7ab8;
@@ -459,7 +469,9 @@ kbd {
 #effects .effect.bad { border-color: #a8484a; }
 #effects .effect.blink i { opacity: 0.35; }
 #effects .effect i { width: calc(var(--u) * 14); height: calc(var(--u) * 14); background-size: 100% 100%; image-rendering: pixelated; }
-#effects .effect span { font: 400 calc(var(--u) * 6)/1 var(--font-display); color: #e8e8f0; text-shadow: calc(var(--u) * 0.5) calc(var(--u) * 0.5) 0 #222; white-space: nowrap; }
+#effects .effect span { font: 400 calc(var(--u) * 9)/1 var(--font-display); color: #e8e8f0; text-shadow: var(--u) var(--u) 0 #222; white-space: nowrap; }
+#effects .effect.lv i { margin-right: calc(var(--u) * 8); }
+#effects .effect b { position: absolute; right: calc(var(--u) * 2); top: calc(var(--u) * 1); font: 400 calc(var(--u) * 9)/1 var(--font-display); color: #fff; text-shadow: var(--u) var(--u) 0 #3f3f3f; }
 #item-name {
   position: absolute;
   left: 50%;
@@ -525,7 +537,7 @@ kbd {
 .mc-screen { background: rgba(16, 16, 16, 0.7); touch-action: none; }
 /* Writing on a sign: the board drawn big, its four lines typed straight onto it. */
 .sign-screen { background: rgba(16, 16, 16, 0.6); gap: 0; }
-.sign-screen h2 { font: 400 calc(var(--u) * 10)/1.2 var(--font-ui); color: #fff; text-shadow: var(--u) var(--u) 0 #3f3f3f; margin: 0 0 calc(var(--u) * 10); }
+.sign-screen h2 { font: 400 calc(var(--u) * 9)/1.2 var(--font-ui); color: #fff; text-shadow: var(--u) var(--u) 0 #3f3f3f; margin: 0 0 calc(var(--u) * 10); }
 .sign-board {
   width: calc(var(--u) * 192);
   height: calc(var(--u) * 96);
@@ -547,7 +559,7 @@ kbd {
   border: 0;
   outline: 0;
   text-align: center;
-  font: 400 calc(var(--u) * 12)/1 var(--font-display);
+  font: 400 calc(var(--u) * 9)/1 var(--font-display);
   color: #1c140c;
   text-transform: uppercase;
   height: calc(var(--u) * 17);
@@ -595,7 +607,7 @@ kbd {
   position: absolute;
   right: 0;
   bottom: calc(var(--u) * 0.5);
-  font: 400 calc(var(--u) * 8)/1 var(--font-display);
+  font: 400 calc(var(--u) * 9)/1 var(--font-display);
   color: #fff;
   text-shadow: var(--u) var(--u) 0 #3f3f3f;
   pointer-events: none;
@@ -646,15 +658,15 @@ kbd {
 .mc-recipe.no:hover { background: #b25a5a; }
 .mc-recipe.ghost { outline: var(--u) solid #fff; }
 .mc-recipe > img { position: absolute; left: calc(var(--u) * 4.5); top: calc(var(--u) * 4.5); width: calc(var(--u) * 16); height: calc(var(--u) * 16); image-rendering: pixelated; pointer-events: none; }
-.mc-recipe > b { position: absolute; right: calc(var(--u) * 2); bottom: calc(var(--u) * 2); font: 400 calc(var(--u) * 8)/1 var(--font-display); color: #fff; text-shadow: var(--u) var(--u) 0 #3f3f3f; pointer-events: none; }
+.mc-recipe > b { position: absolute; right: calc(var(--u) * 2); bottom: calc(var(--u) * 2); font: 400 calc(var(--u) * 9)/1 var(--font-display); color: #fff; text-shadow: var(--u) var(--u) 0 #3f3f3f; pointer-events: none; }
 .mc-page { background: #e0e0e0; box-shadow: none; }
 .mc-page.next { clip-path: polygon(0 0, 100% 50%, 0 100%); }
 .mc-page.prev { clip-path: polygon(100% 0, 0 50%, 100% 100%); }
 .mc-page:hover { background: #fff; }
 .mc-pagenum { font: 400 calc(var(--u) * 9)/1 var(--font-ui); color: #fff; text-shadow: var(--u) var(--u) 0 #3f3f3f; text-align: center; pointer-events: none; }
-.mc-empty { color: #404040; text-shadow: none; font-size: calc(var(--u) * 8); }
+.mc-empty { color: #404040; text-shadow: none; font-size: calc(var(--u) * 9); }
 .mc-screen input.mc-search {
-  font: 400 calc(var(--u) * 8)/1 var(--font-ui);
+  font: 400 calc(var(--u) * 9)/1 var(--font-ui);
   color: #fff;
   background: #000;
   border: 0;
@@ -676,7 +688,7 @@ kbd {
 @media (hover: hover) { .mc-enchant.ok:hover { background: #bcac8c; } }
 .mc-enchant .lvl {
   position: absolute; left: calc(var(--u) * 3); top: calc(var(--u) * 3); width: calc(var(--u) * 13); height: calc(var(--u) * 13);
-  font: 400 calc(var(--u) * 8)/calc(var(--u) * 13) var(--font-display); text-align: center; color: #c8ff8c; background: #3c6e18;
+  font: 400 calc(var(--u) * 9)/calc(var(--u) * 13) var(--font-display); text-align: center; color: #c8ff8c; background: #3c6e18;
   border-radius: 50%; box-shadow: inset 0 0 0 var(--u) #1f3e0a; text-shadow: var(--u) var(--u) 0 #16300a;
 }
 .mc-enchant:not(.ok) .lvl { color: #7a8a6a; background: #3a3a2e; box-shadow: inset 0 0 0 var(--u) #2a2a20; text-shadow: none; }
@@ -689,19 +701,19 @@ kbd {
 @media (hover: hover) { .mc-enchant.ok:hover .runes { background: #ffff80; } }
 .mc-enchant .cost {
   position: absolute; right: calc(var(--u) * 3); bottom: calc(var(--u) * 2);
-  font: 400 calc(var(--u) * 8)/1 var(--font-display); color: #80ff20; text-shadow: var(--u) var(--u) 0 #183008;
+  font: 400 calc(var(--u) * 9)/1 var(--font-display); color: #80ff20; text-shadow: var(--u) var(--u) 0 #183008;
 }
 .mc-enchant:not(.ok) .cost { color: #407f10; text-shadow: none; }
 /* The anvil's name box and the price of the job. */
 .mc-screen input.mc-name {
-  font: 400 calc(var(--u) * 8)/1 var(--font-ui); color: #fff; background: #000; border: 0; min-height: 0;
+  font: 400 calc(var(--u) * 9)/1 var(--font-ui); color: #fff; background: #000; border: 0; min-height: 0;
   box-shadow: inset 0 0 0 var(--u) #a0a0a0; padding: 0 calc(var(--u) * 3);
 }
 .mc-screen input.mc-name:focus { box-shadow: inset 0 0 0 var(--u) #fff; }
 .mc-screen input.mc-name:disabled { color: #707070; box-shadow: inset 0 0 0 var(--u) #505050; }
 .mc-cost {
   width: calc(var(--u) * 108); text-align: right; padding-right: calc(var(--u) * 2);
-  font: 400 calc(var(--u) * 8)/calc(var(--u) * 12) var(--font-ui); background: rgba(0, 0, 0, 0.3);
+  font: 400 calc(var(--u) * 9)/calc(var(--u) * 12) var(--font-ui); background: rgba(0, 0, 0, 0.3);
 }
 .mc-cost.ok { color: #80ff20; }
 .mc-cost.no { color: #ff6060; }
@@ -747,7 +759,7 @@ kbd {
   padding: calc(var(--u) * 3) calc(var(--u) * 4);
   background: rgba(16, 0, 16, 0.94);
   box-shadow: inset 0 0 0 var(--u) #2b0f5e, 0 0 0 var(--u) rgba(16, 0, 16, 0.94);
-  font: 400 calc(var(--u) * 8)/1.3 var(--font-ui);
+  font: 400 calc(var(--u) * 9)/1.3 var(--font-ui);
   color: #fff;
   white-space: nowrap;
   max-width: none;
@@ -791,15 +803,15 @@ kbd {
 .tbtn {
   width: 58px;
   height: 58px;
-  font: 400 16px var(--font-ui);
+  font: 400 18px var(--font-ui);
   color: #fff;
   text-shadow: 2px 2px 0 var(--shade);
   background: rgba(0, 0, 0, 0.35);
   border: 2px solid rgba(255, 255, 255, 0.3);
   touch-action: none;
 }
-.tbtn.small { width: 44px; height: 44px; font-size: 14px; }
-.tbtn.big { width: 72px; height: 72px; font-size: 22px; }
+.tbtn.small { width: 44px; height: 44px; font-size: 18px; }
+.tbtn.big { width: 72px; height: 72px; font-size: 27px; }
 .tbtn.on { background: rgba(255, 255, 255, 0.28); border-color: #fff; }
 .tbtn:active { background: rgba(255, 255, 255, 0.3); }
 
@@ -824,8 +836,8 @@ kbd {
 .share-box .confirm-text { margin-bottom: calc(var(--u) * 8); }
 .share-code { display: flex; align-items: center; gap: calc(var(--u) * 8); margin-bottom: calc(var(--u) * 10); }
 .share-code span {
-  font: 400 calc(var(--u) * 20)/1 var(--font-display);
-  letter-spacing: calc(var(--u) * 3);
+  font: 400 calc(var(--u) * 18)/1 var(--font-display);
+  letter-spacing: calc(var(--u) * 2);
   color: #ffff55;
   text-shadow: calc(var(--u) * 2) calc(var(--u) * 2) 0 #3f3f15;
   padding: calc(var(--u) * 4) calc(var(--u) * 8);
@@ -883,10 +895,22 @@ kbd {
   position: absolute; left: calc(var(--u) * 2); top: calc(var(--u) * 2); width: calc(100% - var(--u) * 4); height: calc(100% - var(--u) * 4);
   image-rendering: pixelated;
 }
-.talk-speech { font: 400 calc(var(--u) * 9)/1.35 var(--font-ui); color: #2e2e2e; white-space: normal; overflow: hidden; }
-.talk-hint { font: 400 calc(var(--u) * 8)/1.35 var(--font-ui); color: #5a5a5a; white-space: normal; }
-.talk-win .t-sub { color: #6e6e6e; font-size: calc(var(--u) * 8); }
-.talk-btn { position: absolute; font-size: calc(var(--u) * 7); padding: 0; }
+.talk-speech {
+  box-sizing: border-box;
+  padding: calc(var(--u) * 4) calc(var(--u) * 5);
+  font: 400 calc(var(--u) * 9)/calc(var(--u) * 11) var(--font-ui);
+  color: #1e1e1e;
+  text-shadow: none;
+  background: #ececec;
+  box-shadow: inset var(--u) var(--u) 0 #8b8b8b, inset calc(var(--u) * -1) calc(var(--u) * -1) 0 #fff;
+  white-space: normal;
+  overflow: hidden;
+}
+.talk-hint { font: 400 calc(var(--u) * 9)/calc(var(--u) * 11) var(--font-ui); color: #404040; text-shadow: none; white-space: normal; }
+.talk-win .t-sub { color: #5a5a5a; }
+.talk-buttons { display: flex; gap: calc(var(--u) * 3); }
+.talk-buttons .btn { position: static; flex: 1 1 auto; width: auto; height: 100%; padding: 0 calc(var(--u) * 3); }
+.talk-btn { position: absolute; padding: 0; }
 .talk-btn.active { border-color: #fff; background: #9a9a9a; }
 .talk-offer { cursor: pointer; background: rgba(0, 0, 0, 0.08); }
 .talk-offer > * { position: absolute; }
@@ -894,11 +918,11 @@ kbd {
 .talk-offer.off { opacity: 0.6; }
 .talk-offer.sold { opacity: 0.35; }
 .talk-offer .mc-slot { pointer-events: none; }
-.talk-arrow { font: 400 calc(var(--u) * 10)/1 var(--font-ui); color: #555; text-align: center; pointer-events: none; }
+.talk-arrow { font: 400 calc(var(--u) * 9)/1 var(--font-ui); color: #555; text-align: center; pointer-events: none; }
 #talk-tip {
   position: fixed; z-index: 50; pointer-events: none; padding: calc(var(--u) * 3) calc(var(--u) * 4);
   background: rgba(16, 0, 16, 0.94); box-shadow: inset 0 0 0 var(--u) #2b0f5e, 0 0 0 var(--u) rgba(16, 0, 16, 0.94);
-  font: 400 calc(var(--u) * 8)/1.3 var(--font-ui); color: #fff; white-space: nowrap;
+  font: 400 calc(var(--u) * 9)/1.3 var(--font-ui); color: #fff; white-space: nowrap;
 }
 #talk-tip b { font-weight: 400; }
 /* The name of a village as you walk in. */
@@ -907,5 +931,5 @@ kbd {
   opacity: 0; transition: opacity 1.2s ease;
 }
 #place-title.show { opacity: 1; transition: opacity 0.6s ease; }
-#place-title .big { font: 400 calc(var(--u) * 26)/1.1 var(--font-ui); color: #fff; text-shadow: calc(var(--u) * 2) calc(var(--u) * 2) 0 #3f3f3f; }
-#place-title .small { font: 400 calc(var(--u) * 10)/1.3 var(--font-ui); color: #e0e0e0; text-shadow: var(--u) var(--u) 0 #3f3f3f; }
+#place-title .big { font: 400 calc(var(--u) * 27)/1.1 var(--font-ui); color: #fff; text-shadow: calc(var(--u) * 2) calc(var(--u) * 2) 0 #3f3f3f; }
+#place-title .small { font: 400 calc(var(--u) * 9)/1.3 var(--font-ui); color: #e0e0e0; text-shadow: var(--u) var(--u) 0 #3f3f3f; }
