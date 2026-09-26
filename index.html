@@ -39,6 +39,7 @@
     </div>
     <button class="btn" id="leave-bed" data-action="leave-bed" hidden>Leave Bed</button>
   </div>
+  <div id="saving" role="status" hidden><i></i>Saving world</div>
 
   <div id="touch" hidden>
     <div id="stick"><div id="stick-knob"></div></div>
@@ -183,27 +184,38 @@
     <button class="btn wide" data-action="done">Done</button>
   </section>
 
+  <section class="screen menu-bg" id="screen-keys" hidden>
+    <h2 class="screen-title">Key Binds</h2>
+    <div class="options keybinds" id="keybinds"></div>
+    <div class="row">
+      <button class="btn half" data-action="reset-keys" id="reset-keys">Reset Keys</button>
+      <button class="btn half" data-action="done">Done</button>
+    </div>
+  </section>
+
   <section class="screen menu-bg" id="screen-controls" hidden>
     <h2 class="screen-title">How to Play</h2>
     <div class="help">
       <dl class="keys">
-        <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>Walk</dd>
+        <dt><kbd data-bind="forward">W</kbd><kbd data-bind="left">A</kbd><kbd data-bind="back">S</kbd><kbd data-bind="right">D</kbd></dt><dd>Walk</dd>
         <dt><kbd>Mouse</kbd></dt><dd>Look around</dd>
         <dt><kbd>Left Click</kbd></dt><dd>Break blocks (hold), attack</dd>
         <dt><kbd>Right Click</kbd></dt><dd>Place blocks; use tables, furnaces, chests, doors and beds; talk to villagers; ride boats, horses and minecarts</dd>
         <dt><kbd>Hold Right</kbd></dt><dd>Eat or drink, draw a bow, raise a shield</dd>
-        <dt><kbd>Space</kbd></dt><dd>Jump (double-tap to fly in Creative)</dd>
-        <dt><kbd>Shift</kbd></dt><dd>Sneak, fly down</dd>
-        <dt><kbd>Ctrl</kbd></dt><dd>Sprint (or double-tap W); under water, swim</dd>
-        <dt><kbd>1</kbd>–<kbd>9</kbd> <kbd>Wheel</kbd></dt><dd>Choose a hotbar slot</dd>
-        <dt><kbd>E</kbd></dt><dd>Inventory and crafting</dd>
-        <dt><kbd>Q</kbd></dt><dd>Drop the held item</dd>
+        <dt><kbd data-bind="jump">Space</kbd></dt><dd>Jump (double-tap to fly in Creative)</dd>
+        <dt><kbd data-bind="sneak">Shift</kbd></dt><dd>Sneak, fly down</dd>
+        <dt><kbd data-bind="sprint">Ctrl</kbd></dt><dd>Sprint (or double-tap forwards); under water, swim</dd>
+        <dt><kbd data-bind="hotbar1">1</kbd>–<kbd data-bind="hotbar9">9</kbd> <kbd>Wheel</kbd></dt><dd>Choose a hotbar slot</dd>
+        <dt><kbd data-bind="inventory">E</kbd></dt><dd>Inventory and crafting</dd>
+        <dt><kbd data-bind="drop">Q</kbd></dt><dd>Drop the held item</dd>
         <dt><kbd>Middle Click</kbd></dt><dd>Pick the block you look at</dd>
-        <dt><kbd>T</kbd> <kbd>/</kbd></dt><dd>Chat and commands (try /help)</dd>
+        <dt><kbd data-bind="chat">T</kbd> <kbd data-bind="command">/</kbd></dt><dd>Chat and commands (try /help)</dd>
         <dt><kbd>Esc</kbd></dt><dd>Game menu (Open to Friends is in there)</dd>
-        <dt><kbd>F3</kbd></dt><dd>Debug info</dd>
-        <dt><kbd>F5</kbd></dt><dd>See yourself from behind or in front</dd>
+        <dt><kbd data-bind="hideHud">F1</kbd></dt><dd>Hide the HUD (for screenshots)</dd>
+        <dt><kbd data-bind="debug">F3</kbd></dt><dd>Debug info</dd>
+        <dt><kbd data-bind="perspective">F5</kbd></dt><dd>See yourself from behind or in front</dd>
       </dl>
+      <p class="hint-text">Change any of these keys in Options, under Key Binds.</p>
       <p class="hint-text">Punch a tree for logs and turn them into planks in your inventory's crafting grid. Four planks make a crafting table: right-click it for the full 3×3 grid, where a wooden pickaxe gets you mining. The green book lists every recipe and lays it out for you.</p>
       <p class="hint-text">Furnaces smelt ores and cook meat: the item goes on top, fuel below. Weapons need a moment between swings (the bar under the crosshair), so time your hits. You heal while your food bar is nearly full.</p>
       <p class="hint-text">Settlements come in every size, from camps in the woods to walled towns and kingdoms with a castle and a king. Go in through a gate and right-click the people there to talk and trade: they buy and sell for gold coins. <kbd>/locate kingdom</kbd> (or camp, hamlet, village, town) points the way. Sleep in a bed to make it your spawn point.</p>

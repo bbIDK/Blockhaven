@@ -255,6 +255,14 @@ input::placeholder { color: #6a6a6a; text-shadow: none; }
 }
 .options h3:first-child { margin-top: 0; }
 
+/* Key Binds: the action's name, its key and a Reset button on each row. A key bound to two
+   actions is written in red. */
+.options.keybinds { grid-template-columns: 1fr; }
+.bind { display: grid; grid-template-columns: 1fr calc(var(--u) * 86) calc(var(--u) * 44); align-items: center; gap: calc(var(--u) * 4); }
+.bind-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bind .btn { width: auto; }
+.bind-key.clash { color: #ff5555; }
+
 /* ------------------------------------------------------------------ how to play */
 .help { width: min(calc(var(--u) * 330), 100%); display: flex; flex-direction: column; gap: calc(var(--u) * 6); }
 .keys { display: grid; grid-template-columns: auto 1fr; gap: calc(var(--u) * 3) calc(var(--u) * 8); margin: 0; align-items: center; }
@@ -303,6 +311,25 @@ kbd {
 
 /* ------------------------------------------------------------------ HUD */
 #hud { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+/* "Saving world" in the corner while the game saves (over the game menu too). */
+#saving {
+  position: absolute;
+  right: max(calc(var(--u) * 6), env(safe-area-inset-right));
+  bottom: max(calc(var(--u) * 6), env(safe-area-inset-bottom));
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 4);
+  pointer-events: none;
+}
+#saving i {
+  width: calc(var(--u) * 7);
+  height: calc(var(--u) * 7);
+  background: #fff;
+  box-shadow: var(--u) var(--u) 0 var(--shade);
+  animation: saving 0.8s steps(4) infinite;
+}
+@keyframes saving { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 #crosshair { position: absolute; left: 50%; top: 50%; width: calc(var(--u) * 9); height: calc(var(--u) * 9); transform: translate(-50%, -50%); mix-blend-mode: difference; }
 #crosshair::before, #crosshair::after { content: ''; position: absolute; background: #fff; }
 #crosshair::before { left: calc(var(--u) * 4); top: 0; width: var(--u); height: 100%; }

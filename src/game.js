@@ -14,6 +14,7 @@ import { initIcons, warmIcons } from './icons.js';
 import { TEX } from './textures.js';
 import { Particles } from './particles.js';
 import { DynamicLights } from './dynlight.js';
+import { Keys, RESERVED } from './keys.js';
 import { Weather } from './weather.js';
 import { Entities } from './entities.js';
 import { TouchControls } from './touch.js';
@@ -66,7 +67,13 @@ const DEFAULT_SETTINGS = {
   graphics: COARSE ? 0 : 1, maxFps: 0, particles: 0, entityDistance: 100,
   // Dynamic Lights: 0 off, 1 Fast, 2 Fancy (see dynlight.js).
   dynamicLights: COARSE ? 1 : 2,
+  // Key binds changed from the usual ones (see keys.js), how often the world saves itself
+  // (seconds), and whether "Saving world" shows in the corner when it does.
+  keys: {}, autosave: 30, saveIndicator: true,
 };
+const HOTBAR_KEYS = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `hotbar${n}`);
+const BOUND = ['forward', 'back', 'left', 'right', 'jump', 'sneak', 'sprint', 'inventory', 'drop', 'chat', 'command', 'perspective',
+  'hideHud', 'debug', ...HOTBAR_KEYS];
 const FACE_NAMES = ['east (+X)', 'west (-X)', 'up', 'down', 'south (+Z)', 'north (-Z)'];
 const TIPS = [
   'Punch a tree to collect logs, then turn them into planks.',
@@ -141,6 +148,7 @@ export class Game {
     this.touch = new TouchControls(this);
     this.audio = new Audio();
     this.settings = storage.loadPrefs(SETTINGS_KEY, DEFAULT_SETTINGS);
+    this.keys = new Keys(this.settings);
     // Shaders start on (with shadows) where there's a graphics card to run them.
     if (![0, 1, 2].includes(this.settings.shaders)) this.settings.shaders = COARSE || this.renderer.software ? 0 : 2;
     this.shaderCap = 2; // (lowered for the session if the device can't keep up)
@@ -236,8 +244,8 @@ export class Game {
     this.frame = this.frame.bind(this);
     document.addEventListener('visibilitychange', () => {
       if (document.hidden && this.world && this.meta) {
-        if (this.state === 'play') this.pause();
-        this.save();
+        if (this.state === 'play') this.pause(); // (which saves)
+        else this.save();
       }
       this.lastBackground = performance.now();
     });
@@ -330,6 +338,7 @@ export class Game {
   bindUI() {
     const ui = this.ui;
     ui.bindSettings(this.settings, () => { this.applySettings(); this.saveSettings(); });
+    ui.bindKeys(this.keys, () => this.saveSettings());
     ui.on('play', async () => {
       this.audio.unlock();
       const worlds = await storage.listWorlds();
@@ -337,6 +346,8 @@ export class Game {
     });
     ui.on('settings', (from) => this.pushScreen('screen-settings', from));
     ui.on('controls', (from) => this.pushScreen('screen-controls', from));
+    ui.on('keybinds', (from) => this.pushScreen('screen-keys', from));
+    ui.on('reset-keys', () => { this.keys.reset(); this.saveSettings(); ui.refreshKeys(); });
     ui.on('done', () => this.popScreen());
     ui.on('back', (from) => {
       if (from === 'screen-worlds' || from === 'screen-multiplayer') { this.closeLobby(); this.ui.show('screen-title'); this.screenStack = []; }
@@ -815,8 +826,10 @@ export class Game {
     this.ui.show('screen-title');
   }
 
-  async save() {
+  // `shown`: "Saving world" shows in the corner (Options → Autosave Indicator) as the game saves.
+  async save(shown = false) {
     if (!this.world || !this.meta || this.state === 'loading') return;
+    if (shown && this.settings.saveIndicator) this.ui.showSaving();
     // A guest's progress is kept by the host.
     if (this.meta.remote) { this.net?.saveMe?.(this.playerData()); return; }
     const p = this.player;
@@ -853,7 +866,9 @@ export class Game {
     this.ui.setPauseMenu(net ? (net.host ? 'host' : 'guest') : 'single');
     this.screenStack = [];
     this.ui.show('screen-pause');
-    this.save();
+    // The game saves when paused (as Minecraft does), with "Saving world" in the corner.
+    this.saveTimer = 0;
+    this.save(true);
   }
 
   resume() {
@@ -1377,32 +1392,39 @@ export class Game {
       if (this.state === 'sleeping' && this.net) { this.wake(false); this.pause(); return; }
       if (this.state === 'play') this.pause();
     };
+    // (Keys that do something in the game don't do what the browser would do with them, F5 say.)
+    this.input.bound = (code) => !RESERVED.has(code) && BOUND.some((id) => this.keys.is(code, id));
     this.input.onKey = (e) => {
       if (e.repeat) return;
-      const s = this.state;
+      const s = this.state, k = this.keys, c = e.code;
       if (s === 'play') {
-        if (e.code === 'KeyE') this.openInventory();
-        else if (e.code === 'KeyT' || e.code === 'Enter') { e.preventDefault(); this.openChat(); }
-        else if (e.code === 'Slash') { e.preventDefault(); this.openChat('/'); }
-        else if (e.code === 'F3') { this.showDebug = !this.showDebug; }
-        else if (e.code === 'F1') { this.hideHud = !this.hideHud; }
-        else if (e.code === 'F5') { e.preventDefault(); this.view = (this.view + 1) % 3; }
-        else if (e.code === 'Escape' && !this.input.locked) this.pause();
+        if (k.is(c, 'inventory')) this.openInventory();
+        else if (k.is(c, 'chat') || c === 'Enter') { e.preventDefault(); this.openChat(); }
+        else if (k.is(c, 'command')) { e.preventDefault(); this.openChat('/'); }
+        else if (k.is(c, 'debug')) { this.showDebug = !this.showDebug; }
+        else if (k.is(c, 'hideHud')) { this.hideHud = !this.hideHud; }
+        else if (k.is(c, 'perspective')) { e.preventDefault(); this.view = (this.view + 1) % 3; }
+        else if (c === 'Escape' && !this.input.locked) this.pause();
       } else if (s === 'talk') {
-        if (e.code === 'KeyE' || e.code === 'Escape') this.closeTalk();
+        if (k.is(c, 'inventory') || c === 'Escape') this.closeTalk();
       } else if (s === 'container') {
-        if (e.code === 'KeyE' || e.code === 'Escape') this.closeMenu();
-        else if (/^Digit[1-9]$/.test(e.code)) this.hotbarKey(Number(e.code.slice(5)) - 1);
-        else if (e.code === 'KeyQ') this.dropHovered(e.ctrlKey || e.metaKey);
-      } else if (s === 'sleeping' && this.net && ['Escape', 'Space', 'ShiftLeft', 'KeyE'].includes(e.code)) {
+        const slot = HOTBAR_KEYS.findIndex((id) => k.is(c, id));
+        if (k.is(c, 'inventory') || c === 'Escape') this.closeMenu();
+        else if (slot >= 0) this.hotbarKey(slot);
+        else if (k.is(c, 'drop')) this.dropHovered(e.ctrlKey || e.metaKey);
+      } else if (s === 'sleeping' && this.net && (c === 'Escape' || ['jump', 'sneak', 'inventory'].some((id) => k.is(c, id)))) {
         this.wake(false);
-      } else if (s === 'pause' && e.code === 'Escape' && this.ui.current === 'screen-pause') {
+      } else if (s === 'pause' && c === 'Escape' && this.ui.current === 'screen-pause') {
         this.resume();
-      } else if (e.code === 'Escape' && (this.ui.current === 'screen-settings' || this.ui.current === 'screen-controls')) {
+      } else if (c === 'Escape' && ['screen-settings', 'screen-controls', 'screen-keys'].includes(this.ui.current)) {
         this.popScreen();
       }
     };
   }
+
+  // Whether the key for an action is held down, or was pressed this frame.
+  keyDown(id) { return this.keys.codes(id).some((c) => this.input.isDown(c)); }
+  keyHit(id) { return this.keys.codes(id).some((c) => this.input.wasPressed(c)); }
 
   select(i) {
     this.inv.selected = ((i % 9) + 9) % 9;
@@ -1410,21 +1432,21 @@ export class Game {
   }
 
   movementInput() {
-    const k = this.input, t = this.touch;
-    let forward = (k.isDown('KeyW') || k.isDown('ArrowUp') ? 1 : 0) - (k.isDown('KeyS') || k.isDown('ArrowDown') ? 1 : 0);
-    let right = (k.isDown('KeyD') || k.isDown('ArrowRight') ? 1 : 0) - (k.isDown('KeyA') || k.isDown('ArrowLeft') ? 1 : 0);
+    const t = this.touch, held = (id) => this.keyDown(id);
+    let forward = (held('forward') ? 1 : 0) - (held('back') ? 1 : 0);
+    let right = (held('right') ? 1 : 0) - (held('left') ? 1 : 0);
     if (t.enabled && (t.move[0] || t.move[1])) { forward = -t.move[1]; right = t.move[0]; }
-    const jump = k.isDown('Space') || t.jump;
-    const sneak = k.isDown('ShiftLeft') || k.isDown('ShiftRight') || t.sneak;
+    const jump = held('jump') || t.jump;
+    const sneak = held('sneak') || t.sneak;
     const now = performance.now();
-    if (k.wasPressed('KeyW')) {
+    if (this.keyHit('forward')) {
       if (now - this.lastW < 280) this.sprintLatch = true;
       this.lastW = now;
     }
     if (forward <= 0) this.sprintLatch = false;
-    let sprint = (k.isDown('ControlLeft') || k.isDown('ControlRight') || this.sprintLatch || t.sprint) && (this.creative || this.food > 6);
+    let sprint = (held('sprint') || this.sprintLatch || t.sprint) && (this.creative || this.food > 6);
     if (this.eating || this.drawing) { forward *= 0.3; right *= 0.3; sprint = false; }
-    if (k.wasPressed('Space') && this.creative) {
+    if (this.keyHit('jump') && this.creative) {
       if (now - this.lastSpace < 300) { this.player.flying = !this.player.flying; this.lastSpace = 0; } else this.lastSpace = now;
     }
     return { forward, right, jump, sneak, sprint };
@@ -1805,7 +1827,7 @@ export class Game {
     }
     if (this.time % 20 === 0) this.ambientTick();
     this.saveTimer++;
-    if (this.saveTimer >= 600) { this.saveTimer = 0; this.save(); }
+    if (this.saveTimer >= (this.settings.autosave || 30) * 20) { this.saveTimer = 0; this.save(true); }
   }
 
   exhaust(amount) { if (!this.creative) this.exhaustion = Math.min(40, this.exhaustion + amount); }
@@ -1973,9 +1995,9 @@ export class Game {
 
   handleActions(dt) {
     const k = this.input, t = this.touch;
-    for (let i = 1; i <= 9; i++) if (k.wasPressed(`Digit${i}`)) this.select(i - 1);
+    for (let i = 0; i < 9; i++) if (this.keyHit(HOTBAR_KEYS[i])) this.select(i);
     if (k.wheel) this.select(this.inv.selected + (k.wheel > 0 ? 1 : -1));
-    if (k.wasPressed('KeyQ')) this.dropHeld(k.isDown('ControlLeft'));
+    if (this.keyHit('drop')) this.dropHeld(k.isDown('ControlLeft') || k.isDown('ControlRight'));
 
     const target = this.target;
     const attack = (k.buttons & 1) || t.breaking;

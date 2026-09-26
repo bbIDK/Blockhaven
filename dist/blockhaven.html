@@ -266,6 +266,14 @@ input::placeholder { color: #6a6a6a; text-shadow: none; }
 }
 .options h3:first-child { margin-top: 0; }
 
+/* Key Binds: the action's name, its key and a Reset button on each row. A key bound to two
+   actions is written in red. */
+.options.keybinds { grid-template-columns: 1fr; }
+.bind { display: grid; grid-template-columns: 1fr calc(var(--u) * 86) calc(var(--u) * 44); align-items: center; gap: calc(var(--u) * 4); }
+.bind-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bind .btn { width: auto; }
+.bind-key.clash { color: #ff5555; }
+
 /* ------------------------------------------------------------------ how to play */
 .help { width: min(calc(var(--u) * 330), 100%); display: flex; flex-direction: column; gap: calc(var(--u) * 6); }
 .keys { display: grid; grid-template-columns: auto 1fr; gap: calc(var(--u) * 3) calc(var(--u) * 8); margin: 0; align-items: center; }
@@ -314,6 +322,25 @@ kbd {
 
 /* ------------------------------------------------------------------ HUD */
 #hud { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+/* "Saving world" in the corner while the game saves (over the game menu too). */
+#saving {
+  position: absolute;
+  right: max(calc(var(--u) * 6), env(safe-area-inset-right));
+  bottom: max(calc(var(--u) * 6), env(safe-area-inset-bottom));
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 4);
+  pointer-events: none;
+}
+#saving i {
+  width: calc(var(--u) * 7);
+  height: calc(var(--u) * 7);
+  background: #fff;
+  box-shadow: var(--u) var(--u) 0 var(--shade);
+  animation: saving 0.8s steps(4) infinite;
+}
+@keyframes saving { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 #crosshair { position: absolute; left: 50%; top: 50%; width: calc(var(--u) * 9); height: calc(var(--u) * 9); transform: translate(-50%, -50%); mix-blend-mode: difference; }
 #crosshair::before, #crosshair::after { content: ''; position: absolute; background: #fff; }
 #crosshair::before { left: calc(var(--u) * 4); top: 0; width: var(--u); height: 100%; }
@@ -924,6 +951,7 @@ kbd {
     </div>
     <button class="btn" id="leave-bed" data-action="leave-bed" hidden>Leave Bed</button>
   </div>
+  <div id="saving" role="status" hidden><i></i>Saving world</div>
 
   <div id="touch" hidden>
     <div id="stick"><div id="stick-knob"></div></div>
@@ -1068,27 +1096,38 @@ kbd {
     <button class="btn wide" data-action="done">Done</button>
   </section>
 
+  <section class="screen menu-bg" id="screen-keys" hidden>
+    <h2 class="screen-title">Key Binds</h2>
+    <div class="options keybinds" id="keybinds"></div>
+    <div class="row">
+      <button class="btn half" data-action="reset-keys" id="reset-keys">Reset Keys</button>
+      <button class="btn half" data-action="done">Done</button>
+    </div>
+  </section>
+
   <section class="screen menu-bg" id="screen-controls" hidden>
     <h2 class="screen-title">How to Play</h2>
     <div class="help">
       <dl class="keys">
-        <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>Walk</dd>
+        <dt><kbd data-bind="forward">W</kbd><kbd data-bind="left">A</kbd><kbd data-bind="back">S</kbd><kbd data-bind="right">D</kbd></dt><dd>Walk</dd>
         <dt><kbd>Mouse</kbd></dt><dd>Look around</dd>
         <dt><kbd>Left Click</kbd></dt><dd>Break blocks (hold), attack</dd>
         <dt><kbd>Right Click</kbd></dt><dd>Place blocks; use tables, furnaces, chests, doors and beds; talk to villagers; ride boats, horses and minecarts</dd>
         <dt><kbd>Hold Right</kbd></dt><dd>Eat or drink, draw a bow, raise a shield</dd>
-        <dt><kbd>Space</kbd></dt><dd>Jump (double-tap to fly in Creative)</dd>
-        <dt><kbd>Shift</kbd></dt><dd>Sneak, fly down</dd>
-        <dt><kbd>Ctrl</kbd></dt><dd>Sprint (or double-tap W); under water, swim</dd>
-        <dt><kbd>1</kbd>–<kbd>9</kbd> <kbd>Wheel</kbd></dt><dd>Choose a hotbar slot</dd>
-        <dt><kbd>E</kbd></dt><dd>Inventory and crafting</dd>
-        <dt><kbd>Q</kbd></dt><dd>Drop the held item</dd>
+        <dt><kbd data-bind="jump">Space</kbd></dt><dd>Jump (double-tap to fly in Creative)</dd>
+        <dt><kbd data-bind="sneak">Shift</kbd></dt><dd>Sneak, fly down</dd>
+        <dt><kbd data-bind="sprint">Ctrl</kbd></dt><dd>Sprint (or double-tap forwards); under water, swim</dd>
+        <dt><kbd data-bind="hotbar1">1</kbd>–<kbd data-bind="hotbar9">9</kbd> <kbd>Wheel</kbd></dt><dd>Choose a hotbar slot</dd>
+        <dt><kbd data-bind="inventory">E</kbd></dt><dd>Inventory and crafting</dd>
+        <dt><kbd data-bind="drop">Q</kbd></dt><dd>Drop the held item</dd>
         <dt><kbd>Middle Click</kbd></dt><dd>Pick the block you look at</dd>
-        <dt><kbd>T</kbd> <kbd>/</kbd></dt><dd>Chat and commands (try /help)</dd>
+        <dt><kbd data-bind="chat">T</kbd> <kbd data-bind="command">/</kbd></dt><dd>Chat and commands (try /help)</dd>
         <dt><kbd>Esc</kbd></dt><dd>Game menu (Open to Friends is in there)</dd>
-        <dt><kbd>F3</kbd></dt><dd>Debug info</dd>
-        <dt><kbd>F5</kbd></dt><dd>See yourself from behind or in front</dd>
+        <dt><kbd data-bind="hideHud">F1</kbd></dt><dd>Hide the HUD (for screenshots)</dd>
+        <dt><kbd data-bind="debug">F3</kbd></dt><dd>Debug info</dd>
+        <dt><kbd data-bind="perspective">F5</kbd></dt><dd>See yourself from behind or in front</dd>
       </dl>
+      <p class="hint-text">Change any of these keys in Options, under Key Binds.</p>
       <p class="hint-text">Punch a tree for logs and turn them into planks in your inventory's crafting grid. Four planks make a crafting table: right-click it for the full 3×3 grid, where a wooden pickaxe gets you mining. The green book lists every recipe and lays it out for you.</p>
       <p class="hint-text">Furnaces smelt ores and cook meat: the item goes on top, fuel below. Weapons need a moment between swings (the bar under the crosshair), so time your hits. You heal while your food bar is nearly full.</p>
       <p class="hint-text">Settlements come in every size, from camps in the woods to walled towns and kingdoms with a castle and a king. Go in through a gate and right-click the people there to talk and trade: they buy and sell for gold coins. <kbd>/locate kingdom</kbd> (or camp, hamlet, village, town) points the way. Sleep in a bed to make it your spawn point.</p>
@@ -22124,6 +22163,7 @@ class Input {
     this.capture = false; // true while the game (not a menu) has focus
     this.onUnlock = null;
     this.onKey = null;
+    this.bound = null; // (code) => whether the game uses that key
     this.dragging = false;
     this.dragStart = null;
     this.skipMoves = 0;
@@ -22137,7 +22177,7 @@ class Input {
       if (!this.down.has(e.code)) this.pressed.add(e.code);
       this.down.add(e.code);
       this.onKey?.(e);
-      if (this.capture && (e.code === 'Space' || e.code === 'Tab' || e.code.startsWith('Arrow') || e.code === 'F3' ||
+      if (this.capture && (e.code === 'Space' || e.code === 'Tab' || e.code.startsWith('Arrow') || e.code === 'F3' || this.bound?.(e.code) ||
           ((e.ctrlKey || e.metaKey) && ['KeyW', 'KeyS', 'KeyD', 'KeyF'].includes(e.code)))) e.preventDefault();
     });
     window.addEventListener('keyup', (e) => { this.down.delete(e.code); });
@@ -22404,6 +22444,117 @@ __exports.warmIcons = warmIcons;
 __exports.iconFor = iconFor;
 });
 
+__define("src/keys.js", function (__exports) {
+// Key binds, as in Minecraft's Options → Controls → Key Binds: every action has a key, which the
+// player can change. The settings keep only the ones changed (`settings.keys`, action → key code).
+const BINDINGS = [
+  { section: 'Movement' },
+  { id: 'forward', label: 'Walk Forwards', key: 'KeyW' },
+  { id: 'left', label: 'Strafe Left', key: 'KeyA' },
+  { id: 'back', label: 'Walk Backwards', key: 'KeyS' },
+  { id: 'right', label: 'Strafe Right', key: 'KeyD' },
+  { id: 'jump', label: 'Jump', key: 'Space' },
+  { id: 'sneak', label: 'Sneak', key: 'ShiftLeft' },
+  { id: 'sprint', label: 'Sprint', key: 'ControlLeft' },
+  { section: 'Inventory' },
+  { id: 'inventory', label: 'Open/Close Inventory', key: 'KeyE' },
+  { id: 'drop', label: 'Drop Selected Item', key: 'KeyQ' },
+  ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => ({ id: `hotbar${n}`, label: `Hotbar Slot ${n}`, key: `Digit${n}` })),
+  { section: 'Multiplayer' },
+  { id: 'chat', label: 'Open Chat', key: 'KeyT' },
+  { id: 'command', label: 'Open Command', key: 'Slash' },
+  { section: 'Miscellaneous' },
+  { id: 'perspective', label: 'Toggle Perspective', key: 'F5' },
+  { id: 'hideHud', label: 'Hide HUD', key: 'F1' },
+  { id: 'debug', label: 'Debug Screen', key: 'F3' },
+];
+const DEFAULT_KEYS = Object.fromEntries(BINDINGS.filter((b) => b.id).map((b) => [b.id, b.key]));
+
+// The other key of a pair (both Shifts sneak while Sneak is Left Shift, and so on), and the arrow
+// keys, which walk too while the walking keys are the usual ones.
+const TWIN = { ShiftLeft: 'ShiftRight', ControlLeft: 'ControlRight', AltLeft: 'AltRight', MetaLeft: 'MetaRight' };
+const ARROWS = { forward: ['KeyW', 'ArrowUp'], back: ['KeyS', 'ArrowDown'], left: ['KeyA', 'ArrowLeft'], right: ['KeyD', 'ArrowRight'] };
+
+// Keys that can't be bound (they open the game menu, or belong to the browser).
+const RESERVED = new Set(['Escape', 'F11', 'F12', 'MetaLeft', 'MetaRight', 'ContextMenu']);
+
+class Keys {
+  constructor(settings) {
+    this.settings = settings;
+  }
+
+  // The key code for an action ('' when it isn't bound).
+  code(id) {
+    const k = this.settings.keys?.[id];
+    return typeof k === 'string' ? k : DEFAULT_KEYS[id] ?? '';
+  }
+
+  // Whether `code` does the action `id`.
+  is(code, id) {
+    const k = this.code(id);
+    if (!k) return false;
+    if (code === k || code === TWIN[k]) return true;
+    const a = ARROWS[id];
+    return !!a && k === a[0] && code === a[1];
+  }
+
+  // The codes that do `id` (for Input.isDown and wasPressed).
+  codes(id) {
+    const k = this.code(id);
+    if (!k) return [];
+    const out = [k];
+    if (TWIN[k]) out.push(TWIN[k]);
+    const a = ARROWS[id];
+    if (a && k === a[0]) out.push(a[1]);
+    return out;
+  }
+
+  set(id, code) {
+    const keys = { ...(this.settings.keys ?? {}) };
+    if (code === DEFAULT_KEYS[id]) delete keys[id]; else keys[id] = code;
+    this.settings.keys = keys;
+  }
+
+  reset(id = null) {
+    if (id === null) { this.settings.keys = {}; return; }
+    this.set(id, DEFAULT_KEYS[id]);
+  }
+
+  // Actions sharing `id`'s key (shown in red on the Key Binds screen).
+  clashes(id) {
+    const k = this.code(id);
+    if (!k) return [];
+    return BINDINGS.filter((b) => b.id && b.id !== id && this.code(b.id) === k).map((b) => b.id);
+  }
+}
+
+// A key's name as the Key Binds screen and the help show it.
+const NAMES = {
+  Space: 'Space', ShiftLeft: 'Left Shift', ShiftRight: 'Right Shift', ControlLeft: 'Left Control', ControlRight: 'Right Control',
+  AltLeft: 'Left Alt', AltRight: 'Right Alt', Tab: 'Tab', CapsLock: 'Caps Lock', Enter: 'Enter', Backspace: 'Backspace',
+  Slash: '/', Backslash: '\\', Period: '.', Comma: ',', Semicolon: ';', Quote: "'", BracketLeft: '[', BracketRight: ']',
+  Minus: '-', Equal: '=', Backquote: '`', ArrowUp: 'Up Arrow', ArrowDown: 'Down Arrow', ArrowLeft: 'Left Arrow', ArrowRight: 'Right Arrow',
+  Insert: 'Insert', Delete: 'Delete', Home: 'Home', End: 'End', PageUp: 'Page Up', PageDown: 'Page Down',
+};
+function keyName(code) {
+  if (!code) return 'Not Bound';
+  if (NAMES[code]) return NAMES[code];
+  let m = /^Key([A-Z])$/.exec(code);
+  if (m) return m[1];
+  m = /^Digit(\d)$/.exec(code);
+  if (m) return m[1];
+  m = /^Numpad(.+)$/.exec(code);
+  if (m) return `Keypad ${m[1].replace('Add', '+').replace('Subtract', '-').replace('Multiply', '*').replace('Divide', '/').replace('Decimal', '.')}`;
+  return code;
+}
+
+__exports.BINDINGS = BINDINGS;
+__exports.DEFAULT_KEYS = DEFAULT_KEYS;
+__exports.RESERVED = RESERVED;
+__exports.Keys = Keys;
+__exports.keyName = keyName;
+});
+
 __define("src/ui.js", function (__exports) {
 // DOM side of the game: screens, HUD and options. Game logic lives in game.js; this module renders
 // state and reports user actions through on()/emit(). Sizes are in GUI pixels (--u, see applyScale).
@@ -22411,6 +22562,7 @@ const { iconFor, setGlint } = __require("src/icons.js");
 const { shiny } = __require("src/enchanting.js");
 const { itemDef } = __require("src/items.js");
 const { EFFECTS, clock, roman } = __require("src/potions.js");
+const { BINDINGS, DEFAULT_KEYS, RESERVED, keyName } = __require("src/keys.js");
 
 const $ = (id) => document.getElementById(id);
 
@@ -22657,12 +22809,16 @@ const OPTIONS = [
   { section: 'Interface' },
   { key: 'guiScale', label: 'GUI Scale', scale: true },
   { key: 'showFps', label: 'Show FPS', toggle: true },
+  { section: 'Saving' },
+  { key: 'autosave', label: 'Autosave', cycle: [30, 60, 120, 300], fmt: (v) => (v < 60 ? `Every ${v} s` : `Every ${v / 60} min`) },
+  { key: 'saveIndicator', label: 'Autosave Indicator', toggle: true },
   { section: 'Music & Sounds' },
   { key: 'volume', label: 'Sound Effects', min: 0, max: 100, step: 5, fmt: pct },
   { key: 'music', label: 'Music', min: 0, max: 100, step: 5, fmt: pct },
   { section: 'Controls' },
   { key: 'sensitivity', label: 'Sensitivity', min: 10, max: 250, step: 5, fmt: (v) => `${v}%` },
   { key: 'invertMouse', label: 'Invert Mouse', toggle: true },
+  { action: 'keybinds', label: 'Key Binds...' },
 ];
 
 const MODES = {
@@ -22779,6 +22935,7 @@ class UI {
   show(id) {
     for (const s of this.screens) s.hidden = s.id !== id;
     this.current = id;
+    if (this.listening) { this.listening = null; this.refreshKeys(); }
     if (id === 'screen-title') this.splash();
     const field = id && $(id)?.querySelector('input[type=text]');
     if (field && matchMedia('(pointer: fine)').matches) setTimeout(() => field.focus({ preventScroll: true }), 0);
@@ -23144,6 +23301,74 @@ class UI {
     });
   }
 
+  // Builds the Key Binds screen: each action with its key on a button. Click the button, then
+  // press the key it should be (Esc leaves it as it was). A key that does two things shows red.
+  bindKeys(keys, onChange) {
+    const root = $('keybinds');
+    root.replaceChildren();
+    this.keys = keys;
+    this.keyRows = [];
+    this.listening = null;
+    for (const b of BINDINGS) {
+      if (b.section) {
+        const h = document.createElement('h3');
+        h.textContent = b.section;
+        root.appendChild(h);
+        continue;
+      }
+      const row = document.createElement('div');
+      row.className = 'bind';
+      const name = document.createElement('span');
+      name.className = 'bind-name';
+      name.textContent = b.label;
+      const key = document.createElement('button');
+      key.type = 'button';
+      key.className = 'btn bind-key';
+      const reset = document.createElement('button');
+      reset.type = 'button';
+      reset.className = 'btn bind-reset';
+      reset.textContent = 'Reset';
+      key.addEventListener('click', () => { this.listening = this.listening === b.id ? null : b.id; this.refreshKeys(); });
+      reset.addEventListener('click', () => { keys.reset(b.id); this.listening = null; onChange(); this.refreshKeys(); });
+      row.append(name, key, reset);
+      root.appendChild(row);
+      this.keyRows.push({ id: b.id, key, reset });
+    }
+    // The key pressed while a binding waits for one. (Caught before the game hears it.)
+    window.addEventListener('keydown', (e) => {
+      if (!this.listening || this.current !== 'screen-keys') return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (e.code !== 'Escape' && !RESERVED.has(e.code)) { keys.set(this.listening, e.code); onChange(); }
+      this.listening = null;
+      document.activeElement?.blur?.();
+      this.refreshKeys();
+    }, true);
+    this.refreshKeys();
+  }
+
+  refreshKeys() {
+    const keys = this.keys;
+    if (!keys) return;
+    for (const r of this.keyRows) {
+      const name = keyName(keys.code(r.id));
+      r.key.textContent = this.listening === r.id ? `> ${name} <` : name;
+      r.key.classList.toggle('clash', keys.clashes(r.id).length > 0);
+      r.reset.disabled = keys.code(r.id) === DEFAULT_KEYS[r.id];
+    }
+    $('reset-keys').disabled = !Object.keys(keys.settings.keys ?? {}).length;
+    // How to Play names the keys as they're bound.
+    for (const k of document.querySelectorAll('kbd[data-bind]')) k.textContent = keyName(keys.code(k.dataset.bind));
+  }
+
+  // "Saving world" in the corner for a moment, as the game saves.
+  showSaving() {
+    const el = $('saving');
+    el.hidden = false;
+    clearTimeout(this.savingTimer);
+    this.savingTimer = setTimeout(() => { el.hidden = true; }, 1800);
+  }
+
   // Builds the options screen: sliders with their value written across them, and ON/OFF buttons.
   bindSettings(settings, onChange) {
     const root = $('options');
@@ -23154,6 +23379,15 @@ class UI {
         const h = document.createElement('h3');
         h.textContent = o.section;
         root.appendChild(h);
+        continue;
+      }
+      if (o.action) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'btn';
+        b.dataset.action = o.action;
+        b.textContent = o.label;
+        root.appendChild(b);
         continue;
       }
       if (o.cycle) {
@@ -37039,6 +37273,7 @@ const { initIcons, warmIcons } = __require("src/icons.js");
 const { TEX } = __require("src/textures.js");
 const { Particles } = __require("src/particles.js");
 const { DynamicLights } = __require("src/dynlight.js");
+const { Keys, RESERVED } = __require("src/keys.js");
 const { Weather } = __require("src/weather.js");
 const { Entities } = __require("src/entities.js");
 const { TouchControls } = __require("src/touch.js");
@@ -37085,7 +37320,13 @@ const DEFAULT_SETTINGS = {
   graphics: COARSE ? 0 : 1, maxFps: 0, particles: 0, entityDistance: 100,
   // Dynamic Lights: 0 off, 1 Fast, 2 Fancy (see dynlight.js).
   dynamicLights: COARSE ? 1 : 2,
+  // Key binds changed from the usual ones (see keys.js), how often the world saves itself
+  // (seconds), and whether "Saving world" shows in the corner when it does.
+  keys: {}, autosave: 30, saveIndicator: true,
 };
+const HOTBAR_KEYS = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `hotbar${n}`);
+const BOUND = ['forward', 'back', 'left', 'right', 'jump', 'sneak', 'sprint', 'inventory', 'drop', 'chat', 'command', 'perspective',
+  'hideHud', 'debug', ...HOTBAR_KEYS];
 const FACE_NAMES = ['east (+X)', 'west (-X)', 'up', 'down', 'south (+Z)', 'north (-Z)'];
 const TIPS = [
   'Punch a tree to collect logs, then turn them into planks.',
@@ -37160,6 +37401,7 @@ class Game {
     this.touch = new TouchControls(this);
     this.audio = new Audio();
     this.settings = storage.loadPrefs(SETTINGS_KEY, DEFAULT_SETTINGS);
+    this.keys = new Keys(this.settings);
     // Shaders start on (with shadows) where there's a graphics card to run them.
     if (![0, 1, 2].includes(this.settings.shaders)) this.settings.shaders = COARSE || this.renderer.software ? 0 : 2;
     this.shaderCap = 2; // (lowered for the session if the device can't keep up)
@@ -37255,8 +37497,8 @@ class Game {
     this.frame = this.frame.bind(this);
     document.addEventListener('visibilitychange', () => {
       if (document.hidden && this.world && this.meta) {
-        if (this.state === 'play') this.pause();
-        this.save();
+        if (this.state === 'play') this.pause(); // (which saves)
+        else this.save();
       }
       this.lastBackground = performance.now();
     });
@@ -37349,6 +37591,7 @@ class Game {
   bindUI() {
     const ui = this.ui;
     ui.bindSettings(this.settings, () => { this.applySettings(); this.saveSettings(); });
+    ui.bindKeys(this.keys, () => this.saveSettings());
     ui.on('play', async () => {
       this.audio.unlock();
       const worlds = await storage.listWorlds();
@@ -37356,6 +37599,8 @@ class Game {
     });
     ui.on('settings', (from) => this.pushScreen('screen-settings', from));
     ui.on('controls', (from) => this.pushScreen('screen-controls', from));
+    ui.on('keybinds', (from) => this.pushScreen('screen-keys', from));
+    ui.on('reset-keys', () => { this.keys.reset(); this.saveSettings(); ui.refreshKeys(); });
     ui.on('done', () => this.popScreen());
     ui.on('back', (from) => {
       if (from === 'screen-worlds' || from === 'screen-multiplayer') { this.closeLobby(); this.ui.show('screen-title'); this.screenStack = []; }
@@ -37834,8 +38079,10 @@ class Game {
     this.ui.show('screen-title');
   }
 
-  async save() {
+  // `shown`: "Saving world" shows in the corner (Options → Autosave Indicator) as the game saves.
+  async save(shown = false) {
     if (!this.world || !this.meta || this.state === 'loading') return;
+    if (shown && this.settings.saveIndicator) this.ui.showSaving();
     // A guest's progress is kept by the host.
     if (this.meta.remote) { this.net?.saveMe?.(this.playerData()); return; }
     const p = this.player;
@@ -37872,7 +38119,9 @@ class Game {
     this.ui.setPauseMenu(net ? (net.host ? 'host' : 'guest') : 'single');
     this.screenStack = [];
     this.ui.show('screen-pause');
-    this.save();
+    // The game saves when paused (as Minecraft does), with "Saving world" in the corner.
+    this.saveTimer = 0;
+    this.save(true);
   }
 
   resume() {
@@ -38396,32 +38645,39 @@ class Game {
       if (this.state === 'sleeping' && this.net) { this.wake(false); this.pause(); return; }
       if (this.state === 'play') this.pause();
     };
+    // (Keys that do something in the game don't do what the browser would do with them, F5 say.)
+    this.input.bound = (code) => !RESERVED.has(code) && BOUND.some((id) => this.keys.is(code, id));
     this.input.onKey = (e) => {
       if (e.repeat) return;
-      const s = this.state;
+      const s = this.state, k = this.keys, c = e.code;
       if (s === 'play') {
-        if (e.code === 'KeyE') this.openInventory();
-        else if (e.code === 'KeyT' || e.code === 'Enter') { e.preventDefault(); this.openChat(); }
-        else if (e.code === 'Slash') { e.preventDefault(); this.openChat('/'); }
-        else if (e.code === 'F3') { this.showDebug = !this.showDebug; }
-        else if (e.code === 'F1') { this.hideHud = !this.hideHud; }
-        else if (e.code === 'F5') { e.preventDefault(); this.view = (this.view + 1) % 3; }
-        else if (e.code === 'Escape' && !this.input.locked) this.pause();
+        if (k.is(c, 'inventory')) this.openInventory();
+        else if (k.is(c, 'chat') || c === 'Enter') { e.preventDefault(); this.openChat(); }
+        else if (k.is(c, 'command')) { e.preventDefault(); this.openChat('/'); }
+        else if (k.is(c, 'debug')) { this.showDebug = !this.showDebug; }
+        else if (k.is(c, 'hideHud')) { this.hideHud = !this.hideHud; }
+        else if (k.is(c, 'perspective')) { e.preventDefault(); this.view = (this.view + 1) % 3; }
+        else if (c === 'Escape' && !this.input.locked) this.pause();
       } else if (s === 'talk') {
-        if (e.code === 'KeyE' || e.code === 'Escape') this.closeTalk();
+        if (k.is(c, 'inventory') || c === 'Escape') this.closeTalk();
       } else if (s === 'container') {
-        if (e.code === 'KeyE' || e.code === 'Escape') this.closeMenu();
-        else if (/^Digit[1-9]$/.test(e.code)) this.hotbarKey(Number(e.code.slice(5)) - 1);
-        else if (e.code === 'KeyQ') this.dropHovered(e.ctrlKey || e.metaKey);
-      } else if (s === 'sleeping' && this.net && ['Escape', 'Space', 'ShiftLeft', 'KeyE'].includes(e.code)) {
+        const slot = HOTBAR_KEYS.findIndex((id) => k.is(c, id));
+        if (k.is(c, 'inventory') || c === 'Escape') this.closeMenu();
+        else if (slot >= 0) this.hotbarKey(slot);
+        else if (k.is(c, 'drop')) this.dropHovered(e.ctrlKey || e.metaKey);
+      } else if (s === 'sleeping' && this.net && (c === 'Escape' || ['jump', 'sneak', 'inventory'].some((id) => k.is(c, id)))) {
         this.wake(false);
-      } else if (s === 'pause' && e.code === 'Escape' && this.ui.current === 'screen-pause') {
+      } else if (s === 'pause' && c === 'Escape' && this.ui.current === 'screen-pause') {
         this.resume();
-      } else if (e.code === 'Escape' && (this.ui.current === 'screen-settings' || this.ui.current === 'screen-controls')) {
+      } else if (c === 'Escape' && ['screen-settings', 'screen-controls', 'screen-keys'].includes(this.ui.current)) {
         this.popScreen();
       }
     };
   }
+
+  // Whether the key for an action is held down, or was pressed this frame.
+  keyDown(id) { return this.keys.codes(id).some((c) => this.input.isDown(c)); }
+  keyHit(id) { return this.keys.codes(id).some((c) => this.input.wasPressed(c)); }
 
   select(i) {
     this.inv.selected = ((i % 9) + 9) % 9;
@@ -38429,21 +38685,21 @@ class Game {
   }
 
   movementInput() {
-    const k = this.input, t = this.touch;
-    let forward = (k.isDown('KeyW') || k.isDown('ArrowUp') ? 1 : 0) - (k.isDown('KeyS') || k.isDown('ArrowDown') ? 1 : 0);
-    let right = (k.isDown('KeyD') || k.isDown('ArrowRight') ? 1 : 0) - (k.isDown('KeyA') || k.isDown('ArrowLeft') ? 1 : 0);
+    const t = this.touch, held = (id) => this.keyDown(id);
+    let forward = (held('forward') ? 1 : 0) - (held('back') ? 1 : 0);
+    let right = (held('right') ? 1 : 0) - (held('left') ? 1 : 0);
     if (t.enabled && (t.move[0] || t.move[1])) { forward = -t.move[1]; right = t.move[0]; }
-    const jump = k.isDown('Space') || t.jump;
-    const sneak = k.isDown('ShiftLeft') || k.isDown('ShiftRight') || t.sneak;
+    const jump = held('jump') || t.jump;
+    const sneak = held('sneak') || t.sneak;
     const now = performance.now();
-    if (k.wasPressed('KeyW')) {
+    if (this.keyHit('forward')) {
       if (now - this.lastW < 280) this.sprintLatch = true;
       this.lastW = now;
     }
     if (forward <= 0) this.sprintLatch = false;
-    let sprint = (k.isDown('ControlLeft') || k.isDown('ControlRight') || this.sprintLatch || t.sprint) && (this.creative || this.food > 6);
+    let sprint = (held('sprint') || this.sprintLatch || t.sprint) && (this.creative || this.food > 6);
     if (this.eating || this.drawing) { forward *= 0.3; right *= 0.3; sprint = false; }
-    if (k.wasPressed('Space') && this.creative) {
+    if (this.keyHit('jump') && this.creative) {
       if (now - this.lastSpace < 300) { this.player.flying = !this.player.flying; this.lastSpace = 0; } else this.lastSpace = now;
     }
     return { forward, right, jump, sneak, sprint };
@@ -38824,7 +39080,7 @@ class Game {
     }
     if (this.time % 20 === 0) this.ambientTick();
     this.saveTimer++;
-    if (this.saveTimer >= 600) { this.saveTimer = 0; this.save(); }
+    if (this.saveTimer >= (this.settings.autosave || 30) * 20) { this.saveTimer = 0; this.save(true); }
   }
 
   exhaust(amount) { if (!this.creative) this.exhaustion = Math.min(40, this.exhaustion + amount); }
@@ -38992,9 +39248,9 @@ class Game {
 
   handleActions(dt) {
     const k = this.input, t = this.touch;
-    for (let i = 1; i <= 9; i++) if (k.wasPressed(`Digit${i}`)) this.select(i - 1);
+    for (let i = 0; i < 9; i++) if (this.keyHit(HOTBAR_KEYS[i])) this.select(i);
     if (k.wheel) this.select(this.inv.selected + (k.wheel > 0 ? 1 : -1));
-    if (k.wasPressed('KeyQ')) this.dropHeld(k.isDown('ControlLeft'));
+    if (this.keyHit('drop')) this.dropHeld(k.isDown('ControlLeft') || k.isDown('ControlRight'));
 
     const target = this.target;
     const attack = (k.buttons & 1) || t.breaking;

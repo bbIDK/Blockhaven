@@ -19,6 +19,7 @@ export class Input {
     this.capture = false; // true while the game (not a menu) has focus
     this.onUnlock = null;
     this.onKey = null;
+    this.bound = null; // (code) => whether the game uses that key
     this.dragging = false;
     this.dragStart = null;
     this.skipMoves = 0;
@@ -32,7 +33,7 @@ export class Input {
       if (!this.down.has(e.code)) this.pressed.add(e.code);
       this.down.add(e.code);
       this.onKey?.(e);
-      if (this.capture && (e.code === 'Space' || e.code === 'Tab' || e.code.startsWith('Arrow') || e.code === 'F3' ||
+      if (this.capture && (e.code === 'Space' || e.code === 'Tab' || e.code.startsWith('Arrow') || e.code === 'F3' || this.bound?.(e.code) ||
           ((e.ctrlKey || e.metaKey) && ['KeyW', 'KeyS', 'KeyD', 'KeyF'].includes(e.code)))) e.preventDefault();
     });
     window.addEventListener('keyup', (e) => { this.down.delete(e.code); });

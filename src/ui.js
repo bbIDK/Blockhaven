@@ -4,6 +4,7 @@ import { iconFor, setGlint } from './icons.js';
 import { shiny } from './enchanting.js';
 import { itemDef } from './items.js';
 import { EFFECTS, clock, roman } from './potions.js';
+import { BINDINGS, DEFAULT_KEYS, RESERVED, keyName } from './keys.js';
 
 export const $ = (id) => document.getElementById(id);
 
@@ -250,12 +251,16 @@ export const OPTIONS = [
   { section: 'Interface' },
   { key: 'guiScale', label: 'GUI Scale', scale: true },
   { key: 'showFps', label: 'Show FPS', toggle: true },
+  { section: 'Saving' },
+  { key: 'autosave', label: 'Autosave', cycle: [30, 60, 120, 300], fmt: (v) => (v < 60 ? `Every ${v} s` : `Every ${v / 60} min`) },
+  { key: 'saveIndicator', label: 'Autosave Indicator', toggle: true },
   { section: 'Music & Sounds' },
   { key: 'volume', label: 'Sound Effects', min: 0, max: 100, step: 5, fmt: pct },
   { key: 'music', label: 'Music', min: 0, max: 100, step: 5, fmt: pct },
   { section: 'Controls' },
   { key: 'sensitivity', label: 'Sensitivity', min: 10, max: 250, step: 5, fmt: (v) => `${v}%` },
   { key: 'invertMouse', label: 'Invert Mouse', toggle: true },
+  { action: 'keybinds', label: 'Key Binds...' },
 ];
 
 const MODES = {
@@ -372,6 +377,7 @@ export class UI {
   show(id) {
     for (const s of this.screens) s.hidden = s.id !== id;
     this.current = id;
+    if (this.listening) { this.listening = null; this.refreshKeys(); }
     if (id === 'screen-title') this.splash();
     const field = id && $(id)?.querySelector('input[type=text]');
     if (field && matchMedia('(pointer: fine)').matches) setTimeout(() => field.focus({ preventScroll: true }), 0);
@@ -737,6 +743,74 @@ export class UI {
     });
   }
 
+  // Builds the Key Binds screen: each action with its key on a button. Click the button, then
+  // press the key it should be (Esc leaves it as it was). A key that does two things shows red.
+  bindKeys(keys, onChange) {
+    const root = $('keybinds');
+    root.replaceChildren();
+    this.keys = keys;
+    this.keyRows = [];
+    this.listening = null;
+    for (const b of BINDINGS) {
+      if (b.section) {
+        const h = document.createElement('h3');
+        h.textContent = b.section;
+        root.appendChild(h);
+        continue;
+      }
+      const row = document.createElement('div');
+      row.className = 'bind';
+      const name = document.createElement('span');
+      name.className = 'bind-name';
+      name.textContent = b.label;
+      const key = document.createElement('button');
+      key.type = 'button';
+      key.className = 'btn bind-key';
+      const reset = document.createElement('button');
+      reset.type = 'button';
+      reset.className = 'btn bind-reset';
+      reset.textContent = 'Reset';
+      key.addEventListener('click', () => { this.listening = this.listening === b.id ? null : b.id; this.refreshKeys(); });
+      reset.addEventListener('click', () => { keys.reset(b.id); this.listening = null; onChange(); this.refreshKeys(); });
+      row.append(name, key, reset);
+      root.appendChild(row);
+      this.keyRows.push({ id: b.id, key, reset });
+    }
+    // The key pressed while a binding waits for one. (Caught before the game hears it.)
+    window.addEventListener('keydown', (e) => {
+      if (!this.listening || this.current !== 'screen-keys') return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (e.code !== 'Escape' && !RESERVED.has(e.code)) { keys.set(this.listening, e.code); onChange(); }
+      this.listening = null;
+      document.activeElement?.blur?.();
+      this.refreshKeys();
+    }, true);
+    this.refreshKeys();
+  }
+
+  refreshKeys() {
+    const keys = this.keys;
+    if (!keys) return;
+    for (const r of this.keyRows) {
+      const name = keyName(keys.code(r.id));
+      r.key.textContent = this.listening === r.id ? `> ${name} <` : name;
+      r.key.classList.toggle('clash', keys.clashes(r.id).length > 0);
+      r.reset.disabled = keys.code(r.id) === DEFAULT_KEYS[r.id];
+    }
+    $('reset-keys').disabled = !Object.keys(keys.settings.keys ?? {}).length;
+    // How to Play names the keys as they're bound.
+    for (const k of document.querySelectorAll('kbd[data-bind]')) k.textContent = keyName(keys.code(k.dataset.bind));
+  }
+
+  // "Saving world" in the corner for a moment, as the game saves.
+  showSaving() {
+    const el = $('saving');
+    el.hidden = false;
+    clearTimeout(this.savingTimer);
+    this.savingTimer = setTimeout(() => { el.hidden = true; }, 1800);
+  }
+
   // Builds the options screen: sliders with their value written across them, and ON/OFF buttons.
   bindSettings(settings, onChange) {
     const root = $('options');
@@ -747,6 +821,15 @@ export class UI {
         const h = document.createElement('h3');
         h.textContent = o.section;
         root.appendChild(h);
+        continue;
+      }
+      if (o.action) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'btn';
+        b.dataset.action = o.action;
+        b.textContent = o.label;
+        root.appendChild(b);
         continue;
       }
       if (o.cycle) {
