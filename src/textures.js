@@ -27,6 +27,10 @@ import './tex/eggs.js';
 
 export const ARRAY_LAYERS = 256;
 
+// Graphics: Fast draws leaves solid, as Minecraft does: each kind of leaves has a second picture
+// with the gaps between the leaves filled in, dark (see the mesher).
+for (const d of [...defs]) if (d.name.endsWith('_leaves')) defs.push({ name: `${d.name}_fast`, solidOf: d, group: 1 });
+
 // Lay the textures out so no run of layers that must stay together (a base and its overlay, the
 // frames of an animation) is split between two arrays.
 const order = [];
@@ -51,9 +55,9 @@ export function generateTextures() {
   const out = new Uint8Array(order.length * 1024);
   order.forEach((d, layer) => {
     if (!d) return;
-    const t = new Tex(d.name);
-    if (PACK[d.name]) unpack(PACK[d.name], t.d);
-    else d.draw(t);
+    const src = d.solidOf ?? d, t = new Tex(src.name);
+    if (PACK[src.name]) unpack(PACK[src.name], t.d);
+    else src.draw(t);
     let r = 0, g = 0, b = 0, n = 0;
     for (let i = 0; i < 1024; i += 4) {
       if (t.d[i + 3] > 0) { r += t.d[i]; g += t.d[i + 1]; b += t.d[i + 2]; n++; }
@@ -62,6 +66,13 @@ export function generateTextures() {
       r /= n; g /= n; b /= n;
       for (let i = 0; i < 1024; i += 4) {
         if (t.d[i + 3] === 0) { t.d[i] = r; t.d[i + 1] = g; t.d[i + 2] = b; }
+      }
+    }
+    // (The solid leaves: the gaps a darker shade of the leaves, and nothing see-through.)
+    if (d.solidOf) {
+      for (let i = 0; i < 1024; i += 4) {
+        if (t.d[i + 3] < 128) { t.d[i] = r * 0.42; t.d[i + 1] = g * 0.42; t.d[i + 2] = b * 0.42; }
+        t.d[i + 3] = 255;
       }
     }
     out.set(t.d, layer * 1024);

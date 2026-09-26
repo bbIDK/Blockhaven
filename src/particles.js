@@ -14,17 +14,25 @@ export class Particles {
     this.u16 = new Uint16Array(this.u8.buffer);
     this.count = 0;
     this.base = [0, 0, 0];
+    this.keep = 1;
+  }
+
+  // One of the everyday particles (fragments, smoke, splashes, sparks): fewer of them, or hardly
+  // any, as the Particles option says (`keep`: the share kept). Hearts, notes and the like always show.
+  add(p) {
+    if (this.keep < 1 && Math.random() >= this.keep) return;
+    if (this.list.length >= MAX) this.list.shift();
+    this.list.push(p);
   }
 
   spawn(x, y, z, vx, vy, vz, blockId, face, life, size) {
-    if (this.list.length >= MAX) this.list.shift();
     const f = face ?? 0;
     const flags = FFLAGS[blockId * 6 + f];
     const tintType = TINT[blockId];
     let tint = [255, 255, 255];
     if ((flags & (F_TINT | F_OVERLAY)) && tintType) tint = tintType === 3 ? [...TINT_RGB.subarray(blockId * 3, blockId * 3 + 3)] : DEFAULT_TINT[tintType];
     const u = Math.floor(Math.random() * 12), v = Math.floor(Math.random() * 12);
-    this.list.push({
+    this.add({
       x, y, z, vx, vy, vz, life, age: 0, size,
       layer: TEXL[blockId * 6 + f] + ((flags & F_OVERLAY) && Math.random() < 0.3 ? 1 : 0),
       flags: flags & F_TINT ? F_TINT : 0, tint, u, v,
@@ -44,8 +52,7 @@ export class Particles {
   // Bits of a texture (food crumbs, critical-hit sparks).
   bits(x, y, z, layer, n, speed = 1.5, life = 0.6) {
     for (let i = 0; i < n; i++) {
-      if (this.list.length >= MAX) this.list.shift();
-      this.list.push({
+      this.add({
         x, y, z, vx: (Math.random() - 0.5) * speed * 2, vy: Math.random() * speed * 1.4, vz: (Math.random() - 0.5) * speed * 2,
         life: life * (0.6 + Math.random() * 0.8), age: 0, size: 0.05 + Math.random() * 0.04, layer, flags: 0,
         tint: [255, 255, 255], u: 4 + Math.floor(Math.random() * 8), v: 4 + Math.floor(Math.random() * 8),
@@ -56,9 +63,8 @@ export class Particles {
   // Sparks: little stars that burst outward and fade (critical hits).
   sparks(x, y, z, layer, n, speed = 3) {
     for (let i = 0; i < n; i++) {
-      if (this.list.length >= MAX) this.list.shift();
       const a = Math.random() * Math.PI * 2, up = Math.random() * 2 - 0.4;
-      this.list.push({
+      this.add({
         x, y, z, vx: Math.cos(a) * speed * (0.5 + Math.random()), vy: up * speed * 0.6 + 1.5, vz: Math.sin(a) * speed * (0.5 + Math.random()),
         life: 0.35 + Math.random() * 0.3, age: 0, size: 0.07 + Math.random() * 0.05, layer, flags: 1, tint: [255, 255, 255], u: 0, v: 0,
         whole: true, spark: true,
@@ -70,9 +76,8 @@ export class Particles {
   // (`plume`: the tall, slow column of smoke over a campfire.)
   smoke(x, y, z, n = 8, spread = 0.4, plume = false) {
     for (let i = 0; i < n; i++) {
-      if (this.list.length >= MAX) this.list.shift();
       const g = plume ? 150 + Math.floor(Math.random() * 50) : 190 + Math.floor(Math.random() * 60);
-      this.list.push({
+      this.add({
         x: x + (Math.random() - 0.5) * spread * 2, y: y + (Math.random() - 0.5) * spread, z: z + (Math.random() - 0.5) * spread * 2,
         vx: (Math.random() - 0.5) * (plume ? 0.25 : 0.8), vy: plume ? 1.1 + Math.random() * 0.7 : 0.3 + Math.random() * 0.7,
         vz: (Math.random() - 0.5) * (plume ? 0.25 : 0.8),
@@ -87,18 +92,16 @@ export class Particles {
   splash(x, y, z, colour, n = 28) {
     const tint = [(colour >> 16) & 255, (colour >> 8) & 255, colour & 255];
     for (let i = 0; i < n; i++) {
-      if (this.list.length >= MAX) this.list.shift();
       const a = Math.random() * Math.PI * 2, s = 1.2 + Math.random() * 2.6;
-      this.list.push({
+      this.add({
         x, y: y + 0.15, z, vx: Math.cos(a) * s, vy: 1.2 + Math.random() * 2.8, vz: Math.sin(a) * s, life: 0.5 + Math.random() * 0.7, age: 0,
         size: 0.045 + Math.random() * 0.05, layer: TEX.spark, flags: 1, tint, u: Math.floor(Math.random() * 12), v: Math.floor(Math.random() * 12),
       });
     }
     // ...and wisps of it curling up for a moment after.
     for (let i = 0; i < 10; i++) {
-      if (this.list.length >= MAX) this.list.shift();
       const a = Math.random() * Math.PI * 2, r = Math.random() * 1.6;
-      this.list.push({
+      this.add({
         x: x + Math.cos(a) * r, y: y + 0.2 + Math.random() * 0.6, z: z + Math.sin(a) * r, vx: Math.cos(a) * 0.3, vy: 0.4 + Math.random() * 0.6, vz: Math.sin(a) * 0.3,
         life: 1 + Math.random() * 0.8, age: 0, size: 0.1 + Math.random() * 0.1, layer: TEX.smoke, flags: 1, tint, u: 0, v: 0, smoke: true,
       });
@@ -108,7 +111,7 @@ export class Particles {
   // Something going into water at the surface (x, y, z), `s` 0..1 for how hard: drops thrown up
   // and out that fall back in, and bubbles going down with it.
   waterSplash(x, y, z, s) {
-    const add = (p) => { if (this.list.length >= MAX) this.list.shift(); this.list.push(p); };
+    const add = (p) => this.add(p);
     const drops = Math.round(10 + 50 * s);
     for (let i = 0; i < drops; i++) {
       const a = Math.random() * Math.PI * 2, r = 0.15 + Math.random() * 0.4, out = (0.5 + Math.random() * 1.6) * (0.6 + s);

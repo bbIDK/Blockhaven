@@ -60,6 +60,9 @@ const DEFAULT_SETTINGS = {
   renderDistance: COARSE ? 5 : 8, resolution: 0, fov: 75, sensitivity: 100, brightness: 50, volume: 60, music: 40,
   viewBobbing: !REDUCED_MOTION, clouds: true, invertMouse: false, showFps: false, recipeBook: true, guiScale: 0, mix: 3,
   name: '', look: -1, blood: true, shaders: null, // (null: chosen for the device on first run)
+  // Graphics (1 Fancy, 0 Fast: solid leaves), frames a second at most (0: as many as the screen
+  // shows), how many particles (0 all, 1 fewer, 2 hardly any), and how far off creatures are drawn.
+  graphics: COARSE ? 0 : 1, maxFps: 0, particles: 0, entityDistance: 100,
 };
 const FACE_NAMES = ['east (+X)', 'west (-X)', 'up', 'down', 'south (+Z)', 'north (-Z)'];
 const TIPS = [
@@ -302,6 +305,8 @@ export class Game {
   get mode() { return this.creative ? 'creative' : 'survival'; }
 
   applySettings() {
+    this.world?.setFastLeaves(this.settings.graphics === 0);
+    if (this.particles) this.particles.keep = [1, 0.4, 0.12][this.settings.particles] ?? 1;
     this.renderer?.setPlayerSkin(this.skinName);
     this.audio.setVolume(this.settings.volume / 100);
     this.audio.setMusicVolume(this.settings.music / 100);
@@ -444,6 +449,7 @@ export class Game {
     const store = remote ? remote.store : await new storage.WorldStore(meta.id, CHUNK_VOLUME).init();
     this.meta = meta;
     this.world = new World({ seed: meta.seed, type: meta.type, version: meta.gen ?? 1, renderer: this.renderer, store });
+    this.world.setFastLeaves(this.settings.graphics === 0);
     this.world.remote = !!remote;
     this.world.listener = this;
     this.time = meta.time ?? 1000;
@@ -1434,6 +1440,9 @@ export class Game {
   // ---------------------------------------------------------------- main loop
   frame(now) {
     requestAnimationFrame(this.frame);
+    // (Max Framerate: frames that come too soon are skipped.)
+    const cap = this.settings.maxFps;
+    if (cap && now - this.last < 1000 / cap - 2) return;
     this.lastFrame = performance.now();
     // (Time the background timer already stepped through isn't counted again.)
     const dt = Math.min(0.1, Math.max(0, (now - Math.max(this.last, this.lastBackground)) / 1000));
@@ -1473,7 +1482,7 @@ export class Game {
     const active = this.state === 'play' && (draw || !document.hidden);
     // In multiplayer the game menu doesn't stop the world.
     const paused = this.state === 'pause' && !this.net;
-    w.update(p.x, p.z, this.settings.renderDistance);
+    w.update(p.x, p.z, this.settings.renderDistance, 4, p.yaw);
     if (this.needsRespawnY && w.isLoaded(p.x, p.z)) {
       if (this.respawnAtBed) this.placeAtBed();
       else { this.placeAt(Math.floor(p.x), Math.floor(p.z)); this.needsRespawnY = false; }

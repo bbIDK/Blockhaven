@@ -5,6 +5,7 @@
 import {
   R, RENDER, OPAQUE, AO, TEXL, FFLAGS, TINT, TINT_RGB, CULL_SELF, TRANSLUCENT, B, ANIM, WET,
   F_TINT, F_OVERLAY, F_UVROT, F_ANIM, liquidHeight, liquidLevel, sameCullGroup, TORCH_LEAN, shapeBoxes, boxFaceUV, boxLayer, RAIL,
+  LEAFY, FAST_LEAF_LAYER,
 } from './blocks.js';
 import { columnColors, fromByte } from './biomes.js';
 import { hash2 } from './math.js';
@@ -74,9 +75,13 @@ const grassT = new Uint8Array(768), foliageT = new Uint8Array(768), waterT = new
 const aoV = new Int32Array(4), skyV = new Int32Array(4), blkV = new Int32Array(4);
 const FLAG_MASK = 0xff & ~F_UVROT;
 
+// Graphics: Fast: leaves are drawn solid, so faces behind them are left out (see meshSection).
+let fastLeaves = false;
+
 function faceVisible(id, nid) {
   if (OPAQUE[nid]) return false;
   if (CULL_SELF[id] && sameCullGroup(id, nid)) return false;
+  if (fastLeaves && LEAFY[nid]) return false;
   return true;
 }
 
@@ -108,7 +113,7 @@ function cubeFace(buf, blocks, light, x, y, z, p, id, f) {
     blkV[k] = Math.round((b * 17) / c);
   }
   const fi = id * 6 + f;
-  const layer = TEXL[fi], ff = FFLAGS[fi];
+  const layer = fastLeaves && LEAFY[id] ? FAST_LEAF_LAYER[id] : TEXL[fi], ff = FFLAGS[fi];
   const flags = ff & FLAG_MASK;
   if (ff & (F_TINT | F_OVERLAY)) tintFor(id, (z << 4) | x, tint); else tint[0] = tint[1] = tint[2] = 255;
   const uvs = ff & F_UVROT ? UV_ROT : UV;
@@ -367,7 +372,9 @@ function campfire(bufs, other, blocks, light, x, y, z, p, id) {
 // blocks/light: padded 18^3 arrays; climate: 512 bytes for the chunk's columns; biomes: 256;
 // tints: the columns' grass, foliage and water colours blended with their surroundings (768
 // bytes each, see World.chunkTints), or null to work them out from the climate alone.
-export function meshSection(blocks, light, climate, cx, cz, biomes = null, tints = null) {
+// `fast`: Graphics: Fast (leaves solid).
+export function meshSection(blocks, light, climate, cx, cz, biomes = null, tints = null, fast = false) {
+  fastLeaves = fast;
   other.count = 0;
   for (const d of dirs) d.count = 0;
   trans.count = 0;

@@ -56,6 +56,19 @@ export class Chunk {
 
 const NB_OFFSETS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
+// The same, the ones the player faces first (`sector`: which of eight ways they face, or null
+// for no preference): what's in view loads before what's behind. The nearest stay first.
+const facingCache = new Map();
+function facingOrder(r, sector) {
+  if (sector === null) return spiral(r);
+  const key = r * 8 + sector;
+  if (!facingCache.has(key)) {
+    const a = (sector * Math.PI) / 4, fx = -Math.sin(a), fz = -Math.cos(a);
+    const cost = ([dx, dz, d2]) => { const d = Math.sqrt(d2); return d <= 1.5 ? d : d * (1 + 0.6 * (1 - (dx * fx + dz * fz) / d) / 2); };
+    facingCache.set(key, [...spiral(r)].sort((a, b) => cost(a) - cost(b)));
+  }
+  return facingCache.get(key);
+}
 const spiralCache = new Map();
 function spiral(r) {
   if (!spiralCache.has(r)) {
@@ -115,6 +128,7 @@ export class World {
     this.center = null;
     this.radius = 6;
     this.scan = true; // something may need loading or meshing
+    this.fastLeaves = false; // Graphics: Fast (see setFastLeaves)
     this.listener = null;
     // Multiplayer: a guest's copy of the world leaves block updates (water, sand, plants popping
     // off) to the host, and a host keeps the ground around its guests loaded (but not drawn).
@@ -241,9 +255,12 @@ export class World {
   }
 
   // ------------------------------------------------------------------ streaming
-  // budgetMs: time allowed for applying finished chunks and meshes this frame.
-  update(px, pz, radius, budgetMs = 4) {
+  // budgetMs: time allowed for applying finished chunks and meshes this frame. `yaw`: which way the
+  // player looks (what they face is loaded first).
+  update(px, pz, radius, budgetMs = 4, yaw = null) {
     const pcx = Math.floor(px) >> 4, pcz = Math.floor(pz) >> 4;
+    const sector = yaw === null ? null : ((Math.round(yaw / (Math.PI / 4)) % 8) + 8) % 8;
+    if (sector !== this.sector) { this.sector = sector; this.scan = true; }
     if (!this.center || this.center[0] !== pcx || this.center[1] !== pcz || radius !== this.radius || this.keepChanged) {
       this.center = [pcx, pcz];
       this.radius = radius;
@@ -261,7 +278,7 @@ export class World {
     const r2 = (radius + 0.5) * (radius + 0.5);
     let slots = this.pool.freeSlots();
     let busy = slots <= 0;
-    for (const [dx, dz, d2] of spiral(radius + 1)) {
+    for (const [dx, dz, d2] of facingOrder(radius + 1, this.sector ?? null)) {
       if (slots <= 0) { busy = true; break; }
       const cx = pcx + dx, cz = pcz + dz;
       const chunk = this.chunks.get(chunkKey(cx, cz));
@@ -427,7 +444,15 @@ export class World {
     sec.dirty = false;
     sec.pending++;
     this.pool.submit({ type: 'mesh', cx: chunk.cx, cz: chunk.cz, sy, version: sec.version, blocks, light,
-      climate: chunk.climate, biomes: chunk.biomes, tints: this.chunkTints(chunk) }, [blocks.buffer, light.buffer]);
+      climate: chunk.climate, biomes: chunk.biomes, tints: this.chunkTints(chunk), fast: this.fastLeaves }, [blocks.buffer, light.buffer]);
+  }
+
+  // Graphics: Fast or Fancy (leaves solid, or see-through): every section is drawn again.
+  setFastLeaves(fast) {
+    if (fast === this.fastLeaves) return;
+    this.fastLeaves = fast;
+    for (const chunk of this.chunks.values()) for (const sec of chunk.sections ?? []) { sec.dirty = true; sec.version++; }
+    this.scan = true;
   }
 
   // A chunk's columns' own grass, foliage and water colours (768 bytes each), from their biome and
@@ -489,7 +514,7 @@ export class World {
     sec.meshVersion = sec.version;
     if (sec.count === 0) { sec.vis = ALL_OPEN; if (sec.solid || sec.trans) this.renderer.freeSection(sec); return; }
     this.buildPadded(chunk, sy, this.padB, this.padL);
-    const m = meshSection(this.padB, this.padL, chunk.climate, chunk.cx, chunk.cz, chunk.biomes, this.chunkTints(chunk));
+    const m = meshSection(this.padB, this.padL, chunk.climate, chunk.cx, chunk.cz, chunk.biomes, this.chunkTints(chunk), this.fastLeaves);
     sec.vis = m.vis;
     this.renderer.uploadSection(sec, chunk, sy, m.solid, m.trans, m.groups);
   }

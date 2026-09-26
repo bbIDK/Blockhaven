@@ -1206,7 +1206,8 @@ export class Entities {
     this.matIndex = 0;
     const out = [];
     const w = this.world, r = this.game.renderer;
-    const maxD2 = (this.game.settings.renderDistance * 16) ** 2;
+    // (Creatures are drawn out to 80 blocks at Entity Distance 100%, never past the land.)
+    const s = this.game.settings, maxD2 = Math.min(s.renderDistance * 16, 0.8 * (s.entityDistance ?? 100)) ** 2;
     for (const e of this.list) {
       if (e.dead) continue;
       const rx = e.x - cam.x, ry = e.y - cam.y, rz = e.z - cam.z;

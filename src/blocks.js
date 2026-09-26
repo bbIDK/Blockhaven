@@ -2,7 +2,7 @@
 // Hot properties live in flat typed arrays for the mesher, lighting and physics.
 // Ids are 16-bit. Blocks and items share one id space: blocks use 0-255 and 1024-4095, items that
 // aren't blocks use 256-1023.
-import { TEX } from './textures.js';
+import { TEX, TEXTURE_NAMES } from './textures.js';
 import { DYES, tintFor } from './colors.js';
 
 export const R = { NONE: 0, CUBE: 1, CROSS: 2, TORCH: 3, LIQUID: 4, CACTUS: 5, MODEL: 6, FIRE: 7, CAMPFIRE: 8, RAIL: 9 };
@@ -1332,3 +1332,14 @@ for (const n of ['grass_block', 'dirt', 'snowy_grass', 'sand', 'gravel', 'clay',
   'water', 'lava', 'cactus', 'tall_grass', 'dandelion', 'poppy', 'cornflower', 'dead_bush', 'sugar_cane', 'red_mushroom', 'brown_mushroom',
   'pumpkin', 'snow_block', 'ice', 'obsidian', ...WOOD_NAMES.map((w) => `${w}_leaves`)]) BLOCKS[B[n]].cat = 'nature';
 for (const n of ['crafting_table', 'furnace', 'chest', 'bed', 'ladder', 'torch', 'glowstone', 'jack_o_lantern', 'bookshelf', 'tnt']) BLOCKS[B[n]].cat = 'functional';
+
+// Graphics: Fast (see the mesher): every kind of leaves (natural or placed) drawn solid, from its
+// gap-filled picture, the same on every face; faces hidden behind leaves are left out.
+export const LEAFY = new Uint8Array(N);
+export const FAST_LEAF_LAYER = new Uint16Array(N);
+for (let id = 1; id < N; id++) {
+  const solid = BLOCKS[id]?.render === R.CUBE && TEX[`${TEXTURE_NAMES[TEXL[id * 6]]}_fast`];
+  if (!solid) continue;
+  LEAFY[id] = 1;
+  FAST_LEAF_LAYER[id] = solid;
+}
