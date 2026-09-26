@@ -32,6 +32,7 @@ export class RemotePlayer {
     this.swingN = null; this.swing = 0;
     this.hurtN = null; this.hurt = 0;
     this.walk = 0; this.walkPhase = 0; this.swimPhase = 0;
+    this.eatLift = 0; this.chew = 0; // (how far the hand's up at the mouth, and the chewing's beat)
     this.lastX = 0; this.lastZ = 0;
     this.mountId = null; // the entity they ride, if any
   }
@@ -50,6 +51,7 @@ export class RemotePlayer {
   get invisible() { return !!(this.flags & 128); }
   get guarding() { return !!(this.flags & 256); }
   get swimming() { return !!(this.flags & 512); }
+  get eating() { return !!(this.flags & 1024); }
 
   // Presence: { n: name, p: [x, y, z, yaw, pitch], f: flags, i: held item, a: armour, k: look,
   // s: swings, u: hurts }.
@@ -120,6 +122,9 @@ export class RemotePlayer {
     if (this.swing > 0) { this.swing += dt * 3.4; if (this.swing >= 1) this.swing = 0; }
     this.hurt = Math.max(0, this.hurt - dt);
     if (this.swimming) this.swimPhase = (this.swimPhase + dt * 4.2) % TAU;
+    // Eating or drinking: the hand comes up to the mouth (and goes down again) smoothly.
+    this.eatLift = clamp(this.eatLift + (this.eating ? dt : -dt) * 6, 0, 1);
+    if (this.eatLift > 0) this.chew = (this.chew + dt * 13) % TAU;
   }
 }
 
@@ -265,9 +270,12 @@ export class Avatars {
       add(m.leftArm, joint(shoulders(this.mat()), m.leftArm.pivot, leftA, 0, swim ? -sweep : -0.05));
       // The right arm swings forward and up to hit or use something, and holds the item.
       // (A shield held up: the arm across in front, the shield facing out.)
-      const shield = rp.held === I.shield, guard = shield && rp.guarding;
-      const rightA = swim ? swingA : guard ? 0.95 : -walkA * 0.7 - armBack + (rp.held ? 0.3 : 0) + attack * 1.3 + (sit ? 0.63 : 0);
-      const arm = joint(shoulders(this.mat()), m.rightArm.pivot, rightA, guard && !swim ? -0.5 : -attack * 0.4, swim ? sweep : 0.05);
+      // (Eating: the hand up at the mouth, bobbing as they chew.)
+      const shield = rp.held === I.shield, guard = shield && rp.guarding, eat = swim ? 0 : rp.eatLift * rp.eatLift * (3 - 2 * rp.eatLift);
+      let rightA = swim ? swingA : guard ? 0.95 : -walkA * 0.7 - armBack + (rp.held ? 0.3 : 0) + attack * 1.3 + (sit ? 0.63 : 0);
+      let rightY = guard && !swim ? -0.5 : -attack * 0.4;
+      if (eat) { rightA += (1.42 + Math.sin(rp.chew) * 0.07 - rightA) * eat; rightY += (0.55 - rightY) * eat; }
+      const arm = joint(shoulders(this.mat()), m.rightArm.pivot, rightA, rightY, swim ? sweep : 0.05);
       const held = rp.held ? this.renderer.itemMesh(rp.held) : null;
       if (held) parts.push({ mesh: held, model: shield ? this.heldShield(arm, rightA) : this.heldItem(arm, held, rp.held), glint: rp.heldShiny ? 1 : 0 });
       add(m.rightArm, arm);

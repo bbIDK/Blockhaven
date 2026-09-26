@@ -2015,7 +2015,8 @@ export class Game {
     this.guarding = null;
     if ((hdef?.food || hdef?.drink || hdef?.potion) && (!this.creative || hdef.potion) && (this.food < 20 || hdef.always || hdef.drink || hdef.potion) && eatInput && !usable) {
       if (!this.eating || this.eating.id !== held.id || this.eating.slot !== this.inv.selected) {
-        this.eating = { id: held.id, slot: this.inv.selected, left: hdef.quick ? 16 : 32, touch: touchTap };
+        const time = hdef.quick ? 16 : 32;
+        this.eating = { id: held.id, slot: this.inv.selected, left: time, time, touch: touchTap };
       }
     } else this.eating = null;
     this.useCooldown -= dt;
@@ -2921,7 +2922,8 @@ export class Game {
         item: this.handItem === I.fishing_rod && this.fishing.out ? I.fishing_rod_cast : this.handItem, swing: this.swinging ? this.swing : 0,
         equip: 1 - this.handHeight,
         bob, walk, roll, lag: [(this.lagPitch - p.pitch) * 0.1, (this.lagYaw - p.yaw) * 0.1],
-        eat: this.eating ? this.eating.left : undefined,
+        // (How far through eating, to the fraction of a tick, so the hand moves smoothly.)
+        eat: this.eating ? Math.min(this.eating.time, this.eating.left - this.tickAcc + 1) : undefined, eatTime: this.eating?.time,
         shield: this.handItem === I.shield, guard: this.guardLift ?? 0,
         glint: shiny(this.inv.held),
         light: [Math.max(heldLight >> 4, 0), heldLight & 15],
@@ -2956,7 +2958,8 @@ export class Game {
     if (!a.ready) Object.assign(a, { ready: true, bodyYaw: p.yaw, lastX: p.x, lastZ: p.z });
     Object.assign(a, {
       x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, name: this.settings.name, look: this.settings.look,
-      flags: (p.sneaking ? 1 : 0) | (this.guarding ? 256 : 0) | (p.swimming ? 512 : 0) | (this.effects?.has('invisibility') ? 128 : 0),
+      flags: (p.sneaking ? 1 : 0) | (this.guarding ? 256 : 0) | (p.swimming ? 512 : 0) | (this.effects?.has('invisibility') ? 128 : 0) |
+        (this.eating ? 1024 : 0),
       held: this.handLook, heldShiny: shiny(this.inv.held), armor: this.inv.armor.map((s) => s?.id ?? 0),
       mountId: this.riding ? 1 : null,
     });

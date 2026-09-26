@@ -858,8 +858,9 @@ export class Renderer {
       return mesh;
     }
     if (hand.eat !== undefined) {
-      // Bringing food to the mouth and chewing.
-      const left = hand.eat, frac = left / 32;
+      // Bringing food to the mouth and chewing, as Minecraft does (`eat`: the ticks left, to the
+      // fraction, of `eatTime`).
+      const left = hand.eat, frac = Math.min(1, left / (hand.eatTime || 32));
       if (frac < 0.8) translate(m, m, 0, Math.abs(Math.cos((left / 4) * Math.PI) * 0.1), 0);
       const k = 1 - frac ** 27;
       translate(m, m, k * 0.6, k * -0.5, 0);
