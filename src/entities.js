@@ -21,7 +21,7 @@ import { boatPhysics, boatMesh, boatModel, BOAT_WOODS } from './riding.js';
 import { cartPhysics, cartMesh, cartModel, CART_SIZE } from './rails.js';
 import { splitXp, orbSize } from './enchanting.js';
 import { POTIONS, UNDEAD } from './potions.js';
-import { holdsLead, useFence } from './leads.js';
+import { holdsLead, useFence, unleash } from './leads.js';
 import { isHanging, placement, place, holds, drops, frameUse, drawHanging } from './hangings.js';
 import { PAINTINGS } from './tex/paintings.js';
 
@@ -135,7 +135,7 @@ export class Entities {
     const hung = this.list.filter((e) => !e.dead && isHanging(e)).map((e) => ({ k: e.kind, bx: e.bx, by: e.by, bz: e.bz, f: e.face, a: e.art ?? undefined,
       it: e.item ? { id: e.item.id, count: 1, dmg: e.item.dmg ?? 0, ex: extras(e.item) ?? undefined } : undefined, r: e.rot || undefined }));
     return hung.concat(this.list.filter((e) => !e.dead && (e.kind === 'item' || e.kind === 'boat' || e.kind === 'cart' || e.kind === 'xp' ||
-      (e.kind === 'mob' && e.def.kind !== 'civilian' && !e.pinned)))
+      (e.kind === 'mob' && e.def.kind !== 'civilian' && !e.pinned && !e.dying)))
       .slice(0, 300)
       .map((e) => (e.kind === 'item' ? { k: 'item', x: e.x, y: e.y, z: e.z, id: e.id, count: e.count, dmg: e.dmg, ex: e.extra ?? undefined }
         : e.kind === 'boat' ? { k: 'boat', x: e.x, y: e.y, z: e.z, yaw: e.yaw, w: e.wood }
@@ -842,7 +842,21 @@ export class Entities {
       // (What killed it: a creeper shot by a skeleton leaves a music disc.)
       e.killer = from?.kind === 'mob' ? from.type : null;
       if (e.rider) this.throwRider(e);
+      this.dropLoot(e);
+      this.civilians.died(e);
     }
+  }
+
+  // What a creature leaves the moment it dies, as in Minecraft (not a second later, when its body
+  // goes): its experience, if a player hurt it lately, its drops and its lead.
+  dropLoot(e) {
+    const game = this.game;
+    if (this.guest) return; // (the host's creatures die on the host)
+    if (e.playerHurt > 0) this.spawnXp(e.x, e.y + 0.4, e.z, mobXp(e));
+    if (e.leash) unleash(this, e, !game.creative);
+    if (game.creative) return;
+    for (const [id, n] of mobDrops(e)) this.spawnItem(e.x, e.y + 0.4, e.z, id, n);
+    if (e.type === 'creeper' && (e.killer === 'skeleton' || e.killer === 'stray')) this.spawnItem(e.x, e.y + 0.4, e.z, I.music_disc_meadow + Math.floor(Math.random() * DISCS.length), 1);
   }
 
   finishDeath(e) {
@@ -851,7 +865,6 @@ export class Entities {
     game.net?.entityGone(e, 'd');
     // The body disappears in a puff of smoke.
     game.particles.smoke(e.x, e.y + e.h * 0.4, e.z, 10 + Math.round(e.h * 6), e.hw + 0.25);
-    this.civilians.died(e);
     // Big slimes break into smaller ones.
     if (e.def.sized && e.size > 1) {
       const n = 2 + Math.floor(Math.random() * 3);
@@ -860,10 +873,6 @@ export class Entities {
         s.vy = 4; s.vx = (Math.random() - 0.5) * 3; s.vz = (Math.random() - 0.5) * 3;
       }
     }
-    if (e.playerHurt > 0) this.spawnXp(e.x, e.y + 0.4, e.z, mobXp(e));
-    if (game.creative) return;
-    for (const [id, n] of mobDrops(e)) this.spawnItem(e.x, e.y + 0.4, e.z, id, n);
-    if (e.type === 'creeper' && (e.killer === 'skeleton' || e.killer === 'stray')) this.spawnItem(e.x, e.y + 0.4, e.z, I.music_disc_meadow + Math.floor(Math.random() * DISCS.length), 1);
   }
 
   // The player hits a creature. `bonus` adds knockback (a sprinting, full-strength hit).
