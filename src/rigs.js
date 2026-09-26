@@ -315,15 +315,17 @@ export const RIGS = {
       legBL: { pivot: [-3.5, 12, 6], cubes: [c([-5.5, 0, 4], [4, 12, 4], [36, 16], { mirror: true })] },
     },
   },
-  // Turtles: a wide, low shell, a head poking out in front and four paddling flippers.
+  // Turtles, built as Minecraft builds them (so its turtle skin fits): a broad domed shell over a
+  // flat belly plate, both drawn standing up in the skin and laid along the turtle by the body's
+  // turn; a blunt head poking out in front, long front flippers and short back ones.
   turtle: {
     bones: {
-      body: { pivot: [0, 4, 0], cubes: [c([-7, 1, -8], [14, 5, 16], [0, 0])] },
-      head: { pivot: [0, 3, -8], cubes: [c([-3, 1, -13], [6, 5, 6], [0, 21])] },
-      legFR: { pivot: [7, 2, -5], cubes: [c([7, 2, -7.5], [10, 1, 5], [24, 21])] },
-      legFL: { pivot: [-7, 2, -5], cubes: [c([-17, 2, -7.5], [10, 1, 5], [24, 21], { mirror: true })] },
-      legBR: { pivot: [5, 2, 7], cubes: [c([3, 2, 7], [5, 1, 8], [24, 28])] },
-      legBL: { pivot: [-5, 2, 7], cubes: [c([-8, 2, 7], [5, 1, 8], [24, 28], { mirror: true })] },
+      body: { pivot: [0, 13, -10], rest: [-Math.PI / 2, 0, 0], cubes: [c([-9.5, -10, -20], [19, 20, 6], [7, 37]), c([-5.5, -8, -23], [11, 18, 3], [31, 1])] },
+      head: { pivot: [0, 5, -10], cubes: [c([-3, 1, -13], [6, 5, 6], [3, 0])] },
+      legFR: { pivot: [5, 3, -4], cubes: [c([5, 2, -6], [13, 1, 5], [27, 30])] },
+      legFL: { pivot: [-5, 3, -4], cubes: [c([-18, 2, -6], [13, 1, 5], [27, 24])] },
+      legBR: { pivot: [3.5, 2, 11], cubes: [c([1.5, 1, 11], [4, 1, 10], [1, 23])] },
+      legBL: { pivot: [-3.5, 2, 11], cubes: [c([-5.5, 1, 11], [4, 1, 10], [1, 12])] },
     },
   },
   // Bats: a furry body and head with big ears, and two wide leathery wings.

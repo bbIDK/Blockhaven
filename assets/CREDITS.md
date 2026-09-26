@@ -822,6 +822,7 @@ doubled in size (the particles). Anything not listed is drawn by the game's own 
 | `skins/panda_brown.png` | Pixel Perfection CE entity/panda/brown_panda.png | changed |
 | `skins/bee.png` | Pixel Perfection CE entity/bee/bee.png | changed |
 | `skins/bee_angry.png` | Pixel Perfection CE entity/bee/bee_angry.png | changed |
+| `skins/turtle.png` | Pixel Perfection CE entity/turtle/big_sea_turtle.png | changed |
 | `skins/zebra.png` | Pixel Perfection CE entity/horse/horse_white.png | changed |
 | `skins/horse_white.png` | Pixel Perfection CE entity/horse/horse_white.png | changed |
 | `skins/horse_creamy.png` | Pixel Perfection CE entity/horse/horse_creamy.png | changed |

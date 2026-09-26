@@ -678,19 +678,41 @@ for (const [name, c] of LLAMAS) {
   });
 }
 
-// Turtles: a green shell of plates (darker seams, lighter rims), olive skin with pale spots.
+// Turtles (Minecraft's model, rigs.js): a domed shell of green plates with dark seams and a pale
+// rim, a creamy belly plate, green skin with pale spots, and dark eyes on the sides of the head.
+// The shell and belly are drawn standing up: the shell's back is the top of the dome, its front the
+// underside, and its top and bottom the rim at the head and tail ends.
 skin('turtle', (sk) => {
-  const shell = [0x2e5a24, 0x3a6c2c, 0x467e34, 0x55903e], skinC = ramp(0x6a8a4a, 4, 0.08, 6);
-  fur(sk, 'turtle', ['head', 'legFR', 'legBR'], skinC, { cell: 1, grain: 0.3 });
-  each(sk, 'turtle', ['head', 'legFR', 'legBR'], (face, r) => { for (let k = 0; k < 3; k++) at(sk, r, sk.ri(r[2]), sk.ri(r[3]), 0xb8c890); });
-  const S = reg(cubesOf('turtle', 'body')[0]);
-  sk.fill(S.top, shell, { cell: 2, grain: 0.3 });
-  // Plates: a grid of rounded seams across the top.
-  for (let y = 0; y < S.top[3]; y++) for (let x = 0; x < S.top[2]; x++) if (y % 5 === 0 || (x + (Math.floor(y / 5) % 2) * 2) % 5 === 0) at(sk, S.top, x, y, 0x24481c);
-  for (const face of SIDES) sk.fill(S[face], [0x4a7a36, 0x568a40, 0x62964a], { cell: 1 });
-  sk.fill(S.bottom, [0xc8c890, 0xd4d49c, 0xdedea8], { cell: 2 });
-  const f = reg(cubesOf('turtle', 'head')[0]).front;
-  at(sk, f, 1, 1, 0x101010); at(sk, f, 4, 1, 0x101010); for (let x = 1; x < 5; x++) at(sk, f, x, 3, 0x3a4a2a);
+  const green = ramp(0x3f9a3c, 4, 0.08, 6), pale = [0xc8c890, 0xd2d29a, 0xdcdca6], seam = 0x1f3f18;
+  const limbs = ['head', 'legFR', 'legFL', 'legBR', 'legBL'];
+  fur(sk, 'turtle', limbs, green, { cell: 1, grain: 0.3 });
+  each(sk, 'turtle', limbs, (face, r) => {
+    if (face === 'bottom') sk.fill(r, pale, { cell: 1 });
+    else for (let k = 0; k < 3; k++) at(sk, r, sk.ri(r[2]), sk.ri(r[3]), 0xb8d890);
+  });
+  const [shell, belly] = cubesOf('turtle', 'body'), S = reg(shell);
+  for (const face of ['top', 'bottom', 'right', 'left']) sk.fill(S[face], [0x24481c, 0x2e5a24, 0x345f28], { cell: 1 });
+  sk.fill(S.front, pale, { cell: 2 });
+  // The dome: five plates down the middle, four each side, small ones round the rim.
+  const dome = S.back, [, , w, h] = dome;
+  sk.fill(dome, [0x2e5a24, 0x3a6c2c, 0x467e34, 0x55903e], { cell: 2, grain: 0.3 });
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const rim = x === 0 || x === w - 1 || y === 0 || y === h - 1, mid = x > 6 && x < 12;
+      if (rim ? (x + y) % 3 === 0 : x === 6 || x === 12 || (mid ? y % 4 === 0 : (y + 2) % 5 === 0)) at(sk, dome, x, y, seam);
+      else if (rim) at(sk, dome, x, y, 0x6a8a3a);
+    }
+  }
+  sk.box(belly, (face, r) => sk.fill(r, pale, { cell: 1 }));
+  const B = reg(belly).front;
+  for (let y = 3; y < B[3]; y += 5) row(sk, B, y, 0xa8a878);
+  for (let y = 0; y < B[3]; y++) at(sk, B, 5, y, 0xa8a878);
+  // Eyes on the sides of the head near the front (the right side's front is its last column, the
+  // left side's its first), and a mouth line across the front.
+  const H = reg(cubesOf('turtle', 'head')[0]);
+  at(sk, H.right, 4, 1, 0x101010); at(sk, H.right, 3, 1, 0x2a3a22);
+  at(sk, H.left, 1, 1, 0x101010); at(sk, H.left, 2, 1, 0x2a3a22);
+  for (let x = 1; x < 5; x++) at(sk, H.front, x, 3, 0x2a4a22);
 });
 
 // Bats: dark brown fur, black leathery wings with finger bones, tiny eyes.

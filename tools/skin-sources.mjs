@@ -188,6 +188,9 @@ export const SKIN_SOURCES = {
     ['panda_weak', 'weak_panda'], ['panda_aggressive', 'aggressive_panda'], ['panda_brown', 'brown_panda']].map(([n, f]) => [n, whole(E(`panda/${f}`))])),
   bee: whole(E('bee/bee')),
   bee_angry: whole(E('bee/bee_angry')),
+  // Turtles are Minecraft's model too (rigs.js); the right half of the sheet (the belly of a turtle
+  // carrying eggs) isn't used.
+  turtle: whole(E('turtle/big_sea_turtle')),
   // Zebras: the white horse with black stripes painted across it.
   zebra: (H) => zebra(H, whole(E('horse/horse_white'))(H)),
   // Horses, donkeys and mules: the model is Minecraft's (rigs.js horseBones), so the skins fit as

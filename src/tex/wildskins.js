@@ -194,8 +194,12 @@ skin('elephant', (sk) => {
   fur(sk, 'elephant', ['body', 'head', 'trunk1', 'trunk2', 'trunk3', 'earR', 'legFR', 'tail'], ELEPHANT, { cell: 2, grain: 0.3 });
   each(sk, 'elephant', ['legFR', 'trunk1', 'trunk2', 'trunk3'], (face, r) => { if (face !== 'top' && face !== 'bottom') creases(sk, r, 2, ELEPHANT[0]); });
   each(sk, 'elephant', ['body'], (face, r) => { if (face !== 'top') for (let k = 0; k < (r[2] * r[3]) / 10; k++) at(sk, r, sk.ri(r[2]), sk.ri(r[3]), ELEPHANT[1]); });
+  // Small dark eyes at the front of the head, in front of where the ears join it (so the ears don't
+  // hide them), wrapping round the corners so they show from the front too.
   const [head] = cubesOf('elephant', 'head');
-  eyes(sk, head, 3, 4, 0x141210);
+  eyes(sk, head, 0, 4, 0x141210, 0x2e2622);
+  const f = reg(head).front;
+  at(sk, f, 0, 4, 0x141210); at(sk, f, f[2] - 1, 4, 0x141210);
   each(sk, 'elephant', ['earR'], (face, r) => { if (face === 'left') sk.fill(r, [0x9a8480, 0xa68e8a, 0xb09896], { cell: 2 }); });
   fur(sk, 'elephant', ['tuskR'], [0xd8ceb4, 0xe6dcc6, 0xf0e8d6], { cell: 1, grain: 0.2 });
   each(sk, 'elephant', ['legFR'], (face, r) => {

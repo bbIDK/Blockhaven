@@ -86,7 +86,7 @@ export const MOBS = {
     variants: true, hw: 0.3, h: 0.7, health: 10, speed: 1.7, kind: 'animal', anim: 'quad', food: ['cod', 'salmon'], tameWith: ['cod', 'salmon'],
     drops: [d('string', 0, 2)], sound: 'cat', shy: 3, homeRange: 12 },
   turtle: { label: 'Turtle', rig: 'turtle', skins: ['turtle'], hw: 0.6, h: 0.4, health: 30, speed: 0.6, kind: 'animal', anim: 'turtle',
-    drops: [], sound: 'turtle', scale: 1.2, swimmer: true },
+    drops: [], sound: 'turtle', swimmer: true },
   parrot: { label: 'Parrot', rig: 'parrot', skins: ['parrot_red', 'parrot_blue', 'parrot_green', 'parrot_cyan', 'parrot_gray'], variants: true, hw: 0.25, h: 0.9,
     health: 6, speed: 2.2, kind: 'animal', anim: 'parrot', tameWith: ['wheat_seeds', 'beetroot_seeds', 'pumpkin_seeds', 'melon_seeds'],
     drops: [d('feather', 1, 2)], sound: 'parrot', flies: 'parrot', flutter: true },
