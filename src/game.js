@@ -413,7 +413,7 @@ export class Game {
     const { mode, type } = this.ui.createState;
     const meta = {
       id: `w${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`,
-      name, seed, seedText, mode, type, gen: 7, created: Date.now(), lastPlayed: Date.now(), time: 1000,
+      name, seed, seedText, mode, type, gen: 8, created: Date.now(), lastPlayed: Date.now(), time: 1000,
       spawn: null, player: null, inventory: null, version: SAVE_VERSION,
     };
     await storage.saveWorld(meta);
@@ -533,7 +533,7 @@ export class Game {
     const world = w.w;
     const meta = {
       id: `mp-${session.gid}`, name: String(world.name ?? 'World').slice(0, 32), seed: world.seed >>> 0,
-      type: world.type === 'flat' ? 'flat' : 'default', gen: [2, 3, 4, 5, 6, 7].includes(world.gen) ? world.gen : 1,
+      type: world.type === 'flat' ? 'flat' : 'default', gen: [2, 3, 4, 5, 6, 7, 8].includes(world.gen) ? world.gen : 1,
       mode: you?.mode === 'creative' || (!you?.mode && world.mode === 'creative') ? 'creative' : 'survival',
       spawn: world.spawn && Number.isFinite(world.spawn.x) && Number.isFinite(world.spawn.z) ? { x: world.spawn.x, y: world.spawn.y ?? null, z: world.spawn.z } : { x: 0.5, y: null, z: 0.5 },
       time: Number.isFinite(world.time) ? world.time : 1000, weather: { raining: !!world.rain },
@@ -1466,10 +1466,12 @@ export class Game {
     this.audio.update('title');
   }
 
-  // `draw`: false when stepping the world in a hidden tab (multiplayer).
+  // `draw`: false when stepping the world without drawing it (multiplayer): in a hidden tab, or
+  // when the frames stall. (The keys still count unless the tab is hidden: a guest's horse, say,
+  // keeps going through a slow patch.)
   updateGame(dt, draw = true) {
     const p = this.player, w = this.world;
-    const active = this.state === 'play' && draw;
+    const active = this.state === 'play' && (draw || !document.hidden);
     // In multiplayer the game menu doesn't stop the world.
     const paused = this.state === 'pause' && !this.net;
     w.update(p.x, p.z, this.settings.renderDistance);

@@ -123,7 +123,8 @@ export function villagesNear(gen, cx, cz) {
   const out = [];
   const x = cx * 16 + 8, z = cz * 16 + 8, span = spread(gen).size, v4 = gen.version >= 4;
   // (Generator 4 also counts those just short of the chunk, whose clearings keep trees rooted in it back.)
-  const reach = v4 ? MAX_REACH : REACH, near = (p) => outside(p, x, z) <= p.blend + (v4 ? 12 : 8);
+  // (Generator 8's reach as far as the roots of the trees round a chunk: see WorldGen.generate.)
+  const reach = v4 ? MAX_REACH : REACH, near = (p) => outside(p, x, z) <= p.blend + (p.gen >= 8 ? 20 : v4 ? 12 : 8);
   for (let rz = Math.floor((z - reach - 16) / span); rz <= Math.floor((z + reach + 16) / span); rz++) {
     for (let rx = Math.floor((x - reach - 16) / span); rx <= Math.floor((x + reach + 16) / span); rx++) {
       const p = regionVillage(gen, rx, rz);
@@ -393,14 +394,43 @@ function built(plan, dry = false) {
 // the natural height over the next few columns outside them (`natural`: that column's own height).
 export function groundLevel(plans, x, z, natural) {
   for (const p of plans) {
-    const d = outside(p, x, z);
+    const d = p.gen >= 8 ? roundOut(p, x, z) : outside(p, x, z);
     if (d <= 0) return p.y;
-    if (d <= p.blend) {
-      const t = d / p.blend, s = t * t * (3 - 2 * t);
+    const w = p.gen >= 8 ? easeWidth(p, x, z, natural) : p.blend;
+    if (d <= w) {
+      const t = d / w, s = t * t * (3 - 2 * t);
       return Math.round(p.y + (natural - p.y) * s);
     }
   }
   return -1;
+}
+// How far (x, z) is outside a settlement's bounds, measured round the corners (<= 0 inside them).
+function roundOut(p, x, z) {
+  const ax = Math.abs(x - p.x) - p.rx, az = Math.abs(z - p.z) - p.rz;
+  return ax <= 0 && az <= 0 ? Math.max(ax, az) : Math.hypot(Math.max(ax, 0), Math.max(az, 0));
+}
+// Generator 8's settlements ease back into the land over as much ground as the height they have to
+// make up there needs (so no slope out of them is too steep to walk up, up to p.blend), the edge
+// wavering a little, so they sit in the land rather than on a block cut out of it. The width at (x, z).
+function easeWidth(p, x, z, natural) {
+  const wave = Math.sin(x * 0.19 + p.z * 0.37) * Math.sin(z * 0.23 + p.x * 0.29);
+  return Math.min(p.blend, Math.max(p.blendMin, Math.abs(natural - p.y) * 1.7 + 3) * (1 + 0.18 * wave));
+}
+// The roads out of a generator 8 settlement's gates, which run on over the eased ground and fade
+// away into the land: 2 on the road, 1 beside it or just past its end (kept clear of trees), else 0.
+export function approachAt(plans, x, z, natural) {
+  for (const p of plans) {
+    if (!(p.gen >= 8) || !p.gates) continue;
+    const lx = x - p.x, lz = z - p.z, half = p.tier === 'kingdom' ? 2 : 1;
+    for (const [ax, az] of p.gates) {
+      const along = ax ? lx * ax - p.rx : lz * az - p.rz, across = Math.abs(ax ? lz : lx);
+      if (along <= 0 || across > half + 3) continue;
+      const len = easeWidth(p, x, z, natural) + 2;
+      if (along > len + 6) continue;
+      return across <= half && hash2(x, z, p.seed) < (len - along) / (len * 0.35) ? 2 : 1;
+    }
+  }
+  return 0;
 }
 export const insideVillage = (plans, x, z, margin = 0) => plans.some((p) => outside(p, x, z) <= margin);
 

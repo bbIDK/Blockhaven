@@ -6,7 +6,7 @@
 // the bigger it is, the more people live there. (villages.js decides where they go and hands
 // them to the world generator.)
 import { SEA_LEVEL } from './config.js';
-import { B, STAIRS, LADDER, LOG_AXES, gateId, lootChestId, WOOD, WALL_TORCH } from './blocks.js';
+import { B, STAIRS, LADDER, LOG_AXES, SOLID, gateId, doorId, lootChestId, WOOD, WALL_TORCH } from './blocks.js';
 import { BIOME } from './biomes.js';
 import { mulberry32 } from './math.js';
 import { STYLES, SIZE, LotGrid, Lot, BUILD, POTS, personName, flowerAt } from './lots.js';
@@ -17,19 +17,24 @@ import { STYLES, SIZE, LotGrid, Lot, BUILD, POTS, personName, flowerAt } from '.
 // finer grid of their own, and keep away from the rest.
 export const MAJOR = { size: 40 * 16, margin: 160, chance: 0.75 };
 export const MINOR = { size: 14 * 16, margin: 32, chance: 0.45 };
-export const MAX_REACH = 96;  // the furthest a settlement's grounds reach from its centre
-export const CAMP_REACH = 20;
+export const MAX_REACH = 104; // the furthest a settlement's grounds reach from its centre
+export const CAMP_REACH = 26;
 
 // Sizes: half the width `r` (to the outer face of the wall), how much longer one way than the other
-// they may be, how far the ground eases back to nature outside, the plaza's half-width, how uneven
-// the land under them may be, and the walls and street plans they come with.
+// they may be, how far the ground eases back to nature outside (in generator 8, at least and at
+// most: as far as it takes to keep the slope walkable), the plaza's half-width, how uneven the land
+// under them may be, and the walls and street plans they come with.
 const TIERS = {
-  hamlet: { r: [17, 22], oblong: 0.3, blend: 6, plaza: 4, flat: 12, walls: ['fence', 'fence', 'drystone', 'palisade', 'none'],
+  hamlet: { r: [17, 22], oblong: 0.3, blend: 6, blend8: 18, plaza: 4, flat: 12, walls: ['fence', 'fence', 'drystone', 'palisade', 'none'],
     streets: ['main', 'main', 'cross'] },
-  village: { r: [37, 42], oblong: 0.2, blend: 7, plaza: 7, flat: 20, walls: ['stone', 'stone', 'palisade'], streets: ['cross'] },
-  town: { r: [49, 55], oblong: 0.12, blend: 8, plaza: 9, flat: 24, walls: ['tall'], streets: ['grid'] },
-  kingdom: { r: [66, 70], oblong: 0, blend: 9, plaza: 7, flat: 28, walls: ['grand'], streets: ['castle'] },
+  village: { r: [37, 42], oblong: 0.2, blend: 7, blend8: 24, plaza: 7, flat: 20, walls: ['stone', 'stone', 'palisade'], streets: ['cross'] },
+  town: { r: [49, 55], oblong: 0.12, blend: 8, blend8: 28, plaza: 9, flat: 24, walls: ['tall'], streets: ['grid'] },
+  kingdom: { r: [66, 70], oblong: 0, blend: 9, blend8: 32, plaza: 7, flat: 28, walls: ['grand'], streets: ['castle'] },
 };
+// What a plan records of the generator that made it: generator 8's settlements ease into the land
+// further (see groundLevel), and fix what those of generators 4 to 7 got wrong (the watchtowers'
+// lanterns, the keep's stairwell) while those stay as they were.
+const genOf = (gen, blend, blend8) => (gen.version >= 8 ? { gen: 8, blend: blend8, blendMin: blend } : { gen: 4, blend });
 const TIER_ODDS = [['hamlet', 0.18], ['village', 0.37], ['town', 0.25], ['kingdom', 0.2]];
 const SMALLER = { kingdom: 'town', town: 'village', village: 'hamlet', hamlet: 'hamlet' };
 // Walls: thickness (a palisade's includes the walkway behind it) and height.
@@ -136,7 +141,7 @@ function site(gen, cx, cz, rnd, tier) {
   }
   const y = survey(gen, cx, cz, rx, rz, T.flat);
   if (y === null) return null;
-  return layoutTown({ gen: 4, tier, x: cx, z: cz, y, rx, rz, blend: T.blend, styleName, style: styleFor(styleName, rnd), rnd });
+  return layoutTown({ ...genOf(gen, T.blend, T.blend8), tier, x: cx, z: cz, y, rx, rz, styleName, style: styleFor(styleName, rnd), rnd });
 }
 
 // The ground level for a settlement reaching (rx, rz) from (cx, cz): the middle height of the land
@@ -200,7 +205,7 @@ export function planCamp(gen, kx, kz, rnd, clear) {
     if (y === null) continue;
     const cold = styleName === 'taiga' || styleName === 'snowy', open = OPEN_GROUND.has(biome) || styleName === 'cherry' || styleName === 'savanna';
     const kind = rnd() < 0.5 ? (open ? 'travellers' : cold ? 'hunters' : 'woodcutters') : ['hunters', 'woodcutters', 'travellers'][Math.floor(rnd() * 3)];
-    return layoutCamp({ gen: 4, tier: 'camp', camp: kind, x, z, y, rx: r, rz: r, blend: 6, styleName, style: styleFor(styleName, rnd), rnd });
+    return layoutCamp({ ...genOf(gen, 6, 12), tier: 'camp', camp: kind, x, z, y, rx: r, rz: r, styleName, style: styleFor(styleName, rnd), rnd });
   }
   return null;
 }
@@ -410,6 +415,45 @@ export function build4(plan, bp) {
   if (plan.tier === 'camp') buildCamp(d, plan, rnd, out);
   else buildTown(d, plan, rnd, out);
   settle(plan, rnd, out);
+  if (plan.gen >= 8 && !bp.dry) hangLanterns(plan, bp);
+}
+
+// Generator 8 sees that every hanging lantern hangs from something (before, many hung from the
+// air under a pitched roof). Where one doesn't, a beam goes across the room over it, wall to wall
+// the shorter way; failing that, it moves up to hang from whatever is above.
+function hangLanterns(plan, bp) {
+  const at = new Map(), key = (x, y, z) => ((x - plan.x + 1024) * 2048 + z - plan.z + 1024) * 256 + y;
+  for (const a of bp.chunks.values()) for (let i = 0; i < a.length; i += 4) at.set(key(a[i], a[i + 1], a[i + 2]), a[i + 3]);
+  const put = (x, y, z, id) => { bp.set(x, y, z, id); at.set(key(x, y, z), id); };
+  const log = B[plan.style.log] ?? B.oak_log, axes = LOG_AXES[log];
+  for (const [k, id] of [...at]) {
+    if (id !== B.lantern_hanging) continue;
+    const y = k % 256, xz = (k - y) / 256, x = Math.floor(xz / 2048) - 1024 + plan.x, z = (xz % 2048) - 1024 + plan.z;
+    if (SOLID[at.get(key(x, y + 1, z))]) continue;
+    // (How far along from the lantern the wall is, through nothing but air: -1 if it isn't.)
+    const wall = (dx, dz) => {
+      for (let n = 1; n <= 7; n++) {
+        const b = at.get(key(x + dx * n, y + 1, z + dz * n));
+        if (SOLID[b]) return n;
+        if (b !== 0) return -1;
+      }
+      return -1;
+    };
+    let best = null;
+    for (const [dx, dz, axis] of [[1, 0, 0], [0, 1, 1]]) {
+      const a = wall(dx, dz), b = wall(-dx, -dz);
+      if (a > 0 && b > 0 && (!best || a + b < best.a + best.b)) best = { dx, dz, a, b, axis };
+    }
+    if (best) {
+      for (let n = 1 - best.b; n < best.a; n++) put(x + best.dx * n, y + 1, z + best.dz * n, axes ? axes[best.axis] : log);
+      continue;
+    }
+    for (let n = 2; n <= 6; n++) {
+      const b = at.get(key(x, y + n, z));
+      if (SOLID[b]) { put(x, y, z, 0); put(x, y + n - 1, z, B.lantern_hanging); break; }
+      if (b !== 0) break;
+    }
+  }
 }
 
 function buildTown(d, plan, rnd, out) {
@@ -676,6 +720,9 @@ function watchtower(d, cx, cz, sx, sz, height = 7) {
     d.set(cx + x, height + 2, cz + z, 0);
   }
   spireAt(d, cx - 2, cz - 2, cx + 2, cz + 2, height + 3, roof);
+  // The lantern hangs from a post up the middle of the roof (in generator 8: before, it hung from
+  // nothing).
+  if (d.plan.gen >= 8) { d.set(cx, height + 3, cz, log); d.set(cx, height + 4, cz, log); }
   d.set(cx, height + 2, cz, B.lantern_hanging);
   // The ladder, up through the platform, with a gap in the railing over it.
   const lx = cx - sx, lz = cz - 2 * sz;
@@ -927,7 +974,7 @@ function castle(d, plan, rnd, out) {
 
 // The keep, on its own lot (19 wide, 17 deep, the door in the middle of the front).
 function keep(K, st, rnd, block, roof, out) {
-  const W = 19, D = 17, HH = 14, banner = `${st.banner}_wool`;
+  const W = 19, D = 17, HH = 14, banner = `${st.banner}_wool`, v8 = K.plan.gen >= 8;
   K.fill(0, 1, 0, W - 1, HH + 9, D - 1, 0);
   K.fill(0, 0, 0, W - 1, 0, D - 1, B.polished_andesite);
   for (let y = 1; y <= HH; y++) {
@@ -949,9 +996,11 @@ function keep(K, st, rnd, block, roof, out) {
   K.fill(8, 1, 0, 10, 4, 0, 0);
   K.fill(8, 5, 0, 10, 5, 0, B.chiseled_stone_bricks);
   K.torch(7, 3, -1, 5); K.torch(11, 3, -1, 5);
-  // Windows: tall ones lighting the hall, smaller ones upstairs.
-  for (const z of [2, 5, 8, 11]) for (const x of [0, W - 1]) { for (let y = 3; y <= 5; y++) K.set(x, y, z, st.glass); K.set(x, 10, z, st.glass); K.set(x, 11, z, st.glass); }
-  for (const x of [3, 15]) { for (let y = 3; y <= 5; y++) K.set(x, y, 0, st.glass); K.set(x, 10, 0, st.glass); K.set(x, 11, 0, st.glass); }
+  // Windows: tall ones lighting the hall (generator 8 glazes them in the kingdom's colour), smaller
+  // ones upstairs.
+  const tall = v8 ? `${st.banner === 'black' ? 'gray' : st.banner}_stained_glass` : st.glass;
+  for (const z of [2, 5, 8, 11]) for (const x of [0, W - 1]) { for (let y = 3; y <= 5; y++) K.set(x, y, z, tall); K.set(x, 10, z, st.glass); K.set(x, 11, z, st.glass); }
+  for (const x of [3, 15]) { for (let y = 3; y <= 5; y++) K.set(x, y, 0, tall); K.set(x, 10, 0, st.glass); K.set(x, 11, 0, st.glass); }
   for (const x of [6, 12]) { K.set(x, 10, 0, st.glass); K.set(x, 11, 0, st.glass); }
 
   // The great hall: a red carpet to the thrones between two long tables, pillars hung with the
@@ -979,11 +1028,21 @@ function keep(K, st, rnd, block, roof, out) {
     K.trapdoor(tx - 1, 2, 14, 'dark_oak', 0); K.trapdoor(tx + 1, 2, 14, 'dark_oak', 1);
     out.jobs.push({ role, work: K.world(tx, 2, 13), seat: [...K.world(tx, 2, 14), K.face(5)] });
   }
+  // (Generator 8 hangs a canopy over the thrones, edged in gold.)
+  if (v8) for (let z = 13; z <= 15; z++) for (let x = 6; x <= 12; x++) K.set(x, 7, z, z === 13 || x === 6 || x === 12 ? 'yellow_wool' : banner);
   for (const x of [3, 15]) out.jobs.push({ role: 'knight', work: K.world(x, 1, 11) });
-  // Stairs up the right-hand wall to the floor above.
+  // Stairs up the right-hand wall to the floor above, through a hole in it. (Generator 8's is wide
+  // and long enough to walk down without catching your head on its edge, with a rail round it.)
   for (let k = 0; k <= 7; k++) {
     for (let y = 1; y <= k; y++) K.set(17, y, 2 + k, st.wall);
     K.stairs(17, k + 1, 2 + k, st.stair, 4);
+  }
+  if (v8) {
+    K.fill(16, 8, 5, 17, 8, 8, 0);
+    for (let z = 4; z <= 8; z++) K.set(15, 9, z, st.fence);
+    K.set(16, 9, 4, st.fence); K.set(17, 9, 4, st.fence);
+    royalRooms(K, st, banner, out);
+    return;
   }
   K.set(17, 8, 7, 0); K.set(17, 8, 8, 0);
   // Upstairs: the royal bedchamber at the back, the library at the front, the treasure in a corner.
@@ -1000,6 +1059,47 @@ function keep(K, st, rnd, block, roof, out) {
   // A ladder to the roof.
   K.ladder(2, 9, HH, 15, 4);
   out.jobs.push({ role: 'librarian', work: K.world(9, 9, 4) });
+}
+// The keep's upper floor in generator 8: the king and queen's own rooms. A wall with a door in it
+// shuts their bedchamber off from the royal library at the front; their bed has posts and a canopy
+// in the kingdom's colour; and the treasure is kept in a strongroom behind an iron door, opened by
+// a button beside it, with a knight on guard outside.
+function royalRooms(K, st, banner, out) {
+  const wood = WOOD[st.roof] ? st.roof : 'dark_oak', planks = `${wood}_planks`, button = (face) => B.stone_button + K.face(face) * 2;
+  // The library.
+  for (let x = 2; x <= 7; x++) for (let y = 9; y <= 11; y++) K.set(x, y, 1, B.bookshelf);
+  for (let x = 11; x <= 15; x++) for (let y = 9; y <= 11; y++) K.set(x, y, 1, B.bookshelf);
+  for (let z = 2; z <= 6; z++) for (let x = 8; x <= 10; x++) K.carpet(x, 9, z, 'red');
+  K.set(4, 9, 4, B.enchanting_table); K.set(7, 9, 4, B.lectern); K.set(12, 9, 4, B.cartography_table);
+  for (const x of [2, 13]) { K.set(x, 9, 5, B.bookshelf); K.set(x, 10, 5, B.bookshelf); }
+  // The wall between, and its door.
+  for (let x = 1; x <= 14; x++) for (let y = 9; y <= 13; y++) K.set(x, y, 7, x === 1 || x === 14 ? WOOD[wood].log : planks);
+  K.set(9, 9, 7, doorId(K.face(5), false, false, WOOD[wood].door)); K.set(9, 10, 7, doorId(K.face(5), false, true, WOOD[wood].door));
+  // The bedchamber: the bed under its canopy, a chest either side, wardrobes, and chests by the wall.
+  for (let z = 8; z <= 15; z++) for (let x = 3; x <= 13; x++) K.carpet(x, 9, z, 'purple');
+  K.bed(8, 9, 14, 4, 'royal'); K.bed(9, 9, 14, 4, 'royal');
+  for (const [x, z] of [[7, 13], [10, 13], [7, 15], [10, 15]]) for (let y = 9; y <= 11; y++) K.set(x, y, z, st.fence);
+  for (let z = 13; z <= 15; z++) for (let x = 7; x <= 10; x++) K.set(x, 12, z, banner);
+  for (const x of [6, 11]) { K.chest(x, 9, 15, 'house', 5); K.set(x, 10, 15, B.lantern); }
+  for (const z of [11, 12]) K.chest(1, 9, z, 'house', 0);
+  for (const y of [9, 10]) { K.set(3, y, 8, B.barrel); K.set(4, y, 8, B.barrel); }
+  // The strongroom, in the back corner: gold, and the kingdom's riches in chests.
+  for (let y = 9; y <= 13; y++) {
+    for (let x = 14; x <= 17; x++) K.set(x, y, 13, st.wall);
+    for (let z = 14; z <= 15; z++) K.set(14, y, z, st.wall);
+  }
+  K.fill(15, 9, 14, 17, 12, 15, 0);
+  K.set(16, 9, 13, doorId(K.face(5), false, false, B.iron_door)); K.set(16, 10, 13, doorId(K.face(5), false, true, B.iron_door));
+  K.set(15, 10, 12, button(5)); K.set(17, 10, 14, button(4));
+  K.set(15, 11, 13, B.iron_bars); K.set(17, 11, 13, B.iron_bars);
+  K.set(15, 9, 15, B.gold_block); K.set(16, 9, 15, B.gold_block); K.set(15, 10, 15, B.gold_block);
+  K.chest(17, 9, 15, 'desert', 5); K.chest(15, 9, 14, 'smith', 0);
+  K.set(16, 13, 14, B.lantern_hanging);
+  for (const [x, z] of [[5, 4], [13, 4], [5, 11], [12, 10]]) K.set(x, 13, z, B.lantern_hanging);
+  // A ladder to the roof.
+  K.ladder(2, 9, 14, 15, 4);
+  out.jobs.push({ role: 'librarian', work: K.world(9, 9, 4) });
+  out.jobs.push({ role: 'knight', work: K.world(13, 9, 11) });
 }
 
 // ---------------------------------------------------------------- camps

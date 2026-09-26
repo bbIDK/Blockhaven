@@ -21,6 +21,10 @@ const GY = HEIGHT / 4 + 1;     // lattice samples up a column
 const CELL = 48, CELL_OFF = 8, LAKE_TOP = SEA_LEVEL - 11;
 const LEVELS = [12, 18, 24, 30, 36, 42];
 const RAVINE_CHANCE = 0.012, RAVINE_REACH = 8;
+// Generator 8 makes the caves' own kinds rarer (lush and dripstone caves had come to fill two caves
+// in five), ravines rarer, and the land less riddled with holes: tunnels close up before they reach
+// the surface except where the entrance noise lets them out.
+const V8 = { lush: 0.68, drip: 0.62, ravine: 0.008 };
 const GEODE_CHANCE = 1 / 22;
 // Plain rock that the caves' own growths may take over.
 const ROCK = new Set([B.stone, B.deepslate, B.tuff, B.granite, B.diorite, B.andesite, B.dirt, B.gravel]);
@@ -32,8 +36,9 @@ const idx = (x, y, z) => (y << 8) | (z << 4) | x;
 const SIDES = [[1, 0, 0], [-1, 1, 0], [0, 4, 1], [0, 5, -1]]; // dx, face of the lichen's wall, dz
 
 export class CaveGen {
-  constructor(seed) {
+  constructor(seed, version = 5) {
     this.seed = seed >>> 0;
+    this.v8 = version >= 8;
     const n = (k) => new Noise((this.seed ^ hashString(k)) >>> 0);
     this.nA = n('tunnelA'); this.nB = n('tunnelB'); this.nW = n('tunnelWidth');
     this.nNA = n('noodleA'); this.nNB = n('noodleB');
@@ -42,6 +47,8 @@ export class CaveGen {
     this.nLush = n('lushCaves'); this.nDrip = n('dripstoneCaves');
     this.nVT = n('veinType'); this.nVA = n('veinA'); this.nVB = n('veinB');
     this.nWet = n('waterTable'); this.nLevel = n('waterLevel');
+    this.nEntr = this.v8 ? n('caveEntrances') : null;
+    this.lushT = this.v8 ? V8.lush : 0.42; this.dripT = this.v8 ? V8.drip : 0.42;
     this.tables = new Map(); // lake cell -> its water table
     this.cave = new Uint8Array(CHUNK_VOLUME); // cells carved out of the chunk being made
     this.maxY = new Int16Array(256);          // how high caves may reach in each column
@@ -72,6 +79,9 @@ export class CaveGen {
   static tunnelT(w) { return 0.003 + 0.022 * smoothstep(-0.5, 0.55, w); }
   // Caverns open where the cavern noise runs high: more of them, and bigger, the deeper you go.
   static cavernT(y) { return 0.28 + 0.25 * smoothstep(12, 64, y); }
+  // How far tunnels may break out at the surface around (wx, wz), 0 (they close up a few blocks
+  // under it) to 1 (they open out): here and there, a cave mouth.
+  entrance(wx, wz) { return smoothstep(0.35, 0.65, this.nEntr.noise2(wx / 90, wz / 90)); }
   // Stone pillars stand in some caverns, floor to ceiling.
   pillar(wx, wz) {
     const region = this.nPR.noise2(wx / 80, wz / 80);
@@ -109,10 +119,14 @@ export class CaveGen {
         }
         const wx = x0 + x, wz = z0 + z, pillar = this.pillar(wx, wz);
         const cavernTop = Math.min(maxY, h - 10), noodleTop = Math.min(maxY, h - 8);
+        // (How far tunnels may open out at the surface here: always, before generator 8.)
+        const open = this.v8 ? this.entrance(wx, wz) : 1;
         for (let y = 6; y <= maxY; y++) {
           const iy = y >> 2, fy = (y & 3) / 4, at = (f) => V[f][iy] + (V[f][iy + 1] - V[f][iy]) * fy;
           const a = at(0), b = at(1);
-          let carve = a * a + b * b < CaveGen.tunnelT(at(2));
+          let t = CaveGen.tunnelT(at(2));
+          if (open < 1 && y > h - 14) t *= open + (1 - open) * smoothstep(3, 14, h - y);
+          let carve = a * a + b * b < t;
           if (!carve && y >= 8 && y <= noodleTop) { const na = at(3), nb = at(4); carve = na * na + nb * nb < 0.005; }
           if (!carve && y <= cavernTop && !pillar) carve = at(5) > CaveGen.cavernT(y);
           if (!carve) continue;
@@ -135,7 +149,7 @@ export class CaveGen {
     if (this.ravines.has(key)) return this.ravines.get(key);
     let out = null;
     const rnd = mulberry32(Math.floor(hash2(ocx, ocz, this.seed ^ 0x7a71e) * 4294967296));
-    if (rnd() < RAVINE_CHANCE) {
+    if (rnd() < (this.v8 ? V8.ravine : RAVINE_CHANCE)) {
       let x = ocx * 16 + rnd() * 16, z = ocz * 16 + rnd() * 16, y = 22 + rnd() * 36;
       let yaw = rnd() * Math.PI * 2, pitch = (rnd() - 0.5) * 0.25, yawV = 0, pitchV = 0;
       const width = 1.4 + rnd() * 2.4, len = 70 + Math.floor(rnd() * 50);
@@ -202,7 +216,8 @@ export class CaveGen {
   }
 
   // Whether a block at the surface may have been carved away (tree roots check this, so it must
-  // never say no where a chunk would carve; it errs the other way by a hair).
+  // never say no where a chunk would carve; it errs the other way by a hair, and more since
+  // generator 8, whose tunnels mostly close up under the surface: it still answers as if they didn't).
   surfaceCarved(x, y, z) {
     const gx = Math.floor(x / 4) * 4, gy = Math.floor(y / 4) * 4, gz = Math.floor(z / 4) * 4;
     const fx = (x - gx) / 4, fy = (y - gy) / 4, fz = (z - gz) / 4;
@@ -313,8 +328,8 @@ export class CaveGen {
   }
 
   // ---------------------------------------------------------------- cave kinds
-  lushAt(wx, wz) { return this.nLush.noise2(wx / 150, wz / 150) > 0.42; }
-  dripAt(wx, wz) { return this.nDrip.noise2(wx / 140 + 50, wz / 140 - 30) > 0.42; }
+  lushAt(wx, wz) { return this.nLush.noise2(wx / 150, wz / 150) > this.lushT; }
+  dripAt(wx, wz) { return this.nDrip.noise2(wx / 140 + 50, wz / 140 - 30) > this.dripT; }
   kindAt(wx, wz, biome) {
     if (!NOT_LUSH.has(biome) && this.lushAt(wx, wz)) return LUSH;
     return this.dripAt(wx, wz) ? DRIP : PLAIN;

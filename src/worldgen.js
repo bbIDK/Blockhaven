@@ -11,7 +11,7 @@ import { BIOME, OCEANS, toByte } from './biomes.js';
 import { hash2, hash3, hashString, mulberry32, smoothstep, lerp, clamp } from './math.js';
 import { TREES, WIDE_TREES, TREE_REACH } from './trees.js';
 import { WorldGenV1 } from './worldgen1.js';
-import { villagePieces, villagesNear, groundLevel, insideVillage, villageAt } from './villages.js';
+import { villagePieces, villagesNear, groundLevel, insideVillage, villageAt, approachAt } from './villages.js';
 import { CaveGen } from './cavegen.js';
 import { SeaGen } from './oceangen.js';
 
@@ -145,10 +145,73 @@ const ORES5 = [
 ].map(([a, b, ...r]) => [B[a], B[b], ...r]);
 // The badlands have gold high in their hills as well.
 const BADLANDS_GOLD = [B.gold_ore, B.deepslate_gold_ore, 18, 8, 32, 90, null];
+// The eighth generator's ores, sized and spread like Minecraft's: each kind in veins of its own
+// size, and some in more than one sort of vein (diamonds mostly in little ones, now and then a big
+// one). Some keep out of sight: `bare` is the chance a block that would show in a cave wall isn't
+// there. [block, deepslate block, veins per chunk, size, lowest y, highest y, peak y (or null for
+// anywhere between), bare].
+const ORES8 = [
+  ['coal_ore', 'deepslate_coal_ore', 10, 17, 115, 250, null, 0], // (high in the mountains)
+  ['coal_ore', 'deepslate_coal_ore', 18, 17, 20, 158, 85, 0.5],
+  ['iron_ore', 'deepslate_iron_ore', 30, 9, 73, 250, 188, 0], // (the mountains' iron)
+  ['iron_ore', 'deepslate_iron_ore', 10, 9, 13, 56, 30, 0],
+  ['iron_ore', 'deepslate_iron_ore', 10, 4, 1, 67, null, 0],
+  ['copper_ore', 'deepslate_copper_ore', 16, 10, 15, 97, 50, 0],
+  ['gold_ore', 'deepslate_gold_ore', 4, 9, 1, 40, 15, 0.5],
+  ['gold_ore', 'deepslate_gold_ore', 0.5, 9, 1, 6, null, 0],
+  ['redstone_ore', 'deepslate_redstone_ore', 4, 8, 1, 30, null, 0],
+  ['redstone_ore', 'deepslate_redstone_ore', 8, 8, 1, 11, 1, 0],
+  ['lapis_ore', 'deepslate_lapis_ore', 2, 7, 10, 40, 20, 0],
+  ['lapis_ore', 'deepslate_lapis_ore', 3, 7, 1, 67, null, 1],
+  ['diamond_ore', 'deepslate_diamond_ore', 2.2, 6, 1, 30, 4, 0.5], // (the usual little veins)
+  ['diamond_ore', 'deepslate_diamond_ore', 0.4, 8, 1, 19, null, 0.5],
+  ['diamond_ore', 'deepslate_diamond_ore', 1 / 12, 12, 1, 30, 4, 0.7], // (big ones, rare)
+  ['diamond_ore', 'deepslate_diamond_ore', 0.4, 8, 1, 30, 4, 1],
+  ['granite', 'granite', 1 / 6, 64, 61, 109, null, 0],
+  ['diorite', 'diorite', 1 / 6, 64, 61, 109, null, 0],
+  ['andesite', 'andesite', 1 / 6, 64, 61, 109, null, 0],
+  ['granite', 'granite', 0.7, 64, 20, 58, null, 0],
+  ['diorite', 'diorite', 0.7, 64, 20, 58, null, 0],
+  ['andesite', 'andesite', 0.7, 64, 20, 58, null, 0],
+  ['stone', 'tuff', 0.5, 64, 1, 20, null, 0],
+  ['gravel', 'gravel', 3, 33, 1, 130, null, 0],
+  ['dirt', 'dirt', 5, 33, 20, 134, null, 0],
+].map(([a, b, ...r]) => [B[a], B[b], ...r]);
+const BADLANDS_GOLD8 = [B.gold_ore, B.deepslate_gold_ore, 25, 9, 40, 200, null, 0];
+// Is this block of a chunk next to open air (so it would show in a cave wall)? (Only its neighbours
+// in the same chunk count, so every chunk decides alike.)
+function openBeside(blocks, x, y, z) {
+  const i = (y << 8) | (z << 4) | x;
+  return (x > 0 && blocks[i - 1] === 0) || (x < 15 && blocks[i + 1] === 0) || (z > 0 && blocks[i - 16] === 0) ||
+    (z < 15 && blocks[i + 16] === 0) || blocks[i - 256] === 0 || (y < HEIGHT - 1 && blocks[i + 256] === 0);
+}
+// A vein as Minecraft shapes it: `size` balls strung along a short line through (x, y, z), fattest
+// in the middle, so a vein's size varies a lot, small ones the most common. Calls `put` for each
+// block inside.
+function oreVein(rnd, x, y, z, size, put) {
+  const a = rnd() * Math.PI, sx = Math.sin(a) * size / 8, sz = Math.cos(a) * size / 8;
+  const ya = y + Math.floor(rnd() * 3) - 2, yb = y + Math.floor(rnd() * 3) - 2;
+  for (let k = 0; k < size; k++) {
+    const t = k / size, r = ((Math.sin(Math.PI * t) + 1) * rnd() * size / 16 + 1) / 2;
+    const bx = x + sx * (1 - 2 * t), by = ya + (yb - ya) * t, bz = z + sz * (1 - 2 * t);
+    for (let py = Math.floor(by - r); py <= Math.floor(by + r); py++) {
+      const dy = (py + 0.5 - by) / r;
+      for (let pz = Math.floor(bz - r); pz <= Math.floor(bz + r); pz++) {
+        const dz = (pz + 0.5 - bz) / r;
+        if (dy * dy + dz * dz >= 1) continue;
+        for (let px = Math.floor(bx - r); px <= Math.floor(bx + r); px++) {
+          const dx = (px + 0.5 - bx) / r;
+          if (dx * dx + dy * dy + dz * dz < 1) put(px, py, pz);
+        }
+      }
+    }
+  }
+}
 // Azalea trees grow over lush caves, where the ground is green.
 const AZALEA_GROUND = new Set([BIOME.PLAINS, BIOME.FOREST, BIOME.FLOWER_FOREST, BIOME.BIRCH_FOREST, BIOME.MEADOW, BIOME.SAVANNA,
   BIOME.JUNGLE, BIOME.SPARSE_JUNGLE, BIOME.SUNFLOWER_PLAINS, BIOME.DARK_FOREST, BIOME.TAIGA, BIOME.SWAMP, BIOME.CHERRY_GROVE]);
 const STONEY = new Set([B.stone, B.deepslate]);
+const TRODDEN = new Set([B.grass_block, B.snowy_grass, B.dirt, B.coarse_dirt, B.podzol]); // ground a road wears bare
 // Only the bare heights get cliffs and overhangs worn into them (see step 2 of generate); the
 // wooded slopes stay a plain height map so trees rooted in one chunk line up with the next.
 const CARVED = new Set([BIOME.JAGGED_PEAKS, BIOME.FROZEN_PEAKS, BIOME.STONY_PEAKS, BIOME.SNOWY_SLOPES]);
@@ -156,9 +219,11 @@ const CARVED = new Set([BIOME.JAGGED_PEAKS, BIOME.FROZEN_PEAKS, BIOME.STONY_PEAK
 export class WorldGen {
   // `version`: 2 for worlds made before villages were spread further apart, 3 since, 4 for worlds
   // with settlements of every size (camps, hamlets, villages, towns and kingdoms), 5 for those with
-  // the cave update's caves, 6 for those with the ocean update's seas, and 7 for those with the
-  // biome update's bigger biomes (some rare) and jungle bamboo.
-  constructor(seed, type = 'default', version = 7) {
+  // the cave update's caves, 6 for those with the ocean update's seas, 7 for those with the biome
+  // update's bigger biomes (some rare) and jungle bamboo, and 8 for those with the world fixes:
+  // giant spruces closed over the top, ore veins sized like Minecraft's, rarer special caves and
+  // fewer cave mouths, and settlements whose gates and stairs can all be walked through.
+  constructor(seed, type = 'default', version = 8) {
     this.seed = seed >>> 0;
     this.type = type;
     this.version = version;
@@ -170,7 +235,7 @@ export class WorldGen {
     this.nCaveA = n('caveA'); this.nCaveB = n('caveB'); this.nCheese = n('cheese'); this.nSurf = n('surface');
     this.col = {};
     this.columns = new Map(); // columns looked up outside the chunk being made (tree roots)
-    this.caves = version >= 5 ? new CaveGen(this.seed) : null;
+    this.caves = version >= 5 ? new CaveGen(this.seed, version) : null;
     this.sea = version >= 6 ? new SeaGen(this.seed) : null;
     this.nIsle = n('islands');
     this.nRare = n('rarity'); this.nBamboo = n('bamboo');
@@ -347,6 +412,29 @@ export class WorldGen {
     return true;
   }
 
+  // The ore veins (and blobs of other stone) of generator 8 seeded in chunk (ncx, ncz), the part
+  // of each inside the chunk at (x0, z0), whose rock rises no higher than `top`. Each vein has a
+  // seed of its own, so those that can't reach the chunk are passed over without being worked out.
+  veins8(blocks, x0, z0, ncx, ncz, top, ores) {
+    const seed = this.seed;
+    ores.forEach(([ore, deepOre, count, size, minY, maxY, peak, bare], oi) => {
+      const n = Math.floor(count) + (hash3(ncx, oi, ncz, seed ^ 0x0e8c) < count % 1 ? 1 : 0), reach = (size * 3) / 16 + 1;
+      for (let v = 0; v < n; v++) {
+        const rnd = mulberry32(Math.floor(hash3(ncx, oi * 256 + v, ncz, seed ^ 0x0e8f) * 4294967296));
+        const x = ncx * 16 + Math.floor(rnd() * 16) - x0, z = ncz * 16 + Math.floor(rnd() * 16) - z0;
+        // (Most kinds cluster round a peak height: a triangle distribution.)
+        const y = peak === null ? minY + Math.floor(rnd() * (maxY - minY + 1)) : Math.round(peak + (rnd() + rnd() - 1) * Math.max(peak - minY, maxY - peak));
+        if (y < minY || y > maxY || y - reach > top || x + reach < 0 || x - reach > 15 || z + reach < 0 || z - reach > 15) continue;
+        oreVein(rnd, x, y, z, size, (px, py, pz) => {
+          if (px < 0 || px > 15 || pz < 0 || pz > 15 || py < 1 || py >= HEIGHT) return;
+          const i = (py << 8) | (pz << 4) | px, cur = blocks[i];
+          if (cur !== B.stone && cur !== B.deepslate) return;
+          if (bare && (bare >= 1 || hash3(x0 + px, py, z0 + pz, seed ^ 0xba7e) < bare) && openBeside(blocks, px, py, pz)) return;
+          blocks[i] = cur === B.stone ? ore : deepOre;
+        });
+      }
+    });
+  }
   rootColumn(x, z) {
     const k = `${x},${z}`;
     let r = this.columns.get(k);
@@ -391,12 +479,14 @@ export class WorldGen {
     // Villages level their ground (and it eases back to the land around them).
     const vplans = villagesNear(this, cx, cz);
     const VIN = new Uint8Array(256); // 1 inside a village's wall
+    const ROAD = this.version >= 8 && vplans.length ? new Uint8Array(256) : null; // on a road out of one (see approachAt)
     if (vplans.length) {
       for (let gz = 0; gz < GW; gz++) for (let gx = 0; gx < GW; gx++) {
-        const i = gz * GW + gx, wx = x0 + gx - PAD, wz = z0 + gz - PAD;
+        const i = gz * GW + gx, wx = x0 + gx - PAD, wz = z0 + gz - PAD, inner = gx >= PAD && gx < GW - PAD && gz >= PAD && gz < GW - PAD;
+        if (ROAD && inner) ROAD[(gz - PAD) * 16 + gx - PAD] = approachAt(vplans, wx, wz, H[i]);
         const lv = groundLevel(vplans, wx, wz, H[i]);
         if (lv >= 0) { H[i] = lv; MOUNT[i] = Math.min(MOUNT[i], 0.2); }
-        if (gx >= PAD && gx < GW - PAD && gz >= PAD && gz < GW - PAD && insideVillage(vplans, wx, wz, 1)) VIN[(gz - PAD) * 16 + gx - PAD] = 1;
+        if (inner && insideVillage(vplans, wx, wz, 1)) VIN[(gz - PAD) * 16 + gx - PAD] = 1;
       }
     }
     const slopeAt = (i) => Math.max(Math.abs(H[i + 1] - H[i]), Math.abs(H[i - 1] - H[i]), Math.abs(H[i + GW] - H[i]), Math.abs(H[i - GW] - H[i]));
@@ -515,6 +605,14 @@ export class WorldGen {
       }
     }
 
+    // (Generator 8: a road runs out of each gate of a settlement, fading away into the land.)
+    if (ROAD) {
+      for (let i = 0; i < 256; i++) {
+        const t = idx(i & 15, TOP[i], i >> 4);
+        if (ROAD[i] === 2 && TRODDEN.has(blocks[t])) blocks[t] = B.dirt_path;
+      }
+    }
+
     // 4. Caves: two noise fields whose shared zero-crossings form tunnels, plus caverns deep down.
     // (Since the cave update: the caves of cavegen.js, and their lakes.)
     const cg = caves && { blocks, x0, z0, H, GW, TOP, VIN, BIO, maxH, surface: (x, z) => this.rootColumn(x, z).h };
@@ -574,30 +672,34 @@ export class WorldGen {
     for (let ncz = cz - 1; ncz <= cz + 1; ncz++) {
       for (let ncx = cx - 1; ncx <= cx + 1; ncx++) {
         // (In badlands chunks gold comes high in the hills too.)
-        const ores = !caves ? ORES : this.rootColumn(ncx * 16 + 8, ncz * 16 + 8).biome === BIOME.BADLANDS ? [...ORES5, BADLANDS_GOLD] : ORES5;
-        ores.forEach(([ore, deepOre, count, size, minY, maxY, peak], oi) => {
-          const rnd = mulberry32(Math.floor(hash3(ncx, oi, ncz, seed ^ 0x0e5) * 4294967296));
-          const n = Math.floor(count) + (rnd() < count % 1 ? 1 : 0);
-          for (let v = 0; v < n; v++) {
-            let x = ncx * 16 + Math.floor(rnd() * 16) - x0;
-            // Veins cluster around their peak height (a triangle distribution).
-            let y = peak === null ? minY + Math.floor(rnd() * (maxY - minY)) : Math.round(peak + ((rnd() + rnd()) / 2 - 0.5) * 2 * Math.max(peak - minY, maxY - peak));
-            let z = ncz * 16 + Math.floor(rnd() * 16) - z0;
-            if (y < minY || y > maxY) continue;
-            for (let s = 0; s < size; s++) {
-              for (let k = 0; k < (size > 10 ? 3 : 1); k++) {
-                const px = x + (k === 1 ? 1 : 0), py = y + (k === 2 ? 1 : 0);
-                if (px >= 0 && px < 16 && z >= 0 && z < 16 && py > 0 && py < HEIGHT) {
-                  const i = idx(px, py, z);
-                  if (blocks[i] === B.stone) blocks[i] = ore;
-                  else if (blocks[i] === B.deepslate) blocks[i] = deepOre;
+        if (this.version >= 8) {
+          this.veins8(blocks, x0, z0, ncx, ncz, maxH + 10, this.rootColumn(ncx * 16 + 8, ncz * 16 + 8).biome === BIOME.BADLANDS ? [...ORES8, BADLANDS_GOLD8] : ORES8);
+        } else {
+          const ores = !caves ? ORES : this.rootColumn(ncx * 16 + 8, ncz * 16 + 8).biome === BIOME.BADLANDS ? [...ORES5, BADLANDS_GOLD] : ORES5;
+          ores.forEach(([ore, deepOre, count, size, minY, maxY, peak], oi) => {
+            const rnd = mulberry32(Math.floor(hash3(ncx, oi, ncz, seed ^ 0x0e5) * 4294967296));
+            const n = Math.floor(count) + (rnd() < count % 1 ? 1 : 0);
+            for (let v = 0; v < n; v++) {
+              let x = ncx * 16 + Math.floor(rnd() * 16) - x0;
+              // Veins cluster around their peak height (a triangle distribution).
+              let y = peak === null ? minY + Math.floor(rnd() * (maxY - minY)) : Math.round(peak + ((rnd() + rnd()) / 2 - 0.5) * 2 * Math.max(peak - minY, maxY - peak));
+              let z = ncz * 16 + Math.floor(rnd() * 16) - z0;
+              if (y < minY || y > maxY) continue;
+              for (let s = 0; s < size; s++) {
+                for (let k = 0; k < (size > 10 ? 3 : 1); k++) {
+                  const px = x + (k === 1 ? 1 : 0), py = y + (k === 2 ? 1 : 0);
+                  if (px >= 0 && px < 16 && z >= 0 && z < 16 && py > 0 && py < HEIGHT) {
+                    const i = idx(px, py, z);
+                    if (blocks[i] === B.stone) blocks[i] = ore;
+                    else if (blocks[i] === B.deepslate) blocks[i] = deepOre;
+                  }
                 }
+                const d = Math.floor(rnd() * 6);
+                if (d === 0) x++; else if (d === 1) x--; else if (d === 2) y++; else if (d === 3) y--; else if (d === 4) z++; else z--;
               }
-              const d = Math.floor(rnd() * 6);
-              if (d === 0) x++; else if (d === 1) x--; else if (d === 2) y++; else if (d === 3) y--; else if (d === 4) z++; else z--;
             }
-          }
-        });
+          });
+        }
         // Emeralds, one at a time, deep in the mountains.
         const er = mulberry32(Math.floor(hash2(ncx, ncz, seed ^ 0xe3e7a1d) * 4294967296));
         for (let k = 0; k < 3; k++) {
@@ -734,8 +836,12 @@ export class WorldGen {
         const palm = this.sea && col.biome === BIOME.BEACH && col.temp > 0.28 && roll < 0.03 && this.palmSpot(wx, wz, roll);
         if (!azalea && !palm && (!table || roll >= table[0])) continue;
         if (vplans.length && insideVillage(vplans, wx, wz, 4)) continue;
+        // (Generator 8 keeps the roads out of the gates clear, and roots trees on the ground as it
+        // eases back from a settlement, as the chunk they stand in has it.)
+        if (this.version >= 8 && vplans.length && approachAt(vplans, wx, wz, col.h)) continue;
         let h = col.h;
         if (inside) h = TOP[(wz - z0) * 16 + wx - x0];
+        else if (this.version >= 8 && vplans.length) { const lv = groundLevel(vplans, wx, wz, col.h); if (lv >= 0) h = lv; }
         if (h <= SEA_LEVEL - (col.biome === BIOME.SWAMP ? 2 : palm ? 1 : 0) || h > HEIGHT - 40) continue;
         if (inside) {
           const g = blocks[idx(wx - x0, h, wz - z0)];
@@ -758,8 +864,9 @@ export class WorldGen {
           });
           if (!ok) kind = kind === 'dark_oak' ? 'oak' : kind === 'mega_jungle' ? 'jungle' : 'tall_spruce';
         }
-        // In a swamp the trunk may stand in shallow water.
-        TREES[kind](put, wx, h + 1, wz, rnd);
+        // In a swamp the trunk may stand in shallow water. (Trees are told the generator's version,
+        // so those it has since reshaped grow as they did in the world's own version.)
+        TREES[kind](put, wx, h + 1, wz, rnd, this.version);
         // An azalea's roots reach down through rooted dirt towards the cave below.
         if (azalea && inside) {
           const depth = 4 + Math.floor(hash2(wz, wx, seed ^ 0x2007) * 5);
@@ -789,7 +896,7 @@ export class WorldGen {
         const col = this.rootColumn(bx, bz);
         const h = col.h;
         // (In newer worlds nothing but dungeons turns up in a settlement's grounds.)
-        const settled = this.version >= 4 && roll >= 0.14 && villageAt(this, bx, bz, 10);
+        const settled = this.version >= 4 && roll >= 0.14 && villageAt(this, bx, bz, this.version >= 8 ? 34 : 10);
         if (settled) continue;
         // Dungeon: a mossy room deep underground with a chest or two.
         if (roll < 0.14 && ncx === cx && ncz === cz) {

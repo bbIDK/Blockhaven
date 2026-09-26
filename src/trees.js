@@ -41,6 +41,16 @@ function disc(put, leaves, cx, y, cz, r, rnd, ragged = 0.3) {
     put(cx + dx, y, cz + dz, leaves, false);
   }
 }
+// A round layer of leaves about the middle of a trunk two logs wide (x..x+1, z..z+1): radius 0
+// just covers the trunk, and each step out adds a block all round, the corners rounded off and the
+// rim a little ragged.
+function wideRing(put, leaves, x, y, z, r, rnd, ragged = 0.2) {
+  for (let dz = -r; dz <= r + 1; dz++) for (let dx = -r; dx <= r + 1; dx++) {
+    const d = Math.hypot(dx - 0.5, dz - 0.5);
+    if (d > r + 0.72 || (d > 1 && d > r - 0.3 && rnd() < ragged)) continue;
+    put(x + dx, y, z + dz, leaves, false);
+  }
+}
 // Vines hanging from the outside of a canopy (`cells`: leaf positions just placed).
 function hangVines(put, cells, rnd, chance, maxLen) {
   const SIDES = [[1, 0, 1], [-1, 0, 0], [0, 1, 5], [0, -1, 4]]; // offset, and the vine's wall side
@@ -70,8 +80,8 @@ function small(put, x, y, z, rnd, wood, extra = 0) {
   trunk(put, log, x, y, z, h);
 }
 // Big oaks: a tall trunk that throws out branches, each ending in a clump of leaves.
-function bigOak(put, x, y, z, rnd, wood = 'oak') {
-  const { log, leaves } = oak(wood);
+function bigOak(put, x, y, z, rnd) {
+  const { log, leaves } = oak('oak');
   const h = 9 + Math.floor(rnd() * 6);
   const n = 3 + Math.floor(rnd() * 3);
   for (let i = 0; i < n; i++) {
@@ -123,16 +133,27 @@ function pine(put, x, y, z, rnd) {
   put(x, y + h + 1, z, leaves, false);
   trunk(put, log, x, y, z, h);
 }
-// Giant spruces on a trunk two logs wide.
-function megaSpruce(put, x, y, z, rnd) {
+// Giant spruces on a trunk two logs wide. Like Minecraft's, their rings of needles centre on the
+// middle of the trunk and widen going down, every other one a little wider than the last, under a
+// cap over the top of the trunk. (Worlds from before generator 8 grew them lopsided, off one
+// corner of the trunk with its top poking out, and still do, so their forests stay as they were.)
+function megaSpruce(put, x, y, z, rnd, gen = 8) {
   const { log, leaves } = oak('spruce');
   const h = 20 + Math.floor(rnd() * 10);
   const crown = Math.floor(h * 0.6);
-  for (let i = 0; i < crown; i++) {
-    const r = Math.min(5, Math.floor(i / 3.2)) + (i % 3 === 2 ? 0 : -1) + 1;
-    disc(put, leaves, x + 0.5, y + h - i, z + 0.5, Math.max(0.6, r + 0.4), rnd, 0.25);
+  if (gen < 8) {
+    for (let i = 0; i < crown; i++) {
+      const r = Math.min(5, Math.floor(i / 3.2)) + (i % 3 === 2 ? 0 : -1) + 1;
+      disc(put, leaves, x + 0.5, y + h - i, z + 0.5, Math.max(0.6, r + 0.4), rnd, 0.25);
+    }
+    put(x, y + h + 1, z, leaves, false);
+  } else {
+    for (let i = 0, last = 0; i <= crown; i++) {
+      const r = Math.floor((i / crown) * 4);
+      wideRing(put, leaves, x, y + h - i, z, i === 1 ? 1 : i > 0 && r === last && i % 2 === 0 ? r + 1 : r, rnd);
+      last = r;
+    }
   }
-  put(x, y + h + 1, z, leaves, false);
   trunk(put, log, x, y, z, h, true);
 }
 function jungleBush(put, x, y, z, rnd) {
