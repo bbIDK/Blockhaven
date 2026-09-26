@@ -10,6 +10,24 @@ precision highp int;
 ${fancy ? '#define FANCY 1' : ''}
 `;
 
+// Dynamic Lights (as OptiFine and LambDynamicLights have them): torches and other glowing things
+// carried about, dropped or on fire light what's around them. Each light is a position (relative
+// to the camera) and a light level, and gives the level less one for each block away, as a torch
+// set down would; the brightest wins. With Dynamic Lights: Fast it's worked out at the corners of
+// faces, like Minecraft's own smooth lighting, and with Fancy for every pixel.
+const DYNAMIC = `
+uniform vec4 u_dyn[8];
+uniform int u_dynCount;
+uniform int u_dynMode; // 0 off, 1 Fast, 2 Fancy
+float dynamicLight(vec3 p) {
+  float l = 0.0;
+  for (int i = 0; i < 8; i++) {
+    if (i >= u_dynCount) break;
+    l = max(l, u_dyn[i].w - distance(p, u_dyn[i].xyz));
+  }
+  return clamp(l / 15.0, 0.0, 1.0);
+}`;
+
 // ---------------------------------------------------------------- terrain, entities, particles
 export const terrainVS = (fancy) => `${header(fancy)}
 layout(location=0) in vec3 a_pos;
@@ -30,13 +48,16 @@ out vec3 v_tint;
 out float v_shade;
 out vec3 v_rel;
 flat out uint v_flags;
+out float v_dyn;
+out vec3 v_dynAt;
 #ifdef FANCY
 out vec3 v_normal;
 flat out uint v_face;
+#endif
 const vec3 NORMALS[7] = vec3[7](vec3(1.0, 0.0, 0.0), vec3(-1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0), vec3(0.0, -1.0, 0.0),
   vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, -1.0), vec3(0.0, 1.0, 0.0));
-#endif
 const float SHADE[7] = float[7](0.6, 0.6, 1.0, 0.5, 0.8, 0.8, 0.9);
+${DYNAMIC}
 void main() {
   vec4 rel = u_model * vec4(a_pos / 256.0, 1.0);
   rel.xyz += u_offset;
@@ -57,6 +78,12 @@ void main() {
   v_shade = SHADE[min(a_info.y, 6u)];
   v_rel = rel.xyz;
   v_flags = flags;
+  // Dynamic light is measured half a block out from a face, in the air in front of it (as a
+  // face's light is the light of the block in front of it); plants and the like at themselves.
+  vec3 n = a_info.y < 6u ? mat3(u_model) * NORMALS[a_info.y] : vec3(0.0);
+  float nl = length(n);
+  v_dynAt = rel.xyz + (nl > 1e-4 ? n * (0.5 / nl) : vec3(0.0));
+  v_dyn = u_dynMode == 1 ? dynamicLight(v_dynAt) : 0.0;
 #ifdef FANCY
   v_normal = mat3(u_model) * NORMALS[min(a_info.y, 6u)];
   v_face = a_info.y;
@@ -108,7 +135,10 @@ in vec3 v_tint;
 in float v_shade;
 in vec3 v_rel;
 flat in uint v_flags;
+in float v_dyn;
+in vec3 v_dynAt;
 out vec4 o_color;
+${DYNAMIC}
 float curve(float l) { return l / (3.0 - 2.0 * l); }
 // The shimmer on enchanted things: a purple sheen with bright bands sweeping across it.
 vec3 glint() {
@@ -255,6 +285,7 @@ void main() {
   // Mobs flash red when hurt.
   col = mix(col, vec3(1.0, 0.0, 0.0), u_hurt);
   vec2 lv = u_lightOverride.x > 0.5 ? u_lightOverride.yz : v_light.xy;
+  if (u_dynMode > 0) lv.y = max(lv.y, u_dynMode == 2 ? dynamicLight(v_dynAt) : v_dyn);
 #ifndef FANCY
   vec3 light;
   if ((v_flags & 32u) != 0u) {

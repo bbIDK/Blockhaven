@@ -13,6 +13,7 @@ import { Furnace } from './furnace.js';
 import { initIcons, warmIcons } from './icons.js';
 import { TEX } from './textures.js';
 import { Particles } from './particles.js';
+import { DynamicLights } from './dynlight.js';
 import { Weather } from './weather.js';
 import { Entities } from './entities.js';
 import { TouchControls } from './touch.js';
@@ -63,6 +64,8 @@ const DEFAULT_SETTINGS = {
   // Graphics (1 Fancy, 0 Fast: solid leaves), frames a second at most (0: as many as the screen
   // shows), how many particles (0 all, 1 fewer, 2 hardly any), and how far off creatures are drawn.
   graphics: COARSE ? 0 : 1, maxFps: 0, particles: 0, entityDistance: 100,
+  // Dynamic Lights: 0 off, 1 Fast, 2 Fancy (see dynlight.js).
+  dynamicLights: COARSE ? 1 : 2,
 };
 const FACE_NAMES = ['east (+X)', 'west (-X)', 'up', 'down', 'south (+Z)', 'north (-Z)'];
 const TIPS = [
@@ -149,6 +152,7 @@ export class Game {
     }
     this.env = makeEnvironment();
     this.particles = new Particles();
+    this.dynLights = new DynamicLights();
     this.entities = new Entities(this);
     this.fishing = new Fishing(this);
     this.player = new Player();
@@ -2915,6 +2919,7 @@ export class Game {
     if (!loading) this.updateWeatherEffects(cam, dt);
     const target = !loading && this.target && !this.target.entity && !this.target.player ? this.target : null;
     const heldLight = this.world.getLight(Math.floor(p.x), Math.floor(p.eyeY), Math.floor(p.z));
+    const dyn = loading ? null : this.dynLights.gather(this, cam);
     this.particles.build(cam, this.world);
     this.renderer.render({
       cam, fov: s.fov * this.fovMul, env: this.env, time: performance.now() / 1000, renderDist: rd, world: this.world,
@@ -2925,6 +2930,7 @@ export class Game {
       particles: this.particles,
       weather: this.weather,
       entities: this.drawList(cam),
+      dynLights: dyn,
       lines: this.fishingLines(),
       rod: this.rodLine(),
       hand: loading || this.hideHud || this.state === 'dead' || third ? null : {
@@ -2935,7 +2941,7 @@ export class Game {
         eat: this.eating ? Math.min(this.eating.time, this.eating.left - this.tickAcc + 1) : undefined, eatTime: this.eating?.time,
         shield: this.handItem === I.shield, guard: this.guardLift ?? 0,
         glint: shiny(this.inv.held),
-        light: [Math.max(heldLight >> 4, 0), heldLight & 15],
+        light: [Math.max(heldLight >> 4, 0), Math.max(heldLight & 15, dyn ? dyn.at(p.x, p.eyeY - 0.2, p.z) : 0)],
       },
     });
   }

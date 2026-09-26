@@ -337,6 +337,17 @@ export class Renderer {
     gl.uniform1f(u.u_alphaMul, 1);
     gl.uniform3f(u.u_offset, 0, 0, 0);
     gl.uniform1f(u.u_hurt, 0);
+    // Dynamic lights (see dynlight.js), placed relative to the camera as everything is drawn.
+    const dyn = f.dynLights, n = dyn?.count ?? 0, rel = this.dynRel ??= new Float32Array(32);
+    for (let i = 0; i < n; i++) {
+      rel[i * 4] = dyn.data[i * 4] - f.cam.x;
+      rel[i * 4 + 1] = dyn.data[i * 4 + 1] - f.cam.y;
+      rel[i * 4 + 2] = dyn.data[i * 4 + 2] - f.cam.z;
+      rel[i * 4 + 3] = dyn.data[i * 4 + 3];
+    }
+    gl.uniform4fv(u.u_dyn, rel);
+    gl.uniform1i(u.u_dynCount, n);
+    gl.uniform1i(u.u_dynMode, n ? dyn.mode : 0);
     if (this.mode) {
       const e = f.env;
       gl.uniform3fv(u.u_fogColor, this.linear.fog);
@@ -780,6 +791,8 @@ export class Renderer {
     gl.uniform2f(u.u_fog, 1e5, 2e5);
     gl.uniform1f(u.u_alphaCut, 0.5);
     gl.uniform1f(u.u_wave, 0);
+    // (The hand's light, dynamic lights and all, comes worked out: it's drawn in the camera's space.)
+    gl.uniform1i(u.u_dynMode, 0);
     gl.uniform4f(u.u_lightOverride, 1, hand.light[0] / 15, hand.light[1] / 15, 0);
     if (this.mode) {
       // (The hand is drawn in the camera's space, so the light's direction is turned into it.)

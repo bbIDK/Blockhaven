@@ -13067,6 +13067,24 @@ precision highp int;
 ${fancy ? '#define FANCY 1' : ''}
 `;
 
+// Dynamic Lights (as OptiFine and LambDynamicLights have them): torches and other glowing things
+// carried about, dropped or on fire light what's around them. Each light is a position (relative
+// to the camera) and a light level, and gives the level less one for each block away, as a torch
+// set down would; the brightest wins. With Dynamic Lights: Fast it's worked out at the corners of
+// faces, like Minecraft's own smooth lighting, and with Fancy for every pixel.
+const DYNAMIC = `
+uniform vec4 u_dyn[8];
+uniform int u_dynCount;
+uniform int u_dynMode; // 0 off, 1 Fast, 2 Fancy
+float dynamicLight(vec3 p) {
+  float l = 0.0;
+  for (int i = 0; i < 8; i++) {
+    if (i >= u_dynCount) break;
+    l = max(l, u_dyn[i].w - distance(p, u_dyn[i].xyz));
+  }
+  return clamp(l / 15.0, 0.0, 1.0);
+}`;
+
 // ---------------------------------------------------------------- terrain, entities, particles
 const terrainVS = (fancy) => `${header(fancy)}
 layout(location=0) in vec3 a_pos;
@@ -13087,13 +13105,16 @@ out vec3 v_tint;
 out float v_shade;
 out vec3 v_rel;
 flat out uint v_flags;
+out float v_dyn;
+out vec3 v_dynAt;
 #ifdef FANCY
 out vec3 v_normal;
 flat out uint v_face;
+#endif
 const vec3 NORMALS[7] = vec3[7](vec3(1.0, 0.0, 0.0), vec3(-1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0), vec3(0.0, -1.0, 0.0),
   vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, -1.0), vec3(0.0, 1.0, 0.0));
-#endif
 const float SHADE[7] = float[7](0.6, 0.6, 1.0, 0.5, 0.8, 0.8, 0.9);
+${DYNAMIC}
 void main() {
   vec4 rel = u_model * vec4(a_pos / 256.0, 1.0);
   rel.xyz += u_offset;
@@ -13114,6 +13135,12 @@ void main() {
   v_shade = SHADE[min(a_info.y, 6u)];
   v_rel = rel.xyz;
   v_flags = flags;
+  // Dynamic light is measured half a block out from a face, in the air in front of it (as a
+  // face's light is the light of the block in front of it); plants and the like at themselves.
+  vec3 n = a_info.y < 6u ? mat3(u_model) * NORMALS[a_info.y] : vec3(0.0);
+  float nl = length(n);
+  v_dynAt = rel.xyz + (nl > 1e-4 ? n * (0.5 / nl) : vec3(0.0));
+  v_dyn = u_dynMode == 1 ? dynamicLight(v_dynAt) : 0.0;
 #ifdef FANCY
   v_normal = mat3(u_model) * NORMALS[min(a_info.y, 6u)];
   v_face = a_info.y;
@@ -13165,7 +13192,10 @@ in vec3 v_tint;
 in float v_shade;
 in vec3 v_rel;
 flat in uint v_flags;
+in float v_dyn;
+in vec3 v_dynAt;
 out vec4 o_color;
+${DYNAMIC}
 float curve(float l) { return l / (3.0 - 2.0 * l); }
 // The shimmer on enchanted things: a purple sheen with bright bands sweeping across it.
 vec3 glint() {
@@ -13312,6 +13342,7 @@ void main() {
   // Mobs flash red when hurt.
   col = mix(col, vec3(1.0, 0.0, 0.0), u_hurt);
   vec2 lv = u_lightOverride.x > 0.5 ? u_lightOverride.yz : v_light.xy;
+  if (u_dynMode > 0) lv.y = max(lv.y, u_dynMode == 2 ? dynamicLight(v_dynAt) : v_dyn);
 #ifndef FANCY
   vec3 light;
   if ((v_flags & 32u) != 0u) {
@@ -14913,6 +14944,17 @@ class Renderer {
     gl.uniform1f(u.u_alphaMul, 1);
     gl.uniform3f(u.u_offset, 0, 0, 0);
     gl.uniform1f(u.u_hurt, 0);
+    // Dynamic lights (see dynlight.js), placed relative to the camera as everything is drawn.
+    const dyn = f.dynLights, n = dyn?.count ?? 0, rel = this.dynRel ??= new Float32Array(32);
+    for (let i = 0; i < n; i++) {
+      rel[i * 4] = dyn.data[i * 4] - f.cam.x;
+      rel[i * 4 + 1] = dyn.data[i * 4 + 1] - f.cam.y;
+      rel[i * 4 + 2] = dyn.data[i * 4 + 2] - f.cam.z;
+      rel[i * 4 + 3] = dyn.data[i * 4 + 3];
+    }
+    gl.uniform4fv(u.u_dyn, rel);
+    gl.uniform1i(u.u_dynCount, n);
+    gl.uniform1i(u.u_dynMode, n ? dyn.mode : 0);
     if (this.mode) {
       const e = f.env;
       gl.uniform3fv(u.u_fogColor, this.linear.fog);
@@ -15356,6 +15398,8 @@ class Renderer {
     gl.uniform2f(u.u_fog, 1e5, 2e5);
     gl.uniform1f(u.u_alphaCut, 0.5);
     gl.uniform1f(u.u_wave, 0);
+    // (The hand's light, dynamic lights and all, comes worked out: it's drawn in the camera's space.)
+    gl.uniform1i(u.u_dynMode, 0);
     gl.uniform4f(u.u_lightOverride, 1, hand.light[0] / 15, hand.light[1] / 15, 0);
     if (this.mode) {
       // (The hand is drawn in the camera's space, so the light's direction is turned into it.)
@@ -22602,6 +22646,7 @@ const OPTIONS = [
   { key: 'fov', label: 'FOV', min: 50, max: 110, fmt: (v) => `${v}` },
   { key: 'brightness', label: 'Brightness', min: 0, max: 100, step: 5, fmt: (v) => (v <= 0 ? 'Moody' : v >= 100 ? 'Bright' : `${v}%`) },
   { key: 'graphics', label: 'Graphics', cycle: [1, 0], fmt: (v) => (v ? 'Fancy' : 'Fast') },
+  { key: 'dynamicLights', label: 'Dynamic Lights', cycle: [0, 1, 2], fmt: (v) => ['OFF', 'Fast', 'Fancy'][v] ?? 'OFF' },
   { key: 'shaders', label: 'Shaders', cycle: [0, 1, 2], fmt: (v) => ['OFF', 'Low', 'High'][v] ?? 'OFF' },
   { key: 'maxFps', label: 'Max Framerate', cycle: [0, 30, 60, 90, 120, 144], fmt: (v) => (v ? `${v} fps` : 'Unlimited') },
   { key: 'particles', label: 'Particles', cycle: [0, 1, 2], fmt: (v) => ['All', 'Decreased', 'Minimal'][v] ?? 'All' },
@@ -30738,6 +30783,87 @@ class Particles {
 __exports.Particles = Particles;
 });
 
+__define("src/dynlight.js", function (__exports) {
+// Dynamic Lights, as the OptiFine and LambDynamicLights mods have them: a torch (or anything else
+// that glows) lights up what's around whoever holds it, and so does one dropped on the ground or
+// a creature on fire. Only the look changes: the world's own light, which creatures spawn by, is
+// left as it is. The renderer's shaders do the lighting (see DYNAMIC in shaders.js); this finds
+// the lights each frame, the eight nearest the camera.
+const { EMIT, WATERLIKE, B } = __require("src/blocks.js");
+const { I } = __require("src/items.js");
+
+const MAX = 8;
+// Items that glow though they aren't blocks that do, and those that go out under water.
+const GLOW = new Map([[I.lava_bucket, 15], [I.glow_berries, 14]]);
+const DOUSED = new Set([B.torch, B.campfire]);
+
+// How brightly an item glows in the hand or on the ground (a light level, 0-15).
+function itemGlow(id) {
+  return GLOW.get(id) ?? EMIT[id] ?? 0;
+}
+
+class DynamicLights {
+  constructor() {
+    this.data = new Float32Array(MAX * 4); // x, y, z, light level
+    this.count = 0;
+    this.mode = 0; // 0 off, 1 Fast, 2 Fancy
+    this.found = [];
+  }
+
+  // This frame's lights, from what `game` holds and what's about the camera.
+  gather(game, cam) {
+    const found = this.found, world = game.world;
+    found.length = 0;
+    this.count = 0;
+    this.mode = game.settings.dynamicLights | 0;
+    if (!this.mode || !world) return this;
+    const reach2 = Math.min(game.settings.renderDistance * 16, 128) ** 2;
+    const add = (x, y, z, level) => {
+      if (level < 3) return;
+      const d2 = (x - cam.x) ** 2 + (y - cam.y) ** 2 + (z - cam.z) ** 2;
+      if (d2 < reach2) found.push({ x, y, z, level, d2 });
+    };
+    const glowing = (x, y, z, id) => {
+      const level = itemGlow(id);
+      if (level < 3 || (DOUSED.has(id) && WATERLIKE[world.getBlock(Math.floor(x), Math.floor(y), Math.floor(z))] === 1)) return;
+      add(x, y, z, level);
+    };
+    const p = game.player;
+    if (game.state !== 'dead') {
+      glowing(p.x, p.eyeY - 0.35, p.z, game.handItem);
+      if (game.fire > 0 && !game.creative) add(p.x, p.y + 0.9, p.z, 15);
+    }
+    if (game.net) {
+      for (const rp of game.net.players.values()) if (rp.ready && !rp.dead) glowing(rp.x, rp.y + (rp.sneaking ? 1.05 : 1.3), rp.z, rp.held);
+    }
+    for (const e of game.entities.list) {
+      if (e.dead) continue;
+      if (e.kind === 'item') glowing(e.x, e.y + 0.25, e.z, e.id);
+      else if (e.kind === 'mob' && (e.burning || e.onFire > 0)) add(e.x, e.y + (e.h ?? 1) * 0.6, e.z, 15);
+    }
+    found.sort((a, b) => a.d2 - b.d2);
+    const n = Math.min(MAX, found.length), d = this.data;
+    for (let i = 0; i < n; i++) {
+      const s = found[i];
+      d[i * 4] = s.x; d[i * 4 + 1] = s.y; d[i * 4 + 2] = s.z; d[i * 4 + 3] = s.level;
+    }
+    this.count = n;
+    return this;
+  }
+
+  // The light the dynamic lights give at (x, y, z): a light level, 0-15 (not a whole number).
+  at(x, y, z) {
+    let l = 0;
+    const d = this.data;
+    for (let i = 0; i < this.count; i++) l = Math.max(l, d[i * 4 + 3] - Math.hypot(x - d[i * 4], y - d[i * 4 + 1], z - d[i * 4 + 2]));
+    return Math.min(15, l);
+  }
+}
+
+__exports.itemGlow = itemGlow;
+__exports.DynamicLights = DynamicLights;
+});
+
 __define("src/weather.js", function (__exports) {
 // Rain and snow. Like the original game, precipitation is drawn as sheets in the columns around
 // the player, each turned to face the camera, from the highest block that stops it up past the
@@ -36912,6 +37038,7 @@ const { Furnace } = __require("src/furnace.js");
 const { initIcons, warmIcons } = __require("src/icons.js");
 const { TEX } = __require("src/textures.js");
 const { Particles } = __require("src/particles.js");
+const { DynamicLights } = __require("src/dynlight.js");
 const { Weather } = __require("src/weather.js");
 const { Entities } = __require("src/entities.js");
 const { TouchControls } = __require("src/touch.js");
@@ -36956,6 +37083,8 @@ const DEFAULT_SETTINGS = {
   // Graphics (1 Fancy, 0 Fast: solid leaves), frames a second at most (0: as many as the screen
   // shows), how many particles (0 all, 1 fewer, 2 hardly any), and how far off creatures are drawn.
   graphics: COARSE ? 0 : 1, maxFps: 0, particles: 0, entityDistance: 100,
+  // Dynamic Lights: 0 off, 1 Fast, 2 Fancy (see dynlight.js).
+  dynamicLights: COARSE ? 1 : 2,
 };
 const FACE_NAMES = ['east (+X)', 'west (-X)', 'up', 'down', 'south (+Z)', 'north (-Z)'];
 const TIPS = [
@@ -37042,6 +37171,7 @@ class Game {
     }
     this.env = makeEnvironment();
     this.particles = new Particles();
+    this.dynLights = new DynamicLights();
     this.entities = new Entities(this);
     this.fishing = new Fishing(this);
     this.player = new Player();
@@ -39808,6 +39938,7 @@ class Game {
     if (!loading) this.updateWeatherEffects(cam, dt);
     const target = !loading && this.target && !this.target.entity && !this.target.player ? this.target : null;
     const heldLight = this.world.getLight(Math.floor(p.x), Math.floor(p.eyeY), Math.floor(p.z));
+    const dyn = loading ? null : this.dynLights.gather(this, cam);
     this.particles.build(cam, this.world);
     this.renderer.render({
       cam, fov: s.fov * this.fovMul, env: this.env, time: performance.now() / 1000, renderDist: rd, world: this.world,
@@ -39818,6 +39949,7 @@ class Game {
       particles: this.particles,
       weather: this.weather,
       entities: this.drawList(cam),
+      dynLights: dyn,
       lines: this.fishingLines(),
       rod: this.rodLine(),
       hand: loading || this.hideHud || this.state === 'dead' || third ? null : {
@@ -39828,7 +39960,7 @@ class Game {
         eat: this.eating ? Math.min(this.eating.time, this.eating.left - this.tickAcc + 1) : undefined, eatTime: this.eating?.time,
         shield: this.handItem === I.shield, guard: this.guardLift ?? 0,
         glint: shiny(this.inv.held),
-        light: [Math.max(heldLight >> 4, 0), heldLight & 15],
+        light: [Math.max(heldLight >> 4, 0), Math.max(heldLight & 15, dyn ? dyn.at(p.x, p.eyeY - 0.2, p.z) : 0)],
       },
     });
   }

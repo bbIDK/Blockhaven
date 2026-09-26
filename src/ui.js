@@ -239,6 +239,7 @@ export const OPTIONS = [
   { key: 'fov', label: 'FOV', min: 50, max: 110, fmt: (v) => `${v}` },
   { key: 'brightness', label: 'Brightness', min: 0, max: 100, step: 5, fmt: (v) => (v <= 0 ? 'Moody' : v >= 100 ? 'Bright' : `${v}%`) },
   { key: 'graphics', label: 'Graphics', cycle: [1, 0], fmt: (v) => (v ? 'Fancy' : 'Fast') },
+  { key: 'dynamicLights', label: 'Dynamic Lights', cycle: [0, 1, 2], fmt: (v) => ['OFF', 'Fast', 'Fancy'][v] ?? 'OFF' },
   { key: 'shaders', label: 'Shaders', cycle: [0, 1, 2], fmt: (v) => ['OFF', 'Low', 'High'][v] ?? 'OFF' },
   { key: 'maxFps', label: 'Max Framerate', cycle: [0, 30, 60, 90, 120, 144], fmt: (v) => (v ? `${v} fps` : 'Unlimited') },
   { key: 'particles', label: 'Particles', cycle: [0, 1, 2], fmt: (v) => ['All', 'Decreased', 'Minimal'][v] ?? 'All' },

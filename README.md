@@ -84,6 +84,7 @@ On phones and tablets, on-screen controls appear automatically. The left stick m
 - **Fishing:** cast, wait for a bite, and reel in fish, junk or treasure.
 - **And more:** cake, name tags and leads, item frames, 15 paintings, flower pots, note blocks, and a jukebox with 8 music discs.
 - **Shaders:** **Options → Shaders** (Low or High) adds sunlight with soft shadows, glinting water, a glowing sky, bloom and light shafts.
+- **Dynamic Lights:** hold a torch (or a lantern, glowstone, a jack o'lantern, a lava bucket or glow berries) and it lights up everything around you as you walk, as the OptiFine and LambDynamicLights mods do. So does a torch dropped on the ground, a creature on fire, and a torch in a friend's hand; torches go out under water. **Options → Dynamic Lights**: Fancy works the light out for every pixel, Fast at the corners of blocks (like Minecraft's smooth lighting, and quicker), or turn it OFF. Only the look changes: monsters still spawn by the world's own light.
 - **Multiplayer:** host a world for your friends from the game menu, on claude.ai or with a join code (see [Play with friends](#play-with-friends)).
 - **Swimming:** sprint with your head under water to swim like in Minecraft, gliding the way you look with Minecraft's breaststroke. Jump or fall in and there's a proper splash. **F5** shows you from behind or in front, sneaking with Minecraft's crouch and lifting food to your mouth as you eat (other players see it too); in first person, eating moves as smoothly as Minecraft's.
 - **Weather:** rain showers come and go, with streaks of rain, splashes, a grey sky and the sound of rain (quieter indoors). It snows in cold biomes and high up; deserts, savannas and badlands stay dry. Sleeping clears the weather.
@@ -106,7 +107,8 @@ src/oceangen.js     the sea floor: coral reefs, kelp forests, seagrass;  src/tro
 src/mobs.js         creatures: what each is, how it behaves and moves;  src/rigs.js, src/wildrigs.js their models
 src/mesher.js       turns chunk sections into vertex data (face culling, AO, smooth light)
 src/light.js        per-chunk light flood fill (runs in workers)
-src/renderer.js     WebGL 2 renderer: terrain, sky, clouds, entities, particles, held item
+src/renderer.js     WebGL 2 renderer: terrain, sky, clouds, entities, particles, held item;  src/shaders.js its GLSL
+src/dynlight.js     Dynamic Lights: the torches and other glowing things about, for the shaders to light by
 src/blocks.js       block registry;  src/items.js items, tools and armor;  src/crafting.js recipes, smelting, fuel
 src/containers.js   inventory, crafting table, furnace and chest screens (slot rules);  src/furnace.js smelting
 src/gui.js          the Minecraft-style container windows and recipe book;  src/preview.js your character in the inventory
