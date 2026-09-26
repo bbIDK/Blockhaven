@@ -872,14 +872,18 @@ function archerTick(ents, e, tg, dist) {
   if (dist < 5) e.yaw += Math.PI;
   else if (sees && dist <= 12) { e.moving = Math.random() < 0.5; e.yaw += Math.sin(e.age * 0.7) * 1.2; }
   if (sees && dist < 16) {
-    e.aim = Math.min(1, e.aim + 0.04);
-    if (e.aim >= 1 && e.attackCd === 0) {
-      e.attackCd = 20 + Math.floor(Math.random() * 20);
+    // As Minecraft's skeletons do: draw the bow for a second, loose, then wait two seconds (one
+    // on Hard) before drawing again. Their aim is rougher the easier the game: an arrow strays up
+    // to a tenth of the way off on Normal, a sixth on Easy, a thirtieth on Hard.
+    if (e.attackCd === 0) e.aim = Math.min(1, e.aim + 0.05);
+    if (e.aim >= 1) {
+      const diff = ents.game.difficulty;
+      e.attackCd = (diff >= 3 ? 20 : 40) + Math.floor(Math.random() * 10);
       e.aim = 0;
       // Aim a little high for the drop over distance.
       const [vx, vy, vz] = aimAt(ex, ey, ez, tg.x, ty, tg.z, 18);
-      ents.spawnArrow(ex, ey, ez, vx + (Math.random() - 0.5) * 1.2, vy + (Math.random() - 0.5) * 1.2, vz + (Math.random() - 0.5) * 1.2, e,
-        2 + Math.floor(Math.random() * 3), false);
+      const off = 18 * 0.0172 * (14 - 4 * Math.max(1, diff)), rough = () => (Math.random() - Math.random()) * off;
+      ents.spawnArrow(ex, ey, ez, vx + rough(), vy + rough(), vz + rough(), e, 2 + Math.floor(Math.random() * 3), false);
       ents.game.audio.bow({ x: e.x, y: ey, z: e.z });
     }
   } else e.aim = Math.max(0, e.aim - 0.05);
@@ -2154,8 +2158,8 @@ export function monsterFor(biome, y, slimeChunk) {
   if (Math.random() < (biome === BIOME.SWAMP ? 0.15 : 0.02)) return { type: 'witch' };
   if (y < 32 && Math.random() < 0.12) return { type: 'cave_spider' };
   if (r < 30) return { type: dry ? 'husk' : 'zombie' };
-  if (r < 58) return { type: cold ? 'stray' : 'skeleton' };
-  if (r < 80) return { type: 'creeper' };
+  if (r < 50) return { type: cold ? 'stray' : 'skeleton' };
+  if (r < 75) return { type: 'creeper' };
   if (r < 96) return { type: 'spider' };
   return { type: 'enderman' };
 }

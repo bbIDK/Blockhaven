@@ -440,12 +440,15 @@ export class Entities {
   // Monsters appear in the dark near a player (in Survival): zombies, skeletons, creepers,
   // spiders, now and then an enderman, and slimes in swamps and deep in "slime chunks".
   trySpawnHostile() {
-    const game = this.game, w = this.world;
+    const game = this.game, w = this.world, diff = game.difficulty;
+    // Peaceful: none, and any about vanish.
+    if (diff === 0) { this.clearHostiles(); return; }
     const targets = this.players.filter((t) => !t.creative && !t.dead);
     if (!targets.length) return;
     const p = targets[Math.floor(Math.random() * targets.length)];
+    // (At most 6 about on Easy, 8 on Normal and 10 on Hard, and four more for each other player.)
     const hostiles = this.list.filter((e) => e.kind === 'mob' && e.def.hostile && !e.dead).length;
-    if (hostiles >= 8 + targets.length * 4) return;
+    if (hostiles >= 4 + diff * 2 + (targets.length - 1) * 4) return;
     const day = game.env.daylight;
     for (let attempt = 0; attempt < 6; attempt++) {
       const a = Math.random() * Math.PI * 2, d = 20 + Math.random() * 24;
@@ -462,7 +465,7 @@ export class Entities {
         }
         if (WATERLIKE[w.getBlock(x, y, z)] || FILTER[w.getBlock(x, y, z)]) break;
         const l = w.getLight(x, y, z);
-        if ((l & 15) > 7 || (l >> 4) * day > 7) break;
+        if ((l & 15) > 0 || (l >> 4) * day > 7) break;
         const biome = w.biomeAt?.(x, z) ?? 0;
         const slimeChunk = hash2(x >> 4, z >> 4, (game.meta.seed ^ 0x51e) >>> 0) < 0.1;
         const pick = monsterFor(biome, y, slimeChunk);
@@ -477,6 +480,11 @@ export class Entities {
         return;
       }
     }
+  }
+
+  // Peaceful: every monster goes.
+  clearHostiles() {
+    for (const e of this.list) if (e.kind === 'mob' && e.def.hostile && !e.dead) e.dead = true;
   }
 
   // The seas stay full of life: now and then a school of fish (or dolphins, squid, a shark, a whale)
@@ -721,7 +729,8 @@ export class Entities {
       const at = { x: e.x, y: e.y, z: e.z };
       if (victim.kind === 'mob') this.hurtMob(victim, dmg, e.owner ?? at, e.punch, e.flame ? { fire: 5 } : null);
       else {
-        game.hurtPlayer(victim, dmg, e.owner?.label ? `You were shot by a ${e.owner.label.toLowerCase()}` : 'You were shot', [dx * 3, 2, dz * 3], true);
+        game.hurtPlayer(victim, dmg, e.owner?.label ? `You were shot by a ${e.owner.label.toLowerCase()}` : 'You were shot', [dx * 3, 2, dz * 3], true,
+          e.owner?.kind === 'mob');
         if (e.owner?.kind === 'mob') rallyPets(this, victim.uid, e.owner);
       }
       game.audio.arrowHit?.(true, at);
@@ -935,7 +944,7 @@ export class Entities {
     if (pd < power * 2) {
       const f = 1 - pd / (power * 2);
       const k = (f * 14) / Math.max(0.3, pd);
-      game.damage(Math.ceil(f * f * 22), 'You were blown up', true, [(p.x - x) * k, f * 9, (p.z - z) * k], true);
+      game.damage(game.scaleHurt(Math.ceil(f * f * 22)), 'You were blown up', true, [(p.x - x) * k, f * 9, (p.z - z) * k], true);
       if (game.creative) { p.vx += (p.x - x) * k; p.vy += f * 9; p.vz += (p.z - z) * k; }
     }
     for (const t of game.net?.others() ?? []) {

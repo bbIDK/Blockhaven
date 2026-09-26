@@ -48,7 +48,7 @@ import { ITEMS, I, itemDef, itemLabel, breakTime, dropsFor, attackDamage, attack
 import { BIOME_NAMES, BIOME } from './biomes.js';
 import { MOBS } from './mobs.js';
 import { EGG_TYPES, eggLabel } from './eggs.js';
-import { CHUNK_VOLUME, HEIGHT, TICKS_PER_DAY, SAVE_VERSION } from './config.js';
+import { CHUNK_VOLUME, HEIGHT, TICKS_PER_DAY, SAVE_VERSION, DIFFICULTIES } from './config.js';
 import { seedFromText, clamp, hashString, mat4, identity, translate, rotateX, rotateZ } from './math.js';
 
 const SETTINGS_KEY = 'blockhaven.settings';
@@ -315,6 +315,25 @@ export class Game {
   // This player's lasting id (their pets know them by it).
   get uid() { return playerUid(); }
   get mode() { return this.creative ? 'creative' : 'survival'; }
+  // Peaceful 0, Easy 1, Normal 2, Hard 3 (worlds made before there was a choice are Normal).
+  get difficulty() { const d = this.meta?.difficulty; return d >= 0 && d <= 3 ? d : 2; }
+
+  // Changes the world's difficulty (Options → Difficulty, or /difficulty). A guest's is the host's.
+  setDifficulty(d) {
+    if (!this.meta || this.meta.remote || !(d >= 0 && d <= 3)) return false;
+    this.meta.difficulty = d;
+    if (d === 0) this.entities.clearHostiles();
+    this.net?.setDifficulty?.(d);
+    this.ui.showDifficulty(d, true);
+    return true;
+  }
+
+  // What a creature's blow (or an explosion) does to a player on this difficulty, as in Minecraft:
+  // nothing on Peaceful, half and one more (no more than it was) on Easy, half again on Hard.
+  scaleHurt(amount) {
+    const d = this.difficulty;
+    return d === 0 ? 0 : d === 1 ? Math.min(amount, amount / 2 + 1) : d === 3 ? amount * 1.5 : amount;
+  }
 
   applySettings() {
     this.world?.setFastLeaves(this.settings.graphics === 0);
@@ -344,7 +363,8 @@ export class Game {
       const worlds = await storage.listWorlds();
       if (worlds.length) this.openWorlds(); else this.openCreate();
     });
-    ui.on('settings', (from) => this.pushScreen('screen-settings', from));
+    ui.on('settings', (from) => { ui.showDifficulty(this.meta ? this.difficulty : null, !this.meta?.remote); this.pushScreen('screen-settings', from); });
+    ui.on('cycle-difficulty', () => this.setDifficulty((this.difficulty + 1) % 4));
     ui.on('controls', (from) => this.pushScreen('screen-controls', from));
     ui.on('keybinds', (from) => this.pushScreen('screen-keys', from));
     ui.on('reset-keys', () => { this.keys.reset(); this.saveSettings(); ui.refreshKeys(); });
@@ -430,10 +450,10 @@ export class Game {
     const name = $('cw-name').value.trim() || 'New World';
     const seedText = $('cw-seed').value.trim();
     const seed = seedFromText(seedText);
-    const { mode, type } = this.ui.createState;
+    const { mode, type, difficulty } = this.ui.createState;
     const meta = {
       id: `w${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`,
-      name, seed, seedText, mode, type, gen: 8, created: Date.now(), lastPlayed: Date.now(), time: 1000,
+      name, seed, seedText, mode, type, difficulty, gen: 8, created: Date.now(), lastPlayed: Date.now(), time: 1000,
       spawn: null, player: null, inventory: null, version: SAVE_VERSION,
     };
     await storage.saveWorld(meta);
@@ -559,6 +579,7 @@ export class Game {
       spawn: world.spawn && Number.isFinite(world.spawn.x) && Number.isFinite(world.spawn.z) ? { x: world.spawn.x, y: world.spawn.y ?? null, z: world.spawn.z } : { x: 0.5, y: null, z: 0.5 },
       time: Number.isFinite(world.time) ? world.time : 1000, weather: { raining: !!world.rain },
       bed: you?.bed ?? null, player: you?.player ?? null, inventory: you?.inventory ?? null, remote: true,
+      difficulty: [0, 1, 2, 3].includes(world.diff) ? world.diff : 2,
     };
     const container = this.containers, furnaces = this.furnaces, signs = this.signs.serialize();
     await this.enterWorld(meta, { store: session.store });
@@ -649,7 +670,10 @@ export class Game {
     return this.net ? [me, ...this.net.others()] : [me];
   }
 
-  hurtPlayer(t, amount, cause, knock, armored) {
+  // `scaled`: the blow is a creature's (or a blast), so the difficulty changes how much it hurts.
+  hurtPlayer(t, amount, cause, knock, armored, scaled = true) {
+    if (scaled) amount = this.scaleHurt(amount);
+    if (amount <= 0) return;
     if (!t.addr) this.damage(amount, cause, false, knock, armored);
     else this.net?.hurt?.(t.addr, amount, cause, knock, armored);
   }
@@ -1833,6 +1857,12 @@ export class Game {
   exhaust(amount) { if (!this.creative) this.exhaustion = Math.min(40, this.exhaustion + amount); }
 
   hungerTick() {
+    const diff = this.difficulty;
+    // Peaceful: health and food come back by themselves.
+    if (diff === 0) {
+      if (this.health < 20 && this.time % 20 === 0) this.health = Math.min(20, this.health + 1);
+      if (this.food < 20 && this.time % 10 === 0) this.food++;
+    }
     while (this.exhaustion >= 4) {
       this.exhaustion -= 4;
       if (this.saturation > 0) this.saturation = Math.max(0, this.saturation - 1);
@@ -1845,8 +1875,9 @@ export class Game {
     } else if (this.food >= 18 && this.health < 20) {
       if (this.foodTimer >= 80) { this.foodTimer = 0; this.health = Math.min(20, this.health + 1); this.exhaust(6); }
     } else if (this.food <= 0) {
-      // Starving hurts, down to half a heart.
-      if (this.foodTimer >= 80) { this.foodTimer = 0; if (this.health > 1) this.damage(1, 'You starved to death', true); }
+      // Starving hurts: down to five hearts on Easy, half a heart on Normal, and on Hard it kills.
+      const least = diff === 1 ? 10 : diff === 2 ? 1 : 0;
+      if (this.foodTimer >= 80) { this.foodTimer = 0; if (this.health > least) this.damage(1, 'You starved to death', true); }
     } else this.foodTimer = 0;
   }
 
@@ -2744,7 +2775,7 @@ export class Game {
       case 'help':
         say('/time set day|noon|night|midnight|<ticks>, /time add <n>');
         say('/gamemode creative|survival, /tp <x> <y> <z>, /give <item> [count], /summon <creature> [x y z], /weather clear|rain');
-        say('/spawn, /setspawn, /seed, /locate village|camp|hamlet|town|kingdom, /fly, /kill, /clear');
+        say('/spawn, /setspawn, /seed, /locate village|camp|hamlet|town|kingdom, /fly, /kill, /clear, /difficulty peaceful|easy|normal|hard');
         if (this.net) say(`/list${this.net.host ? ', /pvp on|off' : ''}`);
         break;
       case 'list': case 'players':
@@ -2763,6 +2794,16 @@ export class Game {
         else if (args[0] === 'add' && !Number.isNaN(Number(args[1]))) this.time += Number(args[1]);
         else { say('Usage: /time set day|night|<ticks>', '#e88a78'); break; }
         say(`Time is now ${clockText(this.time)}`);
+        break;
+      }
+      case 'difficulty': {
+        const a = (args[0] ?? '').toLowerCase();
+        if (!a) { say(`The difficulty is ${DIFFICULTIES[this.difficulty]}`); break; }
+        const d = /^[0-3]$/.test(a) ? Number(a) : DIFFICULTIES.findIndex((n) => n.toLowerCase().startsWith(a));
+        if (d < 0) { say('Usage: /difficulty peaceful|easy|normal|hard', '#e88a78'); break; }
+        if (this.meta.remote) { say('Only the host can change that', '#e88a78'); break; }
+        this.setDifficulty(d);
+        say(`The difficulty has been set to ${DIFFICULTIES[d]}`);
         break;
       }
       case 'gamemode': case 'gm': {

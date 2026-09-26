@@ -16,7 +16,7 @@ import { B, BLOCKS, REPLACEABLE, CHEST, FURNACE_IDS, SIGN, RAIL } from './blocks
 import { itemDef, maxStack } from './items.js';
 import { extras, cleanExtras } from './inventory.js';
 import { shiny } from './enchanting.js';
-import { chunkKey, HEIGHT, CHUNK_VOLUME } from './config.js';
+import { chunkKey, HEIGHT, CHUNK_VOLUME, DIFFICULTIES } from './config.js';
 import { S_READY, rayBox } from './world.js';
 import { clamp, hashString } from './math.js';
 import { startRide, seatY, BOAT_WOODS } from './riding.js';
@@ -510,7 +510,7 @@ export class HostSession extends Session {
     this.link.flush();
     this.send(g.addr, {
       t: 'welcome', g: this.gid, be: this.link.epoch, bs: this.link.stream('*').seq, pvp: this.pvp ? 1 : 0,
-      w: { name: meta.name, seed: meta.seed, type: meta.type, gen: meta.gen ?? 1, mode: meta.mode, spawn: meta.spawn, time: Math.floor(game.time),
+      w: { name: meta.name, seed: meta.seed, type: meta.type, gen: meta.gen ?? 1, mode: meta.mode, diff: game.difficulty, spawn: meta.spawn, time: Math.floor(game.time),
         rain: game.weather.raining ? 1 : 0 },
       you: meta.players?.[g.uid] ?? null, mk: playerKey(g.uid),
       keys: [...w.store.keys],
@@ -786,6 +786,12 @@ export class HostSession extends Session {
 
   chat(text) { this.say(`<${this.name}> ${text}`); }
 
+  // The world's difficulty changed: everyone plays at it (hunger works it out on each side).
+  setDifficulty(d) {
+    this.say(`The difficulty has been set to ${DIFFICULTIES[d]}`, 'y');
+    this.link.broadcast({ t: 'diff', d });
+  }
+
   setPvp(on) {
     this.pvp = on;
     this.say(on ? 'Players can now hurt each other' : 'Players can no longer hurt each other', 'y');
@@ -987,6 +993,7 @@ export class GuestSession extends Session {
       case 'eff': if (EFFECTS[msg.n] && num(msg.s) && !game.creative) game.addEffect(msg.n, clamp(msg.s, 0, 600), int(msg.l) ? clamp(msg.l, 1, 5) : 1); break;
       case 'pot': if (POTIONS[msg.n] && num(msg.k)) game.applyPotion(msg.n, clamp(msg.k, 0, 1), true); break;
       case 'pvp': this.pvp = !!msg.on; break;
+      case 'diff': if ([0, 1, 2, 3].includes(msg.d) && game.meta) game.meta.difficulty = msg.d; break;
       case 'fx': this.effect(msg); break;
       case 'sign':
         if (typeof msg.k === 'string' && /^-?\d+,-?\d+,-?\d+$/.test(msg.k) && Array.isArray(msg.l)) {

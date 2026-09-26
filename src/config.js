@@ -11,6 +11,8 @@ export const TICKS_PER_SECOND = 20;
 export const TICKS_PER_DAY = 24000;
 
 export const SAVE_VERSION = 2;
+// A world's difficulty, 0-3 (meta.difficulty).
+export const DIFFICULTIES = ['Peaceful', 'Easy', 'Normal', 'Hard'];
 
 export const blockIndex = (x, y, z) => (y << 8) | (z << 4) | x;
 export const chunkKey = (cx, cz) => ((cx & 0xffff) | ((cz & 0xffff) << 16)) >>> 0;

@@ -4,6 +4,7 @@ import { iconFor, setGlint } from './icons.js';
 import { shiny } from './enchanting.js';
 import { itemDef } from './items.js';
 import { EFFECTS, clock, roman } from './potions.js';
+import { DIFFICULTIES } from './config.js';
 import { BINDINGS, DEFAULT_KEYS, RESERVED, keyName } from './keys.js';
 
 export const $ = (id) => document.getElementById(id);
@@ -263,6 +264,13 @@ export const OPTIONS = [
   { action: 'keybinds', label: 'Key Binds...' },
 ];
 
+const DIFFICULTY_NOTES = [
+  'No monsters, and health and hunger come back by themselves.',
+  'Monsters do less harm, and hunger leaves you five hearts.',
+  'Minecraft as it comes: hunger can take you down to half a heart.',
+  'Monsters hit harder and skeletons shoot faster, and hunger can kill.',
+];
+
 const MODES = {
   survival: ['Survival', 'Gather resources, craft tools and stay alive.'],
   creative: ['Creative', 'Every block, unlimited. Fly and build freely.'],
@@ -288,7 +296,7 @@ export class UI {
     this.u = 3;
     this.selectedWorld = null;
     this.selectedGame = null;
-    this.createState = { mode: 'survival', type: 'default' };
+    this.createState = { mode: 'survival', type: 'default', difficulty: 2 };
 
     document.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-action]');
@@ -323,8 +331,10 @@ export class UI {
     $('create-form').addEventListener('submit', (e) => { e.preventDefault(); this.emit('create-world'); });
     this.on('cycle-mode', () => this.setCreate('mode', this.createState.mode === 'survival' ? 'creative' : 'survival'));
     this.on('cycle-type', () => this.setCreate('type', this.createState.type === 'default' ? 'flat' : 'default'));
+    this.on('cycle-create-difficulty', () => this.setCreate('difficulty', (this.createState.difficulty + 1) % 4));
     this.setCreate('mode', 'survival');
     this.setCreate('type', 'default');
+    this.setCreate('difficulty', 2);
     $('chat-input').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); this.emit('chat-send', $('chat-input').value); }
       else if (e.key === 'Escape') { e.preventDefault(); this.emit('chat-close'); }
@@ -638,6 +648,11 @@ export class UI {
 
   setCreate(kind, value) {
     this.createState[kind] = value;
+    if (kind === 'difficulty') {
+      $('cw-diff').textContent = `Difficulty: ${DIFFICULTIES[value]}`;
+      $('cw-diff-desc').textContent = DIFFICULTY_NOTES[value];
+      return;
+    }
     const [name, desc] = (kind === 'mode' ? MODES : TYPES)[value];
     $(`cw-${kind}`).textContent = `${kind === 'mode' ? 'Game Mode' : 'World Type'}: ${name}`;
     $(`cw-${kind}-desc`).textContent = desc;
@@ -811,11 +826,32 @@ export class UI {
     this.savingTimer = setTimeout(() => { el.hidden = true; }, 1800);
   }
 
+  showDifficulty(d, canChange) {
+    const b = $('opt-difficulty');
+    if (!b) return;
+    b.hidden = b.previousElementSibling.hidden = d === null;
+    if (d === null) return;
+    b.textContent = `Difficulty: ${DIFFICULTIES[d]}`;
+    b.disabled = !canChange;
+    b.title = canChange ? DIFFICULTY_NOTES[d] : 'The host sets the difficulty';
+  }
+
   // Builds the options screen: sliders with their value written across them, and ON/OFF buttons.
   bindSettings(settings, onChange) {
     const root = $('options');
     root.replaceChildren();
     this.scaleSlider = null;
+    // (Difficulty belongs to the world open, so it's only there while one is.)
+    const game = document.createElement('h3');
+    game.textContent = 'Game';
+    game.hidden = true;
+    const diff = document.createElement('button');
+    diff.type = 'button';
+    diff.className = 'btn';
+    diff.id = 'opt-difficulty';
+    diff.dataset.action = 'cycle-difficulty';
+    diff.hidden = true;
+    root.append(game, diff);
     for (const o of OPTIONS) {
       if (o.section) {
         const h = document.createElement('h3');
