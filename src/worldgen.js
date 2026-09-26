@@ -4,9 +4,9 @@
 // boulders, fallen trees). Pure functions of (seed, chunk), so it runs inside Web Workers and
 // every chunk agrees with its neighbours. (Worlds made since the cave update have the caves of
 // cavegen.js.)
-import { CHUNK, HEIGHT, SEA_LEVEL, CHUNK_VOLUME } from './config.js';
+import { CHUNK, HEIGHT, SEA_LEVEL, CHUNK_VOLUME, LATEST_GEN } from './config.js';
 import { Noise } from './noise.js';
-import { B, REPLACEABLE, FACING_VARIANTS, SOLID, WATERLIKE, NATURAL_LEAVES, DOUBLE, LOOT_CHEST } from './blocks.js';
+import { B, R, RENDER, BASE, WOOD, REPLACEABLE, FACING_VARIANTS, SOLID, WATERLIKE, NATURAL_LEAVES, DOUBLE, LOOT_CHEST } from './blocks.js';
 import { BIOME, OCEANS, toByte } from './biomes.js';
 import { hash2, hash3, hashString, mulberry32, smoothstep, lerp, clamp } from './math.js';
 import { TREES, WIDE_TREES, TREE_REACH } from './trees.js';
@@ -70,6 +70,13 @@ const TREE_TABLE = {
   [BIOME.MOUNTAINS]: [0.008, [[1, 'spruce'], [0.4, 'oak']]],
   [BIOME.WINDSWEPT_FOREST]: [0.03, [[1, 'spruce'], [0.5, 'oak'], [0.2, 'pine']]],
   [BIOME.FLAT]: [0, []],
+};
+// (Generator 9's two-wide giants need room clear of other trees round them, so a few more of them
+// are picked, to keep their share of the forest.)
+const TREE_TABLE9 = {
+  ...TREE_TABLE,
+  [BIOME.OLD_GROWTH_TAIGA]: [0.045, [[0.47, 'mega_spruce'], [0.4, 'tall_spruce'], [0.25, 'spruce']]],
+  [BIOME.JUNGLE]: [0.075, [[0.16, 'mega_jungle'], [0.45, 'jungle'], [0.5, 'jungle_bush']]],
 };
 // Flowers each biome grows.
 const FLOWERS = {
@@ -220,10 +227,11 @@ export class WorldGen {
   // `version`: 2 for worlds made before villages were spread further apart, 3 since, 4 for worlds
   // with settlements of every size (camps, hamlets, villages, towns and kingdoms), 5 for those with
   // the cave update's caves, 6 for those with the ocean update's seas, 7 for those with the biome
-  // update's bigger biomes (some rare) and jungle bamboo, and 8 for those with the world fixes:
-  // giant spruces closed over the top, ore veins sized like Minecraft's, rarer special caves and
-  // fewer cave mouths, and settlements whose gates and stairs can all be walked through.
-  constructor(seed, type = 'default', version = 8) {
+  // update's bigger biomes (some rare) and jungle bamboo, 8 for those with the world fixes: giant
+  // spruces closed over the top, ore veins sized like Minecraft's, rarer special caves and fewer
+  // cave mouths, and settlements whose gates and stairs can all be walked through; and 9 for those
+  // whose trees never touch one another and stand on the ground (see trees9).
+  constructor(seed, type = 'default', version = LATEST_GEN) {
     this.seed = seed >>> 0;
     this.type = type;
     this.version = version;
@@ -235,6 +243,7 @@ export class WorldGen {
     this.nCaveA = n('caveA'); this.nCaveB = n('caveB'); this.nCheese = n('cheese'); this.nSurf = n('surface');
     this.col = {};
     this.columns = new Map(); // columns looked up outside the chunk being made (tree roots)
+    this.trees9memo = new Map(); this.plans9memo = new Map(); // (generator 9's trees: see treeAt9)
     this.caves = version >= 5 ? new CaveGen(this.seed, version) : null;
     this.sea = version >= 6 ? new SeaGen(this.seed) : null;
     this.nIsle = n('islands');
@@ -457,7 +466,7 @@ export class WorldGen {
       }
       return { blocks, climate, biomes };
     }
-    this.columns.clear();
+    this.columns.clear(); this.trees9memo.clear(); this.plans9memo.clear();
     const x0 = cx * CHUNK, z0 = cz * CHUNK, seed = this.seed;
     const idx = (x, y, z) => (y << 8) | (z << 4) | x;
 
@@ -729,11 +738,14 @@ export class WorldGen {
     if (this.sea) this.sea.decorate({ blocks, x0, z0, TOP, BIO, GW });
 
     // 7. Small structures: dungeons, wells, ice spikes, icebergs, boulders, fallen logs.
+    // (Generator 9's trunks stand in the water of a swamp rather than starting on top of it.)
+    const v9 = this.version >= 9;
     const put = (wx, y, wz, id, isLog = false, onlyAir = false) => {
       const x = wx - x0, z = wz - z0;
       if (x < 0 || x > 15 || z < 0 || z > 15 || y < 1 || y >= HEIGHT) return false;
       const i = idx(x, y, z), cur = blocks[i];
-      if (cur === 0 || (!onlyAir && ((REPLACEABLE[cur] && !WATERLIKE[cur]) || cur === B.tall_grass || cur === B.fern || (isLog && NATURAL_LEAVES[cur])))) {
+      if (cur === 0 || (!onlyAir && ((REPLACEABLE[cur] && !WATERLIKE[cur]) || cur === B.tall_grass || cur === B.fern || (isLog && NATURAL_LEAVES[cur])
+        || (v9 && isLog && WATERLIKE[cur] === 1)))) {
         blocks[i] = id;
         return true;
       }
@@ -824,7 +836,8 @@ export class WorldGen {
     }
 
     // 9. Trees, including those rooted nearby whose crowns reach into this chunk.
-    for (let wz = z0 - TREE_REACH; wz < z0 + 16 + TREE_REACH; wz++) {
+    if (v9) this.trees9(blocks, x0, z0, put);
+    else for (let wz = z0 - TREE_REACH; wz < z0 + 16 + TREE_REACH; wz++) {
       for (let wx = x0 - TREE_REACH; wx < x0 + 16 + TREE_REACH; wx++) {
         const roll = hash2(wx, wz, seed ^ 0x7ee);
         if (roll > 0.08) continue;
@@ -882,6 +895,134 @@ export class WorldGen {
     // 10. Villages.
     for (const p of villagePieces(this, cx, cz, vplans)) p(set);
     return { blocks, climate, biomes };
+  }
+
+  // ---------------------------------------------------------------- generator 9's trees
+  // Generator 9 decides each tree from the lie of the land alone, never from the blocks of the
+  // chunk being made, so every chunk a tree reaches into agrees about it (a crown never grows where
+  // its trunk's own chunk said no). No tree touches another, not even corner to corner: of two that
+  // would, the one with the lower roll grows. And a trunk stands on the ground: the plants in its
+  // way go, and a two-wide trunk's lower corners reach down to their own ground.
+  trees9(blocks, x0, z0, put) {
+    const idx = (x, y, z) => (y << 8) | (z << 4) | x;
+    for (let wz = z0 - TREE_REACH; wz < z0 + 16 + TREE_REACH; wz++) {
+      for (let wx = x0 - TREE_REACH; wx < x0 + 16 + TREE_REACH; wx++) {
+        const t = this.treeAt9(wx, wz);
+        if (!t || this.crowded9(wx, wz, t)) continue;
+        // Clear the trunk's columns (those in this chunk) of plants, up from their own ground.
+        for (const [dx, dz, g] of t.feet) {
+          const x = wx + dx - x0, z = wz + dz - z0;
+          if (x < 0 || x > 15 || z < 0 || z > 15) continue;
+          for (let y = g + 1; y < HEIGHT; y++) {
+            const c = blocks[idx(x, y, z)];
+            if (WATERLIKE[c] && y <= SEA_LEVEL) continue; // (a swamp's water: the trunk goes in it)
+            if (c === 0 || !(RENDER[c] === R.CROSS && !SOLID[c]) && c !== B.melon && BASE[c] !== B.pumpkin && c !== B.lily_pad) break;
+            blocks[idx(x, y, z)] = 0;
+          }
+        }
+        const rnd = mulberry32(Math.floor(hash2(wx, wz, this.seed ^ 0x1ee7) * 4294967296));
+        if (!t.palm && !t.azalea) rnd(); // (the draw that picked its kind)
+        TREES[t.kind](put, wx, t.h + 1, wz, rnd, this.version);
+        // A two-wide trunk's corner on lower ground reaches down to it.
+        if (t.wide) {
+          const log = WOOD[t.kind === 'mega_spruce' ? 'spruce' : t.kind === 'mega_jungle' ? 'jungle' : 'dark_oak'].log;
+          for (const [dx, dz, g] of t.feet) for (let y = g + 1; y <= t.h; y++) put(wx + dx, y, wz + dz, log, true);
+        }
+        // An azalea's roots reach down through rooted dirt towards the cave below.
+        if (t.azalea && wx >= x0 && wx < x0 + 16 && wz >= z0 && wz < z0 + 16) {
+          const depth = 4 + Math.floor(hash2(wz, wx, this.seed ^ 0x2007) * 5);
+          for (let y = t.h; y > t.h - depth && y > 1; y--) {
+            const i = idx(wx - x0, y, wz - z0);
+            if (blocks[i] === 0 || WATERLIKE[blocks[i]]) break;
+            blocks[i] = B.rooted_dirt;
+          }
+        }
+      }
+    }
+  }
+  // The tree rooted at (wx, wz), or null: { roll, h (its ground), kind, wide, palm, azalea, feet:
+  // [[dx, dz, ground]...] for each trunk column }. Remembered for the chunk being made.
+  treeAt9(wx, wz) {
+    const k = `${wx},${wz}`;
+    let t = this.trees9memo.get(k);
+    if (t === undefined) { t = this.decideTree9(wx, wz); this.trees9memo.set(k, t); }
+    return t;
+  }
+  decideTree9(wx, wz) {
+    const seed = this.seed, roll = hash2(wx, wz, seed ^ 0x7ee);
+    if (roll > 0.08) return null;
+    const col = this.rootColumn(wx, wz), table = TREE_TABLE9[col.biome], caves = this.caves;
+    // (Azalea trees stand over lush caves; palms on warm shores.)
+    const azalea = caves && roll < 0.005 && AZALEA_GROUND.has(col.biome) && caves.lushAt(wx, wz);
+    const palm = this.sea && col.biome === BIOME.BEACH && col.temp > 0.28 && roll < 0.03 && this.palmSpot(wx, wz, roll);
+    if (!azalea && !palm && (!table || roll >= table[0])) return null;
+    // Settlements' grounds and the roads out of their gates, as the root's own chunk has them.
+    const h = this.ground9(wx, wz, col.h);
+    const plans = this.plans9(wx, wz);
+    if (plans.length && (insideVillage(plans, wx, wz, 4) || approachAt(plans, wx, wz, col.h))) return null;
+    if (h <= SEA_LEVEL - (col.biome === BIOME.SWAMP ? 2 : palm ? 1 : 0) || h > HEIGHT - 40) return null;
+    if (!this.soil9(wx, wz, h, col, palm)) return null;
+    if (caves ? caves.surfaceCarved(wx, h, wz) : this.caveAt(wx, h, wz)) return null;
+    let kind = palm ? 'palm' : 'azalea';
+    if (!azalea && !palm) {
+      const rnd = mulberry32(Math.floor(hash2(wx, wz, seed ^ 0x1ee7) * 4294967296));
+      let pickT = rnd() * table[1].reduce((a, [w]) => a + w, 0);
+      kind = table[1][0][1];
+      for (const [w, k] of table[1]) { if ((pickT -= w) <= 0) { kind = k; break; } }
+    }
+    const feet = [[0, 0, h]];
+    // Two-wide trees need their four trunk columns within a block of one another.
+    if (WIDE_TREES.has(kind)) {
+      const corners = [[1, 0], [0, 1], [1, 1]].map(([a, b]) => [a, b, this.ground9(wx + a, wz + b, this.rootColumn(wx + a, wz + b).h)]);
+      if (corners.every(([, , g]) => Math.abs(g - h) <= 1)) feet.push(...corners);
+      else kind = kind === 'dark_oak' ? 'oak' : kind === 'mega_jungle' ? 'jungle' : 'tall_spruce';
+    }
+    return { roll, h, kind, wide: feet.length > 1, palm, azalea, feet };
+  }
+  // Settlements near the chunk that (x, z) is in, and a column's ground as that chunk levels it.
+  plans9(x, z) {
+    const k = `${x >> 4},${z >> 4}`;
+    let p = this.plans9memo.get(k);
+    if (!p) { p = villagesNear(this, x >> 4, z >> 4); this.plans9memo.set(k, p); }
+    return p;
+  }
+  ground9(x, z, natural) {
+    const plans = this.plans9(x, z);
+    const lv = plans.length ? groundLevel(plans, x, z, natural) : -1;
+    return lv >= 0 ? lv : natural;
+  }
+  // Whether the ground at (x, z) is soil a tree grows in, by step 3's rules for the surface
+  // (bare rock on steep slopes), from the heights of the columns about it.
+  soil9(x, z, h, col, palm) {
+    const plans = this.plans9(x, z);
+    let slope = 0, eased = false;
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const n = this.rootColumn(x + dx, z + dz), lv = plans.length ? groundLevel(plans, x + dx, z + dz, n.h) : -1;
+      slope = Math.max(slope, Math.abs((lv >= 0 ? lv : n.h) - h));
+    }
+    if (plans.length && groundLevel(plans, x, z, col.h) >= 0) eased = true;
+    if ((eased ? Math.min(col.mount, 0.2) : col.mount) > 0.2 && slope >= 5) return false;
+    if (palm) return true;
+    switch (col.biome) {
+      case BIOME.MOUNTAINS: case BIOME.WINDSWEPT_FOREST: return slope < 4;
+      case BIOME.SNOWY_PLAINS: case BIOME.SNOWY_TAIGA: case BIOME.ICE_SPIKES: case BIOME.OLD_GROWTH_TAIGA: case BIOME.SAVANNA: return true;
+      default: return slope < 5;
+    }
+  }
+  // Whether a tree at (wx, wz) gives way to one beside it (touching it, or corner to corner) that
+  // rolled lower.
+  crowded9(wx, wz, t) {
+    const w = t.wide ? 1 : 0;
+    for (let dz = -2; dz <= 1 + w; dz++) for (let dx = -2; dx <= 1 + w; dx++) {
+      if (!dx && !dz) continue;
+      const q = hash2(wx + dx, wz + dz, this.seed ^ 0x7ee);
+      if (q > t.roll || (q === t.roll && (dz > 0 || (dz === 0 && dx > 0)))) continue;
+      const o = this.treeAt9(wx + dx, wz + dz);
+      if (!o) continue;
+      const v = o.wide ? 1 : 0;
+      if (Math.max(dx - w, -dx - v) <= 1 && Math.max(dz - w, -dz - v) <= 1) return true;
+    }
+    return false;
   }
 
   // Structures that fit inside a chunk or poke a little over its edge. `set` writes a block,

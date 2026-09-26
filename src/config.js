@@ -6,6 +6,8 @@ export const SECTIONS = HEIGHT / SECTION;
 export const CHUNK_AREA = CHUNK * CHUNK;
 export const CHUNK_VOLUME = CHUNK_AREA * HEIGHT;
 export const SEA_LEVEL = 63;
+// The world generator new worlds get (see WorldGen in worldgen.js).
+export const LATEST_GEN = 9;
 
 export const TICKS_PER_SECOND = 20;
 export const TICKS_PER_DAY = 24000;

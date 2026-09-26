@@ -17,7 +17,7 @@ import { B, BLOCKS, REPLACEABLE, CHEST, FURNACE_IDS, SIGN, RAIL } from './blocks
 import { itemDef, maxStack } from './items.js';
 import { extras, cleanExtras } from './inventory.js';
 import { shiny } from './enchanting.js';
-import { chunkKey, HEIGHT, CHUNK_VOLUME, DIFFICULTIES } from './config.js';
+import { chunkKey, HEIGHT, CHUNK_VOLUME, DIFFICULTIES, LATEST_GEN } from './config.js';
 import { S_READY, rayBox } from './world.js';
 import { clamp, hashString } from './math.js';
 import { startRide, seatY, BOAT_WOODS } from './riding.js';
@@ -504,6 +504,9 @@ export class HostSession extends Session {
   hello(addr, msg) {
     const deny = (why) => { this.send(addr, { t: 'deny', why }); this.link.flush(); };
     if (msg.v !== PROTOCOL) { deny('That game is running a different version of Blockhaven. Reload the page, both of you.'); return; }
+    // (A page from before this world's generator would build other land round the edits: it says
+    // which it knows, and older ones knew up to generator 8.)
+    if ((this.game.meta.gen ?? 1) > (Number.isInteger(msg.mg) ? msg.mg : 8)) { deny('That world was made by a newer version of Blockhaven. Reload the page to join.'); return; }
     let g = this.guests.get(addr);
     if (!g) {
       if (this.guests.size >= MAX_GUESTS) { deny('That game is full.'); return; }
@@ -944,7 +947,7 @@ export class GuestSession extends Session {
 
   hello(again = false) {
     this.link.listen(this.hostAddr);
-    this.toHost({ t: 'hi', v: PROTOCOL, n: this.name, u: playerUid(), z: DEFLATE ? 1 : 0 });
+    this.toHost({ t: 'hi', v: PROTOCOL, n: this.name, u: playerUid(), z: DEFLATE ? 1 : 0, mg: LATEST_GEN });
     this.link.flush();
     if (again) return null;
     return new Promise((resolve, reject) => {

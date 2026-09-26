@@ -49,7 +49,7 @@ import { ITEMS, I, itemDef, itemLabel, breakTime, dropsFor, attackDamage, attack
 import { BIOME_NAMES, BIOME } from './biomes.js';
 import { MOBS } from './mobs.js';
 import { EGG_TYPES, eggLabel } from './eggs.js';
-import { CHUNK_VOLUME, HEIGHT, TICKS_PER_DAY, SAVE_VERSION, DIFFICULTIES } from './config.js';
+import { CHUNK_VOLUME, HEIGHT, TICKS_PER_DAY, SAVE_VERSION, DIFFICULTIES, LATEST_GEN } from './config.js';
 import { seedFromText, clamp, hashString, mat4, identity, translate, rotateX, rotateZ } from './math.js';
 
 const SETTINGS_KEY = 'blockhaven.settings';
@@ -454,7 +454,7 @@ export class Game {
     const { mode, type, difficulty } = this.ui.createState;
     const meta = {
       id: `w${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`,
-      name, seed, seedText, mode, type, difficulty, gen: 8, created: Date.now(), lastPlayed: Date.now(), time: 1000,
+      name, seed, seedText, mode, type, difficulty, gen: LATEST_GEN, created: Date.now(), lastPlayed: Date.now(), time: 1000,
       spawn: null, player: null, inventory: null, version: SAVE_VERSION,
     };
     await storage.saveWorld(meta);
@@ -575,7 +575,7 @@ export class Game {
     const world = w.w;
     const meta = {
       id: `mp-${session.gid}`, name: String(world.name ?? 'World').slice(0, 32), seed: world.seed >>> 0,
-      type: world.type === 'flat' ? 'flat' : 'default', gen: [2, 3, 4, 5, 6, 7, 8].includes(world.gen) ? world.gen : 1,
+      type: world.type === 'flat' ? 'flat' : 'default', gen: Number.isInteger(world.gen) && world.gen >= 2 && world.gen <= LATEST_GEN ? world.gen : 1,
       mode: you?.mode === 'creative' || (!you?.mode && world.mode === 'creative') ? 'creative' : 'survival',
       spawn: world.spawn && Number.isFinite(world.spawn.x) && Number.isFinite(world.spawn.z) ? { x: world.spawn.x, y: world.spawn.y ?? null, z: world.spawn.z } : { x: 0.5, y: null, z: 0.5 },
       time: Number.isFinite(world.time) ? world.time : 1000, weather: { raining: !!world.rain },
