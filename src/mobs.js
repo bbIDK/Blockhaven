@@ -335,7 +335,7 @@ export function mobTick(ents, e) {
   }
   if (e.rider) { riddenTick(ents, e); return; }
   if (e.leash && leashTick(ents, e)) { lookTick(ents, e); return; }
-  if (e.owner && petTick(ents, e)) { lookTick(ents, e); return; }
+  if (e.owner && petTick(ents, e)) { detourTick(ents, e); lookTick(ents, e); return; }
   if (t.flies === 'phantom') phantomTick(ents, e);
   else if (t.flies === 'soar') soarTick(ents, e);
   else if (t.flies === 'insect') insectTick(ents, e);
@@ -348,6 +348,7 @@ export function mobTick(ents, e) {
     case 'civilian': ents.civilians?.think(e); break;
     default: animalTick(ents, e);
   }
+  detourTick(ents, e);
   lookTick(ents, e);
   if (t.sound && Math.random() < (t.hostile ? 0.005 : 0.003)) game.audio.mob(t.sound, 'say', { x: e.x, y: e.y + e.h * 0.8, z: e.z }, t.pitch);
 }
@@ -403,8 +404,60 @@ function wander(e, chance = 0.4) {
   else { e.moving = true; e.yaw = Math.random() * TAU; e.wander = 30 + Math.floor(Math.random() * 70); }
   e.speedMul = 1;
 }
-const faceTowards = (e, x, z) => { e.yaw = Math.atan2(-(x - e.x), -(z - e.z)); };
-const faceAway = (e, x, z) => { e.yaw = Math.atan2(x - e.x, z - e.z); };
+// (Each notes where the creature is making for, or getting away from, for detourTick.)
+const faceTowards = (e, x, z) => { e.yaw = Math.atan2(-(x - e.x), -(z - e.z)); e.goal = true; e.goalX = x; e.goalZ = z; };
+const faceAway = (e, x, z) => { e.yaw = Math.atan2(x - e.x, z - e.z); e.goal = true; e.goalX = x; e.goalZ = z; };
+// Balked (it walked into something it can't jump, see mobPhysics): wandering about, a creature
+// turns away, as it does at a cliff's edge; going somewhere (after food, a mate, its owner or its
+// prey, or away from danger), it looks along the obstacle for the nearest way past and goes round
+// that way; with none near (a long fence), or after a few tries, it gives up for a while: it stands
+// and looks, until what it was after moves off. (Not what flies, swims, climbs or hops about as
+// slimes do, nor villagers, who have routes of their own.)
+function detourTick(ents, e) {
+  const t = e.def, goal = e.goal, balked = e.balked;
+  e.goal = false; e.balked = false;
+  if (t.flies || t.climbs || t.sized || t.kind === 'water' || t.kind === 'civilian') return;
+  if (!goal) {
+    e.bumps = e.detour = e.stuck = 0;
+    if (balked) { e.yaw += Math.PI * (0.5 + Math.random()); e.wander = Math.max(e.wander, 20); }
+    return;
+  }
+  if (e.stuck > 0) {
+    e.stuck--;
+    if (Math.hypot(e.goalX - e.stuckX, e.goalZ - e.stuckZ) < 3) { e.moving = false; return; }
+    e.stuck = 0;
+  }
+  if (balked) {
+    e.detourCalm = 0;
+    const way = ++e.bumps <= 4 && wayRound(ents.world, e, e.bumps > 1 ? e.detourSide : 0);
+    if (!way) { e.stuck = 200; e.stuckX = e.goalX; e.stuckZ = e.goalZ; e.bumps = e.detour = 0; e.moving = false; return; }
+    e.detourSide = way.side;
+    e.detour = Math.min(200, Math.ceil((20 * (way.d + 0.4)) / Math.max(0.3, t.speed * (e.speedMul || 1))));
+  } else if (!e.detour && (e.detourCalm = (e.detourCalm ?? 0) + 1) > 60) e.bumps = 0;
+  if (e.detour > 0) {
+    if (e.moving) { e.detour--; e.yaw += (e.detourSide * Math.PI) / 2; } else e.detour = 0;
+  }
+}
+// The nearest place along the obstacle `e` has walked into (up to 8 blocks either way, with a clear
+// way there, and not over a drop) from which it could carry on the way it's facing, or jump on:
+// which side (1: to its left, turning by +90 degrees; -1: to its right) and how far, or null. (At
+// the same distance either way, the `prefer`red side: the way it was already going round.)
+function wayRound(w, e, prefer) {
+  const fx = -Math.sin(e.yaw), fz = -Math.cos(e.yaw), open = { 1: true, [-1]: true };
+  const first = prefer || (Math.random() < 0.5 ? 1 : -1);
+  for (let d = 1; d <= 8; d++) {
+    for (const side of [first, -first]) {
+      if (!open[side]) continue;
+      const x = side * fz * d, z = -side * fx * d;
+      // (Blocked that way, or no ground within a block below: no further that way.)
+      if (e.collides(w, x, 0, z) || !e.collides(w, x, -1.05, z)) { open[side] = false; continue; }
+      const ax = x + fx * 0.6, az = z + fz * 0.6;
+      if (!e.collides(w, ax, 0, az) || (!e.collides(w, x, 1.01, z) && !e.collides(w, ax, 1.01, az))) return { side, d };
+    }
+    if (!open[1] && !open[-1]) break;
+  }
+  return null;
+}
 const dist2 = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 // (Where a kind has males and females that look different, the variant's lowest bit says which.)
 export const isMale = (e) => (e.variant & 1) === 1;
@@ -1459,14 +1512,31 @@ export function mobPhysics(ents, e, dt, fluid) {
     if (onLadder) e.vy = e.climb ? e.climb * 2.6 : Math.max(e.vy, -1.6);
   }
   if (e.leash && !ents.guest) leashPull(ents, e, dt);
-  e.move(w, e.vx * dt, e.vy * dt, e.vz * dt);
+  // Walking along the ground, it steps up onto anything low (a slab, a stair, snow, the edge of a
+  // path) as the player does, rather than jumping at it, and is drawn rising smoothly onto it.
+  // (Not slimes: they hop everywhere.)
+  if (wasGround && !fluid && !t.sized) e.stepSmooth = (e.stepSmooth ?? 0) - e.moveStepping(w, e.vx * dt, e.vy * dt, e.vz * dt, 0.6);
+  else e.move(w, e.vx * dt, e.vy * dt, e.vz * dt);
+  if (e.stepSmooth) e.stepSmooth = e.stepSmooth > -0.002 ? 0 : e.stepSmooth * Math.exp(-dt * 14);
   if (e.hitWall && speed) {
     if (t.climbs) e.vy = Math.max(e.vy, 3.5);
-    // (In water too: that's how anything swimming gets back up onto the bank.)
-    else if (e.onGround || wasGround || fluid) e.vy = t.hops ? 7.5 : t.leaps ? 9.5 : 8.6;
+    // A block up, it jumps (in water too: that's how anything swimming gets back up onto the bank);
+    // but not at what it can't get over, a fence or a wall two high, or a step with no room above
+    // it: it tries another way instead (see detourTick). Ridden, or a villager (who has a route to
+    // follow) or a slime, it always jumps.
+    else if (e.onGround || wasGround || fluid) {
+      const jump = t.leaps ? 9.5 : 8.6, ax = fx * 0.3, az = fz * 0.3;
+      if (fluid || e.rider || t.sized || t.kind === 'civilian') e.vy = jump;
+      // (Only when something's in the way ahead, not when just brushing along a wall.)
+      else if (e.collides(w, ax, 0, az)) {
+        if (!e.collides(w, 0, 1.01, 0) && !e.collides(w, ax, 1.01, az)) e.vy = jump;
+        // (Walking into it, that is: not sliding along it on the way round.)
+        else if (e.vx * fx + e.vz * fz < speed * 0.5) e.balked = true;
+      }
+    }
   }
-  // Rabbits move in hops.
-  if (t.hops && speed && e.onGround) e.vy = 5.5;
+  // Rabbits move in hops (a jump up a block goes higher).
+  if (t.hops && speed && e.onGround) e.vy = Math.max(e.vy, 5.5);
   if (t.sized && e.onGround && !wasGround && vyBefore < -2) {
     e.squish = -0.6;
     e.vx *= 0.3; e.vz *= 0.3;

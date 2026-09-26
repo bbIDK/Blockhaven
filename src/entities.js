@@ -1292,7 +1292,8 @@ export class Entities {
         // turning, for shadows cast into view, and for the whales, much longer than they're wide.)
         const R = (e.def.deep ? 16 : Math.max(e.hw * 2, e.h)) + 3;
         if (!boxInFrustum(r.planes, rx - R, ry - R, rz - R, rx + R, ry + e.h + R, rz + R)) continue;
-        renderMob(this, e, rx, ry, rz, light, out);
+        // (Drawn rising smoothly onto a slab or a stair it has stepped up onto.)
+        renderMob(this, e, rx, ry + (e.stepSmooth ?? 0), rz, light, out);
       } else if (isHanging(e)) {
         drawHanging(this, e, cam, () => this.mat(), out);
       }

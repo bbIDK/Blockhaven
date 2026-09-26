@@ -69,4 +69,32 @@ export class Body {
     if (hitZ) this.vz = 0;
     this.hitWall = hitX || hitZ;
   }
+
+  // As move, for something walking along the ground: when it walks into something no higher than
+  // `step` (a slab, a stair, snow, the edge of a path), it steps up onto it, as the player does,
+  // instead of stopping against it. Returns how far up it stepped.
+  moveStepping(world, dx, dy, dz, step) {
+    const x0 = this.x, y0 = this.y, z0 = this.z, vx = this.vx, vz = this.vz;
+    this.move(world, dx, dy, dz);
+    if (!this.hitWall || dy > 0) return 0;
+    const ax = this.x, ay = this.y, az = this.z, avx = this.vx, avz = this.vz, ground = this.onGround;
+    this.x = x0; this.y = y0; this.z = z0;
+    this.moveAxis(world, 1, step);
+    const lift = this.y - y0, n = Math.max(1, Math.ceil(Math.max(Math.abs(dx), Math.abs(dz)) / 0.45));
+    let hitX = false, hitZ = false;
+    for (let i = 0; i < n; i++) {
+      if (this.moveAxis(world, 0, dx / n)) hitX = true;
+      if (this.moveAxis(world, 2, dz / n)) hitZ = true;
+    }
+    this.moveAxis(world, 1, -lift - 1e-3);
+    const plain = (ax - x0) ** 2 + (az - z0) ** 2, stepped = (this.x - x0) ** 2 + (this.z - z0) ** 2;
+    if (stepped > plain + 1e-8 && this.y > y0 + 1e-4) {
+      this.onGround = true; this.vy = 0;
+      this.vx = hitX ? 0 : vx; this.vz = hitZ ? 0 : vz;
+      this.hitWall = hitX || hitZ;
+      return this.y - y0;
+    }
+    this.x = ax; this.y = ay; this.z = az; this.vx = avx; this.vz = avz; this.onGround = ground;
+    return 0;
+  }
 }

@@ -116,7 +116,8 @@ export function boatPhysics(w, e, dt, drive) {
 // front, so where they "stand" is that far below their hips (they're drawn from their feet).
 export const SEAT = { boat: 0.25, cart: 0.42, horse: 1.38 };
 const HIP = 0.75;
-export const seatY = (e) => e.y + (SEAT[e.kind] ?? e.def?.seat ?? SEAT.horse) - HIP;
+// (A mount stepping up onto a slab or a stair lifts its rider smoothly with it; see mobPhysics.)
+export const seatY = (e) => e.y + (e.stepSmooth ?? 0) + (SEAT[e.kind] ?? e.def?.seat ?? SEAT.horse) - HIP;
 
 // Someone (`rider`: 'me', or a guest's address on the host) gets on. An untamed horse gives them
 // a few seconds before it decides what it thinks of that.
