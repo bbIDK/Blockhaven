@@ -3,14 +3,17 @@
 // Transports carry small JSON packets and each player's "presence" (a little public object: name,
 // position, held item) between browsers:
 //   - RoomTransport uses the claude.ai room: everyone who has this page open there right now.
-//   - PeerTransport uses PeerJS (WebRTC) with a six-letter join code, and works anywhere else.
+//   - PeerTransport uses PeerJS (WebRTC) with a six-letter join code, and works anywhere else;
+//     where two browsers can't connect directly, RelayTransport (relay.js) carries the game instead.
 // Link turns packets into reliable, ordered message streams: it packs small messages together,
 // splits big ones, numbers everything, and asks again for whatever a transport dropped.
 // The game protocol on top lives in multiplayer.js.
 
 export const PROTOCOL = 3;
 const TOPIC = 'bh';
-const PEERJS_URL = 'https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js';
+// PeerJS (MIT licence) comes with the game, in src/vendor (the single-file build has it inline),
+// with a CDN to fall back on.
+const PEERJS_URLS = [new URL('./vendor/peerjs.min.js', import.meta.url).href, 'https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js'];
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const PEER_PREFIX = 'blockhaven-';
 
@@ -71,6 +74,7 @@ export class RoomTransport {
   constructor(room) {
     this.room = room;
     this.kind = 'room';
+    this.prefix = 'r:';
     this.me = room.peers().find((p) => p.sameTab)?.peer ?? null;
     this.connected = room.connected();
     this.canEmit = true;
@@ -269,13 +273,13 @@ function loadScript(src) {
   });
 }
 
-// PeerJS comes from a CDN the first time it's needed (three tries, for flaky connections).
+// PeerJS is loaded the first time it's needed (three tries, for flaky connections).
 export function loadPeerJS() {
   if (globalThis.Peer) return Promise.resolve(globalThis.Peer);
   peerjsPromise ??= (async () => {
     for (let i = 0; i < 3; i++) {
       try {
-        await loadScript(i ? `${PEERJS_URL}?retry=${i}` : PEERJS_URL);
+        await loadScript(i < 2 ? PEERJS_URLS[i] : `${PEERJS_URLS[1]}?retry=${i}`);
         if (globalThis.Peer) return globalThis.Peer;
       } catch { await new Promise((r) => setTimeout(r, 600 * (i + 1))); }
     }
@@ -293,8 +297,9 @@ export function randomCode() {
 
 export const cleanCode = (text) => text.toUpperCase().replace(/[^A-Z0-9]/g, '');
 
+export const NO_GAME = 'No game with that code is running. Check the code, and that your friend’s game is open.';
 const PEER_ERRORS = {
-  'peer-unavailable': 'No game with that code is running. Check the code, and that your friend’s game is open.',
+  'peer-unavailable': NO_GAME,
   network: 'Couldn’t reach the multiplayer server. Check your internet connection.',
   'server-error': 'The multiplayer server isn’t answering right now. Try again in a minute.',
   'socket-error': 'Couldn’t reach the multiplayer server. Check your internet connection.',
@@ -302,15 +307,36 @@ const PEER_ERRORS = {
   'browser-incompatible': 'This browser can’t make direct connections (WebRTC).',
   webrtc: 'Couldn’t connect to your friend directly. One of your networks may be blocking it.',
 };
-const peerError = (e) => new Error(PEER_ERRORS[e?.type] ?? e?.message ?? 'Connection failed');
+const peerError = (e) => Object.assign(new Error(PEER_ERRORS[e?.type] ?? e?.message ?? 'Connection failed'), { type: e?.type });
+
+// Direct connections find their way through each side's router with STUN, and where there's no way
+// through, by a TURN relay. PeerJS's own TURN servers are gone, so these are the Open Relay
+// Project's free ones (metered.ca), on ports 80 and 443 over UDP, TCP and TLS so that they get
+// through most firewalls. They take short-lived passwords made from a shared secret.
+const enc = (s) => new TextEncoder().encode(s);
+export async function iceServers() {
+  const list = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }];
+  try {
+    const username = `${Math.floor(Date.now() / 1000) + 24 * 3600}:blockhaven`;
+    const key = await crypto.subtle.importKey('raw', enc('openrelayprojectsecret'), { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
+    const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, enc(username)));
+    const host = 'staticauth.openrelay.metered.ca';
+    list.push({
+      urls: [`turn:${host}:80`, `turn:${host}:80?transport=tcp`, `turn:${host}:443`, `turns:${host}:443?transport=tcp`],
+      username, credential: btoa(String.fromCharCode(...sig)),
+    });
+  } catch { /* (no WebCrypto off a secure page: STUN alone) */ }
+  return list;
+}
 
 // The host listens under a join code; guests connect to it. Presence goes through the host,
 // which passes everyone's on to everyone else.
 export class PeerTransport {
-  static async host(tries = 4) {
+  // `first`: the code to try first (another is picked if it's taken).
+  static async host(tries = 4, first = null) {
     const Peer = await loadPeerJS();
     for (let i = 0; i < tries; i++) {
-      const code = randomCode();
+      const code = i === 0 && first ? first : randomCode();
       try {
         const peer = await PeerTransport.openPeer(Peer, PEER_PREFIX + code);
         return new PeerTransport(peer, code, null);
@@ -326,7 +352,7 @@ export class PeerTransport {
     const peer = await PeerTransport.openPeer(Peer, null).catch((e) => { throw peerError(e); });
     const conn = peer.connect(PEER_PREFIX + code, { reliable: true, serialization: 'json' });
     await new Promise((resolve, reject) => {
-      const t = setTimeout(() => reject(new Error('Your friend’s game didn’t answer. Check the code and try again.')), 20000);
+      const t = setTimeout(() => reject(Object.assign(new Error('Your friend’s game didn’t answer. Check the code and try again.'), { type: 'timeout' })), 15000);
       conn.on('open', () => { clearTimeout(t); resolve(); });
       conn.on('error', (e) => { clearTimeout(t); reject(peerError(e)); });
       peer.on('error', (e) => { clearTimeout(t); reject(peerError(e)); });
@@ -334,10 +360,11 @@ export class PeerTransport {
     return new PeerTransport(peer, code, conn);
   }
 
-  static openPeer(Peer, id) {
+  static async openPeer(Peer, id) {
+    const config = { iceServers: await iceServers() };
     return new Promise((resolve, reject) => {
       // (BLOCKHAVEN_PEER_SERVER can point at another PeerJS server: { host, port, path, secure }.)
-      const opts = { debug: 0, ...(globalThis.BLOCKHAVEN_PEER_SERVER ?? {}) };
+      const opts = { debug: 0, config, ...(globalThis.BLOCKHAVEN_PEER_SERVER ?? {}) };
       const peer = id ? new Peer(id, opts) : new Peer(opts);
       const t = setTimeout(() => { peer.destroy(); reject({ type: 'network' }); }, 15000);
       const onOpen = () => { clearTimeout(t); peer.off('error', onError); resolve(peer); };
@@ -351,6 +378,7 @@ export class PeerTransport {
     this.peer = peer;
     this.code = code;
     this.kind = 'peer';
+    this.prefix = 'p:';
     this.isHost = !hostConn;
     this.hostAddr = `p:${PEER_PREFIX}${code}`;
     this.me = `p:${peer.id}`;
@@ -440,6 +468,13 @@ export class PeerTransport {
 
   setPresence(obj) { this.presence = obj; }
 
+  // Another transport's player (a host's guests here and through the relay see each other).
+  injectPresence(addr, pres) {
+    if (!this.isHost) return;
+    if (pres) this.states.set(addr, pres); else this.states.delete(addr);
+    this.relay.set(addr, pres ?? null);
+  }
+
   pump() {
     const now = performance.now();
     if (now - this.lastPresence < 66) return;
@@ -495,10 +530,14 @@ export class Link {
   addTransport(t) {
     this.transports.push(t);
     t.onPacket = (from, pkt) => this.receive(from, pkt);
-    t.onPresence = (addr, pres) => this.onPresence?.(addr, pres);
+    t.onPresence = (addr, pres) => {
+      this.onPresence?.(addr, pres);
+      // (A host's guests on one transport hear about those on another.)
+      for (const o of this.transports) if (o !== t) o.injectPresence?.(addr, pres);
+    };
   }
 
-  transportFor(addr) { return this.transports.find((t) => addr.startsWith(t.kind === 'room' ? 'r:' : 'p:')); }
+  transportFor(addr) { return this.transports.find((t) => addr.startsWith(t.prefix)); }
 
   stream(key) {
     let s = this.out.get(key);

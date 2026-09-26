@@ -21,7 +21,10 @@ Worlds save automatically in your browser (IndexedDB), on that device only.
 One player hosts: open a world, press `Esc` and choose **Open to Friends**. Everyone else chooses **Multiplayer** on the title screen.
 
 - **On claude.ai:** share the page with your friends (they need to be signed in). The host picks **Open on This Page**, and the world shows up in everyone's Multiplayer list. Hosting there needs permission to interact with the page; anyone who can open it can join.
-- **Anywhere else** (GitHub Pages, the downloaded file, a local server): the host picks **Get a Join Code** and gets a six-letter code; friends type it under Multiplayer. This connects your browsers directly (WebRTC), using the free PeerJS server to find each other, so it needs an internet connection.
+- **Anywhere else** (GitHub Pages, the downloaded file, a local server): the host picks **Get a Join Code** and gets a six-letter code; friends type it under Multiplayer. It needs an internet connection, and finds a way through whatever network you're on:
+  - First it tries to connect your browsers directly (WebRTC), finding each other through the free PeerJS server. PeerJS now comes with the game rather than from a CDN.
+  - Where your routers won't let a direct connection through, it goes by way of the free TURN relays of the [Open Relay Project](https://www.metered.ca/tools/openrelay/). PeerJS's own relays have shut down, which is why codes often failed between different homes before.
+  - Where a network allows no direct connection at all (some school and office networks and mobile data), or blocks the PeerJS server, the game goes through a free public MQTT broker over a secure WebSocket, like any web page. It uses [shiftr.io's public broker](https://www.shiftr.io/try/), [EMQX's](https://www.emqx.com/en/mqtt/public-mqtt5-broker) or [HiveMQ's](https://www.hivemq.com/mqtt/public-mqtt-broker/), whichever answers. The host listens every way at once, so friends coming in different ways all play together.
 
 The host's game runs the world: mobs, items, TNT, water, furnaces, time and weather. Guests see the same terrain and everything that changes, and everyone sees each other's characters, with name tags, armour and what they're holding. Chests and furnaces are shared, chat works with `T`, players can hit each other (the host can turn that off with `/pvp off`), and the night only passes when everyone is in bed. When a guest leaves, the host's world keeps their inventory for next time. Keep the host's tab open while you play; the world lives there.
 
@@ -118,7 +121,8 @@ src/gui.js          the Minecraft-style container windows and recipe book;  src/
 src/textures.js     the block and item textures (imported ones from src/tex/packdata.js, the rest drawn in src/tex/)
 src/skins.js        creature skins, laid out Minecraft's way (imported, or drawn in src/tex/mobskins.js)
 src/entities.js     mobs, dropped items, TNT;  src/player.js, src/body.js physics
-src/net.js          multiplayer transports (claude.ai room, PeerJS join codes) and reliable message streams
+src/net.js          multiplayer transports (claude.ai room, PeerJS join codes) and reliable message streams;  src/relay.js the relay
+src/vendor/         PeerJS 1.5.5 (MIT licence, see LICENSE-peerjs.txt)
 src/multiplayer.js  hosting and joining: world, entity, chest and player sync;  src/avatars.js other players
 src/audio.js        sound effects;  src/music.js generative piano music;  src/weather.js rain and snow
 src/sounddata.js    the sound recordings (generated from assets/sounds by tools/pack-sounds.mjs)

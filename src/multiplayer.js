@@ -7,7 +7,8 @@
 // chests is sent to the host, which applies it and passes the results on to everyone.
 // Where each player stands and looks and what they hold travels in their presence (net.js),
 // which is also how open games are listed in the claude.ai room.
-import { Link, RoomTransport, PeerTransport, PROTOCOL, cleanCode } from './net.js';
+import { Link, RoomTransport, PeerTransport, PROTOCOL, cleanCode, randomCode, NO_GAME } from './net.js';
+import { RelayTransport } from './relay.js';
 import { RemotePlayer } from './avatars.js';
 import { mobFlags, mobExtra, cleanTagName } from './entities.js';
 import { isHanging } from './hangings.js';
@@ -160,7 +161,7 @@ class Session {
   get host() { return false; }
   get guest() { return false; }
   get via() { return this.transport.kind; }
-  get code() { return this.transport.kind === 'peer' ? this.transport.code : null; }
+  get code() { return this.transport.code ?? null; }
   get count() { return 1 + this.players.size; }
 
   send(to, msg) { if (!this.closed) this.link.send(to, msg); }
@@ -178,7 +179,7 @@ class Session {
   }
 
   // Everyone we already know about (presence only arrives when it changes).
-  seeEveryone() { for (const [addr, pres] of this.transport.list()) this.presence(addr, pres); }
+  seeEveryone() { for (const t of this.link.transports) for (const [addr, pres] of t.list()) this.presence(addr, pres); }
 
   // What everyone else sees of this player.
   myPresence() {
@@ -272,8 +273,7 @@ class Session {
     clearInterval(this.pump);
     this.link.flush();
     this.link.close();
-    if (this.transport.kind === 'peer') this.transport.close();
-    else this.transport.setPresence({});
+    for (const t of this.link.transports) { if (t.kind === 'room') t.setPresence({}); else t.close(); }
     this.players.clear();
   }
 }
@@ -289,7 +289,21 @@ export class HostSession extends Session {
       if (!(await t.whenReady(6000))) throw new Error('Couldn’t reach the other players on this page. Try again in a moment.');
       if (!(await t.probe())) throw new Error('Your access to this page doesn’t let you host here. Ask the owner to host, or use a join code.');
     } else {
-      t = await PeerTransport.host();
+      // A join code: friends connect directly (PeerJS) or, where they can't, through the relay,
+      // which listens under the same code.
+      let failed = null;
+      const code = randomCode();
+      const [peer, relay] = await Promise.all([
+        PeerTransport.host(4, code).catch((e) => { failed = e; return null; }),
+        RelayTransport.host(code).catch(() => null),
+      ]);
+      // (If the PeerJS server had the code taken already, it picked another; the relay follows.)
+      let r = relay;
+      if (peer && r && peer.code !== code) { r.close(); r = await RelayTransport.host(peer.code).catch(() => null); }
+      if (!peer && !r) throw failed ?? new Error('Couldn’t get a join code. Try again.');
+      const s = new HostSession(game, peer ?? r);
+      if (peer && r) s.link.addTransport(r);
+      return s;
     }
     return new HostSession(game, t);
   }
@@ -500,6 +514,8 @@ export class HostSession extends Session {
       this.guests.set(addr, g);
       this.welcome(g);
       this.say(`${g.name} joined the game`, 'y');
+      // (Their presence may have come in before this did.)
+      for (const t of this.link.transports) for (const [a, pres] of t.list()) if (a === addr) this.presence(addr, pres);
     } else this.welcome(g); // asked again: they lost track and start over
   }
 
@@ -879,7 +895,15 @@ export class GuestSession extends Session {
     } else {
       const code = cleanCode(target.code ?? '');
       if (code.length !== 6) throw new Error('A join code has six letters and numbers.');
-      t = await PeerTransport.join(code);
+      // Directly if we can; if not (the network won't allow it, or the PeerJS server can't be
+      // reached), through the relay.
+      t = await PeerTransport.join(code).catch(async (e) => {
+        console.warn('No direct connection:', e.type, e.message);
+        game.ui.mpStatus('Trying another way to reach your friend…');
+        // (Nobody answering through the relay either means there's no such game, unless PeerJS
+        // found it and only couldn't get through to it.)
+        return RelayTransport.join(code).catch((r) => { throw r.noAnswer && e.type !== 'webrtc' && e.type !== 'timeout' ? new Error(NO_GAME) : e; });
+      });
       hostAddr = t.hostAddr;
     }
     const s = new GuestSession(game, t, hostAddr);

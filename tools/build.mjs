@@ -118,7 +118,9 @@ const cssTag = '<link rel="stylesheet" href="src/style.css">';
 const jsTag = '<script type="module" src="src/main.js"></script>';
 if (!html.includes(cssTag) || !html.includes(jsTag)) throw new Error('index.html no longer has the expected tags');
 html = html.replace(cssTag, () => `<style>\n${css}</style>`);
-html = html.replace(jsTag, () => `<script type="module">\n${safe(mainSrc)}</script>`);
+// (PeerJS goes in whole, ahead of the game, as the single file can't load it from beside itself.)
+const peerjs = readFileSync(resolve(root, 'src/vendor/peerjs.min.js'), 'utf8');
+html = html.replace(jsTag, () => `<script>\n${safe(peerjs)}</script>\n<script type="module">\n${safe(mainSrc)}</script>`);
 
 mkdirSync(resolve(root, 'dist'), { recursive: true });
 writeFileSync(resolve(root, 'dist/blockhaven.html'), html);
