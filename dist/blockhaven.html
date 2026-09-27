@@ -13433,7 +13433,7 @@ float waves(vec2 p, float t) {
 }
 vec3 skyColor(vec3 dir) {
   vec3 c = mix(u_horizonL, u_zenithL, pow(clamp(dir.y, 0.0, 1.0), 0.5));
-  return c + u_sunGlow * pow(max(dot(dir, u_lightDir), 0.0), 10.0) * 0.4;
+  return c + u_sunGlow * pow(max(dot(dir, u_lightDir), 0.0), 10.0) * 0.15;
 }
 #endif
 void main() {
@@ -13534,17 +13534,17 @@ void main() {
     float fres = 0.03 + 0.97 * pow(1.0 - max(dot(n, V), 0.0), 5.0);
     vec3 R = reflect(-V, n);
     vec3 refl = skyColor(R) * (0.15 + 0.85 * lv.x * lv.x);
-    float spec = pow(max(dot(R, u_lightDir), 0.0), 400.0) * (sun > 0.0 ? sun / max(ndl, 0.001) : 0.0);
-    c = mix(c, refl, fres * 0.8) + u_lightColor * spec * 2.5;
-    alpha = mix(alpha, 1.0, fres * 0.7);
+    float spec = pow(max(dot(R, u_lightDir), 0.0), 600.0) * (sun > 0.0 ? sun / max(ndl, 0.001) : 0.0);
+    c = mix(c, refl, fres * 0.45) + u_lightColor * spec * 0.6;
+    alpha = mix(alpha, 1.0, fres * 0.4);
   }
   // Fog: into the horizon's colour at the edge of what's drawn, a light haze before that (and
   // brighter towards the sun).
   float dist = length(v_rel);
   float fog = clamp((dist - u_fog.x) / (u_fog.y - u_fog.x), 0.0, 1.0);
   float haze = u_underwater > 0.5 ? 0.0 : 1.0 - exp(-dist * 0.0035);
-  vec3 fogC = u_fogColor + u_sunGlow * pow(max(dot(-V, u_lightDir), 0.0), 6.0) * 0.35;
-  c = mix(c, fogC, max(fog, haze * 0.45));
+  vec3 fogC = u_fogColor + u_sunGlow * pow(max(dot(-V, u_lightDir), 0.0), 6.0) * 0.12;
+  c = mix(c, fogC, max(fog, haze * 0.32));
   if (u_glint > 0.0) c += pow(glint(), vec3(2.2)) * 3.0;
   o_color = vec4(c * u_outScale, alpha);
 #endif
@@ -13627,9 +13627,9 @@ void main() {
   if (h < 0.0) col = mix(col, hor * 0.35, clamp(-h * 2.5, 0.0, 1.0));
   // The glow round the sun: a wide warm haze and a bright core (brightest at sunrise and sunset).
   float s = max(sd, 0.0);
-  col += u_sunGlow * (pow(s, 8.0) * 0.28 + pow(s, 90.0) * 0.9) * (1.0 - u_rain * 0.8);
-  col += u_sunGlow * u_sunset * pow(s, 3.0) * 0.35 * (1.0 - clamp(abs(h) * 1.6, 0.0, 1.0));
-  float sunBright = 9.0, moonBright = 1.6, starBright = 1.5;
+  col += u_sunGlow * (pow(s, 8.0) * 0.18 + pow(s, 90.0) * 0.45) * (1.0 - u_rain * 0.8);
+  col += u_sunGlow * u_sunset * pow(s, 3.0) * 0.25 * (1.0 - clamp(abs(h) * 1.6, 0.0, 1.0));
+  float sunBright = 3.0, moonBright = 1.6, starBright = 1.5;
 #endif
   if (u_stars > 0.01 && h > -0.1) {
     float c = cos(u_starAngle), s2 = sin(u_starAngle);
@@ -13788,8 +13788,8 @@ void main() {
   o_color = vec4(c, a);
 }`;
 
-// The finished picture: bloom and shafts added, a filmic tone curve, a little grading and a
-// vignette.
+// The finished picture: bloom and shafts added, a filmic tone curve with a soft top, a little
+// grading and a vignette.
 const compositeFS = `#version 300 es
 precision highp float;
 uniform sampler2D u_scene;
@@ -13814,7 +13814,10 @@ void main() {
   c = aces(c * u_exposure);
   c = pow(c, vec3(1.0 / 2.2));
   float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
-  c = mix(vec3(l), c, 1.22);
+  c = clamp(mix(vec3(l), c, 1.22), 0.0, 1.0);
+  // (The brightest things - snow and sand in the sun, the sky round it - stop short of glaring
+  // white; darker colours are left as they are.)
+  c -= 0.1 * c * c * c * c;
   vec2 q = uv - 0.5;
   c *= 1.0 - dot(q, q) * 0.5;
   c += (hash12(gl_FragCoord.xy) - 0.5) / 255.0;
@@ -14074,7 +14077,7 @@ class Post {
     gl.uniform1i(u.u_depth, 7);
     gl.uniform2f(u.u_texel, 1 / this.w, 1 / this.h);
     gl.uniform1f(u.u_inScale, this.scale);
-    gl.uniform1f(u.u_threshold, 0.85);
+    gl.uniform1f(u.u_threshold, 1.1);
     gl.uniform2f(u.u_sun, sun.x, sun.y);
     gl.uniform1f(u.u_aspect, this.w / this.h);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -14084,8 +14087,9 @@ class Post {
     this.begin();
   }
 
-  // After the hand: blur, then put it all together on the screen.
-  finish(sun, rays, underwater, time) {
+  // After the hand: blur, then put it all together on the screen. (A little less exposure by day,
+  // `daylight` 0.2 to 1, so the bright hours don't glare; nights are left as bright as they were.)
+  finish(sun, rays, underwater, time, daylight = 1) {
     const gl = this.gl;
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.BLEND);
@@ -14113,8 +14117,8 @@ class Post {
     gl.uniform1i(u.u_scene, 6);
     gl.uniform1i(u.u_bloom, 7);
     gl.uniform1f(u.u_inScale, this.scale);
-    gl.uniform1f(u.u_exposure, 1.0);
-    gl.uniform1f(u.u_bloomAmt, 0.22);
+    gl.uniform1f(u.u_exposure, 1 - 0.15 * Math.min(1, Math.max(0, (daylight - 0.2) / 0.8)));
+    gl.uniform1f(u.u_bloomAmt, 0.15);
     gl.uniform3fv(u.u_rays, rays);
     gl.uniform1f(u.u_underwater, underwater ? 1 : 0);
     gl.uniform1f(u.u_time, time);
@@ -15419,7 +15423,7 @@ class Renderer {
       const sun = this.sunOnScreen(f);
       this.post.bright(sun);
       if (f.hand) this.drawHand(f);
-      this.post.finish(sun, sun.rays, f.underwater, f.time);
+      this.post.finish(sun, sun.rays, f.underwater, f.time, f.env.daylight);
     } else if (f.hand) this.drawHand(f);
   }
 
@@ -15434,7 +15438,7 @@ class Renderer {
     out.x = cx / cw * 0.5 + 0.5;
     out.y = cy / cw * 0.5 + 0.5;
     const off = Math.max(0, Math.max(Math.abs(out.x - 0.5), Math.abs(out.y - 0.5)) - 0.5);
-    const k = Math.max(0, 1 - off * 2.5) * (1 - (f.weather?.rain ?? 0)) * (day ? 0.55 : 0.12) * Math.min(1, Math.abs(e.sunDir[1]) * 6 + 0.25);
+    const k = Math.max(0, 1 - off * 2.5) * (1 - (f.weather?.rain ?? 0)) * (day ? 0.3 : 0.08) * Math.min(1, Math.abs(e.sunDir[1]) * 6 + 0.25);
     for (let i = 0; i < 3; i++) out.rays[i] = e.sunGlow[i] * k;
     return out;
   }
@@ -23478,7 +23482,7 @@ __exports.Link = Link;
 __define("src/version.js", function (__exports) {
 // Which update of the game this is: shown on the title screen, and compared with the site's
 // version.json (which tools/build.mjs writes) to tell when this copy is out of date (see updates.js).
-const BUILD = 19;
+const BUILD = 20;
 
 __exports.BUILD = BUILD;
 });
@@ -37539,7 +37543,7 @@ function updateEnvironment(env, time) {
   const lc = env.lightColor;
   if (!moon) {
     // Low sun is orange; high sun a warm white.
-    const k = smoothstep(0.0, 0.3, qh) * 2.7, warm = Math.exp(-qh * 5);
+    const k = smoothstep(0.0, 0.3, qh) * 2.5, warm = Math.exp(-qh * 5);
     lc[0] = k; lc[1] = k * lerp(0.93, 0.5, warm); lc[2] = k * lerp(0.82, 0.22, warm);
   } else {
     const k = smoothstep(0.0, 0.3, -qh) * 0.32;

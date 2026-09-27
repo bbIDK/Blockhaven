@@ -235,7 +235,7 @@ export class Post {
     gl.uniform1i(u.u_depth, 7);
     gl.uniform2f(u.u_texel, 1 / this.w, 1 / this.h);
     gl.uniform1f(u.u_inScale, this.scale);
-    gl.uniform1f(u.u_threshold, 0.85);
+    gl.uniform1f(u.u_threshold, 1.1);
     gl.uniform2f(u.u_sun, sun.x, sun.y);
     gl.uniform1f(u.u_aspect, this.w / this.h);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -245,8 +245,9 @@ export class Post {
     this.begin();
   }
 
-  // After the hand: blur, then put it all together on the screen.
-  finish(sun, rays, underwater, time) {
+  // After the hand: blur, then put it all together on the screen. (A little less exposure by day,
+  // `daylight` 0.2 to 1, so the bright hours don't glare; nights are left as bright as they were.)
+  finish(sun, rays, underwater, time, daylight = 1) {
     const gl = this.gl;
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.BLEND);
@@ -274,8 +275,8 @@ export class Post {
     gl.uniform1i(u.u_scene, 6);
     gl.uniform1i(u.u_bloom, 7);
     gl.uniform1f(u.u_inScale, this.scale);
-    gl.uniform1f(u.u_exposure, 1.0);
-    gl.uniform1f(u.u_bloomAmt, 0.22);
+    gl.uniform1f(u.u_exposure, 1 - 0.15 * Math.min(1, Math.max(0, (daylight - 0.2) / 0.8)));
+    gl.uniform1f(u.u_bloomAmt, 0.15);
     gl.uniform3fv(u.u_rays, rays);
     gl.uniform1f(u.u_underwater, underwater ? 1 : 0);
     gl.uniform1f(u.u_time, time);

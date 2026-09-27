@@ -659,7 +659,7 @@ export class Renderer {
       const sun = this.sunOnScreen(f);
       this.post.bright(sun);
       if (f.hand) this.drawHand(f);
-      this.post.finish(sun, sun.rays, f.underwater, f.time);
+      this.post.finish(sun, sun.rays, f.underwater, f.time, f.env.daylight);
     } else if (f.hand) this.drawHand(f);
   }
 
@@ -674,7 +674,7 @@ export class Renderer {
     out.x = cx / cw * 0.5 + 0.5;
     out.y = cy / cw * 0.5 + 0.5;
     const off = Math.max(0, Math.max(Math.abs(out.x - 0.5), Math.abs(out.y - 0.5)) - 0.5);
-    const k = Math.max(0, 1 - off * 2.5) * (1 - (f.weather?.rain ?? 0)) * (day ? 0.55 : 0.12) * Math.min(1, Math.abs(e.sunDir[1]) * 6 + 0.25);
+    const k = Math.max(0, 1 - off * 2.5) * (1 - (f.weather?.rain ?? 0)) * (day ? 0.3 : 0.08) * Math.min(1, Math.abs(e.sunDir[1]) * 6 + 0.25);
     for (let i = 0; i < 3; i++) out.rays[i] = e.sunGlow[i] * k;
     return out;
   }

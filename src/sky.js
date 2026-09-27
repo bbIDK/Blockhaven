@@ -50,7 +50,7 @@ export function updateEnvironment(env, time) {
   const lc = env.lightColor;
   if (!moon) {
     // Low sun is orange; high sun a warm white.
-    const k = smoothstep(0.0, 0.3, qh) * 2.7, warm = Math.exp(-qh * 5);
+    const k = smoothstep(0.0, 0.3, qh) * 2.5, warm = Math.exp(-qh * 5);
     lc[0] = k; lc[1] = k * lerp(0.93, 0.5, warm); lc[2] = k * lerp(0.82, 0.22, warm);
   } else {
     const k = smoothstep(0.0, 0.3, -qh) * 0.32;

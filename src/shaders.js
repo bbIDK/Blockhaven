@@ -251,7 +251,7 @@ float waves(vec2 p, float t) {
 }
 vec3 skyColor(vec3 dir) {
   vec3 c = mix(u_horizonL, u_zenithL, pow(clamp(dir.y, 0.0, 1.0), 0.5));
-  return c + u_sunGlow * pow(max(dot(dir, u_lightDir), 0.0), 10.0) * 0.4;
+  return c + u_sunGlow * pow(max(dot(dir, u_lightDir), 0.0), 10.0) * 0.15;
 }
 #endif
 void main() {
@@ -352,17 +352,17 @@ void main() {
     float fres = 0.03 + 0.97 * pow(1.0 - max(dot(n, V), 0.0), 5.0);
     vec3 R = reflect(-V, n);
     vec3 refl = skyColor(R) * (0.15 + 0.85 * lv.x * lv.x);
-    float spec = pow(max(dot(R, u_lightDir), 0.0), 400.0) * (sun > 0.0 ? sun / max(ndl, 0.001) : 0.0);
-    c = mix(c, refl, fres * 0.8) + u_lightColor * spec * 2.5;
-    alpha = mix(alpha, 1.0, fres * 0.7);
+    float spec = pow(max(dot(R, u_lightDir), 0.0), 600.0) * (sun > 0.0 ? sun / max(ndl, 0.001) : 0.0);
+    c = mix(c, refl, fres * 0.45) + u_lightColor * spec * 0.6;
+    alpha = mix(alpha, 1.0, fres * 0.4);
   }
   // Fog: into the horizon's colour at the edge of what's drawn, a light haze before that (and
   // brighter towards the sun).
   float dist = length(v_rel);
   float fog = clamp((dist - u_fog.x) / (u_fog.y - u_fog.x), 0.0, 1.0);
   float haze = u_underwater > 0.5 ? 0.0 : 1.0 - exp(-dist * 0.0035);
-  vec3 fogC = u_fogColor + u_sunGlow * pow(max(dot(-V, u_lightDir), 0.0), 6.0) * 0.35;
-  c = mix(c, fogC, max(fog, haze * 0.45));
+  vec3 fogC = u_fogColor + u_sunGlow * pow(max(dot(-V, u_lightDir), 0.0), 6.0) * 0.12;
+  c = mix(c, fogC, max(fog, haze * 0.32));
   if (u_glint > 0.0) c += pow(glint(), vec3(2.2)) * 3.0;
   o_color = vec4(c * u_outScale, alpha);
 #endif
@@ -445,9 +445,9 @@ void main() {
   if (h < 0.0) col = mix(col, hor * 0.35, clamp(-h * 2.5, 0.0, 1.0));
   // The glow round the sun: a wide warm haze and a bright core (brightest at sunrise and sunset).
   float s = max(sd, 0.0);
-  col += u_sunGlow * (pow(s, 8.0) * 0.28 + pow(s, 90.0) * 0.9) * (1.0 - u_rain * 0.8);
-  col += u_sunGlow * u_sunset * pow(s, 3.0) * 0.35 * (1.0 - clamp(abs(h) * 1.6, 0.0, 1.0));
-  float sunBright = 9.0, moonBright = 1.6, starBright = 1.5;
+  col += u_sunGlow * (pow(s, 8.0) * 0.18 + pow(s, 90.0) * 0.45) * (1.0 - u_rain * 0.8);
+  col += u_sunGlow * u_sunset * pow(s, 3.0) * 0.25 * (1.0 - clamp(abs(h) * 1.6, 0.0, 1.0));
+  float sunBright = 3.0, moonBright = 1.6, starBright = 1.5;
 #endif
   if (u_stars > 0.01 && h > -0.1) {
     float c = cos(u_starAngle), s2 = sin(u_starAngle);
@@ -606,8 +606,8 @@ void main() {
   o_color = vec4(c, a);
 }`;
 
-// The finished picture: bloom and shafts added, a filmic tone curve, a little grading and a
-// vignette.
+// The finished picture: bloom and shafts added, a filmic tone curve with a soft top, a little
+// grading and a vignette.
 export const compositeFS = `#version 300 es
 precision highp float;
 uniform sampler2D u_scene;
@@ -632,7 +632,10 @@ void main() {
   c = aces(c * u_exposure);
   c = pow(c, vec3(1.0 / 2.2));
   float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
-  c = mix(vec3(l), c, 1.22);
+  c = clamp(mix(vec3(l), c, 1.22), 0.0, 1.0);
+  // (The brightest things - snow and sand in the sun, the sky round it - stop short of glaring
+  // white; darker colours are left as they are.)
+  c -= 0.1 * c * c * c * c;
   vec2 q = uv - 0.5;
   c *= 1.0 - dot(q, q) * 0.5;
   c += (hash12(gl_FragCoord.xy) - 0.5) / 255.0;
