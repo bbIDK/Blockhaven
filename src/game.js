@@ -2983,9 +2983,11 @@ export class Game {
     if (underwater) {
       // The colour of the water all round, the darker the less daylight gets down: deep blue in
       // cold seas, turquoise in warm ones, murky green in a swamp (blended from one to the next).
+      // (Not too clear: even what's close is a little tinted, and by day it's all gone by about
+      // 24 blocks, less at night.)
       const d = this.env.daylight, wc = this.waterColourAt(cam.x, cam.z);
       fogColor = [wc[0] * 0.2 * d + 0.01, wc[1] * 0.45 * d + 0.02, wc[2] * 0.48 * d + 0.05];
-      fogStart = 0; fogEnd = 22 + 10 * d;
+      fogStart = -3; fogEnd = 15 + 9 * d;
     } else if (WATERLIKE[eyeBlock] === 2) {
       fogColor = [0.8, 0.3, 0.05]; fogStart = 0; fogEnd = 2.5;
     }
