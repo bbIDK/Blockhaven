@@ -25,7 +25,9 @@ const SYNTH = new Set(['rabbit', 'fox', 'wolf', 'fish', 'skeleton', 'creeper', '
   'donkey', 'witch', 'phantom', 'parrot', 'dolphin', 'turtle', 'snow_golem',
   // (The wildlife update's.)
   'bear', 'deer', 'moose', 'bigcat', 'panda', 'elephant', 'hippo', 'giraffe', 'crocodile', 'camel', 'penguin', 'songbird', 'crow', 'seagull',
-  'eagle', 'vulture', 'bee']);
+  'eagle', 'vulture', 'bee',
+  // (The structures update's.)
+  'guardian']);
 
 // A low thump layered under breaking and placing, by block material: [start Hz, end Hz, gain].
 const THUMP = {
@@ -520,6 +522,24 @@ export class Audio {
           const f = 1500 * pitch * r();
           this.tone(at, { type: 'sawtooth', f0: f, f1: f * (death ? 0.3 : 0.6), time: death ? 1 : 0.5, volume: 0.06, filter: { f: 2400, q: 4 }, vibrato: 40, vibratoRate: 25 });
           this.tone(at, { type: 'square', f0: f * 0.51, f1: f * 0.3, time: 0.4, volume: 0.03, filter: { f: 1200, q: 3 } });
+        }
+        break;
+      case 'guardian':
+        // A wet, rubbery squeak and gurgle; the beam's rising hum as it charges; and the elder's
+        // curse, a ghostly chord that sinks away.
+        if (event === 'beam') {
+          const time = pitch < 1 ? 2.8 : 3.8;
+          this.tone(at, { type: 'sawtooth', f0: 160 * pitch, f1: 640 * pitch, time, volume: 0.045, attack: 0.3, filter: { f: 900, q: 6 }, vibrato: 25, vibratoRate: 9 });
+          this.tone(at, { type: 'sine', f0: 320 * pitch, f1: 1280 * pitch, time, volume: 0.035, attack: 0.3 });
+        } else if (event === 'curse') {
+          for (const [f, d] of [[196, 0], [247, 0.18], [294, 0.36]]) {
+            this.tone(at, { type: 'triangle', f0: f, f1: f * 0.7, time: 2.2, volume: 0.07, attack: 0.4, vibrato: 6, vibratoRate: 5, delay: d, filter: { f: 1200, q: 2 } });
+          }
+          this.hiss(at, { f: 700, q: 0.8, time: 2.4, volume: 0.1, sweep: 220, type: 'lowpass' });
+        } else {
+          const f = (hurt ? 760 : death ? 560 : 440) * pitch * r();
+          this.tone(at, { type: 'triangle', f0: f, f1: f * (death ? 0.35 : 0.62), time: death ? 0.9 : hurt ? 0.3 : 0.45, volume: 0.1, vibrato: 30, vibratoRate: 14, filter: { f: 1400, q: 3 } });
+          this.hiss(at, { f: 520, q: 2, time: 0.25, volume: 0.12, sweep: 200, type: 'lowpass', delay: 0.05 });
         }
         break;
       case 'parrot':

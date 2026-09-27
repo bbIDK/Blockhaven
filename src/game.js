@@ -7,7 +7,7 @@ import { Input } from './input.js';
 import { UI, $ } from './ui.js';
 import { Audio } from './audio.js';
 import { Inventory, extras } from './inventory.js';
-import { InventoryMenu, CraftingTableMenu, FurnaceMenu, ChestMenu, CreativeMenu, EnchantingMenu, AnvilMenu, GrindstoneMenu } from './containers.js';
+import { InventoryMenu, CraftingTableMenu, FurnaceMenu, ChestMenu, DispenserMenu, CreativeMenu, EnchantingMenu, AnvilMenu, GrindstoneMenu } from './containers.js';
 import { ContainerGUI, sprites } from './gui.js';
 import { Furnace } from './furnace.js';
 import { initIcons, warmIcons } from './icons.js';
@@ -29,7 +29,7 @@ import {
   RENDER, R, SLAB, STAIRS, DOOR, doorId, CLIMB, LADDER, oppositeFace, CHEST, CHEST_PAIR, CHEST_RIGHT, chestId, chestHalf, BED, bedId,
   FURNACE_IDS, furnaceVariant, isLitFurnace, FURNACE_KIND, FURNACE_FRONT, LOG_AXES, GATE, gateId, VINE, DOUBLE, LEAVES_WOOD,
   TRAPDOOR, trapdoorId, SWITCH, SIGN, WALL_SIGN, CAKE, NOTE, JUKEBOX, RAIL,
-  NATURAL_LEAVES, WOOD, LOOT_KIND, LOOT_FRONT, liquidHeight, AMETHYST, GLOW_LICHEN, WET, PICKLES,
+  NATURAL_LEAVES, WOOD, LOOT_KIND, LOOT_FRONT, liquidHeight, AMETHYST, GLOW_LICHEN, WET, PICKLES, DISPENSER, dispenserId, TRIPWIRE,
 } from './blocks.js';
 import { dripId } from './caves.js';
 import { rollLoot } from './loot.js';
@@ -41,6 +41,7 @@ import { addXp, xpToNext, enchLevel, SMELT_XP, ORE_XP, shiny } from './enchantin
 import { Fishing, bobberMesh, bobberModel, linePoints } from './fishing.js';
 import { tableBook } from './tablebook.js';
 import { POTIONS, EFFECTS } from './potions.js';
+import { nearestStructure, STRUCTURE_NAMES } from './structures.js';
 import { Signs, SignEditor } from './signs.js';
 import { drawLeads, isFence, LEAD_SNAP } from './leads.js';
 import { Jukeboxes, instrumentFor, noteColour, noteClear, nextNote } from './jukebox.js';
@@ -105,6 +106,9 @@ const REACH = { creative: 5.5, survival: 4.6 };
 // Extra damage from a weapon's enchantments against creature `type`.
 const UNDEAD = new Set(['zombie', 'husk', 'skeleton', 'stray', 'drowned', 'zombie_villager', 'phantom']);
 const ARTHROPODS = new Set(['spider', 'cave_spider', 'silverfish', 'bee']);
+// What /locate takes for each of the structures of newer worlds (see structures.js).
+const LOCATE_ALIAS = { desert_pyramid: 'pyramid', desert_temple: 'pyramid', temple: 'jungle_temple', jungle_pyramid: 'jungle_temple',
+  ocean_monument: 'monument', mine: 'mineshaft' };
 function enchantDamage(ench, type) {
   if (!ench) return 0;
   let n = 0;
@@ -998,7 +1002,7 @@ export class Game {
       }
     }
     if ((m.kind === 'chest' || m.kind === 'large_chest') && this.openBlock) this.audio.chest(false, this.openBlock.at);
-    if ((m.kind === 'chest' || m.kind === 'large_chest' || m.kind === 'furnace') && this.openBlock) {
+    if ((m.kind === 'chest' || m.kind === 'large_chest' || m.kind === 'dispenser' || m.kind === 'furnace') && this.openBlock) {
       for (const k of this.openBlock.keys ?? [this.openBlock.key]) this.net?.closeContainer(k);
     }
     this.menu = null;
@@ -1016,7 +1020,7 @@ export class Game {
   shared(fn) {
     const m = this.menu, ob = this.openBlock;
     const parts = !this.net || !ob ? [] : m.kind === 'furnace' ? [[ob.key, m.furnace.slots]]
-      : m.kind === 'chest' || m.kind === 'large_chest' ? ob.keys.map((k, i) => [k, m.parts[i]]) : [];
+      : m.kind === 'chest' || m.kind === 'large_chest' || m.kind === 'dispenser' ? ob.keys.map((k, i) => [k, m.parts[i]]) : [];
     const before = parts.map(([, arr]) => arr.map((x) => (x ? JSON.stringify(x) : '')));
     fn();
     parts.forEach(([key, arr], j) => {
@@ -1155,6 +1159,108 @@ export class Game {
     this.watched = owner ? { plan: owner, keys, at, count: this.itemsIn(keys) } : null;
   }
 
+  // A dispenser's nine slots. (One of a trap's is loaded with its arrows first: see blockChanged.)
+  openDispenserAt(x, y, z) {
+    const w = this.world, key = this.containerKey(x, y, z), at = { x: x + 0.5, y: y + 0.5, z: z + 0.5 };
+    if (LOOT_KIND[w.getBlock(x, y, z)] !== undefined && !this.net?.guest) w.setBlock(x, y, z, dispenserId(DISPENSER[w.getBlock(x, y, z)]));
+    if (!this.containers.has(key)) this.containers.set(key, new Array(9).fill(null));
+    this.audio.chest(true, at);
+    const menu = new DispenserMenu(this, this.containers.get(key));
+    if (this.net?.guest) { menu.waiting = new Set([key]); this.net.openContainer(key, 'chest'); }
+    this.openMenu(menu, { key, keys: [key], at });
+  }
+
+  // World listener: a dispenser was just powered. It shoots an arrow from its front (or throws
+  // out whatever else it holds first), with a click; empty, it only clicks.
+  dispense(x, y, z) {
+    const w = this.world, key = this.containerKey(x, y, z);
+    if (LOOT_KIND[w.getBlock(x, y, z)] !== undefined) w.setBlock(x, y, z, dispenserId(DISPENSER[w.getBlock(x, y, z)]));
+    const front = DISPENSER[w.getBlock(x, y, z)];
+    if (front === undefined) return;
+    const slots = this.containers.get(key) ?? [];
+    const full = slots.map((s, i) => (s ? i : -1)).filter((i) => i >= 0);
+    const at = { x: x + 0.5, y: y + 0.5, z: z + 0.5 };
+    this.audio.switchClick(true, at);
+    if (!full.length) return;
+    const i = full[Math.floor(Math.random() * full.length)], st = slots[i], d = FACE_DIRS[front];
+    const ox = x + 0.5 + d[0] * 0.7, oy = y + 0.5 + d[1] * 0.7, oz = z + 0.5 + d[2] * 0.7;
+    if (st.id === I.arrow) {
+      const spread = () => (Math.random() - 0.5) * 0.12, v = 22;
+      this.entities.spawnArrow(ox, oy, oz, (d[0] + spread()) * v, (d[1] + 0.08 + spread()) * v, (d[2] + spread()) * v, null, 3, true);
+      this.audio.bow(at);
+    } else this.entities.spawnItem(ox, oy - 0.2, oz, st.id, 1, st.dmg ?? 0, 0.3, [d[0] * 3, 1, d[2] * 3], extras(st));
+    st.count--;
+    if (st.count <= 0) slots[i] = null;
+    if (this.net?.host) this.net.containerEdited(key, { [i]: slots[i] });
+    if ((this.openBlock?.keys ?? []).includes(key)) this.menuChanged();
+  }
+
+  // Once a tick: whoever crosses a tripwire sets off the hooks at its ends (they stay set off while
+  // anyone's on the wire; see wireHeld).
+  tripwires() {
+    const w = this.world;
+    this.bodiesOn((x, y, z) => {
+      const axis = TRIPWIRE[w.getBlock(x, y, z)];
+      if (!axis) return false;
+      for (const [hx, hy, hz] of this.wireHooks(x, y, z, axis)) {
+        const sw = SWITCH[w.getBlock(hx, hy, hz)];
+        if (sw?.kind === 'hook' && !sw.on) { w.setBlock(hx, hy, hz, sw.other); this.audio.switchClick(true, { x: hx + 0.5, y: hy + 0.5, z: hz + 0.5 }); }
+      }
+      return false;
+    });
+  }
+  // The hooks at the two ends of the wire through (x, y, z) along `axis` (up to 40 blocks each way).
+  wireHooks(x, y, z, axis) {
+    const w = this.world, out = [];
+    for (const s of [1, -1]) {
+      for (let k = 1; k <= 40; k++) {
+        const hx = x + (axis === 'x' ? s * k : 0), hz = z + (axis === 'z' ? s * k : 0), id = w.getBlock(hx, y, hz);
+        if (TRIPWIRE[id] === axis) continue;
+        if (SWITCH[id]?.kind === 'hook') out.push([hx, y, hz]);
+        break;
+      }
+    }
+    return out;
+  }
+  // World listener: is anyone on the wire hung from the hook at (x, y, z)?
+  wireHeld(x, y, z) {
+    const w = this.world, sw = SWITCH[w.getBlock(x, y, z)];
+    if (sw?.kind !== 'hook') return false;
+    const d = FACE_DIRS[sw.attach], sx = -d[0], sz = -d[2], axis = sx ? 'x' : 'z', cells = new Set();
+    for (let k = 1; k <= 40; k++) {
+      const cx = x + sx * k, cz = z + sz * k;
+      if (TRIPWIRE[w.getBlock(cx, y, cz)] !== axis) break;
+      cells.add(`${cx},${y},${cz}`);
+    }
+    return cells.size > 0 && this.bodiesOn((bx, by, bz) => cells.has(`${bx},${by},${bz}`));
+  }
+
+  // A sponge soaks up the water round it (up to 65 blocks of it, no more than 6 away), and is wet.
+  soak(x, y, z) {
+    const w = this.world;
+    if (w.getBlock(x, y, z) !== B.sponge) return;
+    const seen = new Set([`${x},${y},${z}`]);
+    let frontier = [[x, y, z]], taken = 0;
+    for (let step = 0; step < 6 && frontier.length && taken < 65; step++) {
+      const next = [];
+      for (const [cx, cy, cz] of frontier) {
+        for (const d of FACE_DIRS) {
+          const nx = cx + d[0], ny = cy + d[1], nz = cz + d[2], k = `${nx},${ny},${nz}`;
+          if (seen.has(k) || taken >= 65) continue;
+          seen.add(k);
+          if (WATERLIKE[w.getBlock(nx, ny, nz)] !== 1) continue;
+          w.setBlock(nx, ny, nz, 0);
+          taken++;
+          next.push([nx, ny, nz]);
+        }
+      }
+      frontier = next;
+    }
+    if (!taken) return;
+    w.setBlock(x, y, z, B.wet_sponge);
+    this.audio.splash(0.4, { x: x + 0.5, y: y + 0.5, z: z + 0.5 });
+  }
+
   // A chest placed beside a single chest facing the same way joins it into a double chest
   // (unless you sneak while placing it, as in Minecraft).
   pairChest(x, y, z) {
@@ -1272,11 +1378,13 @@ export class Game {
   // every change on in multiplayer.
   blockChanged(x, y, z, old, id) {
     if (LOOT_KIND[old] !== undefined && !this.net?.guest) {
-      const key = this.containerKey(x, y, z), loot = rollLoot(LOOT_KIND[old], x, y, z, this.meta?.seed ?? 0);
-      if (CHEST[id] !== undefined) { if (!this.containers.has(key)) this.containers.set(key, loot); }
+      const key = this.containerKey(x, y, z), size = DISPENSER[old] !== undefined ? 9 : 27;
+      const loot = rollLoot(LOOT_KIND[old], x, y, z, this.meta?.seed ?? 0, size);
+      if (CHEST[id] !== undefined || (DISPENSER[id] !== undefined && size === 9)) { if (!this.containers.has(key)) this.containers.set(key, loot); }
       else for (const st of loot) if (st) this.entities.spawnItem(x + 0.5, y + 0.5, z + 0.5, st.id, st.count, 0);
     }
-    if ((CHEST[old] !== undefined && CHEST[id] === undefined) || (FURNACE_IDS.has(old) && !FURNACE_IDS.has(id)) || (old === B.barrel && id !== B.barrel)) {
+    if ((CHEST[old] !== undefined && CHEST[id] === undefined) || (FURNACE_IDS.has(old) && !FURNACE_IDS.has(id)) || (old === B.barrel && id !== B.barrel) ||
+      (DISPENSER[old] !== undefined && DISPENSER[id] === undefined)) {
       this.dropContainer(x, y, z);
     }
     // Half of a double chest gone: the other half is a single chest again. (A guest leaves that
@@ -1302,6 +1410,10 @@ export class Game {
       if (JUKEBOX[old] >= 0 && JUKEBOX[id] !== JUKEBOX[old] && !this.net?.guest) {
         this.entities.spawnItem(x + 0.5, y + 1.05, z + 0.5, I.music_disc_meadow + JUKEBOX[old], 1, 0, 0.5, [(Math.random() - 0.5) * 1.5, 3, (Math.random() - 0.5) * 1.5]);
       }
+    }
+    if (!this.net?.guest && (id === B.sponge || (WATERLIKE[id] === 1 && WATERLIKE[old] !== 1))) {
+      if (id === B.sponge) queueMicrotask(() => this.soak(x, y, z));
+      else for (const d of FACE_DIRS) if (this.world.getBlock(x + d[0], y + d[1], z + d[2]) === B.sponge) queueMicrotask(() => this.soak(x + d[0], y + d[1], z + d[2]));
     }
     this.net?.blockChanged(x, y, z, old, id);
     // (After this change has gone through.)
@@ -1377,7 +1489,13 @@ export class Game {
   addEffect(name, seconds, level = 1) {
     if (!EFFECTS[name]) return;
     const cur = this.effects.get(name);
+    // (An elder guardian's curse comes with its face and its moan, unless it's still on you.)
+    if (name === 'mining_fatigue' && (!cur || cur.ticks < 1200)) this.curse();
     if (!cur || cur.level < level || cur.ticks < seconds * 20) this.effects.set(name, { ticks: Math.round(seconds * 20), level });
+  }
+  curse() {
+    this.audio.mob('guardian', 'curse', null, 0.65);
+    this.ui.curse();
   }
   effectLevel(name) { return this.effects.get(name)?.level ?? 0; }
   effectsData() { return [...this.effects].map(([n, e]) => [n, e.ticks, e.level]); }
@@ -1845,7 +1963,10 @@ export class Game {
     if (!this.net?.guest) this.safely('growing', () => this.world.randomTicks(this.players().map((t) => [Math.floor(t.x) >> 4, Math.floor(t.z) >> 4])));
     this.safely('creatures', () => this.entities.tick());
     this.safely('fishing', () => this.fishing.tick());
-    if (!this.net?.guest) { this.safely('furnaces', () => this.tickFurnaces()); this.safely('pressure plates', () => this.pressPlates()); }
+    if (!this.net?.guest) {
+      this.safely('furnaces', () => this.tickFurnaces());
+      this.safely('pressure plates', () => { this.pressPlates(); this.tripwires(); });
+    }
     this.safely('player', () => this.playerTick());
     if (this.time % 20 === 0) this.safely('surroundings', () => this.ambientTick());
     this.saveTimer++;
@@ -2245,7 +2366,7 @@ export class Game {
   // Blocks you use rather than build against (sneak to build against them).
   interactive(id) {
     return (!!DOOR[id] && !DOOR[id].iron) || CHEST[id] !== undefined || !!BED[id] || id === B.crafting_table || FURNACE_IDS.has(id) || !!GATE[id] ||
-      id === B.barrel || LOOT_KIND[id] !== undefined || id === B.bell || id === B.bell_z || id === B.composter_ready ||
+      id === B.barrel || LOOT_KIND[id] !== undefined || DISPENSER[id] !== undefined || id === B.bell || id === B.bell_z || id === B.composter_ready ||
       (!!TRAPDOOR[id] && !TRAPDOOR[id].iron) || SWITCH[id]?.kind === 'lever' || SWITCH[id]?.kind === 'button' ||
       id === B.enchanting_table || id === B.anvil || id === B.anvil_z || id === B.grindstone || id === B.grindstone_z || !!SIGN[id] || CAKE[id] !== undefined ||
       NOTE[id] !== undefined || JUKEBOX[id] >= 0;
@@ -2311,6 +2432,9 @@ export class Game {
     let time = breakTime(BLOCKS[target.id], this.inv.heldId, enchLevel(this.inv.held, 'efficiency'));
     if (p.headInWater && !enchLevel(this.inv.armor[0], 'aqua_affinity')) time *= 5;
     if (!p.onGround && !p.flying) time *= 5;
+    // Mining Fatigue slows it right down: at level III (an elder guardian's) to almost nothing.
+    const fatigue = this.effectLevel('mining_fatigue');
+    if (fatigue) time /= [1, 0.3, 0.09, 0.0027, 0.00081][Math.min(4, fatigue)];
     // (In whole game ticks, as in the original: a block that would take a tick or less goes at once.)
     time = time <= 0.05 ? 0 : Math.ceil(time * 20 - 1e-6) / 20;
     cur.progress += time <= 0 ? 1 : dt / time;
@@ -2391,6 +2515,7 @@ export class Game {
           this.audio.switchClick(!sw.on, { x: t.x + 0.5, y: t.y + 0.5, z: t.z + 0.5 });
         }
       } else if (t.id === B.barrel) this.openChestAt(t.x, t.y, t.z);
+      else if (DISPENSER[t.id] !== undefined) this.openDispenserAt(t.x, t.y, t.z);
       else if (LOOT_KIND[t.id] !== undefined) {
         // A chest the world left here: it becomes an ordinary chest, filled the first time.
         w.setBlock(t.x, t.y, t.z, chestId(LOOT_FRONT[t.id] ?? 4));
@@ -2816,7 +2941,7 @@ export class Game {
       case 'help':
         say('/time set day|noon|night|midnight|<ticks>, /time add <n>');
         say('/gamemode creative|survival, /tp <x> <y> <z>, /give <item> [count], /summon <creature> [x y z], /weather clear|rain');
-        say('/spawn, /setspawn, /seed, /locate village|camp|hamlet|town|kingdom, /fly, /kill, /clear, /difficulty peaceful|easy|normal|hard');
+        say('/spawn, /setspawn, /seed, /locate village|camp|hamlet|town|kingdom|pyramid|temple|igloo|shipwreck|monument|mineshaft|stronghold, /fly, /kill, /clear, /difficulty peaceful|easy|normal|hard');
         if (this.net) say(`/list${this.net.host ? ', /pvp on|off' : ''}`);
         break;
       case 'list': case 'players':
@@ -2891,7 +3016,17 @@ export class Game {
         // kingdom is looked for further afield, as there are fewer of them.)
         let kind = (args[0] ?? 'village').toLowerCase().replace(/s$/, '');
         if (kind === 'castle' || kind === 'city') kind = 'kingdom';
-        if (!KINDS.includes(kind)) { say('Usage: /locate village|camp|hamlet|town|kingdom', '#e88a78'); break; }
+        // (Or one of the structures of newer worlds.)
+        kind = LOCATE_ALIAS[kind] ?? kind;
+        if (STRUCTURE_NAMES[kind]) {
+          const gen = this.world.gen, name = STRUCTURE_NAMES[kind];
+          if (!(gen?.version >= 10) || gen.type === 'flat') { say(`This world was made before there were ${name}s`, '#e88a78'); break; }
+          const s = nearestStructure(gen, kind, p.x, p.z);
+          if (!s) { say(`There are no ${name}s nearby`, '#e88a78'); break; }
+          say(`The nearest ${name} is at ${s.x}, ${s.y}, ${s.z} (${Math.round(Math.hypot(s.x - p.x, s.z - p.z))} blocks away)`);
+          break;
+        }
+        if (!KINDS.includes(kind)) { say('Usage: /locate village|camp|hamlet|town|kingdom|pyramid|temple|igloo|shipwreck|monument|mineshaft|stronghold', '#e88a78'); break; }
         const gen = this.world.gen, v4 = gen?.version >= 4;
         if (!v4 && kind !== 'village') { say('This world has only villages (it was made before the other kinds of settlement)', '#e88a78'); break; }
         const v = gen?.villages ? nearestVillage(gen, p.x, p.z, kind === 'kingdom' ? 6 : 4, v4 && kind !== 'village' ? kind : null) : null;
@@ -3038,6 +3173,7 @@ export class Game {
       entities: this.drawList(cam),
       dynLights: dyn,
       lines: this.fishingLines(),
+      beams: this.guardianBeams(),
       rod: this.rodLine(),
       hand: loading || this.hideHud || this.state === 'dead' || third ? null : {
         item: this.handItem === I.fishing_rod && this.fishing.out ? I.fishing_rod_cast : this.handItem, swing: this.swinging ? this.swing : 0,
@@ -3163,6 +3299,31 @@ export class Game {
   fishingLines() {
     const out = [];
     if (this.net) for (const rp of this.net.players.values()) if (rp.ready && rp.bobber) out.push(linePoints(rp.rodTip(), [rp.bobber[0], rp.bobber[1] + 0.3, rp.bobber[2]], true));
+    return out;
+  }
+
+  // Guardians' beams: from the eye to whoever's held in it, and how far it's charged. (A guest is
+  // told only how far; the beam goes to whoever's nearest the guardian.)
+  guardianBeams() {
+    let out = null;
+    const guest = !!this.net?.guest;
+    for (const e of this.entities.list) {
+      if (e.kind !== 'mob' || e.dead || e.dying || !e.def.beam) continue;
+      let k = 0, tg = null;
+      if (guest) {
+        k = (e.beamShown ?? 0) / 100;
+        if (k > 0) {
+          let bd = 24;
+          for (const q of [this.player, ...this.net.players.values()]) {
+            const d = Math.hypot(q.x - e.x, q.y - e.y, q.z - e.z);
+            if (Number.isFinite(d) && d < bd) { bd = d; tg = q; }
+          }
+        }
+      } else if (e.beam > 0 && e.target) { k = e.beam / e.def.beam; tg = e.target === this.me ? this.player : e.target; }
+      if (!tg || !(k > 0)) continue;
+      const s = e.def.scale ?? 1, fx = -Math.sin(e.yaw), fz = -Math.cos(e.yaw);
+      (out ??= []).push({ from: [e.x + fx * 0.5 * s, e.y + 0.5 * s, e.z + fz * 0.5 * s], to: [tg.x, tg.y + 1.1, tg.z], k: Math.min(1, k) });
+    }
     return out;
   }
 

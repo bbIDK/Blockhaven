@@ -272,6 +272,31 @@ skin('squid', (sk) => {
   // Paler undersides and suckers along the arms.
   each(sk, 'squid', ['arm0'], (face, r) => { if (face === 'front') for (let y = 1; y < r[3]; y += 3) at(sk, r, 0, y, 0x8090a8); });
 });
+// Guardians: scaly teal-green with a paler belly, pale orange-tipped spikes, and one great eye;
+// the elder is bleached grey-white, its spikes purple-grey.
+function guardianSkin(sk, pal, belly, spike, tip, iris) {
+  fur(sk, 'guardian', ['body', 'tail0', 'tail1', 'tail2'], pal, { cell: 1, grain: 0.35 });
+  const [body, plate, , top, bottom, eyeBox] = cubesOf('guardian', 'body');
+  // Scales: a darker diamond here and there, the belly paler.
+  sk.box(body, (face, r) => {
+    for (let y = 1; y < r[3]; y += 3) for (let x = (y % 2) * 2; x < r[2]; x += 4) at(sk, r, x, y, pal[0]);
+    if (face === 'bottom') sk.fill(r, belly, { cell: 1, grain: 0.3 });
+  });
+  sk.box(bottom, (face, r) => sk.fill(r, belly, { cell: 1, grain: 0.3 }));
+  for (const b of [plate, top]) sk.box(b, (face, r) => { for (let x = 0; x < r[2]; x += 2) at(sk, r, x, 0, pal[1]); });
+  // The eye: a pale socket in the middle of the front, the iris and a dark pupil on its own box.
+  const f = reg(body).front;
+  for (let y = 4; y < 8; y++) for (let x = 3; x < 9; x++) at(sk, f, x, y, (x === 3 || x === 8 || y === 4 || y === 7) ? pal[1] : 0xe8dcc6);
+  sk.box(eyeBox, (face, r) => { sk.fill(r, [iris], { cell: 1 }); if (face === 'front') { at(sk, r, 0, 0, 0x2a1810); at(sk, r, 1, 1, 0x2a1810); } });
+  // The spikes: pale, darker at the root and bright at the tip.
+  each(sk, 'guardian', ['spike0'], (face, r) => {
+    sk.fill(r, spike, { cell: 1, grain: 0.2 });
+    if (face !== 'top' && face !== 'bottom') { row(sk, r, 0, tip); row(sk, r, r[3] - 1, pal[1]); }
+  });
+}
+skin('guardian', (sk) => guardianSkin(sk, ramp(0x4d8a7a, 5, 0.14, 8), [0x9ab8a4, 0xa8c6b0, 0xb4d0ba], [0xd8d0b0, 0xe4dcbc, 0xece6c8], 0xd67a3a, 0xe86a2a));
+skin('guardian_elder', (sk) => guardianSkin(sk, ramp(0xb8b6a8, 5, 0.12, 6), [0xd0cec2, 0xdcdace, 0xe6e4da], [0x8e8aa0, 0x9a96ac, 0xa6a2b8], 0x6a6484, 0x7a6ea8));
+
 const COD = ramp(0x9a8a66, 4, 0.1, 6);
 skin('cod', (sk) => {
   fur(sk, 'cod', ['body', 'tail'], COD, { cell: 1, grain: 0.3 });

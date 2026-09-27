@@ -37,6 +37,13 @@ export function useItemOnBlock(game, held, def, t) {
     game.audio.place('grass', at);
     return consumed(game);
   }
+  // String laid along the top of a block is a tripwire, strung the way you face (see Game.tripwires).
+  if (held.id === I.string && t.face === 2 && SOLID[t.id] && above === 0) {
+    const yaw = game.player.yaw;
+    w.setBlock(t.x, t.y + 1, t.z, Math.abs(Math.sin(yaw)) > Math.abs(Math.cos(yaw)) ? B.tripwire : B.tripwire_z);
+    game.audio.place('cloth', at);
+    return consumed(game);
+  }
   if (held.id === I.bone_meal) return boneMeal(game, t);
   return false;
 }

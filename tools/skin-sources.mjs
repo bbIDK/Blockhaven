@@ -139,6 +139,8 @@ export const SKIN_SOURCES = {
   spider: whole(E('spider/spider')),
   cave_spider: whole(E('spider/cave_spider')),
   squid: whole(E('squid')),
+  guardian: whole(E('guardian')),
+  guardian_elder: whole(E('guardian_elder')),
   cod: whole(E('fish/cod')),
   salmon: whole(E('fish/salmon')),
   // Tropical fish: the shape's picture in the base colour, the pattern over it in the other.

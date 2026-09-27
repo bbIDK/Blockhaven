@@ -205,6 +205,14 @@ shapeless('rabbit_stew', 1, ['bowl', 'cooked_rabbit', 'carrot', 'baked_potato', 
 shapeless('sugar', 1, ['sugar_cane'], 'misc');
 shapeless('bone_meal', 3, ['bone'], 'misc');
 shapeless('bone_meal', 2, ['shark_tooth'], 'misc');
+// Generator 10's structures': prismarine from guardians' shards and crystals; dispensers and
+// tripwire hooks as the jungle temples have them.
+shaped('prismarine', 1, ['##', '##'], { '#': 'prismarine_shard' }, 'building');
+shaped('prismarine_bricks', 1, ['###', '###', '###'], { '#': 'prismarine_shard' }, 'building');
+shaped('dark_prismarine', 1, ['###', '#D#', '###'], { '#': 'prismarine_shard', D: 'black_dye' }, 'building');
+shaped('sea_lantern', 1, ['SCS', 'CCC', 'SCS'], { S: 'prismarine_shard', C: 'prismarine_crystals' }, 'building');
+shaped('dispenser', 1, ['###', '#B#', '#R#'], { '#': '#cobble', B: 'bow', R: 'redstone' }, 'misc');
+shaped('tripwire_hook', 2, ['I', 'S', '#'], { I: 'iron_ingot', S: 'stick', '#': '#planks' }, 'misc');
 shaped('stick', 1, ['#', '#'], { '#': 'bamboo' }, 'misc');
 for (const [mat, x] of [['leather', 'leather'], ['iron', 'iron_ingot'], ['golden', 'gold_ingot'], ['diamond', 'diamond']]) {
   shaped(`${mat}_helmet`, 1, ['XXX', 'X X'], { X: x }, 'equipment');
@@ -347,6 +355,7 @@ const SMELT = [
   ['salmon', 'cooked_salmon', 'food'], ['potato', 'baked_potato', 'food'], ['kelp', 'dried_kelp', 'food'],
   ['raw_shark', 'cooked_shark', 'food'],
   ['raw_venison', 'cooked_venison', 'food'], ['raw_bear', 'cooked_bear', 'food'],
+  ['wet_sponge', 'sponge'],
   ...GROUPS.logs.map((l) => [l, 'charcoal']),
 ];
 const SMELTING = new Map(SMELT.map(([a, b]) => [I[a], I[b]]));

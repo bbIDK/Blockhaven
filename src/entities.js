@@ -12,6 +12,7 @@ import { I, itemDef, DISCS } from './items.js';
 import { rayBox } from './world.js';
 import { HEIGHT, SEA_LEVEL } from './config.js';
 import { villageAt } from './villages.js';
+import { monumentAt, structuresIn } from './structures.js';
 import { BIOME } from './biomes.js';
 import { MOBS, initMob, mobTick, mobPhysics, renderMob, provoked, mobUseEffect, applyMobUse, applyHeldUse, mobDrops, mobXp, herdFor, monsterFor, HOSTILE_TYPES, seaLifeFor, ambientFor,
   rallyPets, hatchling } from './mobs.js';
@@ -101,6 +102,7 @@ export class Entities {
     this.detectors = new Set();
     this.arrowMesh = null;
     this.civilians = new Civilians(this);
+    this.elders = new Map(); // (ocean monuments' elder guardians about: "monument key:i" -> entity)
   }
 
   get world() { return this.game.world; }
@@ -111,6 +113,7 @@ export class Entities {
     this.byNid.clear();
     this.civilians.reset();
     this.herdsDue.clear();
+    this.elders.clear();
     if (!saved) return;
     for (const s of saved) {
       if (s.k === 'item' && itemDef(s.id)) this.spawnItem(s.x, s.y, s.z, s.id, s.count, s.dmg, 0, null, cleanExtras(s.ex));
@@ -402,6 +405,43 @@ export class Entities {
     if (!game.meta || this.guest) return;
     this.civilians.chunkLoaded(chunk);
     this.herdsDue.set(`${chunk.cx},${chunk.cz}`, [chunk.cx, chunk.cz]);
+    this.guard('monuments', () => this.eldersFor(chunk));
+  }
+
+  // An ocean monument's three elder guardians come out as the land where they keep loads (and
+  // again whenever it loads, until they've been killed: the dead stay dead).
+  eldersFor(chunk) {
+    const game = this.game, w = this.world;
+    for (const p of structuresIn(w.gen, chunk.cx, chunk.cz, ['monument'])) {
+      const dead = (game.meta.elders ??= {})[p.key] ?? [];
+      p.elders.forEach(([x, y, z], i) => {
+        const key = `${p.key}:${i}`, live = this.elders.get(key);
+        if (dead[i] || (live && !live.dead) || !w.readyChunk(Math.floor(x) >> 4, Math.floor(z) >> 4)) return;
+        const e = this.spawnMob('elder_guardian', x, y, z, { pinned: key });
+        e.elder = { key: p.key, i };
+        this.elders.set(key, e);
+      });
+    }
+  }
+
+  // Guardians keep coming to an ocean monument's waters while someone's there.
+  trySpawnGuardians() {
+    const w = this.world;
+    if (this.game.difficulty === 0 || !this.players.length) return;
+    const p = this.players[Math.floor(Math.random() * this.players.length)];
+    // (Swimming at the surface over it counts.)
+    const m = monumentAt(w.gen, Math.floor(p.x), Math.min(Math.floor(p.y), SEA_LEVEL - 2), Math.floor(p.z));
+    if (!m) return;
+    const near = this.list.filter((e) => e.type === 'guardian' && !e.dead && Math.abs(e.x - p.x) < 48 && Math.abs(e.z - p.z) < 48).length;
+    if (near >= 8) return;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const x = m.box[0] + 1 + Math.floor(Math.random() * (m.box[2] - m.box[0] - 1)), z = m.box[1] + 1 + Math.floor(Math.random() * (m.box[3] - m.box[1] - 1));
+      const y = m.y + 1 + Math.floor(Math.random() * 18);
+      if (!w.isLoaded(x, z) || Math.hypot(x - p.x, y - p.y, z - p.z) < 10) continue;
+      if (WATERLIKE[w.getBlock(x, y, z)] !== 1 || WATERLIKE[w.getBlock(x, y + 1, z)] !== 1) continue;
+      this.spawnMob('guardian', x + 0.5, y, z + 0.5);
+      return;
+    }
   }
 
   // The wild creatures that come with each chunk as it loads (see mobs.js herdFor): those of the
@@ -449,7 +489,7 @@ export class Entities {
     if (!targets.length) return;
     const p = targets[Math.floor(Math.random() * targets.length)];
     // (At most 6 about on Easy, 8 on Normal and 10 on Hard, and four more for each other player.)
-    const hostiles = this.list.filter((e) => e.kind === 'mob' && e.def.hostile && !e.dead).length;
+    const hostiles = this.list.filter((e) => e.kind === 'mob' && e.def.hostile && e.def.kind !== 'water' && !e.dead).length;
     if (hostiles >= 4 + diff * 2 + (targets.length - 1) * 4) return;
     const day = game.env.daylight;
     for (let attempt = 0; attempt < 6; attempt++) {
@@ -595,6 +635,7 @@ export class Entities {
         this.trySpawnHostile();
         if (Math.random() < 0.5) this.trySpawnBat();
         if (Math.random() < 0.6) this.trySpawnSea();
+        this.trySpawnGuardians();
         if (Math.random() < 0.7) this.trySpawnAmbient();
       });
     }
@@ -860,7 +901,13 @@ export class Entities {
   hurtMob(e, amount, from, bonus = 0, opts = null) {
     if (e.dying || e.dead) return;
     // Hurt by a player lately: it gives experience when it dies (and more drops with Looting).
-    if (from && (from === this.game.player || 'addr' in from)) { e.playerHurt = 100; e.looting = opts?.looting ?? 0; }
+    const byPlayer = from && (from === this.game.player || 'addr' in from);
+    if (byPlayer) { e.playerHurt = 100; e.looting = opts?.looting ?? 0; }
+    // (A guardian's spikes, out while it keeps still, prick whoever strikes it.)
+    if (byPlayer && opts?.melee && e.def.spikes && !e.moving && (e.spikeOut ?? 1) > 0.5) {
+      const who = from === this.game.player ? this.players.find((q) => !q.addr) ?? this.game.player : from;
+      this.game.hurtPlayer(who, e.def.spikes, `You were killed trying to hurt ${e.def.elder ? 'an elder guardian' : 'a guardian'}`, null, false, false);
+    }
     if (opts?.fire) e.onFire = Math.max(e.onFire ?? 0, opts.fire * 20);
     // Like the original, a creature that was just hurt only takes the part of a new hit that's
     // stronger than the last one, so spam-clicking doesn't help.
@@ -892,6 +939,8 @@ export class Entities {
       if (e.rider) this.throwRider(e);
       this.dropLoot(e);
       this.civilians.died(e);
+      // (An elder guardian killed is gone for good.)
+      if (e.elder && this.game.meta) ((this.game.meta.elders ??= {})[e.elder.key] ??= [])[e.elder.i] = true;
     }
   }
 
@@ -935,7 +984,7 @@ export class Entities {
       return;
     }
     if (e.remote) this.game.net.hitMob(e, n, bonus, opts);
-    else this.hurtMob(e, n, this.game.player, bonus, opts);
+    else this.hurtMob(e, n, this.game.player, bonus, { ...opts, melee: true });
   }
 
   // Right-click on a creature: feeding, shearing, milking; talking to villagers; getting into a
@@ -1082,6 +1131,7 @@ export class Entities {
       e.owner = x.owner; if (x.collar !== undefined) e.collar = x.collar;
       e.named = x.named; e.leash = x.leash;
       this.remoteFlags(e, Number.isInteger(s.f) ? s.f : 0);
+      if (e.def.beam) e.beamShown = Number.isInteger(s.bm) ? Math.max(0, Math.min(100, s.bm)) : 0;
     } else if (s.k === 'b' || s.k === 'c') {
       e.tyaw = Number.isFinite(s.a) ? s.a : e.yaw;
       e.ridden = !!((s.f ?? 0) & 2);
@@ -1096,6 +1146,7 @@ export class Entities {
     if (e.kind === 'mob') {
       if (Number.isFinite(u[4])) e.tyaw = u[4];
       this.remoteFlags(e, Number.isInteger(u[5]) ? u[5] : 0);
+      if (e.def.beam) e.beamShown = Number.isInteger(u[6]) ? Math.max(0, Math.min(100, u[6])) : 0;
     } else if ((e.kind === 'boat' || e.kind === 'cart') && Number.isFinite(u[4])) {
       e.tyaw = u[4];
       if (e.kind === 'cart' && Number.isFinite(u[6])) e.pitch = u[6] / 100;

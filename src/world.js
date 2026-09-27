@@ -882,6 +882,10 @@ export class World {
       else if (SWITCH[id]?.on && SWITCH[id].kind === 'plate') {
         if (this.listener?.pressing?.(t.x, t.y, t.z, SWITCH[id].wood)) this.scheduleTick(t.x, t.y, t.z, 10);
         else { this.setBlock(t.x, t.y, t.z, SWITCH[id].other); this.listener?.blockSound?.(t.x, t.y, t.z, 'click_off'); }
+      } else if (SWITCH[id]?.on && SWITCH[id].kind === 'hook') {
+        // A tripwire hook stays set off while anyone's on its wire.
+        if (this.listener?.wireHeld?.(t.x, t.y, t.z)) this.scheduleTick(t.x, t.y, t.z, 10);
+        else { this.setBlock(t.x, t.y, t.z, SWITCH[id].other); this.listener?.blockSound?.(t.x, t.y, t.z, 'click_off'); }
       }
     }
   }

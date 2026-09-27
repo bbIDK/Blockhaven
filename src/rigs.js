@@ -92,8 +92,41 @@ const WHALES = {
   },
 };
 
+// Guardians: Minecraft's GuardianModel (so the pack's skins fit), turned into the game's terms
+// (x = -x, y = 24 - y, turns [-x, -y, z]): a body with plates on its sides, top and bottom, one eye
+// at the front, a tail of three parts ending in a fin, and twelve spikes. Each spike: where it stands
+// out in Minecraft's terms and how it leans (in turns of pi) [x, y, z, xTurn, yTurn, zTurn].
+const SPIKES = [[0, -8, 8, 1.75, 0, 0], [0, -8, -8, 0.25, 0, 0], [8, -8, 0, 0, 0, 0.25], [-8, -8, 0, 0, 0, 1.75], [-8, 0, -8, 0.5, 0.25, 0],
+  [8, 0, -8, 0.5, 1.75, 0], [8, 0, 8, 0.5, 1.25, 0], [-8, 0, 8, 0.5, 0.75, 0], [0, 8, 8, 1.25, 0, 0], [0, 8, -8, 0.75, 0, 0], [8, 8, 0, 0, 0, 0.75],
+  [-8, 8, 0, 0, 0, 1.25]];
+const spikeTurn = ([, , , xr, yr, zr]) => [-xr * Math.PI, -yr * Math.PI, zr * Math.PI];
+const GUARDIAN = {
+  body: { pivot: [0, 24, 0], cubes: [c([-6, 2, -8], [12, 12, 16], [0, 0]), c([6, 2, -6], [2, 12, 12], [0, 28]), c([-8, 2, -6], [2, 12, 12], [0, 28], { mirror: true }),
+    c([-6, 14, -6], [12, 2, 12], [16, 40]), c([-6, 0, -6], [12, 2, 12], [16, 40]), c([-1, 7, -8.25], [2, 2, 1], [8, 0])] },
+  tail0: { parent: 'body', pivot: [0, 24, 0], cubes: [c([-2, 6, 7], [4, 4, 8], [40, 0])] },
+  tail1: { parent: 'tail0', pivot: [1.5, 23.5, 14], cubes: [c([-1.5, 6.5, 14], [3, 3, 7], [0, 54])] },
+  tail2: { parent: 'tail1', pivot: [1, 23, 20], cubes: [c([-1, 7, 20], [2, 2, 6], [41, 32]), c([-1, 3.5, 23], [1, 9, 9], [25, 19])] },
+  ...Object.fromEntries(SPIKES.map((sp, i) => {
+    const [sx, sy, sz] = sp;
+    return [`spike${i}`, { parent: 'body', pivot: [-sx, 8 - sy, sz], rest: spikeTurn(sp), cubes: [c([-sx - 1, 3.5 - sy, sz - 1], [2, 9, 2], [0, 0])] }];
+  })),
+};
+// Which way each spike slides as it's drawn in (see poseMob): out along the line from the middle of
+// the body, in the spike's own turned coordinates (a bone's offset is applied after its turn).
+function unturn([rx, ry, rz], [x, y, z]) {
+  let c0 = Math.cos(-ry), s0 = Math.sin(-ry);
+  [x, z] = [c0 * x + s0 * z, -s0 * x + c0 * z];
+  c0 = Math.cos(-rx); s0 = Math.sin(-rx);
+  [y, z] = [c0 * y - s0 * z, s0 * y + c0 * z];
+  c0 = Math.cos(-rz); s0 = Math.sin(-rz);
+  [x, y] = [c0 * x - s0 * y, s0 * x + c0 * y];
+  return [x, y, z];
+}
+export const GUARDIAN_SPIKES = SPIKES.map((sp) => unturn(spikeTurn(sp), [-sp[0], -sp[1], sp[2]]));
+
 export const RIGS = {
   humanoid: { bones: HUMANOID, hand: { bone: 'rightArm', at: [6, 13, -1] }, height: 32 },
+  guardian: { bones: GUARDIAN },
   skeleton: {
     bones: {
       head: HUMANOID.head,

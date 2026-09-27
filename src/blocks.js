@@ -1176,7 +1176,9 @@ export function spriteOf(block) {
 export const LOOT_CHEST = {};
 export const LOOT_KIND = {};  // id -> table
 export const LOOT_FRONT = {}; // id -> the face its front is on
-['dungeon', 'village', 'smith', 'desert', 'house', 'mine', 'farm'].forEach((kind, i) => {
+// (Generator 10's structures added the kinds after 'farm': see loot.js.)
+['dungeon', 'village', 'smith', 'desert', 'house', 'mine', 'farm', 'pyramid', 'jungle_temple', 'igloo', 'shipwreck_supply',
+  'shipwreck_treasure', 'shipwreck_map', 'mineshaft', 'stronghold_library', 'stronghold'].forEach((kind, i) => {
   [4, 5, 0, 1].forEach((front, j) => {
     const id = 1990 + i * 4 + j;
     const tex = ['chest_side', 'chest_side', 'chest_top', 'chest_top', 'chest_side', 'chest_side'];
@@ -1189,6 +1191,64 @@ export const LOOT_FRONT = {}; // id -> the face its front is on
   });
 });
 export const lootChestId = (kind, front) => LOOT_CHEST[kind] + [4, 5, 0, 1].indexOf(front);
+
+// ---------------------------------------------------------------- generator 10's structures
+// Ocean monuments are built of prismarine and lit by sea lanterns, with sponges (soaked) in some
+// rooms; strongholds keep an end portal's frame of end stone; jungle temples guard their chests
+// with dispensers of arrows set off by tripwires.
+block(2474, 'prismarine', { tex: 'prismarine', hardness: 1.5, tool: 'pickaxe' });
+block(2475, 'prismarine_bricks', { tex: 'prismarine_bricks', hardness: 1.5, tool: 'pickaxe' });
+block(2476, 'dark_prismarine', { tex: 'dark_prismarine', hardness: 1.5, tool: 'pickaxe' });
+block(2477, 'sea_lantern', { tex: 'sea_lantern', hardness: 0.3, sound: 'glass', emit: 15, emissive: true });
+// A sponge soaks up the water round it (see Game.soak); a wet one dries in a furnace.
+block(2478, 'sponge', { tex: 'sponge', hardness: 0.6, sound: 'grass' });
+block(2479, 'wet_sponge', { tex: 'wet_sponge', hardness: 0.6, sound: 'grass' });
+block(2480, 'end_stone', { tex: 'end_stone', hardness: 3, tool: 'pickaxe' });
+// The frame of an end portal: 13 pixels high, with an ender eye set in it or not. It can't be
+// broken (and with no End to reach, the portal it frames stays shut).
+const FRAME_BOX = tb([0, 0, 0, 16, 13, 16], { side: 'end_portal_frame_side', top: 'end_portal_frame_top', bottom: 'end_stone' });
+shaped(2481, 'end_portal_frame', [FRAME_BOX], { label: 'End Portal Frame', tex: 'end_portal_frame_side', hardness: -1, sound: 'stone',
+  cat: 'functional' });
+shaped(2482, 'end_portal_frame_eye', [FRAME_BOX, [4, 13, 4, 12, 16, 12, TEX.end_portal_frame_eye]], { label: 'End Portal Frame',
+  tex: 'end_portal_frame_side', hardness: -1, sound: 'stone', base: 2481, item: false, drop: null });
+// Dispensers: powered, they shoot an arrow (or throw out whatever else is in them) from the front.
+// The ones the world leaves in its traps are loaded the first time they're used or opened.
+export const DISPENSER = {}; // id -> the face its front is on
+facing([2483, 2484, 2485, 2486], 'dispenser', { front: 'dispenser_front', side: 'furnace_side', top: 'furnace_top', hardness: 3.5,
+  tool: 'pickaxe', cat: 'functional' });
+facing([2500, 2501, 2502, 2503], 'dispenser_trap', { label: 'Dispenser', front: 'dispenser_front', side: 'furnace_side', top: 'furnace_top',
+  hardness: 3.5, tool: 'pickaxe', base: 2483, item: false, drop: 'dispenser' });
+for (const [first, trap] of [[2483, false], [2500, true]]) {
+  for (const [face, id] of Object.entries(FACING_VARIANTS[first])) {
+    DISPENSER[id] = Number(face);
+    if (trap) { LOOT_KIND[id] = 'dispenser_trap'; LOOT_FRONT[id] = Number(face); }
+  }
+}
+export const dispenserId = (front, trap = false) => FACING_VARIANTS[trap ? 2500 : 2483][front];
+// Tripwire hooks on a wall (attached to the face `attach`), and the tripwire strung between two
+// of them: anyone crossing the wire sets both hooks off, and they power what they're fixed to,
+// like a lever (see Game.tripwires and power.js).
+[5, 4, 0, 1].forEach((f, k) => [false, true].forEach((on) => {
+  const id = 2488 + k * 2 + (on ? 1 : 0);
+  const plank = ATTACH_BOX.box(f, 2, 8, 2), [x0, , z0, x1, , z1] = plank;
+  // The hook: a ring of iron standing out from the middle of the plank (drooping when set off).
+  const ry = on ? 5 : 7;
+  const ring = f === 5 ? [7, ry, z1, 9, ry + 2, z1 + 4] : f === 4 ? [7, ry, z0 - 4, 9, ry + 2, z0]
+    : f === 1 ? [x1, ry, 7, x1 + 4, ry + 2, 9] : [x0 - 4, ry, 7, x0, ry + 2, 9];
+  shaped(id, id === 2488 ? 'tripwire_hook' : `tripwire_hook_${f}${on ? '_on' : ''}`, [[...plank, TEX.oak_planks], [...ring, TEX.tripwire_hook]], {
+    label: 'Tripwire Hook', tex: 'tripwire_hook', solid: false, hardness: 0, sound: 'wood', base: 2488, item: id === 2488, drop: 'tripwire_hook',
+    support: 'attached', cat: 'functional' });
+  SWITCH[id] = { kind: 'hook', on, attach: f, base: 2488, other: id ^ 1 };
+}));
+export const hookId = (attach, on = false) => 2488 + [5, 4, 0, 1].indexOf(attach) * 2 + (on ? 1 : 0);
+// The wire, along x or along z: a thread just off the ground. (String hung this way is what you
+// place with string in hand.)
+export const TRIPWIRE = {}; // id -> 'x' or 'z'
+shaped(2496, 'tripwire', [[0, 1, 7.5, 16, 1.5, 8.5, TEX.tripwire]], { label: 'Tripwire', tex: 'tripwire', solid: false, hardness: 0,
+  sound: 'cloth', item: false, drop: 'string', support: 'solid', cutout: true, ao: false });
+shaped(2497, 'tripwire_z', [[7.5, 1, 0, 8.5, 1.5, 16, TEX.tripwire]], { label: 'Tripwire', tex: 'tripwire', solid: false, hardness: 0,
+  sound: 'cloth', base: 2496, item: false, drop: 'string', support: 'solid', cutout: true, ao: false });
+TRIPWIRE[2496] = 'x'; TRIPWIRE[2497] = 'z';
 
 // A ladder's panel against the wall on `side` (shared with vines).
 function LADDER_PANEL_FOR(side) {

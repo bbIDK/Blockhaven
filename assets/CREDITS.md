@@ -767,6 +767,23 @@ doubled in size (the particles). Anything not listed is drawn by the game's own 
 | `textures/witch_spawn_egg.png` | Pixel Perfection CE item/spawn_egg.png; Pixel Perfection CE item/spawn_egg_overlay.png | changed |
 | `textures/cave_spider_spawn_egg.png` | Pixel Perfection CE item/spawn_egg.png; Pixel Perfection CE item/spawn_egg_overlay.png | changed |
 | `textures/phantom_spawn_egg.png` | Pixel Perfection CE item/spawn_egg.png; Pixel Perfection CE item/spawn_egg_overlay.png | changed |
+| `textures/guardian_spawn_egg.png` | Pixel Perfection CE item/spawn_egg.png; Pixel Perfection CE item/spawn_egg_overlay.png | changed |
+| `textures/elder_guardian_spawn_egg.png` | Pixel Perfection CE item/spawn_egg.png; Pixel Perfection CE item/spawn_egg_overlay.png | changed |
+| `textures/prismarine.png` | Pixel Perfection CE block/prismarine.png | changed |
+| `textures/prismarine_bricks.png` | Pixel Perfection CE block/prismarine_bricks.png |  |
+| `textures/dark_prismarine.png` | Pixel Perfection CE block/dark_prismarine.png |  |
+| `textures/sea_lantern.png` | Pixel Perfection CE block/sea_lantern.png | changed |
+| `textures/sponge.png` | Pixel Perfection CE block/sponge.png |  |
+| `textures/wet_sponge.png` | Pixel Perfection CE block/wet_sponge.png |  |
+| `textures/end_stone.png` | Pixel Perfection CE block/end_stone.png |  |
+| `textures/end_portal_frame_top.png` | Pixel Perfection CE block/end_portal_frame_top.png |  |
+| `textures/end_portal_frame_side.png` | Pixel Perfection CE block/end_portal_frame_side.png |  |
+| `textures/end_portal_frame_eye.png` | Pixel Perfection CE block/end_portal_frame_eye.png |  |
+| `textures/dispenser_front.png` | Pixel Perfection CE block/dispenser_front.png | changed |
+| `textures/tripwire.png` | Pixel Perfection CE block/tripwire.png |  |
+| `textures/tripwire_hook.png` | Pixel Perfection CE block/tripwire_hook.png |  |
+| `textures/prismarine_shard.png` | Pixel Perfection CE item/prismarine_shard.png |  |
+| `textures/prismarine_crystals.png` | Pixel Perfection CE item/prismarine_crystals.png |  |
 | `skins/zombie.png` | Pixel Perfection CE entity/zombie/zombie.png | changed |
 | `skins/husk.png` | Pixel Perfection CE entity/zombie/husk.png | changed |
 | `skins/drowned.png` | Pixel Perfection CE entity/zombie/drowned.png; Pixel Perfection CE entity/zombie/drowned_outer_layer.png | changed |
@@ -777,6 +794,8 @@ doubled in size (the particles). Anything not listed is drawn by the game's own 
 | `skins/spider.png` | Pixel Perfection CE entity/spider/spider.png | changed |
 | `skins/cave_spider.png` | Pixel Perfection CE entity/spider/cave_spider.png | changed |
 | `skins/squid.png` | Pixel Perfection CE entity/squid.png | changed |
+| `skins/guardian.png` | Pixel Perfection CE entity/guardian.png | changed |
+| `skins/guardian_elder.png` | Pixel Perfection CE entity/guardian_elder.png | changed |
 | `skins/cod.png` | Pixel Perfection CE entity/fish/cod.png | changed |
 | `skins/salmon.png` | Pixel Perfection CE entity/fish/salmon.png | changed |
 | `skins/tropical_clownfish.png` | Pixel Perfection CE entity/fish/tropical_a.png; Pixel Perfection CE entity/fish/tropical_a_pattern_1.png | changed |

@@ -24,6 +24,7 @@ import './tex/caves.js';
 import './tex/sea.js';
 import './tex/wild.js';
 import './tex/eggs.js';
+import './tex/structures.js';
 
 export const ARRAY_LAYERS = 256;
 

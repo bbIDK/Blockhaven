@@ -1,7 +1,7 @@
 // Spawn eggs, as in Minecraft: one for each creature, in its two colours (the egg and its
 // speckles), had in Creative or by command. Used on a block, the creature comes out there (sea
 // creatures in the water looked at). Their item ids run on from EGG_ID in this order, so new ones
-// only ever go on the end.
+// only ever go on the end (up to 599: other items start at 600).
 export const EGG_ID = 461;
 export const EGGS = [
   ['pig', 0xf0a5a2, 0xdb635f], ['cow', 0x443626, 0xa1a1a1], ['sheep', 0xe7e7e7, 0xffb5b5], ['chicken', 0xa1a1a1, 0xff0000],
@@ -21,7 +21,7 @@ export const EGGS = [
   ['cardinal', 0xc4202a, 0x2a1a1a], ['sparrow', 0x8a6a4a, 0xd8c8a8], ['goldfinch', 0xf2d23a, 0x1e1e1e], ['crow', 0x1e1e24, 0x4a4a5a],
   ['seagull', 0xf2f2f2, 0x9aa4ac], ['eagle', 0x4a3322, 0xf4f4f0], ['vulture', 0x2a2624, 0xd9a5a0], ['butterfly', 0xe8801e, 0x1e1e1e],
   ['bee', 0xedc343, 0x43241b], ['drowned', 0x8ff1d7, 0x799c65], ['witch', 0x340000, 0x51a03e], ['cave_spider', 0x0c424e, 0xa80e0e],
-  ['phantom', 0x43518a, 0x88ff00],
+  ['phantom', 0x43518a, 0x88ff00], ['guardian', 0x5a8272, 0xf17d30], ['elder_guardian', 0xceccba, 0x747693],
 ];
 // Every egg's creature, and its name ("Polar Bear").
 export const EGG_TYPES = new Set(EGGS.map((e) => e[0]));

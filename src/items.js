@@ -147,6 +147,10 @@ item(457, 'raw_venison', { label: 'Raw Venison', food: 3, sat: 0.3 });
 item(458, 'cooked_venison', { label: 'Cooked Venison', food: 8, sat: 0.8 });
 item(459, 'raw_bear', { label: 'Raw Bear Meat', food: 3, sat: 0.3 });
 item(460, 'cooked_bear', { label: 'Bear Steak', food: 8, sat: 0.9 });
+// Generator 10's structures': guardians drop prismarine shards (four make prismarine) and crystals
+// (a sea lantern's light).
+item(600, 'prismarine_shard', { label: 'Prismarine Shard' });
+item(601, 'prismarine_crystals', { label: 'Prismarine Crystals' });
 // Spawn eggs (see eggs.js), Creative's own tab of them.
 EGGS.forEach(([type], i) => item(EGG_ID + i, `${type}_spawn_egg`, { label: `${eggLabel(type)} Spawn Egg`, spawns: type }));
 // (Only ever seen in a hand: the rod while its line is out.)
@@ -282,6 +286,7 @@ export function dropsFor(blockId, tool, rand = Math.random) {
     case 'bookshelf': return one('book', 3);
     case 'melon': return one('melon_slice', n(3, 7));
     case 'campfire': return one('charcoal', 2);
+    case 'sea_lantern': return one('prismarine_crystals', n(2, 3));
     case 'copper_ore': case 'deepslate_copper_ore': return one('raw_copper', n(2, 5));
     case 'redstone_ore': case 'deepslate_redstone_ore': return one('redstone', n(4, 5));
     case 'lapis_ore': case 'deepslate_lapis_ore': return one('lapis_lazuli', n(4, 9));

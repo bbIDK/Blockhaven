@@ -418,6 +418,11 @@ export class ContainerGUI {
       m.chestSlots.forEach((s, k) => slot(s, 7 + (k % 9) * 18, 17 + Math.floor(k / 9) * 18));
       label('Inventory', win, 8, 74 + y0);
       player(84 + y0, 142 + y0);
+    } else if (this.kind === 'dispenser') {
+      label(m.title, win, 88, 6, true);
+      m.chestSlots.forEach((s, k) => slot(s, 61 + (k % 3) * 18, 16 + Math.floor(k / 3) * 18));
+      label('Inventory', win, 8, 72);
+      player(83, 141);
     } else if (this.kind === 'enchanting') {
       label('Enchant', win, 12, 5);
       image(iconFor(I.enchanted_book), win, 15, 13, 28, 28);

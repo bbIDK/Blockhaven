@@ -67,7 +67,28 @@ const EFFECT_ICONS = {
   poison: sprite(['....k....', '...kgk...', '...kgk...', '..kgggk..', '.kgghggk.', '.kgghggk.', '.kgggggk.', '..kgggk..', '...kkk...'],
     { k: '#14300c', g: '#4e9331', h: '#9ad860' }),
   hunger: sprite(DRUMSTICK, { k: '#1a2a0a', m: '#6e8a3a', h: '#9ab86a', b: '#d8e0c8' }),
+  mining_fatigue: sprite(['..kkkkk..', '.kbbbbbk.', 'kbk...kbk', 'kk.kgk.kk', '...kgk...', '...kgk...', '...kgk...', '...kgk...', '....k....'],
+    { k: '#1e1a08', b: '#8a7a3a', g: '#5a4020' }),
 };
+// An elder guardian's face, flashed over the screen as it lays its curse (see Game.curse).
+const ELDER_FACE = sprite([
+  '...s...ss...s...',
+  '...s...ss...s...',
+  's.kkkkkkkkkkkk.s',
+  '.skwwgwwwwgwwks.',
+  '..kwwwwwwwwwwk..',
+  '..kwgwppppwgwk..',
+  'sskwwpeeeepwwkss',
+  '..kwwpeiiepwwk..',
+  '..kwwpeiiepwwk..',
+  'sskwwpeeeepwwkss',
+  '..kwgwppppwgwk..',
+  '..kwwwwwwwwwwk..',
+  '.skwwgwwwwgwwks.',
+  's.kkkkkkkkkkkk.s',
+  '...s...ss...s...',
+  '...s...ss...s...',
+], { k: '#6a6858', w: '#d8d6c8', g: '#b8b6a4', p: '#e8dcc6', e: '#7a6ea8', i: '#2a1810', s: '#8e8aa0' });
 
 // The hotbar: nine 20x20 cells in a translucent bar, and the frame around the selected one.
 function hotbarSprite() {
@@ -510,6 +531,15 @@ export class UI {
     if (!show) return;
     el.firstChild.style.width = `calc(var(--u) * ${Math.round(frac * 180)})`;
     el.lastChild.textContent = level > 0 ? String(level) : '';
+  }
+
+  // An elder guardian's face looms over the screen and fades (its curse of mining fatigue).
+  curse() {
+    const el = $('overlay-curse');
+    el.style.backgroundImage = `url(${ELDER_FACE})`;
+    el.classList.remove('on');
+    void el.offsetWidth;
+    el.classList.add('on');
   }
 
   // Active status effects, top right: an icon for each (the good ones first) with the time left;

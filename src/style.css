@@ -358,6 +358,11 @@ kbd {
 #overlay-water { position: absolute; inset: 0; background: rgba(20, 60, 160, 0.28); opacity: 0; transition: opacity 150ms; }
 #overlay-hurt { position: absolute; inset: 0; box-shadow: inset 0 0 120px 30px rgba(200, 20, 10, 0.55); opacity: 0; }
 #overlay-sleep { position: absolute; inset: 0; background: #05070a; opacity: 0; transition: opacity 900ms ease; }
+#overlay-curse { position: absolute; inset: 0; pointer-events: none; opacity: 0; background: center / auto 72vh no-repeat; image-rendering: pixelated; }
+#overlay-curse.on { animation: curse 2.4s ease-out forwards; }
+@keyframes curse { 0% { opacity: 0; transform: scale(0.75); } 18% { opacity: 0.5; } 100% { opacity: 0; transform: scale(1.2); } }
+@media (prefers-reduced-motion: reduce) { #overlay-curse.on { animation-name: curse-still; } }
+@keyframes curse-still { 0%, 100% { opacity: 0; } 20% { opacity: 0.4; } }
 #overlay-sleep.on { opacity: 1; }
 
 /* Hotbar (182 x 22) at the bottom edge, with health and armor above its left end and hunger and

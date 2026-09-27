@@ -1,16 +1,17 @@
-// Switches and what they work, a simple kind of redstone. Levers, buttons, pressure plates and
-// blocks of redstone power the blocks beside them, and a switch also powers through the block
-// it's fixed to (so a lever on a wall works a door on the other side of it). Powered, doors,
-// trapdoors and fence gates open, redstone lamps light up, note blocks play and TNT goes off; iron doors and iron
-// trapdoors open only this way. Only the host (or a single player) works this out; everyone else
-// sees the blocks change.
-import { B, SWITCH, DOOR, TRAPDOOR, trapdoorId, GATE, gateId, SOLID, FACE_DIRS, NOTE, RAIL, RAIL_ID } from './blocks.js';
+// Switches and what they work, a simple kind of redstone. Levers, buttons, pressure plates,
+// tripwire hooks and blocks of redstone power the blocks beside them, and a switch also powers
+// through the block it's fixed to (so a lever on a wall works a door on the other side of it).
+// Powered, doors, trapdoors and fence gates open, redstone lamps light up, note blocks play,
+// dispensers shoot and TNT goes off; iron doors and iron trapdoors open only this way. Only the
+// host (or a single player) works this out; everyone else sees the blocks change.
+import { B, SWITCH, DOOR, TRAPDOOR, trapdoorId, GATE, gateId, SOLID, FACE_DIRS, NOTE, RAIL, RAIL_ID, DISPENSER } from './blocks.js';
 
 // (A detector rail gives power while a cart is on it.)
 const isSource = (id) => !!SWITCH[id] || id === B.redstone_block || RAIL[id]?.kind === 'detector';
 const isOn = (id) => !!SWITCH[id]?.on || id === B.redstone_block || (RAIL[id]?.kind === 'detector' && RAIL[id].on);
 const family = (id) => (DOOR[id] ? 'door' : TRAPDOOR[id] ? 'trapdoor' : GATE[id] ? 'gate'
-  : id === B.redstone_lamp || id === B.redstone_lamp_on ? 'lamp' : id === B.tnt ? 'tnt' : NOTE[id] !== undefined ? 'note' : RAIL[id]?.kind === 'powered' ? 'rail' : null);
+  : id === B.redstone_lamp || id === B.redstone_lamp_on ? 'lamp' : id === B.tnt ? 'tnt' : NOTE[id] !== undefined ? 'note' : RAIL[id]?.kind === 'powered' ? 'rail'
+  : DISPENSER[id] !== undefined ? 'dispenser' : null);
 
 // Is anything powering the block at (x, y, z)?
 export function poweredAt(w, x, y, z) {
@@ -56,6 +57,12 @@ export function refresh(w, x, y, z) {
     w.notesOn ??= new Set();
     if (on && !w.notesOn.has(key)) { w.notesOn.add(key); w.listener?.noteBlock?.(x, y, z); }
     else if (!on) w.notesOn.delete(key);
+  } else if (kind === 'dispenser') {
+    // A dispenser shoots once as the power comes on (as a note block plays).
+    const key = `${x},${y},${z}`, on = poweredAt(w, x, y, z);
+    w.dispensersOn ??= new Set();
+    if (on && !w.dispensersOn.has(key)) { w.dispensersOn.add(key); w.listener?.dispense?.(x, y, z); }
+    else if (!on) w.dispensersOn.delete(key);
   } else if (kind === 'tnt' && poweredAt(w, x, y, z)) {
     w.setBlock(x, y, z, 0);
     w.listener?.igniteTNT?.(x, y, z);

@@ -1,7 +1,7 @@
 // Creatures: what each one is (model, skin, size, health, what it drops), how it behaves, how it
 // moves its limbs, and where it turns up. Entities (entities.js) keeps them in its list and runs
 // their physics; everything particular to a kind of creature lives here.
-import { RIGS, rigMeshes, boneMatrix } from './rigs.js';
+import { RIGS, rigMeshes, boneMatrix, GUARDIAN_SPIKES } from './rigs.js';
 import { B, SOLID, WATERLIKE, CLIMB, LEAVES_WOOD, SHAPE_KIND } from './blocks.js';
 import { I, ITEMS } from './items.js';
 import { BIOME } from './biomes.js';
@@ -205,13 +205,24 @@ export const MOBS = {
     scale: 0.7, calmInDaylight: true },
   phantom: { label: 'Phantom', rig: 'phantom', skins: ['phantom'], hw: 0.45, h: 0.5, health: 20, speed: 7, kind: 'hostile', anim: 'phantom',
     damage: 3, burns: true, drops: [d('phantom_membrane', 0, 1)], sound: 'phantom', flies: 'phantom', scale: 1.1 },
+  // ---- the structures update's guardians, who keep the ocean monuments (see structures.js). They
+  // swim slowly about and turn their one eye on anyone near: after holding them in its beam a few
+  // seconds, it hurts them. Their spikes stand out while they keep still, and prick whoever strikes
+  // them then. The elder guardians - three to a monument, and no more once they're gone - are
+  // bigger and slower, and every minute wear down everyone near with mining fatigue.
+  guardian: { label: 'Guardian', rig: 'guardian', skins: ['guardian'], hw: 0.45, h: 0.85, health: 30, speed: 1.3, kind: 'water', anim: 'guardian',
+    damage: 6, beam: 80, spikes: 2, monster: true, xp: 10, drops: [d('prismarine_shard', 0, 2), d('cod', 0, 1, 0.4), d('prismarine_crystals', 0, 1, 0.4)],
+    sound: 'guardian' },
+  elder_guardian: { label: 'Elder Guardian', rig: 'guardian', skins: ['guardian_elder'], hw: 1.0, h: 2.0, health: 80, speed: 0.8, kind: 'water',
+    anim: 'guardian', damage: 8, beam: 60, spikes: 2, monster: true, elder: true, xp: 10, scale: 2.35, knockback: 0, pitch: 0.65,
+    drops: [d('prismarine_shard', 0, 2), d('wet_sponge', 1, 1), d('cod', 0, 1, 0.5), d('prismarine_crystals', 0, 1, 0.33)], sound: 'guardian' },
   // Village people (see civilians.js); each wears their own skin.
   civilian: { label: 'Villager', rig: 'humanoid', skins: ['civ_farmer_0'], hw: 0.3, h: 1.9, health: 20, speed: 1.6, kind: 'civilian',
     anim: 'humanoid', drops: [], sound: null },
 };
 for (const [type, m] of Object.entries(MOBS)) {
   m.type = type;
-  m.hostile = m.kind === 'hostile';
+  m.hostile = m.kind === 'hostile' || !!m.monster;
   m.drops = m.drops.map(([name, lo, hi, chance]) => [I[name] ?? B[name], lo, hi, chance]).filter((x) => x[0] !== undefined);
   const ids = (names) => new Set((names ?? []).map((n) => I[n] ?? B[n]).filter((id) => id !== undefined));
   m.foodIds = ids(m.food);
@@ -678,6 +689,7 @@ function swimTick(ents, e) {
   if (!e.inWater) { e.moving = false; return; }
   const t = e.def;
   if (t.puffs) puffTick(ents, e);
+  if (t.beam && guardianTick(ents, e)) return;
   if ((t.preys || t.retaliates) && huntTick(ents, e)) return;
   // (Going up for air, a whale still keeps out of the shallows.)
   if (t.breathes && breatheTick(ents, e)) { if (t.deep) keepDeep(ents, e); return; }
@@ -793,6 +805,45 @@ function huntTick(ents, e) {
     e.swing = 1;
     bite(ents, e, tg, t.damage);
     if (t.retaliates && (e.angry -= 150) <= 0) e.target = null;
+  }
+  return true;
+}
+
+// A guardian that sees someone within sixteen blocks stops, turns its eye on them and holds them in
+// its beam (purple, turning yellow as it charges; see Game.guardianBeams): when it's charged, they're
+// hurt. Out of sight a moment, or out of reach, they're let go. An elder guardian now and then lays
+// mining fatigue on everyone within fifty blocks.
+function guardianTick(ents, e) {
+  const t = e.def, game = ents.game, w = ents.world;
+  if (t.elder && (e.curseCd = (e.curseCd ?? 200 + Math.floor(Math.random() * 1000)) - 1) <= 0) {
+    e.curseCd = 1200;
+    for (const p of ents.players) if (!p.dead && !p.creative && Math.hypot(p.x - e.x, p.y - e.y, p.z - e.z) < 50) game.giveEffect(p, 'mining_fatigue', 300, 3);
+  }
+  const eyeY = e.y + e.h * 0.5;
+  const sees = (p) => clearLine(w, e.x, eyeY, e.z, p.x, p.y + 1.5, p.z);
+  if (!e.target && (e.lookCd = (e.lookCd ?? 0) - 1) <= 0) {
+    e.lookCd = 10;
+    let best = null, bd = 16;
+    for (const p of ents.players) {
+      if (p.dead || p.creative) continue;
+      const d = Math.hypot(p.x - e.x, p.y + 1 - eyeY, p.z - e.z);
+      if (d < bd && sees(p)) { bd = d; best = p; }
+    }
+    if (best) { e.target = best; e.beam = 0; e.lost = 0; }
+  }
+  const tg = e.target;
+  if (!tg) { e.beam = 0; return false; }
+  const dx = tg.x - e.x, dy = tg.y + 1 - eyeY, dz = tg.z - e.z, dist = Math.hypot(dx, dy, dz);
+  e.lost = sees(tg) ? 0 : (e.lost ?? 0) + 1;
+  if (tg.dead || tg.creative || dist > 20 || e.lost > 20 || !e.inWater) { e.target = null; e.beam = 0; return false; }
+  e.moving = false; e.swimY = 0;
+  e.yaw = Math.atan2(-dx, -dz);
+  e.aimPitch = Math.atan2(dy, Math.hypot(dx, dz));
+  if (e.beam === 0) game.audio.mob('guardian', 'beam', { x: e.x, y: eyeY, z: e.z }, t.pitch);
+  if (++e.beam >= t.beam) {
+    e.beam = 0; e.target = null; e.lookCd = 20 + Math.floor(Math.random() * 30);
+    if (tg.kind === 'mob') ents.hurtMob(tg, t.damage, e);
+    else game.hurtPlayer(tg, t.damage, `You were slain by ${t.elder ? 'an elder guardian' : 'a guardian'}`, null, true);
   }
   return true;
 }
@@ -1567,7 +1618,9 @@ export function mobPhysics(ents, e, dt, fluid) {
     const moved = Math.hypot(e.vx, e.vz);
     e.walk += (Math.min(1, moved / 1.5) - e.walk) * Math.min(1, dt * 8);
     e.walkPhase += (moved + 0.5) * dt * 4;
-    e.tilt = (e.tilt ?? 0) + (clamp(Math.atan2(e.vy, Math.max(moved, 1)), -1, 1) - (e.tilt ?? 0)) * Math.min(1, dt * 5);
+    // (A guardian holding someone in its beam looks straight at them.)
+    const want = e.beam > 0 && e.aimPitch !== undefined ? clamp(e.aimPitch, -1.2, 1.2) : clamp(Math.atan2(e.vy, Math.max(moved, 1)), -1, 1);
+    e.tilt = (e.tilt ?? 0) + (want - (e.tilt ?? 0)) * Math.min(1, dt * 5);
     return;
   }
   const swimming = fluid === 1 && (t.swims || t.swimmer);
@@ -1953,6 +2006,20 @@ export function poseMob(e, pose) {
       }
       break;
     }
+    case 'guardian': {
+      // The tail sweeps side to side (faster as it swims); the spikes stand out while it keeps still
+      // and draw in as it moves (as in Minecraft's model: see rigs.js).
+      const f = age * (0.8 + e.walk * 3.2);
+      pose.tail0 = [0, -Math.sin(f) * Math.PI * 0.05, 0];
+      pose.tail1 = [0, -Math.sin(f) * Math.PI * 0.1, 0];
+      pose.tail2 = [0, -Math.sin(f) * Math.PI * 0.15, 0];
+      e.spikeOut = (e.spikeOut ?? 1) + ((e.moving || e.walk > 0.3 ? 0 : 1) - (e.spikeOut ?? 1)) * 0.08;
+      for (let i = 0; i < 12; i++) {
+        const k = Math.cos(age * 1.5 + i) * 0.01 - (1 - e.spikeOut) * 0.55, v = GUARDIAN_SPIKES[i];
+        pose[`spike${i}@`] = [v[0] * k, v[1] * k, v[2] * k];
+      }
+      break;
+    }
     case 'squid': {
       // The arms spread out and close again as it pulses along.
       const s = (Math.sin(age * 2.2) * 0.5 + 0.5) * 0.9 + 0.1;
@@ -2040,7 +2107,7 @@ export function renderMob(ents, e, rx, ry, rz, light, out) {
   // Flyers (and dolphins) pitch up and down with where they're heading; bats fly leaning
   // forwards and roost hanging upside down.
   if (e.roost) { translate(base, base, 0, e.h, 0); rotateZ(base, base, Math.PI); }
-  else if (t.flies || t.anim === 'dolphin' || t.anim === 'shark' || t.anim === 'whale') {
+  else if (t.flies || t.anim === 'dolphin' || t.anim === 'shark' || t.anim === 'whale' || t.anim === 'guardian') {
     // (Soaring birds lie out flat as they glide.)
     const soaring = t.anim === 'soar' && !e.onGround && !e.perched;
     const pitch = (e.tilt ?? 0) * (soaring ? 0.4 : 1) - (t.anim === 'bat' ? 0.7 : t.anim === 'parrot' && !e.onGround ? 0.35 : soaring ? 1.25 : 0);

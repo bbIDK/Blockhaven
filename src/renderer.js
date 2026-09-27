@@ -596,6 +596,7 @@ export class Renderer {
       (f.lines ??= []).push(linePoints(tip, f.rod.to, f.rod.slack, this.rodLine ??= []));
     }
     if (f.lines?.length) this.drawLines(f.lines, cam);
+    if (f.beams?.length) this.drawBeams(f.beams, cam, f.time);
 
     // Particles
     if (f.particles && f.particles.count) {
@@ -722,6 +723,45 @@ export class Renderer {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.polyBuf);
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, d, 0, n);
     gl.drawArrays(gl.LINES, 0, n / 3);
+    gl.disable(gl.BLEND);
+    gl.useProgram(this.terrain.prog);
+  }
+
+  // Guardians' beams: a ribbon from the eye to the one held in it, turned to face the camera, a
+  // soft glow round a bright core, purple turning to yellow as it charges (`k` 0..1), and pulsing.
+  drawBeams(beams, cam, time) {
+    const gl = this.gl, d = this.polyData;
+    gl.useProgram(this.lines.prog);
+    gl.uniformMatrix4fv(this.lines.u.u_viewProj, false, this.viewProj);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+    gl.depthMask(false);
+    gl.disable(gl.CULL_FACE);
+    gl.bindVertexArray(this.polyVao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.polyBuf);
+    for (const b of beams) {
+      const ax = b.from[0] - cam.x, ay = b.from[1] - cam.y, az = b.from[2] - cam.z;
+      const bx = b.to[0] - cam.x, by = b.to[1] - cam.y, bz = b.to[2] - cam.z;
+      const dx = bx - ax, dy = by - ay, dz = bz - az;
+      // Across the beam, square to it and to the line of sight at each end.
+      const side = (px, py, pz, w) => {
+        const sx = dy * pz - dz * py, sy = dz * px - dx * pz, sz = dx * py - dy * px, l = Math.hypot(sx, sy, sz) || 1;
+        return [sx / l * w, sy / l * w, sz / l * w];
+      };
+      const f = b.k * b.k, pulse = 0.85 + 0.15 * Math.sin(time * 18);
+      const col = [(64 + 191 * f) / 255, (32 + 191 * f) / 255, (128 - 64 * f) / 255];
+      for (const [w, alpha] of [[0.16, 0.3], [0.06, 0.85]]) {
+        const sa = side(ax, ay, az, w), sb = side(bx, by, bz, w);
+        const quad = [ax - sa[0], ay - sa[1], az - sa[2], ax + sa[0], ay + sa[1], az + sa[2], bx + sb[0], by + sb[1], bz + sb[2],
+          ax - sa[0], ay - sa[1], az - sa[2], bx + sb[0], by + sb[1], bz + sb[2], bx - sb[0], by - sb[1], bz - sb[2]];
+        d.set(quad, 0);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, d, 0, 18);
+        gl.uniform4f(this.lines.u.u_color, col[0], col[1], col[2], alpha * pulse);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+      }
+    }
+    gl.enable(gl.CULL_FACE);
+    gl.depthMask(true);
     gl.disable(gl.BLEND);
     gl.useProgram(this.terrain.prog);
   }

@@ -34,6 +34,8 @@ export const EFFECTS = {
   hunger: { label: 'Hunger', colour: 0x587653, bad: true },
   healing: { label: 'Instant Health', colour: 0xf82423 },
   harming: { label: 'Instant Damage', colour: 0x430a09, bad: true },
+  // (An elder guardian's curse: mining at level III is all but impossible.)
+  mining_fatigue: { label: 'Mining Fatigue', colour: 0x4a4217, bad: true },
 };
 
 export const roman = (n) => ['', '', ' II', ' III', ' IV', ' V'][n] ?? ` ${n}`;

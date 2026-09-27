@@ -449,6 +449,21 @@ export class ChestMenu extends Menu {
   }
 }
 
+// A dispenser: nine slots in a square.
+export class DispenserMenu extends Menu {
+  constructor(game, slots) {
+    super(game, 'dispenser');
+    this.title = 'Dispenser';
+    this.parts = [slots];
+    this.chestSlots = slots.map((_, i) => this.add(slots, i, 'chest'));
+    this.addPlayer();
+  }
+
+  targets(slot) {
+    return slot.group === 'chest' ? [[this.playerSlots, true]] : [[this.chestSlots, false]];
+  }
+}
+
 // ---------------------------------------------------------------- enchanting, the anvil, the grindstone
 // These keep what's put in them only while they're open (it comes back to you when you close them).
 class WorkMenu extends Menu {

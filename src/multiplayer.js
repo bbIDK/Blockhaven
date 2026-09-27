@@ -13,7 +13,7 @@ import { RemotePlayer } from './avatars.js';
 import { mobFlags, mobExtra, cleanTagName } from './entities.js';
 import { isHanging } from './hangings.js';
 import { encodeRLE16, decodeRLE16 } from './storage.js';
-import { B, BLOCKS, REPLACEABLE, CHEST, FURNACE_IDS, SIGN, RAIL } from './blocks.js';
+import { B, BLOCKS, REPLACEABLE, CHEST, FURNACE_IDS, SIGN, RAIL, DISPENSER, LOOT_KIND, dispenserId } from './blocks.js';
 import { itemDef, maxStack } from './items.js';
 import { extras, cleanExtras } from './inventory.js';
 import { shiny } from './enchanting.js';
@@ -619,7 +619,7 @@ export class HostSession extends Session {
     // (The guest's own entry, not a copy, so anything that goes after them follows where they go.)
     const who = E.players?.find((p) => p.addr === g.addr) ?? { x: m.x, y: g.y ?? e.y, z: m.z, addr: g.addr, uid: g.uid };
     E.hurtMob(e, clamp(m.a, 0, 100), who, num(m.b) ? clamp(m.b, 0, 3) : 0,
-      { fire: num(m.f) ? clamp(m.f, 0, 8) : 0, looting: int(m.l) ? clamp(m.l, 0, 3) : 0 });
+      { fire: num(m.f) ? clamp(m.f, 0, 8) : 0, looting: int(m.l) ? clamp(m.l, 0, 3) : 0, melee: true });
     E.rallyPets(g.uid, e);
   }
 
@@ -671,8 +671,10 @@ export class HostSession extends Session {
     const at = parseKey(m.k), w = this.game.world;
     if (!at || !w) return;
     const id = w.getBlock(...at);
-    if (m.kind === 'chest' && (CHEST[id] !== undefined || id === B.barrel)) {
-      if (!this.game.containers.has(m.k)) this.game.containers.set(m.k, new Array(27).fill(null));
+    if (m.kind === 'chest' && (CHEST[id] !== undefined || id === B.barrel || DISPENSER[id] !== undefined)) {
+      // (A trap's dispenser is loaded with its arrows first: see Game.blockChanged.)
+      if (DISPENSER[id] !== undefined && LOOT_KIND[id] !== undefined) w.setBlock(...at, dispenserId(DISPENSER[id]));
+      if (!this.game.containers.has(m.k)) this.game.containers.set(m.k, new Array(DISPENSER[id] !== undefined ? 9 : 27).fill(null));
       this.send(g.addr, { t: 'inv', k: m.k, s: this.game.containers.get(m.k) });
     } else if (m.kind === 'furnace' && FURNACE_IDS.has(id)) {
       this.send(g.addr, { t: 'fur', k: m.k, ...this.game.furnaceAt(...at).serialize() });
@@ -739,8 +741,8 @@ export class HostSession extends Session {
       const arrow = e.kind === 'arrow';
       const a = e.kind === 'mob' || e.kind === 'boat' || e.kind === 'cart' ? r2(e.yaw) : arrow ? r2(e.ayaw ?? 0) : 0;
       const f = e.kind === 'mob' ? mobFlags(e) : arrow ? Math.round((e.apitch ?? 0) * 100) : e.kind === 'boat' || e.kind === 'cart' ? boatFlags(e) : 0;
-      // (For a minecart, how it's tipped on a slope.)
-      const n = e.kind === 'item' ? e.count : e.kind === 'cart' ? Math.round((e.pitch ?? 0) * 100) : 0;
+      // (For a minecart, how it's tipped on a slope; for a guardian, how far its beam has charged.)
+      const n = e.kind === 'item' ? e.count : e.kind === 'cart' ? Math.round((e.pitch ?? 0) * 100) : e.kind === 'mob' ? beamOf(e) : 0;
       const prev = this.sentEnts.get(e.nid);
       if (!prev) { adds.push(entityState(e)); this.sentEnts.set(e.nid, [x, y, z, a, f, n]); continue; }
       if (prev[0] !== x || prev[1] !== y || prev[2] !== z || prev[3] !== a || prev[4] !== f || prev[5] !== n) {
@@ -850,8 +852,10 @@ function entityState(e) {
   const x = mobExtra(e);
   if (x.ow) x.ow = playerKey(x.ow);
   if (typeof x.le === 'string') x.le = playerKey(x.le);
-  return Object.assign(s, { k: 'm', ty: e.type, a: r2(e.yaw), f: mobFlags(e), ...x });
+  return Object.assign(s, { k: 'm', ty: e.type, a: r2(e.yaw), f: mobFlags(e), bm: beamOf(e) || undefined, ...x });
 }
+// How far a guardian's beam has charged, in hundredths (0: none).
+const beamOf = (e) => (e.def?.beam && e.beam > 0 && e.target ? Math.max(1, Math.round((e.beam / e.def.beam) * 100)) : 0);
 
 // ---------------------------------------------------------------- guest
 // The world store of a guest: chunks the host changed come from the host, the rest are generated.

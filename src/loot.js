@@ -30,13 +30,43 @@ const TABLES = {
   desert: { rolls: [2, 6], items: [['bone', 2, 7, 8], ['rotten_flesh', 1, 5, 8], ['gold_coin', 3, 14, 10], ['gold_ingot', 1, 4, 5],
     ['emerald', 1, 3, 4], ['diamond', 1, 2, 2], ['sand', 3, 8, 6], ['gunpowder', 1, 5, 6], ['string', 1, 4, 5], ['saddle', 1, 1, 3],
     ['potion_fire_resistance', 1, 1, 2], ['potion_swiftness', 1, 1, 2], ['music_disc_tide', 1, 1, 1], ['music_disc_lantern', 1, 1, 1]] },
+  // Generator 10's structures, much as Minecraft stocks them.
+  pyramid: { rolls: [3, 7], items: [['bone', 4, 6, 25], ['rotten_flesh', 3, 7, 16], ['spider_eye', 1, 3, 16], ['gunpowder', 1, 8, 10],
+    ['sand', 1, 8, 10], ['string', 1, 8, 10], ['gold_ingot', 2, 7, 15], ['iron_ingot', 1, 5, 15], ['emerald', 1, 3, 15], ['diamond', 1, 3, 5],
+    ['gold_coin', 4, 16, 12], ['enchanted_book', 1, 1, 10], ['golden_apple', 1, 1, 10], ['saddle', 1, 1, 10],
+    ['music_disc_tide', 1, 1, 2], ['music_disc_lantern', 1, 1, 2]] },
+  jungle_temple: { rolls: [2, 6], items: [['bone', 4, 6, 20], ['rotten_flesh', 3, 7, 16], ['bamboo', 1, 3, 15], ['gold_ingot', 2, 7, 15],
+    ['iron_ingot', 1, 5, 15], ['emerald', 1, 3, 10], ['diamond', 1, 3, 3], ['gold_coin', 4, 16, 12], ['saddle', 1, 1, 3],
+    ['enchanted_book', 1, 1, 1], ['music_disc_ember', 1, 1, 1]] },
+  igloo: { rolls: [2, 8], items: [['apple', 1, 3, 15], ['coal', 1, 4, 15], ['gold_nugget', 1, 3, 10], ['stone_axe', 1, 1, 2], ['rotten_flesh', 1, 1, 10],
+    ['emerald', 1, 1, 1], ['wheat', 2, 3, 10], ['golden_apple', 1, 1, 3], ['gold_coin', 1, 6, 6]] },
+  shipwreck_supply: { rolls: [3, 10], items: [['paper', 1, 12, 8], ['potato', 2, 6, 7], ['poisonous_potato', 2, 6, 7], ['carrot', 4, 8, 7],
+    ['wheat', 8, 21, 7], ['coal', 2, 8, 6], ['rotten_flesh', 5, 24, 5], ['pumpkin', 1, 3, 2], ['bamboo', 1, 3, 2], ['gunpowder', 1, 5, 3],
+    ['tnt', 1, 2, 1], ['moss_block', 1, 4, 2], ['leather_helmet', 1, 1, 3], ['leather_chestplate', 1, 1, 3], ['leather_boots', 1, 1, 3],
+    ['gold_coin', 2, 8, 4]] },
+  shipwreck_treasure: { rolls: [3, 6], items: [['iron_ingot', 1, 5, 90], ['gold_ingot', 1, 5, 10], ['emerald', 1, 5, 40], ['diamond', 1, 1, 5],
+    ['lapis_lazuli', 1, 10, 20], ['iron_nugget', 1, 10, 50], ['gold_nugget', 1, 10, 10], ['gold_coin', 5, 20, 30]] },
+  // (The captain's chest: what's left of his charts and logbooks.)
+  shipwreck_map: { rolls: [3, 5], items: [['paper', 1, 10, 20], ['feather', 1, 5, 10], ['book', 1, 5, 5], ['compass', 1, 1, 3], ['clock', 1, 1, 1],
+    ['gold_coin', 2, 10, 6]] },
+  mineshaft: { rolls: [3, 7], items: [['rail', 4, 8, 20], ['powered_rail', 1, 4, 5], ['detector_rail', 1, 4, 5], ['torch', 1, 16, 15],
+    ['bread', 1, 3, 15], ['iron_ingot', 1, 5, 10], ['gold_ingot', 1, 3, 5], ['redstone', 4, 9, 5], ['lapis_lazuli', 4, 9, 5], ['coal', 3, 8, 10],
+    ['diamond', 1, 2, 3], ['name_tag', 1, 1, 10], ['golden_apple', 1, 1, 10], ['iron_pickaxe', 1, 1, 1], ['enchanted_book', 1, 1, 10],
+    ['beetroot_seeds', 2, 4, 10], ['gold_coin', 2, 10, 8]] },
+  stronghold_library: { rolls: [2, 10], items: [['book', 1, 3, 20], ['paper', 2, 7, 20], ['compass', 1, 1, 1], ['enchanted_book', 1, 1, 10]] },
+  stronghold: { rolls: [2, 3], items: [['ender_pearl', 1, 1, 10], ['diamond', 1, 3, 3], ['iron_ingot', 1, 5, 10], ['gold_ingot', 1, 3, 5],
+    ['redstone', 4, 9, 5], ['bread', 1, 3, 15], ['apple', 1, 3, 15], ['iron_pickaxe', 1, 1, 5], ['iron_sword', 1, 1, 5],
+    ['iron_chestplate', 1, 1, 5], ['iron_helmet', 1, 1, 5], ['iron_leggings', 1, 1, 5], ['iron_boots', 1, 1, 5], ['golden_apple', 1, 1, 1],
+    ['saddle', 1, 1, 1], ['enchanted_book', 1, 1, 1], ['gold_coin', 3, 12, 8]] },
+  // A trap's dispenser: a few arrows.
+  dispenser_trap: { rolls: [1, 1], items: [['arrow', 2, 7, 1]] },
 };
 
-// 27 slots of loot for a chest at (x, y, z).
-export function rollLoot(kind, x, y, z, seed = 0) {
+// `size` slots (27 in a chest, 9 in a dispenser) of loot for a chest at (x, y, z).
+export function rollLoot(kind, x, y, z, seed = 0, size = 27) {
   const t = TABLES[kind] ?? TABLES.house;
   const rnd = mulberry32(Math.floor(hash3(x, y, z, seed ^ 0x100f) * 4294967296));
-  const slots = new Array(27).fill(null);
+  const slots = new Array(size).fill(null);
   const total = t.items.reduce((a, it) => a + it[3], 0);
   const n = t.rolls[0] + Math.floor(rnd() * (t.rolls[1] - t.rolls[0] + 1));
   for (let k = 0; k < n; k++) {
@@ -47,7 +77,7 @@ export function rollLoot(kind, x, y, z, seed = 0) {
     const count = it[1] + Math.floor(rnd() * (it[2] - it[1] + 1));
     // Scatter through the chest like the original does.
     for (let tries = 0; tries < 30; tries++) {
-      const s = Math.floor(rnd() * 27);
+      const s = Math.floor(rnd() * size);
       if (!slots[s]) { slots[s] = { id, count, dmg: 0 }; break; }
     }
   }

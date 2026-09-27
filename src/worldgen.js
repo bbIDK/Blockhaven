@@ -3,7 +3,8 @@
 // caves, ores by depth, deepslate, and small structures (dungeons, wells, ice spikes, icebergs,
 // boulders, fallen trees). Pure functions of (seed, chunk), so it runs inside Web Workers and
 // every chunk agrees with its neighbours. (Worlds made since the cave update have the caves of
-// cavegen.js.)
+// cavegen.js, and since the structures update the temples, shipwrecks, monuments, mineshafts and
+// strongholds of structures.js.)
 import { CHUNK, HEIGHT, SEA_LEVEL, CHUNK_VOLUME, LATEST_GEN } from './config.js';
 import { Noise } from './noise.js';
 import { B, R, RENDER, BASE, WOOD, REPLACEABLE, FACING_VARIANTS, SOLID, WATERLIKE, NATURAL_LEAVES, DOUBLE, LOOT_CHEST } from './blocks.js';
@@ -14,6 +15,7 @@ import { WorldGenV1 } from './worldgen1.js';
 import { villagePieces, villagesNear, groundLevel, insideVillage, villageAt, approachAt } from './villages.js';
 import { CaveGen } from './cavegen.js';
 import { SeaGen } from './oceangen.js';
+import { drawStructures, landStructureAt } from './structures.js';
 
 const PAD = 1; // neighbour columns kept for slopes
 const GW = CHUNK + PAD * 2;
@@ -229,8 +231,9 @@ export class WorldGen {
   // the cave update's caves, 6 for those with the ocean update's seas, 7 for those with the biome
   // update's bigger biomes (some rare) and jungle bamboo, 8 for those with the world fixes: giant
   // spruces closed over the top, ore veins sized like Minecraft's, rarer special caves and fewer
-  // cave mouths, and settlements whose gates and stairs can all be walked through; and 9 for those
-  // whose trees never touch one another and stand on the ground (see trees9).
+  // cave mouths, and settlements whose gates and stairs can all be walked through; 9 for those
+  // whose trees never touch one another and stand on the ground (see trees9); and 10 for those with
+  // desert pyramids, jungle temples, igloos, shipwrecks, ocean monuments, mineshafts and strongholds.
   constructor(seed, type = 'default', version = LATEST_GEN) {
     this.seed = seed >>> 0;
     this.type = type;
@@ -894,6 +897,8 @@ export class WorldGen {
 
     // 10. Villages.
     for (const p of villagePieces(this, cx, cz, vplans)) p(set);
+    // 11. (Generator 10's) structures.
+    if (this.version >= 10) drawStructures(this, cx, cz, blocks);
     return { blocks, climate, biomes };
   }
 
@@ -956,6 +961,8 @@ export class WorldGen {
     const azalea = caves && roll < 0.005 && AZALEA_GROUND.has(col.biome) && caves.lushAt(wx, wz);
     const palm = this.sea && col.biome === BIOME.BEACH && col.temp > 0.28 && roll < 0.03 && this.palmSpot(wx, wz, roll);
     if (!azalea && !palm && (!table || roll >= table[0])) return null;
+    // (Generator 10's temples, igloos and shipwrecks keep a clearing round them.)
+    if (this.version >= 10 && landStructureAt(this, wx, wz, 3)) return null;
     // Settlements' grounds and the roads out of their gates, as the root's own chunk has them.
     const h = this.ground9(wx, wz, col.h);
     const plans = this.plans9(wx, wz);
