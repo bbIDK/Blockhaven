@@ -13,6 +13,7 @@ import { SIGN_SLOTS } from './signs.js';
 import { RIGS } from './rigs.js';
 import './tex/mobskins.js';
 import './tex/wildskins.js';
+import './tex/critterskins.js';
 import { RENDER, R, TEXL, FFLAGS, TINT, TINT_RGB, SHAPE, ICON_SHAPE, boxFaceUV, boxLayer, spriteOf } from './blocks.js';
 import { ITEMS } from './items.js';
 import { SECTIONS } from './config.js';

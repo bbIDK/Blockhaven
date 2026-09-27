@@ -281,6 +281,20 @@ export const SOURCES = {
   dye: grayOf('item/white_dye', 0.67),
   minecart_item: 'item/minecart',
   item_frame_item: 'item/item_frame',
+  // The wild update's: glow ink, the glow item frame's icon and the axolotl in a bucket are
+  // Mineclonia's (the fish buckets are Pixel Perfection's own, by name); the glow item frame's frame
+  // is the pack's item frame glowing gold; a tadpole swims in the pack's bucket of water.
+  glow_ink_sac: 'mcl:mods/ITEMS/mcl_mobitems/textures/extra_mobs_glow_ink_sac.png',
+  glow_item_frame_item: 'mcl:mods/ITEMS/mcl_itemframes/textures/mcl_itemframes_glow_item_frame.png',
+  glow_item_frame: (H) => H.remap(H.load('block/item_frame'), () => true, [0x8a4a12, 0xa8621a, 0xc47e22, 0xdc9a2e, 0xf0b840, 0xfbd45a, 0xffe880]),
+  axolotl_bucket: 'mcl:mods/ITEMS/mcl_buckets/textures/axolotl_bucket.png',
+  tadpole_bucket: (H) => {
+    const out = H.paste(H.blank(), H.load('item/water_bucket'));
+    for (const [x, y, c] of [[6, 4, 0x3a2a1c], [7, 4, 0x4a3a28], [6, 5, 0x2e2216], [7, 5, 0x3a2a1c], [8, 5, 0x5a4a34], [9, 5, 0x6a5a40], [10, 4, 0x6a5a40]]) {
+      out.put(x, y, [(c >> 16) & 255, (c >> 8) & 255, c & 255, 255]);
+    }
+    return out;
+  },
   painting_item: 'item/painting',
   ...Object.fromEntries(['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'iron'].map((w) => [`${w}_door_item`, `item/${w}_door`])),
   cherry_door_item: mcl(`${MCL.cherry}_door_inv`),
@@ -316,6 +330,7 @@ export const SOURCES = {
     .flatMap(([name, [w, h]]) => [...Array(w * h)].map((_, i) => [`painting_${name}_${i % w}_${Math.floor(i / w)}`, paintingTile(PAINTINGS[name], i % w, Math.floor(i / w))]))),
 
   // Kept as drawn in code: the game's own layouts or things the packs don't have.
+  frogspawn: null,
   arrow_entity: null,
   fishing_bobber: null,
   lead_rope: null,

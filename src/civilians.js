@@ -73,6 +73,24 @@ export const ROLES = {
   woodcutter: { title: 'Woodcutter', held: 'iron_axe', trades: [['buy', 'oak_log', 16, 1], ['buy', 'spruce_log', 16, 1], ['buy', 'birch_log', 16, 1],
     ['buy', 'dark_oak_log', 12, 1], ['buy', 'charcoal', 8, 1], ['buy', 'iron_axe', 1, 5], ['buy', 'apple', 4, 1], ['buy', 'oak_sapling', 4, 1],
     ['sell', 'stick', 32, 1], ['sell', 'oak_planks', 32, 1], ['sell', 'coal', 10, 1]] },
+  // (The wandering trader, who turns up now and then with two llamas: see wanderer.js. Five of the
+  // common goods and one of the rare ones each.)
+  wanderer: { title: 'Wandering Trader', held: null, trades: [['buy', 'sea_pickle', 1, 1], ['buy', 'slime_ball', 1, 1], ['buy', 'glowstone', 1, 2],
+    ['buy', 'fern', 1, 1], ['buy', 'sugar_cane', 1, 1], ['buy', 'pumpkin', 1, 1], ['buy', 'kelp', 1, 1], ['buy', 'cactus', 1, 2], ['buy', 'dandelion', 1, 1],
+    ['buy', 'poppy', 1, 1], ['buy', 'blue_orchid', 1, 1], ['buy', 'allium', 1, 1], ['buy', 'azure_bluet', 1, 1], ['buy', 'red_tulip', 1, 1],
+    ['buy', 'orange_tulip', 1, 1], ['buy', 'white_tulip', 1, 1], ['buy', 'pink_tulip', 1, 1], ['buy', 'oxeye_daisy', 1, 1], ['buy', 'cornflower', 1, 1],
+    ['buy', 'lily_of_the_valley', 1, 1], ['buy', 'wheat_seeds', 1, 1], ['buy', 'beetroot_seeds', 1, 1], ['buy', 'pumpkin_seeds', 1, 1],
+    ['buy', 'melon_seeds', 1, 1], ['buy', 'acacia_sapling', 1, 5], ['buy', 'birch_sapling', 1, 5], ['buy', 'dark_oak_sapling', 1, 5],
+    ['buy', 'jungle_sapling', 1, 5], ['buy', 'oak_sapling', 1, 5], ['buy', 'spruce_sapling', 1, 5], ['buy', 'cherry_sapling', 1, 5],
+    ['buy', 'red_dye', 3, 1], ['buy', 'white_dye', 3, 1], ['buy', 'blue_dye', 3, 1], ['buy', 'pink_dye', 3, 1], ['buy', 'black_dye', 3, 1],
+    ['buy', 'green_dye', 3, 1], ['buy', 'light_gray_dye', 3, 1], ['buy', 'magenta_dye', 3, 1], ['buy', 'yellow_dye', 3, 1], ['buy', 'gray_dye', 3, 1],
+    ['buy', 'purple_dye', 3, 1], ['buy', 'light_blue_dye', 3, 1], ['buy', 'lime_dye', 3, 1], ['buy', 'orange_dye', 3, 1], ['buy', 'brown_dye', 3, 1],
+    ['buy', 'cyan_dye', 3, 1], ['buy', 'brain_coral_block', 1, 3], ['buy', 'bubble_coral_block', 1, 3], ['buy', 'fire_coral_block', 1, 3],
+    ['buy', 'horn_coral_block', 1, 3], ['buy', 'tube_coral_block', 1, 3], ['buy', 'vine', 1, 1], ['buy', 'brown_mushroom', 1, 1],
+    ['buy', 'red_mushroom', 1, 1], ['buy', 'lily_pad', 2, 1], ['buy', 'small_dripleaf', 2, 1], ['buy', 'sand', 8, 1], ['buy', 'red_sand', 4, 1],
+    ['buy', 'pointed_dripstone', 2, 1], ['buy', 'rooted_dirt', 2, 1], ['buy', 'moss_block', 2, 1], ['buy', 'glow_berries', 2, 1], ['buy', 'azalea', 1, 2]],
+  rare: [['buy', 'tropical_fish_bucket', 1, 5], ['buy', 'pufferfish_bucket', 1, 5], ['buy', 'packed_ice', 1, 3], ['buy', 'blue_ice', 1, 6],
+    ['buy', 'gunpowder', 1, 1], ['buy', 'podzol', 3, 3], ['buy', 'axolotl_bucket', 1, 8], ['buy', 'glow_ink_sac', 2, 2]] },
   traveller: { title: 'Traveller', held: null, trades: [['buy', 'compass', 1, 4], ['buy', 'clock', 1, 4], ['buy', 'cherry_sapling', 2, 2], ['buy', 'cactus', 4, 1],
     ['buy', 'sugar_cane', 6, 1], ['buy', 'melon_slice', 8, 1], ['buy', 'lead', 1, 2], ['buy', 'saddle', 1, 7], ['buy', 'name_tag', 1, 5],
     ['buy', 'potion_night_vision', 1, 5], ['sell', 'emerald', 1, 4], ['sell', 'diamond', 1, 9], ['sell', 'gold_ingot', 1, 3], ['sell', 'leather', 5, 1]] },
@@ -122,6 +140,8 @@ const GREET_AS = {
     'You stand before the king of {v}.'],
   queen: ['Be welcome at our court, stranger.', 'The gates of {v} are open to honest folk.', 'Ah, a visitor! How lovely.'],
   knight: ['Halt! ...ah, a friend. Pass, then.', 'For the crown of {v}!', 'Mind yourself in the castle, stranger.'],
+  wanderer: ['Well met, friend! Care to see what I have?', "Ah, a customer! I've come a long way.", 'Greetings! My llamas and I are just passing through.',
+    'Fine goods from far-off lands - have a look!'],
 };
 const CHAT = {
   merchant: ['Everything has its price. Most things, anyway.', 'Gold coins, friend. Nothing else spends as well.', 'Business was better before the creepers came.',
@@ -158,6 +178,9 @@ const CHAT = {
     'Kingdoms to the east, they say, with walls taller than oaks.', 'Never camp without a fire. Things come out of the dark.'],
   mason: ['Cut stone lasts a thousand years. Wood, maybe fifty.', 'A stonecutter turns one block into stairs without waste.', 'Mossy stone? Just add vines. Or time.'],
   stablehand: ['Horses love golden carrots. And apples, and hay...', 'Saddle a tamed horse and it will carry you anywhere.', 'Breed two good horses for a faster foal.'],
+  wanderer: ["I don't stay long anywhere. Buy while you can!", 'My llamas carry everything I own. Well, almost everything.',
+    "Saplings from the jungle, coral from the warm seas... I've seen it all.", 'Down in the caves there are pools where little pink creatures swim.',
+    'Glow squid ink makes the writing on a sign shine in the dark.', 'Treat an ocelot kindly, with fish, and it may come to trust you.'],
 };
 const RUMOURS = ['They say there are ruins in the deep caves.', 'A merchant told me of villages built of sandstone in the desert.',
   'Somewhere out there is a kingdom with a castle and a king on a golden throne.', 'Hunters camp in the woods. Their fires can be seen for miles.',
@@ -290,12 +313,14 @@ export class Civilians {
     Object.assign(e, { rid: s.r, role: s.ro in ROLES ? s.ro : 'farmer', name: typeof s.n === 'string' ? s.n.slice(0, 40) : 'Villager',
       skin: typeof s.sk === 'string' && Object.values(CIV_LOOKS).some((l) => l.includes(s.sk)) ? s.sk : CIV_LOOKS.farmer[0] });
     e.label = e.name;
-    e.village = villageAt(this.world.gen, e.x, e.z, 8);
+    e.village = e.def.wanderer ? null : villageAt(this.world.gen, e.x, e.z, 8);
+    // (A wandering trader's id: the leads of their llamas name it.)
+    if (e.def.wanderer && typeof s.tid === 'string') e.tid = s.tid.slice(0, 24);
   }
 
   gone(e) { if (e.rid && this.live.get(e.rid) === e) this.live.delete(e.rid); }
   died(e) {
-    if (!e.rid) return;
+    if (!e.rid || !e.village) return;
     this.gone(e);
     const rec = this.record(e.village), day = Math.floor(this.game.time / TICKS_PER_DAY);
     rec.dead[e.rid] = day;
@@ -317,7 +342,7 @@ export class Civilians {
   hurt(e, from) {
     e.fear = 120;
     const who = this.culprit(from);
-    if (!who) return;
+    if (!who || !e.village) return;
     const rec = this.record(e.village);
     rec.rep = Math.max(-20, rec.rep - (e.health <= 0 ? 8 : 2));
     this.alarm(e.village, e.x, e.z, who);
@@ -835,6 +860,7 @@ export class Civilians {
       miner: 'I dig in the mine, down below the town.', fisher: 'I fish the waters round about.', knight: 'I serve the crown, and guard the castle.',
       cleric: 'I tend the church, and heal the sick.', woodcutter: kind === 'camp' ? 'We fell timber here, then move on.' : 'I cut the timber for the town.',
       traveller: "I'm passing through - we've come a long way.", mason: 'I cut the stone for our walls and houses.', stablehand: 'I look after the horses.',
+      wanderer: 'I go where the road takes me, and sell what I find on the way. Tomorrow I\'ll be somewhere else.',
     };
     if (e.role === 'king') return `I am ${e.name}, and ${v} is my kingdom. My knights keep its roads, my people its fields.`;
     if (e.role === 'queen') return `I am ${e.name} of ${v}. The king and I hold court here in the great hall.`;
@@ -863,12 +889,16 @@ export class Civilians {
     const role = ROLES[e.role];
     if (!role) return [];
     const r = mulberry32(hashString(e.rid ?? e.name ?? 'x'));
-    const list = role.trades.filter((tr) => (I[tr[1]] ?? B[tr[1]]) !== undefined);
-    // Each person deals in five to seven of their trade's goods, at their own prices.
-    const picked = list.map((tr) => ({ tr, k: r() })).sort((a, b) => a.k - b.k).slice(0, 5 + Math.floor(r() * 3)).map((x) => x.tr);
-    const rec = e.village ? this.record(e.village) : null;
+    const known = (list) => list.filter((tr) => (I[tr[1]] ?? B[tr[1]]) !== undefined);
+    const shuffled = (list) => list.map((tr) => ({ tr, k: r() })).sort((a, b) => a.k - b.k).map((x) => x.tr);
+    // Each person deals in five to seven of their trade's goods, at their own prices. (A wandering
+    // trader has five of the common things and one rare one.)
+    const picked = role.rare ? [...shuffled(known(role.trades)).slice(0, 5), ...shuffled(known(role.rare)).slice(0, 1)]
+      : shuffled(known(role.trades)).slice(0, 5 + Math.floor(r() * 3));
+    // (A village's stock comes back every morning; a wandering trader's doesn't.)
+    const rec = e.village ? this.record(e.village) : e.def?.wanderer ? (e.stock ??= { rep: 0, used: {} }) : null;
     const day = Math.floor(this.game.time / TICKS_PER_DAY);
-    if (rec && rec.day !== day) { rec.day = day; rec.used = {}; }
+    if (rec && e.village && rec.day !== day) { rec.day = day; rec.used = {}; }
     const mood = rec ? (rec.rep >= 10 ? -1 : rec.rep < -5 ? 1 : 0) : 0;
     return picked.map(([kind, name, count, price], i) => {
       const id = I[name] ?? B[name];
@@ -906,7 +936,7 @@ export class Civilians {
       const rec = this.record(e.village);
       rec.used[offer.key] = (rec.used[offer.key] ?? 0) + 1;
       rec.rep = Math.min(30, rec.rep + 0.5);
-    }
+    } else if (e.stock) e.stock.used[offer.key] = (e.stock.used[offer.key] ?? 0) + 1;
     game.particles.icons(TEX.happy, e.x, e.y + 1.8, e.z, 6, 0.4);
     game.audio.trade?.();
     game.dropXp(e.x, e.y + 1, e.z, 3 + Math.floor(Math.random() * 4));

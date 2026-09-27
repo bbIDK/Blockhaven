@@ -3,7 +3,8 @@
 // knocked down by a punch, and dropped when what holds them up is gone (or something is built in
 // front of them). A hanging has `face` (the way it faces), the block it hangs on (`bx, by, bz`:
 // for a painting, its lower left one, seen from the front), and for a frame `item` and `rot`, for
-// a painting `art` (an index into PAINTINGS).
+// a painting `art` (an index into PAINTINGS). A glow item frame (`glow`) lights up itself and
+// what's in it.
 import { SOLID, FACE_DIRS } from './blocks.js';
 import { I } from './items.js';
 import { TEX } from './textures.js';
@@ -88,7 +89,7 @@ export const holds = (ents, e) => fits(ents, e.bx, e.by, e.bz, e.face, ...sizeOf
 
 // What it drops: itself, and whatever was in it.
 export function drops(e) {
-  const out = [{ id: e.kind === 'frame' ? I.item_frame : I.painting, count: 1, dmg: 0 }];
+  const out = [{ id: e.kind === 'frame' ? (e.glow ? I.glow_item_frame : I.item_frame) : I.painting, count: 1, dmg: 0 }];
   if (e.item) out.push(e.item);
   return out;
 }
@@ -99,12 +100,14 @@ export const frameUse = (e, held) => (e.kind !== 'frame' ? null : e.item ? 'turn
 
 // ---------------------------------------------------------------- drawing
 const meshes = new Map();
-function frameMesh(r) {
-  if (!meshes.has('frame')) {
-    const back = { layer: TEX.painting_back, uv: [2, 2, 14, 14] }, edge = { layer: TEX.item_frame, uv: [0, 0, 16, 1] };
-    meshes.set('frame', r.createMesh(boxMesh([{ from: [2 / 16, 2 / 16, 0], to: [14 / 16, 14 / 16, THICK], faces: [edge, edge, edge, edge, { layer: TEX.item_frame, uv: [2, 2, 14, 14] }, back] }])));
+function frameMesh(r, glow) {
+  const key = glow ? 'glow_frame' : 'frame';
+  if (!meshes.has(key)) {
+    const tex = glow ? TEX.glow_item_frame : TEX.item_frame;
+    const back = { layer: TEX.painting_back, uv: [2, 2, 14, 14] }, edge = { layer: tex, uv: [0, 0, 16, 1] };
+    meshes.set(key, r.createMesh(boxMesh([{ from: [2 / 16, 2 / 16, 0], to: [14 / 16, 14 / 16, THICK], faces: [edge, edge, edge, edge, { layer: tex, uv: [2, 2, 14, 14] }, back] }])));
   }
-  return meshes.get('frame');
+  return meshes.get(key);
 }
 function paintingMesh(r, art) {
   const key = `painting${art}`;
@@ -134,10 +137,10 @@ function wallModel(m, e, cam) {
 // Adds a hanging (and what's in a frame) to the renderer's list.
 export function drawHanging(ents, e, cam, mat, out) {
   const r = ents.game.renderer, w = ents.world, d = FACE_DIRS[e.face];
-  const l = w.getLight(e.bx + d[0], e.by + d[1], e.bz + d[2]), light = [l >> 4, l & 15];
+  const l = w.getLight(e.bx + d[0], e.by + d[1], e.bz + d[2]), light = [l >> 4, e.glow ? 15 : l & 15];
   const m = wallModel(mat(), e, cam);
   if (e.kind === 'painting') { out.push({ parts: [{ mesh: paintingMesh(r, e.art), model: m }], light, tint: null }); return; }
-  const parts = [{ mesh: frameMesh(r), model: m }];
+  const parts = [{ mesh: frameMesh(r, e.glow), model: m }];
   const mesh = e.item ? r.itemMesh(e.item.id) : null;
   if (mesh) {
     // The item lies on the frame, turned an eighth at a time: flat pictures at half size, blocks

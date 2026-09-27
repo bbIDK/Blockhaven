@@ -27,7 +27,9 @@ const SYNTH = new Set(['rabbit', 'fox', 'wolf', 'fish', 'skeleton', 'creeper', '
   'bear', 'deer', 'moose', 'bigcat', 'panda', 'elephant', 'hippo', 'giraffe', 'crocodile', 'camel', 'penguin', 'songbird', 'crow', 'seagull',
   'eagle', 'vulture', 'bee',
   // (The structures update's.)
-  'guardian']);
+  'guardian',
+  // (The wild update's.)
+  'axolotl', 'frog']);
 
 // A low thump layered under breaking and placing, by block material: [start Hz, end Hz, gain].
 const THUMP = {
@@ -560,6 +562,25 @@ export class Audio {
       case 'turtle':
         if (hurt || death) this.tone(at, { type: 'triangle', f0: 200 * r(), f1: death ? 80 : 130, time: death ? 0.6 : 0.2, volume: 0.2 });
         break;
+      // ---- the wild update's voices
+      case 'axolotl': {
+        // Little squeaks and chirps, rising (falling away when it's hurt).
+        const n = death ? 3 : hurt ? 2 : 1 + Math.floor(Math.random() * 3);
+        for (let i = 0; i < n; i++) {
+          const f = (hurt || death ? 1500 : 1900) * pitch * r();
+          this.tone(at, { type: 'sine', f0: f * (hurt || death ? 1.1 : 0.8), f1: f * (hurt || death ? 0.6 : 1.25), time: 0.07, volume: 0.07, delay: i * 0.09, attack: 0.01 });
+        }
+        break;
+      }
+      case 'frog': {
+        // A croak: a buzzy low note, pulsing, through a throaty filter; a wet snap for the tongue.
+        if (event === 'eat') { this.hiss(at, { f: 1800, q: 3, time: 0.06, volume: 0.25, sweep: 600 }); this.tone(at, { type: 'square', f0: 300, f1: 140, time: 0.08, volume: 0.05, filter: { f: 900, q: 2 } }); break; }
+        const f = (hurt || death ? 190 : 120) * pitch * r(), time = death ? 0.7 : hurt ? 0.25 : 0.42;
+        for (let i = 0; i < (hurt || death ? 1 : 2); i++) {
+          this.tone(at, { type: 'sawtooth', f0: f, f1: f * (death ? 0.55 : 0.85), time, volume: 0.1, attack: 0.03, filter: { f: 700, q: 4 }, vibrato: f * 0.25, vibratoRate: 32, delay: i * 0.5 });
+        }
+        break;
+      }
       case 'fish':
         if (hurt || death) this.hiss(at, { f: 900, q: 1, time: 0.08, volume: 0.25, type: 'lowpass' });
         break;

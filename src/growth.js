@@ -19,6 +19,13 @@ export function randomTick(w, x, y, z, id) {
   else if (id === B.bamboo) growTall(w, x, y, z, id, 8 + (((x * 73856093) ^ (z * 19349663)) >>> 0) % 7);
   else if (id === B.dirt) spreadGrass(w, x, y, z);
   else if (id === B.kelp) growKelp(w, x, y, z);
+  else if (id === B.frogspawn) { if (Math.random() < 0.2) hatch(w, x, y, z); }
+}
+
+// Frogspawn hatches (every five minutes or so) into two to six tadpoles, in the water under it.
+function hatch(w, x, y, z) {
+  w.setBlock(x, y, z, 0);
+  w.listener?.frogspawnHatched?.(x, y, z, 2 + Math.floor(Math.random() * 5));
 }
 
 // Kelp grows up through still water, a block now and then, until it nears the surface (or reaches

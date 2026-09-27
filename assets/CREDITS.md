@@ -769,6 +769,13 @@ doubled in size (the particles). Anything not listed is drawn by the game's own 
 | `textures/phantom_spawn_egg.png` | Pixel Perfection CE item/spawn_egg.png; Pixel Perfection CE item/spawn_egg_overlay.png | changed |
 | `textures/guardian_spawn_egg.png` | Pixel Perfection CE item/spawn_egg.png; Pixel Perfection CE item/spawn_egg_overlay.png | changed |
 | `textures/elder_guardian_spawn_egg.png` | Pixel Perfection CE item/spawn_egg.png; Pixel Perfection CE item/spawn_egg_overlay.png | changed |
+| `textures/glow_squid_spawn_egg.png` | Pixel Perfection CE item/spawn_egg.png; Pixel Perfection CE item/spawn_egg_overlay.png | changed |
+| `textures/ocelot_spawn_egg.png` | Pixel Perfection CE item/spawn_egg.png; Pixel Perfection CE item/spawn_egg_overlay.png | changed |
+| `textures/axolotl_spawn_egg.png` | Pixel Perfection CE item/spawn_egg.png; Pixel Perfection CE item/spawn_egg_overlay.png | changed |
+| `textures/frog_spawn_egg.png` | Pixel Perfection CE item/spawn_egg.png; Pixel Perfection CE item/spawn_egg_overlay.png | changed |
+| `textures/tadpole_spawn_egg.png` | Pixel Perfection CE item/spawn_egg.png; Pixel Perfection CE item/spawn_egg_overlay.png | changed |
+| `textures/wandering_trader_spawn_egg.png` | Pixel Perfection CE item/spawn_egg.png; Pixel Perfection CE item/spawn_egg_overlay.png | changed |
+| `textures/trader_llama_spawn_egg.png` | Pixel Perfection CE item/spawn_egg.png; Pixel Perfection CE item/spawn_egg_overlay.png | changed |
 | `textures/prismarine.png` | Pixel Perfection CE block/prismarine.png | changed |
 | `textures/prismarine_bricks.png` | Pixel Perfection CE block/prismarine_bricks.png |  |
 | `textures/dark_prismarine.png` | Pixel Perfection CE block/dark_prismarine.png |  |
@@ -784,6 +791,15 @@ doubled in size (the particles). Anything not listed is drawn by the game's own 
 | `textures/tripwire_hook.png` | Pixel Perfection CE block/tripwire_hook.png |  |
 | `textures/prismarine_shard.png` | Pixel Perfection CE item/prismarine_shard.png |  |
 | `textures/prismarine_crystals.png` | Pixel Perfection CE item/prismarine_crystals.png |  |
+| `textures/glow_ink_sac.png` | Mineclonia mods/ITEMS/mcl_mobitems/textures/extra_mobs_glow_ink_sac.png |  |
+| `textures/glow_item_frame.png` | Pixel Perfection CE block/item_frame.png | changed |
+| `textures/glow_item_frame_item.png` | Mineclonia mods/ITEMS/mcl_itemframes/textures/mcl_itemframes_glow_item_frame.png |  |
+| `textures/cod_bucket.png` | Pixel Perfection CE item/cod_bucket.png |  |
+| `textures/salmon_bucket.png` | Pixel Perfection CE item/salmon_bucket.png |  |
+| `textures/tropical_fish_bucket.png` | Pixel Perfection CE item/tropical_fish_bucket.png |  |
+| `textures/pufferfish_bucket.png` | Pixel Perfection CE item/pufferfish_bucket.png |  |
+| `textures/axolotl_bucket.png` | Mineclonia mods/ITEMS/mcl_buckets/textures/axolotl_bucket.png |  |
+| `textures/tadpole_bucket.png` | Pixel Perfection CE item/water_bucket.png | changed |
 | `skins/zombie.png` | Pixel Perfection CE entity/zombie/zombie.png | changed |
 | `skins/husk.png` | Pixel Perfection CE entity/zombie/husk.png | changed |
 | `skins/drowned.png` | Pixel Perfection CE entity/zombie/drowned.png; Pixel Perfection CE entity/zombie/drowned_outer_layer.png | changed |
@@ -794,6 +810,7 @@ doubled in size (the particles). Anything not listed is drawn by the game's own 
 | `skins/spider.png` | Pixel Perfection CE entity/spider/spider.png | changed |
 | `skins/cave_spider.png` | Pixel Perfection CE entity/spider/cave_spider.png | changed |
 | `skins/squid.png` | Pixel Perfection CE entity/squid.png | changed |
+| `skins/glow_squid.png` | Mineclonia mods/ENTITIES/mobs_mc/textures/extra_mobs_glow_squid.png | changed |
 | `skins/guardian.png` | Pixel Perfection CE entity/guardian.png | changed |
 | `skins/guardian_elder.png` | Pixel Perfection CE entity/guardian_elder.png | changed |
 | `skins/cod.png` | Pixel Perfection CE entity/fish/cod.png | changed |

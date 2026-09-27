@@ -139,6 +139,8 @@ export const SKIN_SOURCES = {
   spider: whole(E('spider/spider')),
   cave_spider: whole(E('spider/cave_spider')),
   squid: whole(E('squid')),
+  // (Mineclonia's glow squid is Minecraft's squid layout too.)
+  glow_squid: whole('mcl:mods/ENTITIES/mobs_mc/textures/extra_mobs_glow_squid.png'),
   guardian: whole(E('guardian')),
   guardian_elder: whole(E('guardian_elder')),
   cod: whole(E('fish/cod')),

@@ -151,6 +151,15 @@ item(460, 'cooked_bear', { label: 'Bear Steak', food: 8, sat: 0.9 });
 // (a sea lantern's light).
 item(600, 'prismarine_shard', { label: 'Prismarine Shard' });
 item(601, 'prismarine_crystals', { label: 'Prismarine Crystals' });
+// The wild update's: glow squid's ink (makes a sign's writing glow; with an item frame, a glow item
+// frame, which lights up what's in it); creatures caught in a bucket of water (fish, an axolotl, a
+// tadpole) to carry about and let go again (see behaviors.js).
+item(602, 'glow_ink_sac', { label: 'Glow Ink Sac' });
+item(603, 'glow_item_frame', { label: 'Glow Item Frame', hangs: 'frame', glow: true, tex: TEX.glow_item_frame_item });
+for (const [i, [type, label]] of [['cod', 'Bucket of Cod'], ['salmon', 'Bucket of Salmon'], ['tropical_fish', 'Bucket of Tropical Fish'],
+  ['pufferfish', 'Bucket of Pufferfish'], ['axolotl', 'Bucket of Axolotl'], ['tadpole', 'Bucket of Tadpole']].entries()) {
+  item(604 + i, `${type}_bucket`, { label, stack: 1, leftover: 'bucket', holds: type });
+}
 // Spawn eggs (see eggs.js), Creative's own tab of them.
 EGGS.forEach(([type], i) => item(EGG_ID + i, `${type}_spawn_egg`, { label: `${eggLabel(type)} Spawn Egg`, spawns: type }));
 // (Only ever seen in a hand: the rod while its line is out.)

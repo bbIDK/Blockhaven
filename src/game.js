@@ -687,7 +687,7 @@ export class Game {
     const p = this.player;
     const me = (this.me ??= { addr: null, uid: this.uid });
     Object.assign(me, { x: p.x, y: p.y, z: p.z, creative: this.creative, dead: this.state === 'dead', held: this.inv.heldId,
-      look: p.lookDir(), sneaking: p.sneaking, invisible: this.effects.has('invisibility') });
+      look: p.lookDir(), sneaking: p.sneaking, sprinting: p.sprinting, invisible: this.effects.has('invisibility') });
     return this.net ? [me, ...this.net.others()] : [me];
   }
 
@@ -952,13 +952,15 @@ export class Game {
   }
 
   // Swaps one of the held item for another (a bucket filled with milk).
-  swapHeldTo(id) {
+  swapHeldTo(id, extra = null) {
     const inv = this.inv, held = inv.held;
-    if (this.creative || !held) return;
+    if (!held) return;
+    // (In Creative, a creature scooped up goes into the inventory, and the bucket stays.)
+    if (this.creative) { if (extra) { inv.add(id, 1, 0, extra); this.swingArm(); this.invChanged(); } return; }
     if (held.count > 1) {
       held.count--;
-      if (inv.add(id, 1)) this.entities.dropItem(this.player, { id, count: 1, dmg: 0 });
-    } else inv.slots[inv.selected] = { id, count: 1, dmg: 0 };
+      if (inv.add(id, 1, 0, extra)) this.entities.dropItem(this.player, { id, count: 1, dmg: 0, ...(extra ?? {}) });
+    } else inv.slots[inv.selected] = { id, count: 1, dmg: 0, ...(extra ?? {}) };
     this.swingArm();
     this.invChanged();
   }
@@ -2524,7 +2526,7 @@ export class Game {
       else if (CHEST[t.id] !== undefined) this.openChestAt(t.x, t.y, t.z);
       else if (t.id === B.crafting_table) this.openCraftingTable(t.x, t.y, t.z);
       else if (t.id === B.enchanting_table) this.openEnchanting(t.x, t.y, t.z);
-      else if (SIGN[t.id]) this.editSign(t.x, t.y, t.z);
+      else if (SIGN[t.id]) { if (!(held?.id === I.glow_ink_sac && this.glowSign(t.x, t.y, t.z))) this.editSign(t.x, t.y, t.z); }
       else if (CAKE[t.id] !== undefined) this.eatCake(t.x, t.y, t.z);
       // A note block goes up a semitone (and plays it; see blockChanged). A jukebox gives its disc back.
       else if (NOTE[t.id] !== undefined) w.setBlock(t.x, t.y, t.z, nextNote(t.id));
@@ -2543,9 +2545,13 @@ export class Game {
     if ((def?.food || def?.drink || def?.potion) && (!this.creative || def.potion)) return; // eaten by holding right click (see handleActions)
     if (def?.splash) { if (!repeat) this.throwItem({ potion: def.splash }); return; }
     if (def?.throws === 'snowball') { if (!repeat) this.throwItem({ snowball: true }); return; }
-    // Buckets and lily pads look for water along the line of sight themselves.
-    if (held && (held.id === I.bucket || held.id === I.water_bucket || held.id === I.lava_bucket)) { if (!repeat) useBucket(this, held); return; }
-    if (held?.id === B.lily_pad) { if (!repeat) placeLilyPad(this); return; }
+    // Buckets and lily pads look for water along the line of sight themselves. (A bucket of water
+    // used on a fish scoops it up; a bucket of fish feeds an axolotl.)
+    if (held && (held.id === I.bucket || held.id === I.water_bucket || held.id === I.lava_bucket || def?.holds)) {
+      if (!repeat && !(t?.entity?.kind === 'mob' && this.entities.interact(t.entity, held))) useBucket(this, held);
+      return;
+    }
+    if (held?.id === B.lily_pad || held?.id === B.frogspawn) { if (!repeat) placeLilyPad(this, held.id); return; }
     if (def?.spawns) { if (!repeat) this.useSpawnEgg(def); return; }
     if (def?.boat && !t?.entity && !t?.player) { if (!repeat) placeBoat(this, held); return; }
     if (held?.id === I.fishing_rod) { if (!repeat) this.fishing.use(); return; }
@@ -2576,7 +2582,7 @@ export class Game {
     // An item frame or a painting goes up on the face pointed at.
     if (def?.hangs) {
       if (repeat) return;
-      if (this.entities.hang(def.hangs, t.x, t.y, t.z, t.face)) {
+      if (this.entities.hang(def.hangs, t.x, t.y, t.z, t.face, !!def.glow)) {
         this.swingArm();
         if (!this.creative) { this.inv.consumeHeld(); this.invChanged(); }
       }
@@ -2770,9 +2776,19 @@ export class Game {
       if (!this.touch.enabled) this.input.lock();
     }
   }
-  writeSign(x, y, z, lines) {
-    const clean = this.signs.set(x, y, z, lines);
-    this.net?.writeSign?.(x, y, z, clean);
+  writeSign(x, y, z, lines, glow = undefined) {
+    const clean = this.signs.set(x, y, z, lines, glow);
+    this.net?.writeSign?.(x, y, z, clean, this.signs.glowing(x, y, z));
+  }
+  // Glow ink rubbed into a sign's writing: it glows. True if it didn't already.
+  glowSign(x, y, z) {
+    if (this.signs.glowing(x, y, z)) return false;
+    this.writeSign(x, y, z, this.signs.get(x, y, z), true);
+    this.audio.place('water', { x: x + 0.5, y: y + 0.5, z: z + 0.5 });
+    this.particles.icons(TEX.happy, x + 0.5, y + 0.7, z + 0.5, 5, 0.3);
+    this.swingArm();
+    if (!this.creative) { this.inv.consumeHeld(); this.invChanged(); }
+    return true;
   }
 
   pickBlock() {
@@ -2846,6 +2862,19 @@ export class Game {
     if (kind === 'composter') { this.audio.place('grass', at); this.particles.icons(TEX.happy, at.x, y + 0.8, at.z, 6, 0.35); }
     else if (kind === 'open' || kind === 'close') this.audio.door(kind === 'open', at);
     else if (kind === 'click_on' || kind === 'click_off') this.audio.switchClick(kind === 'click_on', at);
+  }
+  // World listener: frogspawn at (x, y, z) hatched, `n` tadpoles, into the water under it.
+  frogspawnHatched(x, y, z, n) {
+    for (let k = 0; k < n; k++) this.entities.spawnMob('tadpole', x + 0.25 + Math.random() * 0.5, y - 0.6, z + 0.25 + Math.random() * 0.5);
+    this.audio.place('water', { x: x + 0.5, y, z: z + 0.5 });
+  }
+  // An axolotl finished off something player `t` was fighting: regeneration for them, and the
+  // mining fatigue on them lifted (as in the original).
+  axolotlHelped(t) {
+    if (t?.addr) { this.net?.giveEffect?.(t.addr, 'regeneration', 6, 1); return; }
+    this.effects.delete('mining_fatigue');
+    const cur = this.effects.get('regeneration');
+    this.addEffect('regeneration', Math.min(120, 6 + (cur ? cur.ticks / 20 : 0)), 1);
   }
 
   // World listener: is anyone (or, for a wooden plate, anything) standing on the pressure plate
@@ -3267,6 +3296,13 @@ export class Game {
   // or in another player's right hand. (A guest knows players by their keys; see playerKey.)
   leadHolder(uid, cam) {
     const net = this.net;
+    // (A wandering trader leads their llamas from their right hand.)
+    if (uid[0] === '@') {
+      const t = this.entities.list.find((o) => o.tid === uid.slice(1) && o.kind === 'mob' && !o.dead);
+      if (!t) return null;
+      const cy = Math.cos(t.yaw), sy = Math.sin(t.yaw);
+      return { x: t.x + cy * 0.37 - sy * 0.3, y: t.y + 0.8, z: t.z - sy * 0.37 - cy * 0.3 };
+    }
     if (!net || uid === (net.guest ? net.myKey : this.uid)) {
       if (this.state === 'dead') return null;
       const cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw), cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);

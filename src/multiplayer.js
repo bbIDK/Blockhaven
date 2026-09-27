@@ -372,6 +372,7 @@ export class HostSession extends Session {
     g.held = int(pres.i) ? pres.i : 0;
     const f = int(pres.f) ? pres.f : 0;
     g.sneaking = !!(f & 1);
+    g.sprinting = !!(f & 2);
     g.dead = !!(f & 16);
     g.sleeping = !!(f & 32);
     g.creative = !!(f & 64);
@@ -410,9 +411,10 @@ export class HostSession extends Session {
   }
 
   // A creature out of a guest's spawn egg, where they used it.
+  // (Or let out of a bucket: `b`, as it went in.)
   hatchFor(g, m) {
     if (!EGG_TYPES.has(m.m) || ![m.x, m.y, m.z].every(num) || g.x === null || Math.hypot(m.x - g.x, m.y - g.y, m.z - g.z) > 8) return;
-    this.game.entities.hatch(m.m, m.x, m.y, m.z);
+    this.game.entities.hatch(m.m, m.x, m.y, m.z, m.b && typeof m.b === 'object' ? cleanExtras({ mob: m.b })?.mob ?? {} : null);
   }
 
   // A guest's boat, set down where they pointed.
@@ -462,7 +464,7 @@ export class HostSession extends Session {
       case 'hang':
         // A guest hangs up an item frame or a painting (the host picks the picture).
         if ((msg.k === 'frame' || msg.k === 'painting') && [msg.x, msg.y, msg.z, msg.f].every(int) && msg.f >= 0 && msg.f < 6 &&
-          g.x !== null && Math.hypot(msg.x + 0.5 - g.x, msg.y - g.y, msg.z + 0.5 - g.z) < 8) this.game.entities.hang(msg.k, msg.x, msg.y, msg.z, msg.f);
+          g.x !== null && Math.hypot(msg.x + 0.5 - g.x, msg.y - g.y, msg.z + 0.5 - g.z) < 8) this.game.entities.hang(msg.k, msg.x, msg.y, msg.z, msg.f, msg.g === 1);
         break;
       case 'hu': {
         // A guest used an item frame, holding `st`.
@@ -628,9 +630,9 @@ export class HostSession extends Session {
     if (typeof m.k !== 'string' || !/^-?\d+,-?\d+,-?\d+$/.test(m.k) || !Array.isArray(m.l)) return;
     const [x, y, z] = m.k.split(',').map(Number);
     if (!SIGN[this.game.world.getBlock(x, y, z)]) return;
-    this.game.writeSign(x, y, z, m.l.slice(0, 4).map((l) => String(l ?? '')));
+    this.game.writeSign(x, y, z, m.l.slice(0, 4).map((l) => String(l ?? '')), m.g === 1 ? true : undefined);
   }
-  writeSign(x, y, z, lines) { this.link.broadcast({ t: 'sign', k: `${x},${y},${z}`, l: lines }); }
+  writeSign(x, y, z, lines, glow = false) { this.link.broadcast({ t: 'sign', k: `${x},${y},${z}`, l: lines, g: glow ? 1 : 0 }); }
 
   // A guest's arrow: shot from where they stand.
   arrow(g, m) {
@@ -777,7 +779,7 @@ export class HostSession extends Session {
       // (One object per guest, kept up to date, so creatures chasing them follow where they go.)
       if (g.x === null) continue;
       out.push(Object.assign(g.ref ??= { addr: g.addr, uid: g.uid }, { x: g.x, y: g.y, z: g.z, creative: g.creative, dead: g.dead, name: g.name, look: g.look,
-        held: g.held, sneaking: g.sneaking, invisible: g.invisible }));
+        held: g.held, sneaking: g.sneaking, sprinting: g.sprinting, invisible: g.invisible }));
     }
     return out;
   }
@@ -845,13 +847,13 @@ function entityState(e) {
   if (e.kind === 'cart') return Object.assign(s, { k: 'c', a: r2(e.yaw), p: r2(e.pitch ?? 0), f: boatFlags(e) });
   if (e.kind === 'xp') return Object.assign(s, { k: 'x', v: e.value });
   if (isHanging(e)) {
-    return Object.assign(s, { k: 'h', t: e.kind, b: [e.bx, e.by, e.bz], f: e.face, a: e.art ?? undefined, r: e.rot || undefined,
+    return Object.assign(s, { k: 'h', t: e.kind, b: [e.bx, e.by, e.bz], f: e.face, a: e.art ?? undefined, r: e.rot || undefined, g: e.glow ? 1 : undefined,
       it: e.item ? { id: e.item.id, d: e.item.dmg ?? 0, ex: extras(e.item) ?? undefined } : undefined });
   }
   // (Whose pet it is, and who holds its lead, go as keys.)
   const x = mobExtra(e);
   if (x.ow) x.ow = playerKey(x.ow);
-  if (typeof x.le === 'string') x.le = playerKey(x.le);
+  if (typeof x.le === 'string' && x.le[0] !== '@') x.le = playerKey(x.le);
   return Object.assign(s, { k: 'm', ty: e.type, a: r2(e.yaw), f: mobFlags(e), bm: beamOf(e) || undefined, ...x });
 }
 // How far a guardian's beam has charged, in hundredths (0: none).
@@ -1029,7 +1031,7 @@ export class GuestSession extends Session {
       case 'sign':
         if (typeof msg.k === 'string' && /^-?\d+,-?\d+,-?\d+$/.test(msg.k) && Array.isArray(msg.l)) {
           const [x, y, z] = msg.k.split(',').map(Number);
-          game.signs.set(x, y, z, msg.l.slice(0, 4).map((l) => String(l ?? '')));
+          game.signs.set(x, y, z, msg.l.slice(0, 4).map((l) => String(l ?? '')), msg.g === 1);
         }
         break;
       case 'bye': game.disconnected('The host closed the game.'); break;
@@ -1173,15 +1175,15 @@ export class GuestSession extends Session {
 
   primeTNT(x, y, z, fuse) { this.toHost({ t: 'tnt', x, y, z, f: fuse }); }
   placeBoat(x, y, z, wood, yaw) { this.toHost({ t: 'boat', x: r2(x), y: r2(y), z: r2(z), w: wood, a: r2(yaw) }); }
-  hatch(type, x, y, z) { this.toHost({ t: 'egg', m: type, x: r2(x), y: r2(y), z: r2(z) }); }
+  hatch(type, x, y, z, from = null) { this.toHost({ t: 'egg', m: type, x: r2(x), y: r2(y), z: r2(z), b: from ?? undefined }); }
   placeCart(x, y, z, yaw) { this.toHost({ t: 'cart', x: r2(x), y: r2(y), z: r2(z), a: r2(yaw) }); }
   dropXp(x, y, z, n) { this.toHost({ t: 'orb', x: r2(x), y: r2(y), z: r2(z), n }); }
   ride(e, on) { if (e.nid) this.toHost({ t: 'ride', e: e.nid, on: on ? 1 : 0 }); }
   useMob(e, id, effect, name) { this.toHost({ t: 'um', e: e.nid, i: id, f: effect, n: name ?? undefined }); }
   useFence(x, y, z) { this.toHost({ t: 'lead', x, y, z }); }
-  hang(kind, x, y, z, face) { this.toHost({ t: 'hang', k: kind, x, y, z, f: face }); }
+  hang(kind, x, y, z, face, glow = false) { this.toHost({ t: 'hang', k: kind, x, y, z, f: face, g: glow ? 1 : undefined }); }
   useHanging(e, held) { this.toHost({ t: 'hu', e: e.nid, st: held ? { id: held.id, d: held.dmg ?? 0, ex: extras(held) ?? undefined } : undefined }); }
-  writeSign(x, y, z, lines) { this.toHost({ t: 'sign', k: `${x},${y},${z}`, l: lines }); }
+  writeSign(x, y, z, lines, glow = false) { this.toHost({ t: 'sign', k: `${x},${y},${z}`, l: lines, g: glow ? 1 : 0 }); }
   shootArrow(x, y, z, vx, vy, vz, damage, pickup, fx) {
     this.toHost({ t: 'arw', x: r2(x), y: r2(y), z: r2(z), vx: r2(vx), vy: r2(vy), vz: r2(vz), d: damage, p: pickup ? 1 : 0,
       pu: fx?.punch || undefined, fl: fx?.flame ? 1 : undefined, po: fx?.potion || undefined, sb: fx?.snowball ? 1 : undefined });

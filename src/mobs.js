@@ -53,9 +53,9 @@ export const MOBS = {
   squid: { label: 'Squid', rig: 'squid', skins: ['squid'], hw: 0.4, h: 0.8, health: 10, speed: 1.2, kind: 'water', anim: 'squid',
     drops: [d('black_dye', 1, 3)], sound: null, scale: 0.8 },
   cod: { label: 'Cod', rig: 'cod', skins: ['cod'], hw: 0.25, h: 0.3, health: 3, speed: 1.4, kind: 'water', anim: 'fish', drops: [d('cod', 1, 1),
-    d('bone_meal', 0, 1, 0.05)], sound: 'fish' },
+    d('bone_meal', 0, 1, 0.05)], sound: 'fish', bucket: 'cod_bucket' },
   salmon: { label: 'Salmon', rig: 'salmon', skins: ['salmon'], hw: 0.3, h: 0.4, health: 3, speed: 1.6, kind: 'water', anim: 'fish',
-    drops: [d('salmon', 1, 1)], sound: 'fish' },
+    drops: [d('salmon', 1, 1)], sound: 'fish', bucket: 'salmon_bucket' },
   zombie: { label: 'Zombie', rig: 'humanoid', skins: ['zombie'], hw: 0.3, h: 1.95, health: 20, speed: 2.1, kind: 'hostile', anim: 'zombie',
     damage: 3, burns: true, drops: [d('rotten_flesh', 0, 2), d('iron_ingot', 1, 1, 0.025), d('carrot', 1, 1, 0.025), d('potato', 1, 1, 0.025)],
     sound: 'zombie', hunts: true },
@@ -103,10 +103,11 @@ export const MOBS = {
   // Tropical fish swim in bright schools over the reefs, each a base colour with a pattern over it
   // (two shapes: see TROPICAL).
   tropical_fish: { label: 'Tropical Fish', rig: 'tropical_a', skins: TROPICAL.map(([n]) => `tropical_${n}`), variants: true, hw: 0.25, h: 0.4,
-    health: 3, speed: 1.6, kind: 'water', anim: 'fish', drops: [d('tropical_fish', 1, 1), d('bone_meal', 0, 1, 0.05)], sound: 'fish', schools: true },
+    health: 3, speed: 1.6, kind: 'water', anim: 'fish', drops: [d('tropical_fish', 1, 1), d('bone_meal', 0, 1, 0.05)], sound: 'fish', schools: true,
+    bucket: 'tropical_fish_bucket' },
   // Pufferfish puff up when anything comes close, and sting what touches them then.
   pufferfish: { label: 'Pufferfish', rig: 'pufferfish', skins: ['pufferfish'], hw: 0.35, h: 0.35, health: 3, speed: 1.0, kind: 'water', anim: 'puffer',
-    drops: [d('pufferfish', 1, 1), d('bone_meal', 0, 1, 0.05)], sound: 'fish', puffs: true },
+    drops: [d('pufferfish', 1, 1), d('bone_meal', 0, 1, 0.05)], sound: 'fish', puffs: true, bucket: 'pufferfish_bucket' },
   // Sharks hunt anyone swimming in their sea: about five blocks long, as a great white is.
   shark: { label: 'Shark', rig: 'shark', skins: ['shark'], hw: 0.95, h: 1.2, health: 30, speed: 2.6, kind: 'water', anim: 'shark', damage: 6,
     preys: true, drops: [d('raw_shark', 1, 3), d('shark_tooth', 0, 2)], sound: null, scale: 2.2 },
@@ -216,6 +217,39 @@ export const MOBS = {
   elder_guardian: { label: 'Elder Guardian', rig: 'guardian', skins: ['guardian_elder'], hw: 1.0, h: 2.0, health: 80, speed: 0.8, kind: 'water',
     anim: 'guardian', damage: 8, beam: 60, spikes: 2, monster: true, elder: true, xp: 10, scale: 2.35, knockback: 0, pitch: 0.65,
     drops: [d('prismarine_shard', 0, 2), d('wet_sponge', 1, 1), d('cod', 0, 1, 0.5), d('prismarine_crystals', 0, 1, 0.33)], sound: 'guardian' },
+  // ---- the wild update's creatures.
+  // Glow squid keep to the dark water deep underground. They glow (but for a while after they're
+  // hurt, when they go dark), and leave glow ink sacs behind.
+  glow_squid: { label: 'Glow Squid', rig: 'squid', skins: ['glow_squid'], hw: 0.4, h: 0.8, health: 10, speed: 1.2, kind: 'water', anim: 'squid',
+    drops: [d('glow_ink_sac', 1, 3)], sound: null, scale: 0.8, glows: true },
+  // Ocelots: the jungle's wild cats. They run from people, unless they come to trust whoever feeds
+  // them fish (after which they stay, and have kittens); they hunt chickens, and creepers keep well
+  // clear of them.
+  ocelot: { label: 'Ocelot', rig: 'cat', skins: ['ocelot'], hw: 0.3, h: 0.7, health: 10, speed: 1.9, kind: 'animal', anim: 'quad',
+    food: ['cod', 'salmon'], trusts: true, quarry: ['chicken'], damage: 3, drops: [], sound: 'cat', shy: 7 },
+  // Axolotls live in the water of lush caves, in five colours (the blue one is rare: one young in
+  // twelve hundred). They hunt what swims there (fish, squid, tadpoles, the drowned, guardians), play
+  // dead when they're hurt, dry out on land, and can be carried off in a bucket of water.
+  axolotl: { label: 'Axolotl', rig: 'axolotl', skins: ['axolotl_lucy', 'axolotl_wild', 'axolotl_gold', 'axolotl_cyan', 'axolotl_blue'], variants: true,
+    variantCount: 4, hw: 0.375, h: 0.42, health: 14, speed: 0.8, kind: 'animal', anim: 'axolotl', swimmer: true, driesOut: true,
+    food: ['tropical_fish_bucket'], quarry: ['cod', 'salmon', 'tropical_fish', 'pufferfish', 'squid', 'glow_squid', 'tadpole', 'drowned', 'guardian',
+      'elder_guardian'], damage: 2, drops: [], sound: 'axolotl', bucket: 'axolotl_bucket', xp: 3 },
+  // Frogs: orange ones where it's mild, white where it's warm, green where it's cold. They hop, and
+  // swim, snap up small slimes with their tongues (leaving a slimeball), and croak; fed slimeballs,
+  // two have frogspawn, which the mother lays on the water.
+  frog: { label: 'Frog', rig: 'frog', skins: ['frog_temperate', 'frog_warm', 'frog_cold'], hw: 0.25, h: 0.5, health: 10, speed: 1.2, kind: 'animal',
+    anim: 'frog', swimmer: true, leapsAbout: true, food: ['slime_ball'], quarry: ['slime'], drops: [], sound: 'frog', xp: 3 },
+  // Tadpoles come out of frogspawn, and grow up (sooner for slimeballs) into frogs of wherever they
+  // do it. They can be carried in a bucket of water.
+  tadpole: { label: 'Tadpole', rig: 'tadpole', skins: ['tadpole'], hw: 0.2, h: 0.3, health: 6, speed: 1.3, kind: 'water', anim: 'fish',
+    food: ['slime_ball'], drops: [], sound: 'fish', bucket: 'tadpole_bucket', xp: 0, growsInto: 'frog' },
+  // The wandering trader turns up now and then with two llamas in tow, sells what they've gathered
+  // on their travels for gold coins, and moves on after a while (see wanderer.js).
+  wandering_trader: { label: 'Wandering Trader', rig: 'humanoid', skins: ['civ_wanderer_0'], hw: 0.3, h: 1.9, health: 20, speed: 1.5, kind: 'civilian',
+    anim: 'humanoid', drops: [], sound: null, wanderer: true },
+  trader_llama: { label: 'Trader Llama', rig: 'llama', skins: ['llama_creamy', 'llama_white', 'llama_brown', 'llama_gray'], extraSkins: { decor: 'llama_trader_decor' },
+    variants: true, hw: 0.45, h: 1.87, health: 22, speed: 1.1, kind: 'animal', anim: 'quad', food: ['wheat', 'hay_block'], drops: [d('leather', 0, 2)],
+    sound: 'llama', scale: 0.85 },
   // Village people (see civilians.js); each wears their own skin.
   civilian: { label: 'Villager', rig: 'humanoid', skins: ['civ_farmer_0'], hw: 0.3, h: 1.9, health: 20, speed: 1.6, kind: 'civilian',
     anim: 'humanoid', drops: [], sound: null },
@@ -264,6 +298,10 @@ export function initMob(e, type, o = {}) {
     // the way; see detourTick. Drawn rising onto a step: see mobPhysics.)
     goal: false, goalAway: false, goalX: 0, goalZ: 0, goalWay: 0, balked: false, edged: false, bumps: 0, detour: 0, detourSide: 0,
     detourCalm: 0, stuck: 0, stuckX: 0, stuckZ: 0, fleeing: 0, fleeYaw: 0, stepSmooth: 0,
+    // (The wild update's: an ocelot that trusts people; a tadpole's time until it's a frog; an
+    // axolotl playing dead, or out of the water; a frog's croak and tongue, and frogspawn to lay.)
+    trusting: !!o.trusting, growUp: t.growsInto ? (o.growUp ?? 24000) : 0, playDead: 0, dryness: 0, croak: 0, tongue: 0, pregnant: 0,
+    prey: null, huntCd: 0,
   });
   if ((type === 'horse' || type === 'mule') && o.health === undefined) e.health = 15 + Math.floor(Math.random() * 16);
   // (A tropical fish's shape goes with its pattern.)
@@ -292,6 +330,10 @@ const WARM = new Set([...HOT, BIOME.JUNGLE, BIOME.SPARSE_JUNGLE, BIOME.PLAINS, B
   BIOME.WARM_OCEAN, BIOME.OCEAN, BIOME.DEEP_OCEAN, BIOME.LUKEWARM_OCEAN, BIOME.DEEP_LUKEWARM_OCEAN]);
 const COLD = new Set([BIOME.SNOWY_TAIGA, BIOME.SNOWY_PLAINS, BIOME.ICE_SPIKES, BIOME.SNOWY_SLOPES, BIOME.SNOWY_PEAKS, BIOME.FROZEN_PEAKS,
   BIOME.JAGGED_PEAKS, BIOME.FROZEN_OCEAN, BIOME.FROZEN_RIVER, BIOME.SNOWY_BEACH, BIOME.DEEP_FROZEN_OCEAN]);
+// A frog's kind by where it comes from (or where it grew up): white where it's warm, green where
+// it's cold, and the orange temperate one everywhere else.
+const WARM_FROGS = new Set([BIOME.DESERT, BIOME.BADLANDS, BIOME.SAVANNA, BIOME.JUNGLE, BIOME.SPARSE_JUNGLE, BIOME.WARM_OCEAN]);
+export const frogVariant = (biome) => (COLD.has(biome) ? 2 : WARM_FROGS.has(biome) ? 1 : 0);
 
 // ---------------------------------------------------------------- behaviour (20 times a second)
 // `ents` is the Entities list (players, world, game).
@@ -339,6 +381,15 @@ export function mobTick(ents, e) {
       if ((e.dry = (e.dry ?? 0) + 1) >= 40) { e.dry = 0; ents.hurtMob(e, 1, null); }
     }
   }
+  // Axolotls dry out on land (unless it's raining on them): after five minutes out of the water
+  // they begin to suffer.
+  if (t.driesOut) {
+    const rained = game.weather.rain > 0.3 && (w.getLight(Math.floor(e.x), Math.floor(e.y + 1), Math.floor(e.z)) >> 4) >= 15;
+    if (inWater || rained) e.dryness = 0;
+    else if (++e.dryness > 6000 && e.dryness % 20 === 0) ents.hurtMob(e, 1, null);
+  }
+  // A tadpole grows up into a frog (of whatever kind suits where it is then).
+  if (t.growsInto && --e.growUp <= 0) { ents.growUp(e); return; }
   // Snow golems melt where it's hot, or wet (rain that isn't snow, water); where it's cool they
   // leave a trail of snow behind them.
   if (t.melts) {
@@ -365,7 +416,7 @@ export function mobTick(ents, e) {
     case 'hostile': hostileTick(ents, e); break;
     case 'neutral': neutralTick(ents, e); break;
     case 'water': swimTick(ents, e); break;
-    case 'civilian': ents.civilians?.think(e); break;
+    case 'civilian': if (t.wanderer) ents.wanderers?.think(e); else ents.civilians?.think(e); break;
     default: animalTick(ents, e);
   }
   detourTick(ents, e);
@@ -525,6 +576,9 @@ const FLOWERS = new Set(['dandelion', 'poppy', 'cornflower', 'oxeye_daisy', 'azu
 function animalTick(ents, e) {
   const t = e.def, game = ents.game, w = ents.world;
   e.speedMul = 1;
+  if (t.driesOut && axolotlTick(ents, e)) return;
+  if (t.leapsAbout && frogTick(ents, e)) return;
+  if (t.trusts && ocelotTick(ents, e)) return;
   // Turtles swim about when they're in the water (and come ashore now and then).
   if (t.swimmer && e.inWater) {
     if (e.panic > 0) e.panic--;
@@ -546,7 +600,7 @@ function animalTick(ents, e) {
     return;
   }
   // Shy creatures keep away from players (not from their owner, once tamed); deer bolt.
-  if (t.shy && !e.tame) {
+  if (t.shy && !e.tame && !e.trusting) {
     const p = ents.players.find((q) => !q.dead && dist2(q, e) < t.shy && !(q.sneaking && dist2(q, e) > t.shy * 0.4));
     if (p) {
       faceAway(e, p.x, p.z); e.moving = true; e.speedMul = 1.6;
@@ -584,6 +638,158 @@ function animalTick(ents, e) {
   if (e.home && dist2(e, e.home) > (t.homeRange ?? 4)) { faceTowards(e, e.home.x, e.home.z); e.moving = true; }
 }
 
+// Ocelots: one that doesn't trust people keeps its distance from them, unless they hold out fish
+// and come on calmly (then it creeps up to them); a trusting one goes about as it likes. Either
+// hunts the chickens round about now and then: stalking low, then darting in.
+function ocelotTick(ents, e) {
+  const t = e.def;
+  if (e.panic > 0) return false;
+  if (huntTick2(ents, e, 10, (d) => (d > 4 ? 0.55 : 1.6))) return true;
+  if (e.trusting) return false;
+  const p = ents.players.find((q) => !q.dead && dist2(q, e) < 10 && Math.abs(q.y - e.y) < 4);
+  if (!p) return false;
+  if (p.held && t.foodIds.has(p.held) && !p.sprinting) {
+    faceTowards(e, p.x, p.z);
+    e.moving = dist2(p, e) > 2; e.speedMul = 0.6;
+    return true;
+  }
+  if (dist2(p, e) < t.shy && !(p.sneaking && dist2(p, e) > t.shy * 0.5)) {
+    faceAway(e, p.x, p.z);
+    e.moving = true; e.speedMul = 1.4;
+    return true;
+  }
+  return false;
+}
+// Going after what it hunts (`t.quarry`) within `range`: picking one out now and then, running it
+// down (at speedMul `pace(distance)`) and biting it; after a kill it rests a while. True while
+// it's on the hunt.
+function huntTick2(ents, e, range, pace, water = false) {
+  const t = e.def;
+  if (e.huntCd > 0) e.huntCd--;
+  let prey = e.prey;
+  const far = (o) => Math.hypot(o.x - e.x, (o.y - e.y) * (water ? 1 : 2), o.z - e.z);
+  if (prey && (prey.dead || prey.dying || far(prey) > range * 1.6 || (water && !prey.inWater))) prey = e.prey = null;
+  if (!prey && e.huntCd <= 0 && (e.lookCd = (e.lookCd ?? 0) - 1) <= 0) {
+    e.lookCd = 20 + Math.floor(Math.random() * 20);
+    let bd = range;
+    for (const o of ents.list) {
+      if (o.kind !== 'mob' || o === e || !t.quarry.includes(o.type) || o.dead || o.dying || (water && !o.inWater) || o.pinned) continue;
+      const dd = far(o);
+      if (dd < bd) { bd = dd; prey = o; }
+    }
+    e.prey = prey ?? null;
+  }
+  if (!prey) return false;
+  const dx = prey.x - e.x, dy = prey.y + prey.h * 0.4 - (e.y + e.h * 0.5), dz = prey.z - e.z, d = Math.hypot(dx, dz);
+  faceTowards(e, prey.x, prey.z);
+  e.moving = d > 0.4; e.speedMul = pace(d);
+  if (water) e.swimY = clamp(dy * 1.5, -1.5, 1.5);
+  if (Math.hypot(d, dy) < e.hw + prey.hw + 0.6 && e.attackCd === 0) {
+    e.attackCd = 20; e.swing = 1;
+    const helped = prey.playerHurt > 0;
+    ents.hurtMob(prey, t.damage ?? 2, e);
+    if (prey.dying || prey.dead) {
+      e.prey = null; e.huntCd = water ? 2400 : 600 + Math.floor(Math.random() * 1200);
+      // (An axolotl's kill heartens anyone who was fighting it too: see Game.axolotlHelped.)
+      if (water && helped) for (const p of ents.players) if (!p.dead && dist2(p, e) < 20) ents.game.axolotlHelped?.(p);
+    }
+  }
+  return true;
+}
+// Axolotls: playing dead a while after being hurt in the water (lying still on their backs and
+// healing); in the water, hunting what swims near; ashore, making for the nearest water.
+function axolotlTick(ents, e) {
+  if (e.playDead > 0) {
+    e.playDead--; e.moving = false; e.target = null; e.panic = 0; e.prey = null;
+    if (e.playDead % 20 === 0) e.health = Math.min(e.maxHealth ?? e.health, e.health + 1);
+    return true;
+  }
+  if (e.inWater && swimToward(ents, e)) return true;
+  if (!e.inWater) {
+    if (e.love > 0 || e.leash) return false;
+    const to = waterNear(ents.world, e, 8);
+    if (!to) return false;
+    e.yaw = Math.atan2(-to[0], -to[1]); e.moving = true; e.speedMul = 1;
+    return true;
+  }
+  return huntTick2(ents, e, 8, () => 1.8, true);
+}
+// Frogs: a pregnant one goes to lay her frogspawn on still water nearby; any snaps up a small
+// slime that comes near with its tongue (it's gone, but for a slimeball); now and then they croak.
+function frogTick(ents, e) {
+  const t = e.def, game = ents.game, w = ents.world;
+  if (e.tongue > 0) { e.tongue--; e.moving = false; return true; }
+  if (e.inWater && swimToward(ents, e)) return true;
+  if (e.croak > 0) e.croak--;
+  else if (Math.random() < 0.0015) { e.croak = 60; game.audio.mob('frog', 'say', { x: e.x, y: e.y + 0.3, z: e.z }, 1 - e.variant * 0.08); }
+  if (e.pregnant > 0) {
+    e.pregnant--;
+    const ok = e.spawnSpot && w.getBlock(e.spawnSpot[0], e.spawnSpot[1] + 1, e.spawnSpot[2]) === 0 && w.getBlock(...e.spawnSpot) === B.water;
+    if (!ok && (e.spotCd = (e.spotCd ?? 0) - 1) <= 0) { e.spotCd = 20; e.spawnSpot = frogspawnSpot(w, e); }
+    const spot = ok || e.spotCd === 20 ? e.spawnSpot : null;
+    if (spot) {
+      const dx = spot[0] + 0.5 - e.x, dz = spot[2] + 0.5 - e.z;
+      if (Math.hypot(dx, dz) < 1.2 && Math.abs(spot[1] + 1 - e.y) < 1.5) {
+        w.setBlock(spot[0], spot[1] + 1, spot[2], B.frogspawn);
+        game.audio.place('water', { x: spot[0] + 0.5, y: spot[1] + 1, z: spot[2] + 0.5 });
+        e.pregnant = 0; e.spawnSpot = null;
+      } else { faceTowards(e, spot[0] + 0.5, spot[2] + 0.5); e.moving = true; e.speedMul = 1.2; e.swimY = (spot[1] + 0.6 - e.y) * 1.5; return true; }
+    }
+  }
+  if ((e.eatCd = (e.eatCd ?? 0) - 1) <= 0) {
+    e.eatCd = 10;
+    const food = ents.list.find((o) => o.kind === 'mob' && t.quarry.includes(o.type) && o.size === 1 && !o.dead && !o.dying &&
+      Math.hypot(o.x - e.x, o.y - e.y, o.z - e.z) < 10);
+    e.prey = food ?? null;
+  }
+  const food = e.prey;
+  if (food && !food.dead && !food.dying) {
+    const d = Math.hypot(food.x - e.x, food.y - e.y, food.z - e.z);
+    faceTowards(e, food.x, food.z);
+    if (d < 2.6 && clearLine(w, e.x, e.y + 0.4, e.z, food.x, food.y + 0.3, food.z)) {
+      // Out flicks the tongue, and the slime is gone.
+      e.tongue = 10; e.swing = 1; e.moving = false;
+      food.dead = true;
+      game.net?.entityGone?.(food, 'x');
+      ents.spawnItem(e.x, e.y + 0.3, e.z, I.slime_ball, 1);
+      game.audio.mob('frog', 'eat', { x: e.x, y: e.y + 0.3, z: e.z });
+      e.prey = null;
+      return true;
+    }
+    e.moving = true; e.speedMul = 1.3;
+    return true;
+  }
+  return false;
+}
+// In the water, a swimmer in love makes for its mate, and one that's hungry for what someone holds
+// out swims up to them (up and down too). True if it's going somewhere.
+function swimToward(ents, e) {
+  const t = e.def;
+  if (e.love > 0 && seekMate(ents, e)) {
+    const mate = ents.list.find((o) => o !== e && o.type === e.type && o.love > 0 && !o.dead && dist2(o, e) < 8);
+    if (mate) e.swimY = clamp((mate.y - e.y) * 1.5, -1.5, 1.5);
+    return true;
+  }
+  const p = t.foodIds.size && ents.players.find((q) => !q.dead && q.held && t.foodIds.has(q.held) && Math.hypot(q.x - e.x, q.y - e.y, q.z - e.z) < 8);
+  if (!p) return false;
+  faceTowards(e, p.x, p.z);
+  e.moving = dist2(p, e) > 1.5; e.speedMul = 1.2;
+  e.swimY = clamp((p.y + 0.5 - e.y) * 1.5, -1.5, 1.5);
+  return true;
+}
+// Where a frog can lay frogspawn: the top of still water, open above, within eight blocks.
+function frogspawnSpot(w, e) {
+  const bx = Math.floor(e.x), by = Math.floor(e.y), bz = Math.floor(e.z);
+  let best = null, bd = Infinity;
+  for (let dy = -3; dy <= 2; dy++) for (let dz = -8; dz <= 8; dz++) for (let dx = -8; dx <= 8; dx++) {
+    const x = bx + dx, y = by + dy, z = bz + dz;
+    if (w.getBlock(x, y, z) !== B.water || w.getBlock(x, y + 1, z) !== 0) continue;
+    const d = dx * dx + dz * dz + dy * dy * 2;
+    if (d < bd) { bd = d; best = [x, y, z]; }
+  }
+  return best;
+}
+
 // In love: go to a partner (another of its kind in love nearby, or a horse and a donkey, whose foal
 // is a mule) and have a baby with them.
 const CROSS = { horse: 'donkey', donkey: 'horse' };
@@ -596,13 +802,17 @@ function seekMate(ents, e) {
   e.moving = dist2(mate, e) > 1.2;
   if (!e.moving && e.love > 0 && mate.love > 0) {
     e.love = mate.love = 0; e.breedCd = mate.breedCd = 6000;
-    // (A foal of two tame horses is born tame; puppies and kittens belong to their parents' owner.)
+    ents.spawnXp((e.x + mate.x) / 2, e.y + 0.5, (e.z + mate.z) / 2, 1 + Math.floor(Math.random() * 7));
+    // (Frogs have no young of their own: one of them is soon to lay frogspawn.)
+    if (e.def.leapsAbout) { (Math.random() < 0.5 ? e : mate).pregnant = 6000; loveHearts(game, e, 5); return true; }
+    // (A foal of two tame horses is born tame; puppies and kittens belong to their parents' owner.
+    // An axolotl's young is now and then the rare blue.)
     const same = mate.type === e.type;
-    const baby = ents.spawnMob(same ? e.type : 'mule', (e.x + mate.x) / 2, e.y, (e.z + mate.z) / 2, { baby: true,
-      variant: !same ? 0 : Math.random() < 0.5 ? e.variant : mate.variant,
-      colour: Math.random() < 0.5 ? e.colour : mate.colour, tame: e.tame && mate.tame, owner: e.owner && e.owner === mate.owner ? e.owner : null });
+    const variant = !same ? 0 : e.def.driesOut && Math.random() < 1 / 1200 ? 4 : Math.random() < 0.5 ? e.variant : mate.variant;
+    const baby = ents.spawnMob(same ? e.type : 'mule', (e.x + mate.x) / 2, e.y, (e.z + mate.z) / 2, { baby: true, variant,
+      colour: Math.random() < 0.5 ? e.colour : mate.colour, tame: e.tame && mate.tame, owner: e.owner && e.owner === mate.owner ? e.owner : null,
+      trusting: e.trusting && mate.trusting });
     loveHearts(game, baby, 7);
-    ents.spawnXp(baby.x, baby.y + 0.5, baby.z, 1 + Math.floor(Math.random() * 7));
   }
   return true;
 }
@@ -950,9 +1160,9 @@ const targetGone = (t) => !t || t.dead || t.dying || t.creative;
 
 function hostileTick(ents, e) {
   const t = e.def, game = ents.game, w = ents.world;
-  // Creepers are afraid of cats.
+  // Creepers are afraid of cats (and ocelots).
   if (t.explodes) {
-    const cat = ents.list.find((o) => o.type === 'cat' && !o.dead && !o.dying && dist2(o, e) < 6 && Math.abs(o.y - e.y) < 4);
+    const cat = ents.list.find((o) => (o.type === 'cat' || o.type === 'ocelot') && !o.dead && !o.dying && dist2(o, e) < 6 && Math.abs(o.y - e.y) < 4);
     if (cat) { faceAway(e, cat.x, cat.z); e.moving = true; e.speedMul = 1.5; e.fuse = Math.max(0, e.fuse - 1); return; }
   }
   // Spiders leave you alone in daylight unless provoked.
@@ -1444,9 +1654,16 @@ export function provoked(ents, e, from) {
     e.sitting = false;
     if (t.defends) { e.target = from; e.angry = 200; return; }
   }
+  // (An axolotl hurt in the water now and then plays dead instead: see axolotlTick.)
+  if (t.driesOut && e.inWater && e.health > 0 && !(e.playDead > 0) && Math.random() < 1 / 3) { e.playDead = 200; e.prey = null; return; }
   if (t.kind === 'animal') { e.panic = 80; if (from) faceAway(e, from.x, from.z); e.love = 0; e.flyTarget = null; e.roost = false; }
   else if (t.kind === 'water' && (t.preys || t.retaliates) && from && !from.creative) { e.target = from; e.angry = 600; }
-  else if (t.kind === 'water') { e.panic = 60; ents.game.particles.smoke?.(e.x, e.y + 0.4, e.z, 4, 0.4); }
+  else if (t.kind === 'water') {
+    e.panic = 60;
+    // (A squid squirts ink as it flees: a glow squid's glows.)
+    if (t.glows) ents.game.particles.splash?.(e.x, e.y + 0.4, e.z, 0x6ff0d0, 14);
+    else ents.game.particles.smoke?.(e.x, e.y + 0.4, e.z, 4, 0.4);
+  }
   else if (t.kind === 'neutral' && from && !from.creative) {
     e.angry = 400; e.target = from;
     if (t.pack) for (const o of ents.list) if (o !== e && o.type === e.type && !o.dead && !o.owner && dist2(o, e) < 16) { o.angry = 400; o.target = from; }
@@ -1478,6 +1695,12 @@ export function mobUseEffect(e, id, { mine = false, holds = false, name = null }
     return 'sit';
   }
   if (!id) return null;
+  // A bucket of water scoops up a fish, an axolotl or a tadpole (to be let go somewhere else).
+  if (id === I.water_bucket && t.bucket && !e.leash) return 'scoop';
+  // An ocelot comes to trust whoever feeds it fish (it takes a few goes); a tadpole fed slimeballs
+  // grows up sooner.
+  if (t.trusts && !e.trusting) return t.foodIds.has(id) ? 'trust' : null;
+  if (t.growsInto) return t.foodIds.has(id) ? 'grow' : null;
   if (t.rideable) {
     // Horses: saddled once tame; fed to heal and to warm to you; golden food to breed.
     if (id === I.saddle) return e.tame && !e.saddled && !e.baby ? 'saddle' : null;
@@ -1525,7 +1748,19 @@ export function applyMobUse(ents, e, id, effect, uid = null, name = null) {
       break;
     }
     case 'breed': e.love = 600; loveHearts(game, e, 7); break;
-    case 'grow': e.grow = Math.max(0, e.grow - 2400); game.particles.icons(TEX.happy, e.x, e.y + e.h * 0.5, e.z, 5, e.hw + 0.1); break;
+    case 'grow':
+      if (e.def.growsInto) e.growUp = Math.max(1, e.growUp - 2400); else e.grow = Math.max(0, e.grow - 2400);
+      game.particles.icons(TEX.happy, e.x, e.y + e.h * 0.5, e.z, 5, e.hw + 0.1);
+      break;
+    case 'scoop':
+      e.dead = true;
+      game.net?.entityGone?.(e, 'x');
+      game.audio.bucket('fill_fish', at);
+      break;
+    case 'trust':
+      if (Math.random() < 1 / 3) { e.trusting = true; e.panic = 0; loveHearts(game, e, 7); game.net?.resend?.(e); }
+      else game.particles.smoke(e.x, e.y + e.h + 0.2, e.z, 5, 0.3);
+      break;
     case 'dye': e.colour = DYE_OF[id]; break;
     case 'saddle': e.saddled = true; game.audio.equip('leather'); break;
     case 'feed':
@@ -1537,15 +1772,30 @@ export function applyMobUse(ents, e, id, effect, uid = null, name = null) {
     default:
   }
 }
-// The player's side: what happens to what they're holding.
-export function applyHeldUse(game, effect) {
+// The player's side: what happens to what they're holding (`e`: the creature it was used on).
+export function applyHeldUse(game, effect, e = null) {
   if (effect === 'sit' || effect === 'unleash') { game.swingArm(); return; }
   if (effect === 'milk') game.swapHeldTo(I.milk_bucket);
+  else if (effect === 'scoop') game.swapHeldTo(I[e.def.bucket], { mob: bucketed(e) });
+  // (A bucket of fish fed to an axolotl leaves the bucket of water.)
+  else if (ITEMS.get(game.inv.held?.id)?.holds && !game.creative) game.swapHeldTo(I.water_bucket);
   else if (effect === 'shear') { if (!game.creative && game.inv.damageHeld(1)) game.audio.toolBreak(); game.invChanged(); }
   else if (!game.creative) { game.inv.consumeHeld(); game.invChanged(); }
   game.swingArm();
 }
 const DYE_OF = Object.fromEntries(DYES.map((dd, i) => [I[`${dd.name}_dye`], i]).filter(([id]) => id !== undefined));
+// What goes into a bucket with a creature scooped up in it (see inventory.js `mob`), and what comes
+// out with it again (see Entities.hatch).
+export function bucketed(e) {
+  const m = {};
+  if (e.variant) m.v = e.variant;
+  if (e.baby) m.b = 1;
+  if (e.health < (e.maxHealth ?? e.health)) m.hp = Math.round(e.health * 10) / 10;
+  if (e.named) m.nm = e.named;
+  if (e.def.growsInto) m.g = e.growUp;
+  return m;
+}
+export const unbucketed = (m) => ({ variant: m.v ?? 0, baby: !!m.b, named: m.nm ?? null, growUp: m.g, hatched: true });
 
 // What a creature leaves behind when it dies.
 export function mobDrops(e) {
@@ -1595,7 +1845,7 @@ export function mobPhysics(ents, e, dt, fluid) {
   const dir = e.yaw + (e.rider ? e.rideDir ?? 0 : 0);
   const fx = -Math.sin(dir), fz = -Math.cos(dir);
   // Animals won't walk off a cliff or into water on their own.
-  if (speed && !t.hostile && t.kind !== 'water' && t.kind !== 'civilian' && !t.swimmer && e.onGround && !e.panic && !e.rider) {
+  if (speed && !t.hostile && t.kind !== 'water' && (t.kind !== 'civilian' || t.wanderer) && !t.swimmer && e.onGround && !e.panic && !e.rider) {
     const ax = Math.floor(e.x + fx * (e.hw + 0.4)), az = Math.floor(e.z + fz * (e.hw + 0.4)), y = Math.floor(e.y + 0.1);
     const ahead = w.getBlock(ax, y - 1, az), ahead2 = w.getBlock(ax, y - 2, az);
     if ((!SOLID[ahead] && !SOLID[ahead2]) || WATERLIKE[ahead] || WATERLIKE[w.getBlock(ax, y, az)]) {
@@ -1672,8 +1922,9 @@ export function mobPhysics(ents, e, dt, fluid) {
       }
     }
   }
-  // Rabbits move in hops (a jump up a block goes higher).
+  // Rabbits move in hops (a jump up a block goes higher); frogs walk, and now and then leap.
   if (t.hops && speed && e.onGround) e.vy = Math.max(e.vy, 5.5);
+  if (t.leapsAbout && speed && e.onGround && !fluid && Math.random() < dt * 0.8) { e.vy = Math.max(e.vy, 6.5); e.vx += fx * 3.5; e.vz += fz * 3.5; }
   if (t.sized && e.onGround && !wasGround && vyBefore < -2) {
     e.squish = -0.6;
     e.vx *= 0.3; e.vz *= 0.3;
@@ -2060,6 +2311,49 @@ export function poseMob(e, pose) {
       pose.finR = [0, 0, f]; pose.finL = [0, 0, -f];
       break;
     }
+    case 'axolotl': {
+      // The gills sway; swimming, the legs lie back along the body and the body and tail sweep
+      // from side to side; ashore, the legs paddle the ground (a diagonal pair at a time) and the
+      // body wriggles. (Splayed legs swing about the upright: forwards is + on the right, - on the
+      // left.)
+      const sway = Math.sin(age * 2) * 0.1;
+      pose.gillsTop = [-0.15 + sway, 0, 0]; pose.gillsR = [0, sway * 1.5, 0]; pose.gillsL = [0, -sway * 1.5, 0];
+      pose.head = [head[0] * 0.4, head[1] * 0.5, 0];
+      if (e.inWater) {
+        const s = Math.sin(e.walkPhase * 1.2) * (0.2 + e.walk * 0.35);
+        pose.body = [0, -s * 0.25, 0];
+        pose.tail = [0, s, 0];
+        pose.legFR = [0, -1, 0]; pose.legFL = [0, 1, 0]; pose.legBR = [0, -0.9, 0]; pose.legBL = [0, 0.9, 0];
+      } else {
+        const w2 = Math.sin(e.walkPhase * 1.4) * 0.7 * e.walk;
+        pose.legFR = [0, w2, 0]; pose.legBL = [0, -w2, 0]; pose.legFL = [0, w2, 0]; pose.legBR = [0, -w2, 0];
+        pose.body = [0, Math.sin(e.walkPhase * 1.4) * 0.15 * e.walk, 0];
+        pose.tail = [0, Math.sin(e.walkPhase * 1.4 + 1) * 0.35 * e.walk + sway, 0];
+      }
+      break;
+    }
+    case 'frog': {
+      // The head is the top of the mouth: it tips up as the tongue flicks out (and back). In the
+      // air, the back legs stretch out behind and the arms reach forward; swimming, the legs kick
+      // together; walking, they step in turn.
+      const flick = e.swing > 0 ? Math.sin(Math.min(1, e.swing) * Math.PI) : 0;
+      pose.head = [flick * 0.35, 0, 0];
+      pose['tongue@'] = [0, 0, -flick * 9];
+      if (e.inWater && !e.onGround) {
+        const k = (Math.sin(e.walkPhase * 1.1) * 0.5 + 0.5) * (0.3 + e.walk * 0.7);
+        pose.legR = pose.legL = [-0.4 - k * 0.9, 0, 0];
+        pose.armR = pose.armL = [-0.3 - k * 0.4, 0, 0];
+      } else if (!e.onGround) {
+        pose.legR = pose.legL = [-1.1, 0, 0];
+        pose.armR = pose.armL = [0.7, 0, 0];
+      } else {
+        const w2 = Math.sin(e.walkPhase) * 0.5 * e.walk;
+        pose.legR = [w2, 0, 0]; pose.legL = [-w2, 0, 0]; pose.armR = [-w2, 0, 0]; pose.armL = [w2, 0, 0];
+      }
+      // Croaking: the throat swells and falls.
+      pose['croak@'] = [0, -Math.max(0, Math.sin(age * 9)) * 0.9, 0];
+      break;
+    }
     default:
   }
 }
@@ -2092,12 +2386,21 @@ export function renderMob(ents, e, rx, ry, rz, light, out) {
   if (t.kind === 'civilian') skins.main = e.skin;
   const pet = !!e.owner || (e.tame && t.tameIds.size > 0);
   const tint = t.wool ? woolTint(e.colour) : pet && t.rigDef.bones.collar ? woolTint(e.collar ?? RED) : null;
+  // Glow squid shine in the dark: lit as if by a lamp, but for a few seconds after they're hurt,
+  // when they go dark and light up again slowly.
+  if (t.glows) {
+    if (e.hurt > 0 || e.dying) e.darkUntil = e.age + 5;
+    const glow = clamp((e.age - (e.darkUntil ?? -10)) / 2, 0, 1);
+    light = [light[0], Math.max(light[1], Math.round(15 * glow))];
+  }
   const meshes = rigMeshes(r, e.rig ?? t.rig, skins, tint);
   const base = identity(baseMat);
   translate(base, base, rx, ry, rz);
   rotateY(base, base, e.yaw);
   if (e.dying) rotateZ(base, base, Math.min(1, Math.sqrt(e.dying * 1.6)) * Math.PI / 2);
   if (e.pose === 'sleep') { translate(base, base, 0, 0.3, 0); rotateX(base, base, -Math.PI / 2); translate(base, base, 0, -0.1, -0.9); }
+  // (An axolotl playing dead lies on its back.)
+  if (e.playDead > 0 || e.shamming) { translate(base, base, 0, e.h * 0.8, 0); rotateZ(base, base, Math.PI); }
   // (Seated, the hips come down onto the seat.)
   if (e.sitting && t.anim === 'humanoid') translate(base, base, 0, -0.6, 0);
   let s = (t.scale ?? 1) * (e.baby ? 0.5 : 1);
@@ -2127,11 +2430,13 @@ export function renderMob(ents, e, rx, ry, rz, light, out) {
     rotateX(base, base, sit.theta);
     translate(base, base, 0, -sit.hipY / 16, -sit.hipZ / 16);
   }
+  // (A guest's copy works out for itself whether it's in the water, for how it moves.)
+  if (e.remote && (t.swimmer || t.leapsAbout)) e.inWater = inWaterAt(ents.world, e);
   const pose = {};
   poseMob(e, pose);
   const parts = [];
   for (const m of meshes) {
-    if ((m.bone.wool && e.sheared) || (m.bone.saddle && !e.saddled) || (m.bone.collar && !pet) || (m.bone.markings && !marks) ||
+    if ((m.bone.wool && e.sheared) || (m.bone.saddle && !e.saddled) || (m.bone.collar && !pet) || (m.bone.markings && !marks) || (m.bone.decor && !t.extraSkins?.decor) || (m.bone.croak && !(e.croak > 0 || e.croaking)) ||
       (m.bone.ridden && !(e.rider || e.ridden)) || (m.bone.adult && e.baby) || (m.bone.male && (e.baby || !isMale(e)))) continue;
     parts.push({ mesh: m.mesh, model: boneMatrix(ents.mat(), base, m.bone, pose, m.name, t.rigDef.bones) });
   }
@@ -2211,8 +2516,8 @@ const HERDS = {
   desert: [['rabbit', 8, 2], ['camel', 4, 2]],
   savanna: [['cow', 4, 3], ['sheep', 4, 3], ['chicken', 4, 3], ['horse', 4, 3], ['donkey', 2, 1], ['llama', 3, 3], ['elephant', 5, 4], ['zebra', 6, 4],
     ['giraffe', 5, 3], ['lion', 2, 3], ['hippo', 2, 2]],
-  jungle: [['chicken', 6, 3], ['pig', 4, 3], ['parrot', 8, 2], ['panda', 5, 2], ['tiger', 2, 1], ['elephant', 3, 3], ['crocodile', 2, 1]],
-  swamp: [['crocodile', 4, 1], ['boar', 3, 3], ['chicken', 3, 2], ['hippo', 2, 2]],
+  jungle: [['chicken', 6, 3], ['pig', 4, 3], ['parrot', 8, 2], ['panda', 5, 2], ['tiger', 2, 1], ['elephant', 3, 3], ['crocodile', 2, 1], ['ocelot', 4, 1]],
+  swamp: [['crocodile', 4, 1], ['boar', 3, 3], ['chicken', 3, 2], ['hippo', 2, 2], ['frog', 8, 3]],
   peaks: [['goat', 10, 3], ['rabbit', 2, 2], ['llama', 4, 3]],
   beach: [['turtle', 10, 3]],
   meadow: [['sheep', 10, 4], ['rabbit', 6, 3], ['goat', 3, 2], ['cow', 4, 3], ['deer', 5, 3]],
@@ -2277,7 +2582,8 @@ export function herdFor(chunk, seed) {
   for (const r of table) { if ((pick -= r[1]) <= 0) { row = r; break; } }
   const [type, , n] = row, def = MOBS[type], water = def.kind === 'water', flier = !!def.flies, tall = Math.ceil(def.h);
   const out = [];
-  const variant = type === 'rabbit' ? RABBIT_OF(biome) : type === 'wolf' ? WOLF_OF(biome) : type === 'fox' ? (HERD_OF[biome] === 'snowy' ? 1 : 0) : 0;
+  const variant = type === 'rabbit' ? RABBIT_OF(biome) : type === 'wolf' ? WOLF_OF(biome) : type === 'fox' ? (HERD_OF[biome] === 'snowy' ? 1 : 0)
+    : type === 'frog' ? frogVariant(biome) : 0;
   // (A school of fish keeps together; its members share a pattern, mostly.)
   const school = def.schools ? 1 + Math.floor(Math.random() * 1e9) : 0, look = Math.floor(Math.random() * (def.skins.length));
   for (let i = 0; i < n + Math.floor(hash2(chunk.cx * 7, chunk.cz, 5) * 2); i++) {
@@ -2316,7 +2622,8 @@ export function herdFor(chunk, seed) {
 export function hatchling(type, biome) {
   const def = MOBS[type];
   const variant = type === 'rabbit' ? RABBIT_OF(biome) : type === 'wolf' ? WOLF_OF(biome) : type === 'fox' ? (HERD_OF[biome] === 'snowy' ? 1 : 0)
-    : def.variants || def.schools ? Math.floor(Math.random() * (def.variantCount ?? def.skins.length)) : def.sexes ? (Math.random() < 0.5 ? 1 : 0) : 0;
+    : type === 'frog' ? frogVariant(biome)
+      : def.variants || def.schools ? Math.floor(Math.random() * (def.variantCount ?? def.skins.length)) : def.sexes ? (Math.random() < 0.5 ? 1 : 0) : 0;
   return { variant, colour: type === 'sheep' ? sheepColour(Math.random()) : 0, size: def.sized ? [1, 2, 4][Math.floor(Math.random() * 3)] : 1, hatched: true };
 }
 

@@ -1,6 +1,8 @@
 // Inventory: 9 hotbar slots (0-8) + 27 storage slots (9-35), four armor slots and the stack held
 // on the mouse cursor. Slots hold { id, count, dmg }, and sometimes extras: `ench` (enchantments,
-// see enchanting.js), `name` (given at an anvil) and `work` (how often it's been to the anvil).
+// see enchanting.js), `name` (given at an anvil), `work` (how often it's been to the anvil) and
+// `mob` (the creature in a bucket: its look `v`, `b` if young, health `hp`, name `nm`, and for a
+// tadpole `g`, how long until it's a frog).
 import { maxStack, itemDef } from './items.js';
 import { cleanEnch, enchLevel } from './enchanting.js';
 
@@ -8,11 +10,12 @@ const TAKE_ORDER = Array.from({ length: 36 }, (_, k) => (k + 9) % 36);
 
 // A stack's extras (or null when it has none).
 export function extras(s) {
-  if (!s || (!s.ench && !s.name && !s.work)) return null;
+  if (!s || (!s.ench && !s.name && !s.work && !s.mob)) return null;
   const o = {};
   if (s.ench) o.ench = s.ench;
   if (s.name) o.name = s.name;
   if (s.work) o.work = s.work;
+  if (s.mob) o.mob = s.mob;
   return o;
 }
 // The same, checked over (from a save, or from another player).
@@ -22,9 +25,19 @@ export function cleanExtras(s) {
   if (ench) o.ench = ench;
   if (typeof s.name === 'string' && s.name.trim()) o.name = s.name.replace(/\p{C}/gu, '').slice(0, 40);
   if (Number.isInteger(s.work) && s.work > 0) o.work = Math.min(s.work, 40);
+  const m = s.mob;
+  if (m && typeof m === 'object') {
+    o.mob = {};
+    if (Number.isInteger(m.v) && m.v >= 0 && m.v < 256) o.mob.v = m.v;
+    if (m.b) o.mob.b = 1;
+    if (Number.isFinite(m.hp) && m.hp > 0) o.mob.hp = Math.min(m.hp, 100);
+    if (typeof m.nm === 'string' && m.nm.trim()) o.mob.nm = m.nm.replace(/\p{C}/gu, '').slice(0, 50);
+    if (Number.isInteger(m.g) && m.g > 0) o.mob.g = Math.min(m.g, 24000);
+  }
   return Object.keys(o).length ? o : null;
 }
-const sameExtras = (a, b) => (!a.ench && !a.name && !a.work && !b.ench && !b.name && !b.work) || JSON.stringify(extras(a)) === JSON.stringify(extras(b));
+const sameExtras = (a, b) => (!a.ench && !a.name && !a.work && !a.mob && !b.ench && !b.name && !b.work && !b.mob) ||
+  JSON.stringify(extras(a)) === JSON.stringify(extras(b));
 
 // Can two stacks merge? (Same item, same wear, same enchantments and name.)
 export const sameItem = (a, b) => !!a && !!b && a.id === b.id && (a.dmg ?? 0) === (b.dmg ?? 0) && sameExtras(a, b);

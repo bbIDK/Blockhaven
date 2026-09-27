@@ -346,6 +346,52 @@ export const RIGS = {
       legFL: { pivot: [-3.5, 12, -6], cubes: [c([-5.5, 0, -8], [4, 12, 4], [36, 16], { mirror: true })] },
       legBR: { pivot: [3.5, 12, 6], cubes: [c([1.5, 0, 4], [4, 12, 4], [36, 16])] },
       legBL: { pivot: [-3.5, 12, 6], cubes: [c([-5.5, 0, 4], [4, 12, 4], [36, 16], { mirror: true })] },
+      // A trader's llama wears a blanket over its back (its own skin, `decor`).
+      decor: { pivot: [0, 17, 0], decor: true, follows: 'body', cubes: [c([-6, 12, -8], [12, 10, 16], [0, 38], { skin: 'decor', inflate: 0.5 })] },
+    },
+  },
+  // Axolotls: a long flat body with a fin along the back, a broad head with three pairs of feathery
+  // gills fanned out behind it, four little legs splayed out flat, and a long finned tail.
+  axolotl: {
+    bones: {
+      body: { pivot: [0, 3, 1], cubes: [c([-4, 1, -4], [8, 4, 10], [0, 10]), c([0, 5, -3], [0, 2, 9], [36, 20])] },
+      head: {
+        parent: 'body', pivot: [0, 3, -4],
+        cubes: [c([-4, 1, -9], [8, 5, 5], [0, 0])],
+      },
+      gillsTop: { parent: 'head', pivot: [0, 6, -5], cubes: [c([-4, 6, -5], [8, 3, 0], [36, 0])] },
+      gillsR: { parent: 'head', pivot: [4, 4, -5], rest: [0, 0.35, 0], cubes: [c([4, 1, -5], [3, 7, 0], [36, 4])] },
+      gillsL: { parent: 'head', pivot: [-4, 4, -5], rest: [0, -0.35, 0], cubes: [c([-7, 1, -5], [3, 7, 0], [36, 4], { mirror: true })] },
+      legFR: { parent: 'body', pivot: [4, 2, -2.5], rest: [0, 0.4, 0], cubes: [c([4, 1.5, -4], [5, 0, 3], [44, 4])] },
+      legFL: { parent: 'body', pivot: [-4, 2, -2.5], rest: [0, -0.4, 0], cubes: [c([-9, 1.5, -4], [5, 0, 3], [44, 4], { mirror: true })] },
+      legBR: { parent: 'body', pivot: [4, 2, 4.5], rest: [0, -0.4, 0], cubes: [c([4, 1.5, 3], [5, 0, 3], [44, 4])] },
+      legBL: { parent: 'body', pivot: [-4, 2, 4.5], rest: [0, 0.4, 0], cubes: [c([-9, 1.5, 3], [5, 0, 3], [44, 4], { mirror: true })] },
+      tail: { parent: 'body', pivot: [0, 3, 6], cubes: [c([0, 0.5, 6], [0, 5, 12], [0, 24])] },
+    },
+  },
+  // Frogs: a flat, wide body (the jaw) with the head on top of it, hinged at the back so the mouth
+  // opens; eyes standing up at the front corners, a throat that swells as they croak, a long tongue,
+  // short arms with splayed hands and strong back legs with webbed feet.
+  frog: {
+    bones: {
+      body: { pivot: [0, 3, 0], cubes: [c([-3.5, 3, -4.5], [7, 3, 9], [0, 13])] },
+      head: {
+        parent: 'body', pivot: [0, 6, 4.5],
+        cubes: [c([-3.5, 6, -4.5], [7, 3, 9], [0, 0]), c([-3.5, 9, -4], [3, 2, 3], [32, 0]), c([0.5, 9, -4], [3, 2, 3], [32, 5])],
+      },
+      croak: { parent: 'body', pivot: [0, 3, -3], croak: true, cubes: [c([-3, 1.6, -4.2], [6, 2, 3], [32, 10])] },
+      tongue: { parent: 'body', pivot: [0, 5.9, -4], cubes: [c([-1.5, 5.9, -4], [3, 0, 7], [32, 16])] },
+      armR: { parent: 'body', pivot: [3, 3.5, -3], cubes: [c([2.5, 0.5, -4], [2, 3, 2], [0, 25]), c([1.5, 0.05, -6], [4, 0, 4], [44, 0])] },
+      armL: { parent: 'body', pivot: [-3, 3.5, -3], cubes: [c([-4.5, 0.5, -4], [2, 3, 2], [0, 25], { mirror: true }), c([-5.5, 0.05, -6], [4, 0, 4], [44, 0], { mirror: true })] },
+      legR: { pivot: [3.5, 3, 3], cubes: [c([3, 0, 1], [3, 3, 4], [8, 25]), c([3, 0.05, 0], [5, 0, 5], [44, 4])] },
+      legL: { pivot: [-3.5, 3, 3], cubes: [c([-6, 0, 1], [3, 3, 4], [8, 25], { mirror: true }), c([-8, 0.05, 0], [5, 0, 5], [44, 4], { mirror: true })] },
+    },
+  },
+  // Tadpoles: a round brown head and a thin wriggling tail.
+  tadpole: {
+    bones: {
+      body: { pivot: [0, 1.5, 0], cubes: [c([-1.5, 0, -2], [3, 2, 3], [0, 0])] },
+      tail: { pivot: [0, 1, 1], cubes: [c([0, 0, 1], [0, 2, 7], [0, 5])] },
     },
   },
   // Turtles, built as Minecraft builds them (so its turtle skin fits): a broad domed shell over a

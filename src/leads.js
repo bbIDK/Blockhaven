@@ -1,7 +1,7 @@
 // Leads, as Minecraft has them: a creature on a lead follows whoever holds it, or waits tied to a
 // fence post; the rope sags between them, and snaps if they get too far apart. A creature's
-// `leash` is { uid } (a player holds it; on a guest's copy, the player's key) or { x, y, z } (the
-// fence post it's tied to). Only the host changes it.
+// `leash` is { uid } (a player holds it; on a guest's copy, the player's key; '@' and an id, a
+// wandering trader leads it) or { x, y, z } (the fence post it's tied to). Only the host changes it.
 import { SHAPE_KIND } from './blocks.js';
 import { I } from './items.js';
 import { TEX } from './textures.js';
@@ -11,14 +11,18 @@ import { mat4 } from './math.js';
 export const LEAD_SLACK = 4, LEAD_PULL = 6, LEAD_SNAP = 10;
 export const isFence = (id) => SHAPE_KIND[id] === 2;
 
-// Whether player `uid` holds the lead of `e`. (Playing alone, every lead held is yours.)
-export const holdsLead = (ents, e, uid) => !!e.leash?.uid && (e.leash.uid === uid || !ents.game.net);
+// Whether player `uid` holds the lead of `e`. (Playing alone, every lead a player holds is yours.)
+export const holdsLead = (ents, e, uid) => !!e.leash?.uid && !traderLead(e.leash) && (e.leash.uid === uid || !ents.game.net);
+// A lead a wandering trader holds, and that trader (if they're about).
+export const traderLead = (l) => l?.uid?.[0] === '@';
+export const leadTrader = (ents, l) => ents.list.find((o) => o.tid === l.uid.slice(1) && o.kind === 'mob' && !o.dead && !o.dying) ?? null;
 
 // Where the lead of `e` is held (the holder's hand, or the knot on the post), or null when
 // whoever holds it isn't about.
 export function leashAnchor(ents, e) {
   const l = e.leash;
   if (!l) return null;
+  if (traderLead(l)) { const t = leadTrader(ents, l); return t ? { x: t.x, y: t.y + 0.9, z: t.z } : null; }
   if (l.uid) {
     const p = ents.players.find((q) => q.uid === l.uid) ?? (ents.game.net ? null : ents.players[0]);
     return p && !p.dead ? { x: p.x, y: p.y + 0.9, z: p.z } : null;

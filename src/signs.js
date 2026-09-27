@@ -1,5 +1,6 @@
 // Signs: what's written on them (four lines each), drawn on the board in a tiny pixel font, and the
-// window for writing it. The text of each sign in sight is lettered into one of a few spare layers
+// window for writing it. Writing touched with glow ink glows: lit in the dark, each letter ringed
+// in a pale glow. The text of each sign in sight is lettered into one of a few spare layers
 // of the creature-skin texture (see Renderer.signLayer) and shown on a quad over the board.
 import { SIGN } from './blocks.js';
 import { boxMesh, MODEL_OFFSET } from './models.js';
@@ -25,26 +26,36 @@ const GLYPHS = {
   '>': 'x...x...x.x.x..', '&': '.x.x.x.x.x.x.xx', '%': 'x.x..x.x.x..x.x', '$': '.xxxx..x..xxxx.', '@': 'xxxx.xx.xx...xx',
   '[': 'xx.x..x..x..xx.', ']': '.xx..x..x..x.xx', '^': '.x.x.x.........', '~': '....x.x.x......',
 };
-const INK = [0x1c, 0x14, 0x0c];
+const INK = [0x1c, 0x14, 0x0c], GLOW = [0xf0, 0xeb, 0xcc];
 
 // A line as it can be written: printable characters only, no longer than fits.
 export const cleanLine = (s) => String(s ?? '').replace(/[^\x20-\x7e]/g, '').slice(0, SIGN_CHARS);
 
 // RGBA pixels (SKIN_SIZE square) with `lines` lettered in the top half, each line centred; the rest
-// clear (in the ink's colour, so the texture's smaller mip levels don't fringe the letters).
-export function letterSign(lines) {
+// clear (in the ink's colour, so the texture's smaller mip levels don't fringe the letters). Glowing
+// writing has a pale ring round every letter.
+export function letterSign(lines, glow = false) {
   const S = SKIN_SIZE, px = new Uint8Array(S * S * 4);
   for (let i = 0; i < S * S; i++) { px[i * 4] = INK[0]; px[i * 4 + 1] = INK[1]; px[i * 4 + 2] = INK[2]; }
+  const ink = [];
   lines.forEach((line, row) => {
     const text = cleanLine(line).toUpperCase(), w = text.length * 4 - 1;
     let x0 = Math.floor((S - w) / 2);
     const y0 = 4 + row * 7;
     for (const ch of text) {
       const g = GLYPHS[ch] ?? GLYPHS['?'];
-      for (let y = 0; y < 5; y++) for (let x = 0; x < 3; x++) if (g[y * 3 + x] === 'x') px[((y0 + y) * S + x0 + x) * 4 + 3] = 255;
+      for (let y = 0; y < 5; y++) for (let x = 0; x < 3; x++) if (g[y * 3 + x] === 'x') ink.push((y0 + y) * S + x0 + x);
       x0 += 4;
     }
   });
+  if (glow) {
+    for (const i of ink) for (const d of [-1, 1, -S, S, -S - 1, -S + 1, S - 1, S + 1]) {
+      const j = i + d;
+      if (j < 0 || j >= S * S || px[j * 4 + 3]) continue;
+      px[j * 4] = GLOW[0]; px[j * 4 + 1] = GLOW[1]; px[j * 4 + 2] = GLOW[2]; px[j * 4 + 3] = 255;
+    }
+  }
+  for (const i of ink) { px[i * 4] = INK[0]; px[i * 4 + 1] = INK[1]; px[i * 4 + 2] = INK[2]; px[i * 4 + 3] = 255; }
   return px;
 }
 
@@ -65,6 +76,7 @@ export class Signs {
   constructor(game) {
     this.game = game;
     this.text = new Map();      // "x,y,z" -> [four lines]
+    this.glow = new Set();      // "x,y,z" of the signs whose writing glows
     this.shown = new Map();     // "x,y,z" -> { slot, mesh, version }
     this.slots = new Array(SIGN_SLOTS).fill(null);
   }
@@ -72,28 +84,31 @@ export class Signs {
   static key(x, y, z) { return `${x},${y},${z}`; }
   get(x, y, z) { return this.text.get(Signs.key(x, y, z)) ?? ['', '', '', '']; }
 
-  set(x, y, z, lines) {
+  glowing(x, y, z) { return this.glow.has(Signs.key(x, y, z)); }
+  // (`glow`: whether the writing glows now; left out, it stays as it was.)
+  set(x, y, z, lines, glow = undefined) {
     const key = Signs.key(x, y, z), clean = Array.from({ length: SIGN_LINES }, (_, i) => cleanLine(lines?.[i]));
     if (clean.every((l) => !l)) this.text.delete(key); else this.text.set(key, clean);
+    if (glow === true) this.glow.add(key); else if (glow === false) this.glow.delete(key);
     this.forget(key);
     return clean;
   }
-  remove(x, y, z) { const key = Signs.key(x, y, z); this.text.delete(key); this.forget(key); }
+  remove(x, y, z) { const key = Signs.key(x, y, z); this.text.delete(key); this.glow.delete(key); this.forget(key); }
   forget(key) {
     const s = this.shown.get(key);
     if (!s) return;
     this.slots[s.slot] = null;
     this.shown.delete(key);
   }
-  clear() { this.text.clear(); for (const key of [...this.shown.keys()]) this.forget(key); }
+  clear() { this.text.clear(); this.glow.clear(); for (const key of [...this.shown.keys()]) this.forget(key); }
 
-  serialize() { return [...this.text].map(([k, lines]) => [k, lines]); }
+  serialize() { return [...this.text].map(([k, lines]) => (this.glow.has(k) ? [k, lines, 1] : [k, lines])); }
   load(list) {
     this.clear();
     for (const e of Array.isArray(list) ? list : []) {
       if (!Array.isArray(e) || typeof e[0] !== 'string' || !/^-?\d+,-?\d+,-?\d+$/.test(e[0]) || !Array.isArray(e[1])) continue;
       const [x, y, z] = e[0].split(',').map(Number);
-      this.set(x, y, z, e[1]);
+      this.set(x, y, z, e[1], e[2] === 1);
     }
   }
 
@@ -114,7 +129,8 @@ export class Signs {
     near.sort((a, b) => a.d - b.d);
     for (const s of near.slice(0, SIGN_SLOTS)) {
       let shown = this.shown.get(s.key);
-      if (!shown || shown.id !== s.id) {
+      const glow = this.glow.has(s.key);
+      if (!shown || shown.id !== s.id || shown.glow !== glow) {
         if (shown) this.forget(s.key);
         let slot = this.slots.indexOf(null);
         if (slot < 0) {
@@ -128,18 +144,18 @@ export class Signs {
           this.forget(far);
         }
         this.slots[slot] = s.key;
-        const layer = r.signLayer(slot, letterSign(s.lines));
+        const layer = r.signLayer(slot, letterSign(s.lines, glow));
         const { face, wall } = SIGN[s.id], q = textQuad(face, wall);
         const faces = [null, null, null, null, null, null];
         // (The writing sits in the top half of the layer: 64 by 32, over the board's 16 by 8.)
         faces[q.f] = { layer, uv: [0, 0, 64, 32] };
-        shown = { slot, id: s.id, mesh: r.createMesh(boxMesh([{ from: q.from.map((v) => v / 16), to: q.to.map((v) => v / 16), faces }])) };
+        shown = { slot, id: s.id, glow, mesh: r.createMesh(boxMesh([{ from: q.from.map((v) => v / 16), to: q.to.map((v) => v / 16), faces }])) };
         this.shown.set(s.key, shown);
       }
       const m = identity(mat());
       translate(m, m, s.x - cam.x - MODEL_OFFSET, s.y - cam.y - MODEL_OFFSET, s.z - cam.z - MODEL_OFFSET);
       const l = w.getLight(s.x, s.y, s.z);
-      out.push({ parts: [{ mesh: shown.mesh, model: m }], light: [l >> 4, l & 15], tint: null });
+      out.push({ parts: [{ mesh: shown.mesh, model: m }], light: [l >> 4, glow ? 15 : l & 15], tint: null });
     }
   }
 }

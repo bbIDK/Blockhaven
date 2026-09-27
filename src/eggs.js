@@ -22,6 +22,8 @@ export const EGGS = [
   ['seagull', 0xf2f2f2, 0x9aa4ac], ['eagle', 0x4a3322, 0xf4f4f0], ['vulture', 0x2a2624, 0xd9a5a0], ['butterfly', 0xe8801e, 0x1e1e1e],
   ['bee', 0xedc343, 0x43241b], ['drowned', 0x8ff1d7, 0x799c65], ['witch', 0x340000, 0x51a03e], ['cave_spider', 0x0c424e, 0xa80e0e],
   ['phantom', 0x43518a, 0x88ff00], ['guardian', 0x5a8272, 0xf17d30], ['elder_guardian', 0xceccba, 0x747693],
+  ['glow_squid', 0x095656, 0x85f1bc], ['ocelot', 0xefde7d, 0x564434], ['axolotl', 0xfbc1e3, 0xa62d74], ['frog', 0xd07444, 0xffc77c],
+  ['tadpole', 0x6d533d, 0x160a00], ['wandering_trader', 0x456296, 0xeaad38], ['trader_llama', 0xeaa430, 0x456296],
 ];
 // Every egg's creature, and its name ("Polar Bear").
 export const EGG_TYPES = new Set(EGGS.map((e) => e[0]));

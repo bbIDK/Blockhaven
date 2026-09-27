@@ -1249,6 +1249,10 @@ shaped(2496, 'tripwire', [[0, 1, 7.5, 16, 1.5, 8.5, TEX.tripwire]], { label: 'Tr
 shaped(2497, 'tripwire_z', [[7.5, 1, 0, 8.5, 1.5, 16, TEX.tripwire]], { label: 'Tripwire', tex: 'tripwire', solid: false, hardness: 0,
   sound: 'cloth', base: 2496, item: false, drop: 'string', support: 'solid', cutout: true, ao: false });
 TRIPWIRE[2496] = 'x'; TRIPWIRE[2497] = 'z';
+// Frogspawn, as frogs lay it: a raft of eggs floating on still water, that hatches into tadpoles
+// after a few minutes (see growth.js). It can't be picked up (in Creative it can be put down).
+shaped(2504, 'frogspawn', [[0, 0, 0, 16, 0.1, 16]], { tex: 'frogspawn', cutout: true, solid: false, hardness: 0, sound: 'water',
+  support: 'water', drop: null, ticks: true, ao: false, ...natural });
 
 // A ladder's panel against the wall on `side` (shared with vines).
 function LADDER_PANEL_FOR(side) {

@@ -310,6 +310,26 @@ const LOOKS = {
     },
     shirt: 0xe0d8c0, pants: 0x6a5a40,
   },
+  // The wandering trader: a long blue hooded robe trimmed in gold, a leather satchel on a strap.
+  wanderer: {
+    people: [[2, 1, 'short', true], [4, 0, 'cropped', false], [1, 2, 'long', false]],
+    dress(sk) {
+      const ROBE = ramp(0x2c4c8e, 4, 0.1, 8), TRIM = [0xd8a830, 0xf0c848];
+      coat(sk, ROBE, 10);
+      for (const face of SIDES) { rowOf(sk, HR.jacket[face], 11, TRIM[0]); }
+      for (const R of [HR.rPants, HR.lPants]) for (const face of SIDES) rowOf(sk, R[face], 9, TRIM[1]);
+      for (let y = 1; y < 11; y++) at(sk, HR.jacket.front, 3 + (y % 2), y, TRIM[y % 2]);
+      // The hood, up over the head and down the back of the neck.
+      hat(sk, ROBE, 3, { front: 1 });
+      sk.fill([HR.hat.back[0], HR.hat.back[1] + 3, 8, 5], ROBE, { cell: 1 });
+      for (const side of ['right', 'left']) for (let y = 3; y < 8; y++) for (let x = 0; x < 8; x++) if (side === 'right' ? x < 5 : x > 2) at(sk, HR.hat[side], x, y, ROBE[1]);
+      rowOf(sk, HR.hat.front, 0, TRIM[0]);
+      // The satchel's strap, from the right shoulder across to the left hip.
+      for (let y = 0; y < 10; y++) at(sk, HR.jacket.front, Math.floor((y * 7) / 9), y, 0x5a3a1c);
+      for (const face of ['left']) sk.fill([HR.jacket[face][0], HR.jacket[face][1] + 7, 4, 4], [0x6a4422, 0x7a5028, 0x8a5c30], { cell: 1 });
+    },
+    shirt: 0xd8ccb0, pants: 0x3a3a5a,
+  },
 };
 // Gold for crowns, chains and trim.
 function goldRow(sk, r, y) { for (let x = 0; x < r[2]; x++) at(sk, r, x, y, GOLD[(x + y) % 2 ? 2 : 3]); }

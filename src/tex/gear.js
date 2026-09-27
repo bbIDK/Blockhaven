@@ -46,7 +46,7 @@ const BUCKET = [
   '....44333322....',
   '....43222221....',
   '.....322111.....'];
-function bucket(t, back, front, glints = []) {
+export function bucket(t, back, front, glints = []) {
   sprite(t, BUCKET, tones(IRON, { j: back, i: front }), IRON[0]);
   for (const [x, y, c] of glints) t.set(x, y, c);
 }

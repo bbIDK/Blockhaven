@@ -184,6 +184,8 @@ shaped('lead', 2, ['~~ ', '~O ', '  ~'], { '~': 'string', O: 'slime_ball' }, 'mi
 shaped('note_block', 1, ['###', '#R#', '###'], { '#': '#planks', R: 'redstone' }, 'misc');
 shaped('jukebox', 1, ['###', '#D#', '###'], { '#': '#planks', D: 'diamond' }, 'misc');
 shaped('item_frame', 1, ['SSS', 'SLS', 'SSS'], { S: 'stick', L: 'leather' }, 'misc');
+// (The wild update's: a glow item frame, from an item frame and a glow squid's ink.)
+shapeless('glow_item_frame', 1, ['item_frame', 'glow_ink_sac'], 'misc');
 shaped('painting', 1, ['SSS', 'SWS', 'SSS'], { S: 'stick', W: '#wool' }, 'misc');
 shaped('shield', 1, ['WIW', 'WWW', ' W '], { W: '#planks', I: 'iron_ingot' }, 'equipment');
 shaped('rail', 16, ['I I', 'ISI', 'I I'], { I: 'iron_ingot', S: 'stick' }, 'misc');

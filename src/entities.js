@@ -15,8 +15,10 @@ import { villageAt } from './villages.js';
 import { monumentAt, structuresIn } from './structures.js';
 import { BIOME } from './biomes.js';
 import { MOBS, initMob, mobTick, mobPhysics, renderMob, provoked, mobUseEffect, applyMobUse, applyHeldUse, mobDrops, mobXp, herdFor, monsterFor, HOSTILE_TYPES, seaLifeFor, ambientFor,
+  unbucketed, frogVariant,
   rallyPets, hatchling } from './mobs.js';
 import { Civilians } from './civilians.js';
+import { Wanderers } from './wanderer.js';
 import { extras, cleanExtras } from './inventory.js';
 import { boatPhysics, boatMesh, boatModel, BOAT_WOODS } from './riding.js';
 import { cartPhysics, cartMesh, cartModel, CART_SIZE } from './rails.js';
@@ -54,14 +56,18 @@ export function mobExtra(e) {
   if (e.named) o.nm = e.named;
   if (e.leash) o.le = e.leash.uid ?? [e.leash.x, e.leash.y, e.leash.z];
   if (e.school) o.sc = e.school;
+  if (e.trusting) o.tr = 1;
+  if (e.def.growsInto) o.g = e.growUp;
   if (e.def.kind === 'civilian') { o.r = e.rid; o.sk = e.skin; o.n = e.name; o.ro = e.role; }
+  // (A wandering trader's id, how long they'll stay, and where they came.)
+  if (e.def.wanderer) { o.tid = e.tid; o.lv = e.leaves; o.hm = [Math.round(e.home?.x ?? e.x), Math.round(e.home?.z ?? e.z)]; }
   return o;
 }
 // Whether a creature is one of the wild ones about, whose number spawnHerds keeps in check: not a
 // monster, nor sea life, birds and insects (which have counts of their own), nor village folk and
 // their animals, nor anyone's pet or anything someone made.
 const isWild = (e) => !e.def.hostile && e.def.kind !== 'civilian' && e.def.kind !== 'water' && !e.def.flies && !e.pinned && !e.tame &&
-  !e.named && !e.made && !e.hatched && !e.saddled && !e.leash;
+  !e.named && !e.made && !e.hatched && !e.saddled && !e.leash && !e.trusting;
 
 // The monsters that no longer come on their own: only from spawn eggs (see reset).
 const NOT_WILD = new Set(['phantom', 'drowned']);
@@ -75,17 +81,20 @@ const extraOpts = (s) => ({ variant: Number.isInteger(s.v) ? s.v : 0, colour: Nu
   baby: !!s.b, sheared: !!s.sh, tame: !!s.tm, saddled: !!s.sd, temper: Number.isFinite(s.te) ? Math.max(0, Math.min(100, s.te)) : 0,
   owner: typeof s.ow === 'string' && s.ow ? s.ow.slice(0, 64) : null, sitting: !!s.si, collar: Number.isInteger(s.co) && s.co >= 0 && s.co < 16 ? s.co : undefined,
   made: !!s.md, hatched: !!s.ht, named: typeof s.nm === 'string' ? cleanTagName(s.nm) : null, school: Number.isInteger(s.sc) ? s.sc : 0,
+  trusting: !!s.tr, growUp: Number.isInteger(s.g) && s.g > 0 ? Math.min(s.g, 24000) : undefined,
   leash: typeof s.le === 'string' && s.le ? { uid: s.le.slice(0, 64) }
     : Array.isArray(s.le) && s.le.length === 3 && s.le.every(Number.isInteger) ? { x: s.le[0], y: s.le[1], z: s.le[2] } : null });
 // A name from a name tag: printable, and no longer than the original allows.
 export const cleanTagName = (text) => String(text ?? '').replace(/\p{C}/gu, '').trim().slice(0, 50) || null;
 // Flags sent with each creature update: 1 hurt, 2 dying, 4 swinging, 8 burning, 16 shorn, 32 angry,
 // 64 about to explode, 128 drawing a bow, 256 asleep, 512 saddled, 1024 tame, 2048 being ridden,
-// 4096 roosting (a bat hanging upside down), 8192 drinking (a witch), 16384 sitting (a pet).
+// 4096 roosting (a bat hanging upside down), 8192 drinking (a witch), 16384 sitting (a pet), 32768
+// in love, 65536 playing dead (an axolotl), 131072 croaking (a frog).
 export function mobFlags(e) {
   return (e.hurt > 0 ? 1 : 0) | (e.dying ? 2 : 0) | (e.swing > 0.3 ? 4 : 0) | (e.burning ? 8 : 0) | (e.sheared ? 16 : 0) | (e.angry > 0 ? 32 : 0) |
     (e.fuse > 0 ? 64 : 0) | (e.aim > 0 ? 128 : 0) | (e.pose === 'sleep' ? 256 : 0) | (e.saddled ? 512 : 0) | (e.tame ? 1024 : 0) | (e.rider ? 2048 : 0) |
-    (e.roost ? 4096 : 0) | (e.drinking > 0 ? 8192 : 0) | (e.sitting ? 16384 : 0) | (e.love > 0 ? 32768 : 0);
+    (e.roost ? 4096 : 0) | (e.drinking > 0 ? 8192 : 0) | (e.sitting ? 16384 : 0) | (e.love > 0 ? 32768 : 0) | (e.playDead > 0 ? 65536 : 0) |
+    (e.croak > 0 ? 131072 : 0);
 }
 
 export class Entities {
@@ -102,6 +111,7 @@ export class Entities {
     this.detectors = new Set();
     this.arrowMesh = null;
     this.civilians = new Civilians(this);
+    this.wanderers = new Wanderers(this);
     this.elders = new Map(); // (ocean monuments' elder guardians about: "monument key:i" -> entity)
   }
 
@@ -119,8 +129,9 @@ export class Entities {
       if (s.k === 'item' && itemDef(s.id)) this.spawnItem(s.x, s.y, s.z, s.id, s.count, s.dmg, 0, null, cleanExtras(s.ex));
       // (Phantoms no longer come at night, nor the drowned out of the water; any a world was saved
       // with are gone, but for those hatched from spawn eggs or given names.)
-      else if (s.k === 'mob' && MOBS[s.t] && MOBS[s.t].kind !== 'civilian' && (!NOT_WILD.has(s.t) || s.ht || s.nm)) {
+      else if (s.k === 'mob' && MOBS[s.t] && (MOBS[s.t].kind !== 'civilian' || MOBS[s.t].wanderer) && (!NOT_WILD.has(s.t) || s.ht || s.nm)) {
         const m = this.spawnMob(s.t, s.x, s.y, s.z, extraOpts(s));
+        if (m.def.wanderer) this.wanderers.restore(m, s);
         m.yaw = s.yaw ?? 0; m.health = s.hp ?? m.health;
         if (Number.isFinite(s.mh)) m.maxHealth = s.mh;
         if (typeof s.hd === 'string' && /^-?\d+,-?\d+$/.test(s.hd)) m.herd = s.hd;
@@ -128,7 +139,7 @@ export class Entities {
       else if (s.k === 'cart') this.spawnCart(s.x, s.y, s.z, Number.isFinite(s.yaw) ? s.yaw : 0);
       else if (s.k === 'xp' && Number.isInteger(s.v) && s.v > 0) this.spawnXp(s.x, s.y, s.z, Math.min(s.v, 2477));
       else if ((s.k === 'frame' || s.k === 'painting') && [s.bx, s.by, s.bz, s.f].every(Number.isInteger) && s.f >= 0 && s.f < 6) {
-        this.spawnHanging(s.k, s.bx, s.by, s.bz, s.f, { art: s.a, item: s.it, rot: s.r });
+        this.spawnHanging(s.k, s.bx, s.by, s.bz, s.f, { art: s.a, item: s.it, rot: s.r, glow: s.g === 1 });
       }
     }
   }
@@ -136,9 +147,9 @@ export class Entities {
   serialize() {
     // (Things hung up are kept however many there are; the rest, up to 300.)
     const hung = this.list.filter((e) => !e.dead && isHanging(e)).map((e) => ({ k: e.kind, bx: e.bx, by: e.by, bz: e.bz, f: e.face, a: e.art ?? undefined,
-      it: e.item ? { id: e.item.id, count: 1, dmg: e.item.dmg ?? 0, ex: extras(e.item) ?? undefined } : undefined, r: e.rot || undefined }));
+      it: e.item ? { id: e.item.id, count: 1, dmg: e.item.dmg ?? 0, ex: extras(e.item) ?? undefined } : undefined, r: e.rot || undefined, g: e.glow ? 1 : undefined }));
     return hung.concat(this.list.filter((e) => !e.dead && (e.kind === 'item' || e.kind === 'boat' || e.kind === 'cart' || e.kind === 'xp' ||
-      (e.kind === 'mob' && e.def.kind !== 'civilian' && !e.pinned && !e.dying)))
+      (e.kind === 'mob' && (e.def.kind !== 'civilian' || e.def.wanderer) && !e.pinned && !e.dying)))
       .slice(0, 300)
       .map((e) => (e.kind === 'item' ? { k: 'item', x: e.x, y: e.y, z: e.z, id: e.id, count: e.count, dmg: e.dmg, ex: e.extra ?? undefined }
         : e.kind === 'boat' ? { k: 'boat', x: e.x, y: e.y, z: e.z, yaw: e.yaw, w: e.wood }
@@ -149,22 +160,23 @@ export class Entities {
 
   // ---------------------------------------------------------------- things hung up
   // An item frame or a painting on `face` of the block at bx, by, bz (see hangings.js). `o`: its
-  // art, and for a frame the item in it (as saved) and how it's turned.
+  // art, and for a frame the item in it (as saved), how it's turned and whether it's a glow item
+  // frame.
   spawnHanging(kind, bx, by, bz, face, o = {}) {
     const e = new Entity(kind, 0.5, 1, 0, 0, 0);
     const item = o.item && itemDef(o.item.id) ? { id: o.item.id, count: 1, dmg: Number.isInteger(o.item.dmg) ? o.item.dmg : 0, ...(cleanExtras(o.item.ex) ?? {}) } : null;
     Object.assign(e, { bx, by, bz, face, art: kind === 'painting' ? (Number.isInteger(o.art) && PAINTINGS[o.art] ? o.art : 0) : null,
-      item: kind === 'frame' ? item : null, rot: Number.isInteger(o.rot) ? o.rot & 7 : 0 });
+      item: kind === 'frame' ? item : null, rot: Number.isInteger(o.rot) ? o.rot & 7 : 0, glow: kind === 'frame' && !!o.glow });
     place(e);
     this.list.push(e);
     return e;
   }
   // Hang one up on `face` of the block at x, y, z, if it goes there. (A guest asks the host.)
-  hang(kind, x, y, z, face) {
+  hang(kind, x, y, z, face, glow = false) {
     const at = placement(this, kind, x, y, z, face);
     if (!at) return null;
-    if (this.guest) { this.game.net.hang(kind, x, y, z, face); return at; }
-    const e = this.spawnHanging(kind, at.bx, at.by, at.bz, at.face, { art: at.art });
+    if (this.guest) { this.game.net.hang(kind, x, y, z, face, glow); return at; }
+    const e = this.spawnHanging(kind, at.bx, at.by, at.bz, at.face, { art: at.art, glow });
     this.game.audio.place('wood', { x: e.x, y: e.y, z: e.z });
     return e;
   }
@@ -246,9 +258,22 @@ export class Entities {
   }
 
   // A creature out of a spawn egg, its feet at (x, y, z) (a guest asks the host for it).
-  hatch(type, x, y, z) {
-    if (this.guest) { this.game.net.hatch?.(type, x, y, z); return null; }
-    return this.spawnMob(type, x, y, z, hatchling(type, this.world.biomeAt(Math.floor(x), Math.floor(z))));
+  // (`from`: a creature let out of a bucket, as it went in; see mobs.js bucketed.)
+  hatch(type, x, y, z, from = null) {
+    if (this.guest) { this.game.net.hatch?.(type, x, y, z, from); return null; }
+    // (A wandering trader's egg: the trader, without their llamas.)
+    if (MOBS[type].wanderer) return this.wanderers.arrive(x, y, z, false);
+    const e = this.spawnMob(type, x, y, z, from ? unbucketed(from) : hatchling(type, this.world.biomeAt(Math.floor(x), Math.floor(z))));
+    if (from?.hp) e.health = Math.min(e.maxHealth, from.hp);
+    return e;
+  }
+  // A tadpole grown up: a frog of wherever it is now takes its place.
+  growUp(e) {
+    const frog = this.spawnMob('frog', e.x, e.y, e.z, { variant: frogVariant(this.world.biomeAt(Math.floor(e.x), Math.floor(e.z))),
+      named: e.named, hatched: e.hatched });
+    frog.yaw = e.yaw;
+    e.dead = true;
+    this.game.net?.entityGone?.(e, 'x');
   }
 
   // A boat of `wood` set down at (x, y, z) (the middle of its bottom), pointing along `yaw`.
@@ -621,6 +646,36 @@ export class Entities {
     }
   }
 
+  // Down in the dark water under the ground: glow squid, and in the pools of lush caves (clay
+  // under them), axolotls.
+  trySpawnCaveLife() {
+    const w = this.world;
+    if (!this.players.length) return;
+    const p = this.players[Math.floor(Math.random() * this.players.length)];
+    if (p.dead || p.y > SEA_LEVEL + 8) return;
+    const near = (type) => this.list.filter((e) => e.type === type && !e.dead && Math.hypot(e.x - p.x, e.z - p.z) < 48).length;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const x = Math.floor(p.x + (Math.random() - 0.5) * 64), y = Math.floor(p.y + (Math.random() - 0.5) * 32), z = Math.floor(p.z + (Math.random() - 0.5) * 64);
+      if (y < 4 || y > SEA_LEVEL - 8 || !w.isLoaded(x, z) || Math.hypot(x - p.x, z - p.z) < 12) continue;
+      if (WATERLIKE[w.getBlock(x, y, z)] !== 1) continue;
+      const l = w.getLight(x, y, z);
+      if ((l >> 4) > 0) continue;
+      let floor = y;
+      while (floor > 1 && WATERLIKE[w.getBlock(x, floor - 1, z)] === 1) floor--;
+      const under = w.getBlock(x, floor - 1, z);
+      if ((under === B.clay || under === B.moss_block) && w.gen?.caves?.lushAt?.(x, z)) {
+        if (near('axolotl') >= 6) return;
+        const n = 1 + Math.floor(Math.random() * 3), variant = Math.floor(Math.random() * 4);
+        for (let k = 0; k < n; k++) this.spawnMob('axolotl', x + 0.5 + (Math.random() - 0.5), floor, z + 0.5 + (Math.random() - 0.5), { variant, baby: Math.random() < 0.1 });
+        return;
+      }
+      if ((l & 15) > 3 || y - floor < 1 || WATERLIKE[w.getBlock(x, y + 1, z)] !== 1 || near('glow_squid') >= 5) continue;
+      const n = 2 + Math.floor(Math.random() * 3);
+      for (let k = 0; k < n; k++) this.spawnMob('glow_squid', x + 0.5 + (Math.random() - 0.5) * 2, y, z + 0.5 + (Math.random() - 0.5) * 2);
+      return;
+    }
+  }
+
   // ---------------------------------------------------------------- simulation
   tick() {
     const game = this.game;
@@ -634,12 +689,14 @@ export class Entities {
       this.guard('spawning', () => {
         this.trySpawnHostile();
         if (Math.random() < 0.5) this.trySpawnBat();
+        if (Math.random() < 0.3) this.trySpawnCaveLife();
         if (Math.random() < 0.6) this.trySpawnSea();
         this.trySpawnGuardians();
         if (Math.random() < 0.7) this.trySpawnAmbient();
       });
     }
     this.guard('villagers', () => this.civilians.tick());
+    this.guard('wanderers', () => this.wanderers.tick());
     this.guard('rails', () => this.detectorTick());
     const checkHung = ++this.hungTimer % 10 === 0;
     for (const e of this.list) {
@@ -664,7 +721,9 @@ export class Entities {
       // animals come back when the village does). Horses someone has tamed or saddled stay,
       // waiting where they were left.
       const near = this.players.some((p) => Math.hypot(p.x - e.x, p.z - e.z) < (game.settings.renderDistance + 2) * 16);
-      const kept = e.tame || e.saddled || e.rider || e.made || e.named || e.leash || (e.hatched && !e.def.hostile);
+      // (A trader's llama stays with the trader: see Wanderers.leave.)
+      const kept = e.tame || e.saddled || e.rider || e.made || e.named || (e.leash && e.leash.uid?.[0] !== '@') || e.trusting ||
+        (e.hatched && !e.def.hostile);
       // (A settlement's people and animals only go with the land they're on, and come back with it.)
       const settled = e.def.kind === 'civilian' || e.pinned;
       if ((!near && !kept && (!settled || !loaded)) || e.y < -40) { e.dead = true; this.civilians.gone(e); return; }
@@ -930,7 +989,8 @@ export class Entities {
       if (e.onGround) e.vy = 7 + bonus * 1.5;
     }
     provoked(this, e, from && (from.addr !== undefined || from.kind === 'mob') ? from : from === this.game.player ? this.players[0] : null);
-    if (t.kind === 'civilian') this.civilians.hurt(e, from);
+    if (t.wanderer) this.wanderers.hurt(e, from);
+    else if (t.kind === 'civilian') this.civilians.hurt(e, from);
     else if (e.pinned && !e.penned && (t.type === 'iron_golem' || t.type === 'cat')) this.civilians.keeperHurt(e, from);
     if (e.health <= 0) {
       e.dying = 0.001;
@@ -988,22 +1048,23 @@ export class Entities {
   }
 
   // Right-click on a creature: feeding, shearing, milking; talking to villagers; getting into a
-  // boat or onto a horse.
+  // boat or onto a horse. True if anything came of it.
   interact(e, held) {
-    if (isHanging(e)) { if (this.useHanging(e, held) === 'put' && !this.game.creative) { this.game.inv.consumeHeld(); this.game.invChanged(); } this.game.swingArm(); return; }
-    if (e.kind === 'boat' || e.kind === 'cart') { this.game.mount(e); return; }
-    if (e.def.kind === 'civilian') { this.civilians.talk(e); return; }
+    if (isHanging(e)) { if (this.useHanging(e, held) === 'put' && !this.game.creative) { this.game.inv.consumeHeld(); this.game.invChanged(); } this.game.swingArm(); return true; }
+    if (e.kind === 'boat' || e.kind === 'cart') { this.game.mount(e); return true; }
+    if (e.def.kind === 'civilian') { this.civilians.talk(e); return true; }
     // (A guest's copies of creatures know players by their keys; see playerKey.)
     const net = this.game.net, me = this.guest ? net.myKey : this.game.uid;
-    const who = { mine: !!e.owner && (e.owner === me || !net), holds: !!e.leash?.uid && (e.leash.uid === me || !net), name: held?.name ?? null };
+    const who = { mine: !!e.owner && (e.owner === me || !net), holds: holdsLead(this, e, me), name: held?.name ?? null };
     const effect = mobUseEffect(e, held?.id ?? 0, who);
     if (!effect) {
-      if (e.def.rideable && !e.baby && !this.game.player.sneaking) this.game.mount(e);
-      return;
+      if (e.def.rideable && !e.baby && !this.game.player.sneaking) { this.game.mount(e); return true; }
+      return false;
     }
-    applyHeldUse(this.game, effect);
+    applyHeldUse(this.game, effect, e);
     if (e.remote) net.useMob(e, held?.id ?? 0, effect, who.name);
     else applyMobUse(this, e, held?.id ?? 0, effect, this.game.uid, who.name);
+    return true;
   }
   // A guest (`uid`) used something on a creature (checked again here).
   remoteUse(nid, id, effect, uid, name = null) {
@@ -1098,7 +1159,8 @@ export class Entities {
         Object.assign(e, { wood: BOAT_WOODS.includes(s.w) ? s.w : 'oak', yaw: Number.isFinite(s.a) ? s.a : 0, hits: 0, hurt: 0, def: { label: 'Boat' } });
       } else if (s.k === 'h' && (s.t === 'frame' || s.t === 'painting') && Array.isArray(s.b) && s.b.every(Number.isInteger) && [0, 1, 2, 3, 4, 5].includes(s.f)) {
         e = new Entity(s.t, 0.5, 1, 0, 0, 0);
-        Object.assign(e, { bx: s.b[0], by: s.b[1], bz: s.b[2], face: s.f, art: s.t === 'painting' && PAINTINGS[s.a] ? s.a : s.t === 'painting' ? 0 : null, item: null, rot: 0 });
+        Object.assign(e, { bx: s.b[0], by: s.b[1], bz: s.b[2], face: s.f, art: s.t === 'painting' && PAINTINGS[s.a] ? s.a : s.t === 'painting' ? 0 : null, item: null, rot: 0,
+          glow: s.t === 'frame' && s.g === 1 });
         place(e);
       } else if (s.k === 'm' && MOBS[s.ty]) {
         const t = MOBS[s.ty];
@@ -1178,6 +1240,8 @@ export class Entities {
     e.roost = !!(f & 4096);
     e.drinking = f & 8192 ? 1 : 0;
     e.sitting = !!(f & 16384);
+    e.shamming = !!(f & 65536);
+    e.croaking = !!(f & 131072);
     e.flags = f;
   }
 

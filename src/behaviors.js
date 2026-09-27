@@ -198,7 +198,8 @@ export function useBucket(game, held) {
     game.audio.bucket(lava ? 'fill_lava' : 'fill', { x: hit.x + 0.5, y: hit.y + 0.5, z: hit.z + 0.5 });
     return swapHeld(game, lava ? I.lava_bucket : I.water_bucket);
   }
-  const liquid = held.id === I.water_bucket ? B.water : B.lava;
+  // (A bucket with a creature in it pours out water, and the creature with it.)
+  const holds = itemDef(held.id)?.holds, liquid = held.id === I.lava_bucket ? B.lava : B.water;
   // Pour into the liquid's own cell, a replaceable block, or the cell in front of what was hit.
   let { x, y, z } = hit;
   if (!WATERLIKE[hit.id] && !REPLACEABLE[hit.id]) { const f = FACE_DIRS[hit.face]; x += f[0]; y += f[1]; z += f[2]; }
@@ -207,19 +208,20 @@ export function useBucket(game, held) {
   if (cur && !REPLACEABLE[cur] && !WATERLIKE[cur]) return false;
   if (DOUBLE[cur]) return false;
   w.setBlock(x, y, z, liquid);
-  game.audio.bucket(liquid === B.lava ? 'empty_lava' : 'empty', { x: x + 0.5, y: y + 0.5, z: z + 0.5 });
+  game.audio.bucket(liquid === B.lava ? 'empty_lava' : holds ? 'empty_fish' : 'empty', { x: x + 0.5, y: y + 0.5, z: z + 0.5 });
+  if (holds) game.entities.hatch(holds, x + 0.5, y + 0.1, z + 0.5, held.mob ?? {});
   if (!game.creative) swapHeld(game, I.bucket);
   game.swingArm();
   return true;
 }
 
-// Lily pads are set on the surface of still water.
-export function placeLilyPad(game) {
+// Lily pads (and frogspawn) are set on the surface of still water.
+export function placeLilyPad(game, id = B.lily_pad) {
   const w = game.world, p = game.player, d = p.lookDir();
   const hit = w.raycast(p.x, p.eyeY, p.z, d[0], d[1], d[2], 5, true);
   if (!hit || hit.id !== B.water || w.getBlock(hit.x, hit.y + 1, hit.z) !== 0) return false;
-  w.setBlock(hit.x, hit.y + 1, hit.z, B.lily_pad);
-  game.audio.place('grass', { x: hit.x + 0.5, y: hit.y + 1, z: hit.z + 0.5 });
+  w.setBlock(hit.x, hit.y + 1, hit.z, id);
+  game.audio.place(id === B.lily_pad ? 'grass' : 'water', { x: hit.x + 0.5, y: hit.y + 1, z: hit.z + 0.5 });
   return consumed(game);
 }
 
