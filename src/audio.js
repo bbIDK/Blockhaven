@@ -75,6 +75,16 @@ export class Audio {
     this.listener = { x: 0, y: 0, z: 0, yaw: 0 };
     this.underwater = false;
     this.music = null;
+    // A sound that can't be played (a bad value somewhere) is skipped, and reported (`onError`):
+    // a sound must never stop the game. (A whale's spout once did, and every creature with it.)
+    this.onError = null;
+    for (const name of Object.getOwnPropertyNames(Audio.prototype)) {
+      const fn = Object.getOwnPropertyDescriptor(Audio.prototype, name).value;
+      if (name === 'constructor' || typeof fn !== 'function') continue;
+      this[name] = (...args) => {
+        try { return fn.apply(this, args); } catch (err) { this.onError?.(err, name); return undefined; }
+      };
+    }
   }
 
   // Must be called from a user gesture.

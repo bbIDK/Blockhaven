@@ -587,38 +587,75 @@ export class Entities {
     if (this.guest) { this.remoteTick(); return; }
     // Everyone creatures can see: this player and, in multiplayer, the others.
     this.players = game.players();
-    if (this.spawnTimer % 10 === 0) this.spawnHerds();
-    if (++this.spawnTimer >= 40) {
-      this.spawnTimer = 0; this.trySpawnHostile();
-      if (Math.random() < 0.5) this.trySpawnBat();
-      if (Math.random() < 0.6) this.trySpawnSea();
-      if (Math.random() < 0.7) this.trySpawnAmbient();
+    const herds = this.spawnTimer % 10 === 0, more = ++this.spawnTimer >= 40;
+    if (more) this.spawnTimer = 0;
+    if (herds) this.guard('spawning', () => this.spawnHerds());
+    if (more) {
+      this.guard('spawning', () => {
+        this.trySpawnHostile();
+        if (Math.random() < 0.5) this.trySpawnBat();
+        if (Math.random() < 0.6) this.trySpawnSea();
+        if (Math.random() < 0.7) this.trySpawnAmbient();
+      });
     }
-    this.civilians.tick();
-    this.detectorTick();
+    this.guard('villagers', () => this.civilians.tick());
+    this.guard('rails', () => this.detectorTick());
     const checkHung = ++this.hungTimer % 10 === 0;
     for (const e of this.list) {
       if (e.dead) continue;
-      if (isHanging(e)) {
-        // (Knocked down when what holds it up goes, or something's built in front of it.)
-        if (checkHung && this.world.isLoaded(e.x, e.z) && !holds(this, e)) this.dropHanging(e);
-      } else if (e.kind === 'tnt') {
-        if (--e.fuse <= 0) { e.dead = true; this.explode(e.x, e.y + 0.5, e.z, 4); }
-      } else if (e.kind === 'mob') {
-        const loaded = this.world.isLoaded(e.x, e.z);
-        if (loaded) mobTick(this, e);
-        if (e.playerHurt > 0) e.playerHurt--;
-        // Out of sight, out of mind: creatures far from everyone go (village folk and penned
-        // animals come back when the village does). Horses someone has tamed or saddled stay,
-        // waiting where they were left.
-        const near = this.players.some((p) => Math.hypot(p.x - e.x, p.z - e.z) < (game.settings.renderDistance + 2) * 16);
-        const kept = e.tame || e.saddled || e.rider || e.made || e.named || e.leash || (e.hatched && !e.def.hostile);
-        // (A settlement's people and animals only go with the land they're on, and come back with it.)
-        const settled = e.def.kind === 'civilian' || e.pinned;
-        if ((!near && !kept && (!settled || !loaded)) || e.y < -40) { e.dead = true; this.civilians.gone(e); }
-      }
+      try { this.tickOne(e, checkHung); } catch (err) { this.fault(e, err); }
     }
-    // Merge nearby identical items.
+    this.guard('items', () => this.mergeItems());
+  }
+
+  // One entity's turn, 20 times a second (on the host).
+  tickOne(e, checkHung) {
+    const game = this.game;
+    if (isHanging(e)) {
+      // (Knocked down when what holds it up goes, or something's built in front of it.)
+      if (checkHung && this.world.isLoaded(e.x, e.z) && !holds(this, e)) this.dropHanging(e);
+    } else if (e.kind === 'tnt') {
+      if (--e.fuse <= 0) { e.dead = true; this.explode(e.x, e.y + 0.5, e.z, 4); }
+    } else if (e.kind === 'mob') {
+      const loaded = this.world.isLoaded(e.x, e.z);
+      if (e.playerHurt > 0) e.playerHurt--;
+      // Out of sight, out of mind: creatures far from everyone go (village folk and penned
+      // animals come back when the village does). Horses someone has tamed or saddled stay,
+      // waiting where they were left.
+      const near = this.players.some((p) => Math.hypot(p.x - e.x, p.z - e.z) < (game.settings.renderDistance + 2) * 16);
+      const kept = e.tame || e.saddled || e.rider || e.made || e.named || e.leash || (e.hatched && !e.def.hostile);
+      // (A settlement's people and animals only go with the land they're on, and come back with it.)
+      const settled = e.def.kind === 'civilian' || e.pinned;
+      if ((!near && !kept && (!settled || !loaded)) || e.y < -40) { e.dead = true; this.civilians.gone(e); return; }
+      if (loaded) mobTick(this, e);
+    }
+  }
+
+  // Something went wrong with one entity's turn. The rest carry on regardless (a whale whose spout
+  // failed once stopped every creature after it, leaving them standing about, red where they'd been
+  // hit): it's reported, whatever the creature was after is forgotten, and one that keeps going
+  // wrong is taken away.
+  fault(e, err) {
+    this.game.reportError?.(err, e.kind === 'mob' ? e.def?.label ?? e.type : e.kind);
+    if (e.remote) return;
+    const now = this.game.time;
+    e.faults = now - (e.faultAt ?? -1e9) < 100 ? (e.faults ?? 0) + 1 : 1;
+    e.faultAt = now;
+    if (e.kind === 'mob') Object.assign(e, { target: null, angry: 0, panic: 0, love: 0, detour: 0, stuck: 0, fleeing: 0, flyTarget: null, leader: null, lookAt: null, breath: undefined });
+    if (e.faults >= 40 && !e.dead) {
+      e.dead = true;
+      this.game.net?.entityGone?.(e, 'x');
+      if (e.kind === 'mob') this.civilians.gone(e);
+    }
+  }
+
+  // A part of the entities' turn (spawning, villages, rails) that went wrong doesn't stop the rest.
+  guard(what, fn) {
+    try { fn(); } catch (err) { this.game.reportError?.(err, what); }
+  }
+
+  // Nearby identical items merge into one stack.
+  mergeItems() {
     const items = this.list.filter((e) => e.kind === 'item' && !e.dead);
     for (let i = 0; i < items.length; i++) {
       const a = items[i];
@@ -634,53 +671,64 @@ export class Entities {
   }
 
   update(dt) {
-    const game = this.game, w = this.world, p = game.player;
+    const w = this.world;
     if (!w) return;
     if (this.guest) { this.remoteUpdate(dt); return; }
     for (const e of this.list) {
-      if (e.dead || !w.isLoaded(e.x, e.z)) continue;
-      e.age += dt;
-      const fluid = WATERLIKE[w.getBlock(Math.floor(e.x), Math.floor(e.y + 0.3), Math.floor(e.z))];
-      if (e.kind === 'item') {
-        e.pickupDelay -= dt;
-        e.spin += dt * 1.8;
-        if (fluid) { e.vy += (4 - e.vy) * Math.min(1, dt * 3); } else e.vy -= 20 * dt;
-        const f = e.onGround ? Math.exp(-8 * dt) : Math.exp(-1 * dt);
-        e.vx *= f; e.vz *= f;
-        e.move(w, e.vx * dt, e.vy * dt, e.vz * dt);
-        const d = Math.hypot(p.x - e.x, p.y + 0.9 - e.y, p.z - e.z);
-        if (e.pickupDelay <= 0 && d < 1.6 && game.state !== 'dead') {
-          const left = game.pickup(e.id, e.count, e.dmg, e.extra);
-          if (left === 0) e.dead = true; else e.count = left;
-        }
-        if (e.age > 300) e.dead = true;
-      } else if (e.kind === 'tnt') {
-        e.vy -= 20 * dt;
-        const f = e.onGround ? Math.exp(-6 * dt) : 1;
-        e.vx *= f; e.vz *= f;
-        e.move(w, e.vx * dt, e.vy * dt, e.vz * dt);
-      } else if (e.kind === 'falling') {
-        e.vy = Math.max(-40, e.vy - 32 * dt);
-        e.move(w, 0, e.vy * dt, 0);
-        if (e.onGround || e.age > 30 || e.y < 0) this.land(e);
-      } else if (e.kind === 'arrow') {
-        this.arrowPhysics(e, dt, fluid);
-      } else if (e.kind === 'xp') {
-        this.orbPhysics(e, dt, fluid);
-      } else if (e.kind === 'boat') {
-        // (A guest's boat moves where they paddle it; see remoteRide.)
-        e.hurt = Math.max(0, e.hurt - dt);
-        if (e.guestRider) this.glideRidden(e, dt); else boatPhysics(w, e, dt, e.drive ?? null);
-        if (e.y < -40) e.dead = true;
-      } else if (e.kind === 'cart') {
-        e.hurt = Math.max(0, e.hurt - dt);
-        if (e.guestRider) { this.glideRidden(e, dt); e.rail = null; } else cartPhysics(w, e, dt, this.cartPush(e));
-        if (e.y < -40) e.dead = true;
-      } else if (e.kind === 'mob') {
-        if (e.guestRider) this.glideRidden(e, dt); else mobPhysics(this, e, dt, fluid);
-      }
+      if (e.dead) continue;
+      try { this.updateOne(e, dt); } catch (err) { this.fault(e, err); }
     }
     this.list = this.list.filter((e) => !e.dead);
+  }
+
+  // One entity's movement this frame (on the host).
+  updateOne(e, dt) {
+    const game = this.game, w = this.world, p = game.player;
+    if (!w.isLoaded(e.x, e.z)) {
+      // (Where the land isn't loaded nothing moves; but a creature that's dying still goes.)
+      if (e.dying) { e.dying += dt; if (e.dying >= 1) this.finishDeath(e); }
+      return;
+    }
+    e.age += dt;
+    const fluid = WATERLIKE[w.getBlock(Math.floor(e.x), Math.floor(e.y + 0.3), Math.floor(e.z))];
+    if (e.kind === 'item') {
+      e.pickupDelay -= dt;
+      e.spin += dt * 1.8;
+      if (fluid) { e.vy += (4 - e.vy) * Math.min(1, dt * 3); } else e.vy -= 20 * dt;
+      const f = e.onGround ? Math.exp(-8 * dt) : Math.exp(-1 * dt);
+      e.vx *= f; e.vz *= f;
+      e.move(w, e.vx * dt, e.vy * dt, e.vz * dt);
+      const d = Math.hypot(p.x - e.x, p.y + 0.9 - e.y, p.z - e.z);
+      if (e.pickupDelay <= 0 && d < 1.6 && game.state !== 'dead') {
+        const left = game.pickup(e.id, e.count, e.dmg, e.extra);
+        if (left === 0) e.dead = true; else e.count = left;
+      }
+      if (e.age > 300) e.dead = true;
+    } else if (e.kind === 'tnt') {
+      e.vy -= 20 * dt;
+      const f = e.onGround ? Math.exp(-6 * dt) : 1;
+      e.vx *= f; e.vz *= f;
+      e.move(w, e.vx * dt, e.vy * dt, e.vz * dt);
+    } else if (e.kind === 'falling') {
+      e.vy = Math.max(-40, e.vy - 32 * dt);
+      e.move(w, 0, e.vy * dt, 0);
+      if (e.onGround || e.age > 30 || e.y < 0) this.land(e);
+    } else if (e.kind === 'arrow') {
+      this.arrowPhysics(e, dt, fluid);
+    } else if (e.kind === 'xp') {
+      this.orbPhysics(e, dt, fluid);
+    } else if (e.kind === 'boat') {
+      // (A guest's boat moves where they paddle it; see remoteRide.)
+      e.hurt = Math.max(0, e.hurt - dt);
+      if (e.guestRider) this.glideRidden(e, dt); else boatPhysics(w, e, dt, e.drive ?? null);
+      if (e.y < -40) e.dead = true;
+    } else if (e.kind === 'cart') {
+      e.hurt = Math.max(0, e.hurt - dt);
+      if (e.guestRider) { this.glideRidden(e, dt); e.rail = null; } else cartPhysics(w, e, dt, this.cartPush(e));
+      if (e.y < -40) e.dead = true;
+    } else if (e.kind === 'mob') {
+      if (e.guestRider) this.glideRidden(e, dt); else mobPhysics(this, e, dt, fluid);
+    }
   }
 
   // Arrows fly under gravity and drag, stick in what they hit, and hurt whoever they strike.
@@ -1096,16 +1144,18 @@ export class Entities {
     const game = this.game;
     for (const e of this.list) {
       if (e.dead) continue;
-      if (e.kind === 'tnt') e.fuse = Math.max(0, e.fuse - 1);
-      else if (e.kind === 'mob' && !e.dying) {
-        e.hurt = Math.max(0, e.hurt - 1);
-        e.fuse = e.fuseOn ? e.fuse + 1 : 0;
-        if (e.burning && Math.random() < 0.25) game.particles.smoke(e.x, e.y + 1 + Math.random() * 0.9, e.z, 1, 0.3);
-        // In love (the host says so): a heart every half second, as on the host.
-        e.loveTick = ((e.loveTick ?? 0) + 1) % 10;
-        if ((e.flags & 32768) && e.loveTick === 0) game.particles.hearts(e.x, e.y + e.h * 0.5 + 0.3, e.z, 1, e.hw + 0.1);
-        if (e.def.sound && Math.random() < (e.def.hostile ? 0.005 : 0.003)) game.audio.mob(e.def.sound, 'say', { x: e.x, y: e.y + e.h * 0.8, z: e.z }, e.def.pitch);
-      }
+      try {
+        if (e.kind === 'tnt') e.fuse = Math.max(0, e.fuse - 1);
+        else if (e.kind === 'mob' && !e.dying) {
+          e.hurt = Math.max(0, e.hurt - 1);
+          e.fuse = e.fuseOn ? e.fuse + 1 : 0;
+          if (e.burning && Math.random() < 0.25) game.particles.smoke(e.x, e.y + 1 + Math.random() * 0.9, e.z, 1, 0.3);
+          // In love (the host says so): a heart every half second, as on the host.
+          e.loveTick = ((e.loveTick ?? 0) + 1) % 10;
+          if ((e.flags & 32768) && e.loveTick === 0) game.particles.hearts(e.x, e.y + e.h * 0.5 + 0.3, e.z, 1, e.hw + 0.1);
+          if (e.def.sound && Math.random() < (e.def.hostile ? 0.005 : 0.003)) game.audio.mob(e.def.sound, 'say', { x: e.x, y: e.y + e.h * 0.8, z: e.z }, e.def.pitch);
+        }
+      } catch (err) { this.fault(e, err); }
     }
   }
 
@@ -1115,54 +1165,56 @@ export class Entities {
     const k = 1 - Math.exp(-dt * 14);
     for (const e of this.list) {
       if (e.dead) continue;
-      e.age += dt;
-      // What this player rides, they move themselves (and tell the host where it is).
-      if (e.rider === 'me') {
-        const ox = e.x, oz = e.z;
-        if (e.kind === 'boat') boatPhysics(this.world, e, dt, e.drive ?? null);
-        else if (e.kind === 'cart') cartPhysics(this.world, e, dt, this.cartPush(e));
-        else {
-          mobPhysics(this, e, dt, WATERLIKE[this.world.getBlock(Math.floor(e.x), Math.floor(e.y + 0.3), Math.floor(e.z))]);
-          const speed = Math.min(14, Math.hypot(e.x - ox, e.z - oz) / Math.max(dt, 1e-3));
+      try {
+        e.age += dt;
+        // What this player rides, they move themselves (and tell the host where it is).
+        if (e.rider === 'me') {
+          const ox = e.x, oz = e.z;
+          if (e.kind === 'boat') boatPhysics(this.world, e, dt, e.drive ?? null);
+          else if (e.kind === 'cart') cartPhysics(this.world, e, dt, this.cartPush(e));
+          else {
+            mobPhysics(this, e, dt, WATERLIKE[this.world.getBlock(Math.floor(e.x), Math.floor(e.y + 0.3), Math.floor(e.z))]);
+            const speed = Math.min(14, Math.hypot(e.x - ox, e.z - oz) / Math.max(dt, 1e-3));
+            e.walk += (Math.min(1, speed / 1.5) - e.walk) * Math.min(1, dt * 8);
+          }
+          e.tx = e.x; e.ty = e.y; e.tz = e.z; e.tyaw = e.yaw;
+          continue;
+        }
+        const ox = e.x, oy = e.y, oz = e.z;
+        // Far jumps (teleports, merged stacks) snap.
+        if (Math.abs(e.tx - e.x) + Math.abs(e.ty - e.y) + Math.abs(e.tz - e.z) > 8) { e.x = e.tx; e.y = e.ty; e.z = e.tz; }
+        else { e.x += (e.tx - e.x) * k; e.y += (e.ty - e.y) * k; e.z += (e.tz - e.z) * k; }
+        if (e.kind === 'boat' || e.kind === 'cart') {
+          let dy = (e.tyaw ?? e.yaw) - e.yaw;
+          dy -= Math.round(dy / (Math.PI * 2)) * Math.PI * 2;
+          e.yaw += dy * k;
+          e.hurt = Math.max(0, e.hurt - dt);
+        }
+        if (e.kind === 'item') {
+          e.spin += dt * 1.8;
+          e.pickupDelay -= dt;
+          if (e.pickupDelay <= 0 && game.state !== 'dead' && Math.hypot(p.x - e.x, p.y + 0.9 - e.y, p.z - e.z) < 1.6) game.net.wantItem(e);
+        } else if (e.kind === 'mob') {
+          let dy = e.tyaw - e.yaw;
+          dy -= Math.round(dy / (Math.PI * 2)) * Math.PI * 2;
+          e.yaw += dy * k;
+          const speed = Math.min(12, Math.hypot(e.x - ox, e.z - oz) / Math.max(dt, 1e-3));
           e.walk += (Math.min(1, speed / 1.5) - e.walk) * Math.min(1, dt * 8);
+          e.walkPhase += speed * dt * 5;
+          e.swing = Math.max(0, e.swing - dt * 3);
+          e.onGround = Math.abs(e.y - oy) < dt * 0.5;
+          e.inWater = WATERLIKE[this.world.getBlock(Math.floor(e.x), Math.floor(e.y + 0.3), Math.floor(e.z))] === 1;
+          const fl = e.def.flies;
+          if (fl) e.flap += dt * (fl === 'bat' ? 32 : fl === 'parrot' ? (e.onGround ? 0 : 26) : 5);
+          else e.flap = e.def.flutter && !e.onGround ? e.flap + dt * 30 : 0;
+          // (Flyers and dolphins pitch with the way they're going.)
+          if (fl || e.def.anim === 'dolphin') {
+            const vy = (e.y - oy) / Math.max(dt, 1e-3), want = Math.max(-1.2, Math.min(1.2, Math.atan2(vy, Math.max(speed, fl ? 0.5 : 1))));
+            e.tilt = (e.tilt ?? 0) + (want - (e.tilt ?? 0)) * Math.min(1, dt * 5);
+          }
+          if (e.dying) e.dying += dt;
         }
-        e.tx = e.x; e.ty = e.y; e.tz = e.z; e.tyaw = e.yaw;
-        continue;
-      }
-      const ox = e.x, oy = e.y, oz = e.z;
-      // Far jumps (teleports, merged stacks) snap.
-      if (Math.abs(e.tx - e.x) + Math.abs(e.ty - e.y) + Math.abs(e.tz - e.z) > 8) { e.x = e.tx; e.y = e.ty; e.z = e.tz; }
-      else { e.x += (e.tx - e.x) * k; e.y += (e.ty - e.y) * k; e.z += (e.tz - e.z) * k; }
-      if (e.kind === 'boat' || e.kind === 'cart') {
-        let dy = (e.tyaw ?? e.yaw) - e.yaw;
-        dy -= Math.round(dy / (Math.PI * 2)) * Math.PI * 2;
-        e.yaw += dy * k;
-        e.hurt = Math.max(0, e.hurt - dt);
-      }
-      if (e.kind === 'item') {
-        e.spin += dt * 1.8;
-        e.pickupDelay -= dt;
-        if (e.pickupDelay <= 0 && game.state !== 'dead' && Math.hypot(p.x - e.x, p.y + 0.9 - e.y, p.z - e.z) < 1.6) game.net.wantItem(e);
-      } else if (e.kind === 'mob') {
-        let dy = e.tyaw - e.yaw;
-        dy -= Math.round(dy / (Math.PI * 2)) * Math.PI * 2;
-        e.yaw += dy * k;
-        const speed = Math.min(12, Math.hypot(e.x - ox, e.z - oz) / Math.max(dt, 1e-3));
-        e.walk += (Math.min(1, speed / 1.5) - e.walk) * Math.min(1, dt * 8);
-        e.walkPhase += speed * dt * 5;
-        e.swing = Math.max(0, e.swing - dt * 3);
-        e.onGround = Math.abs(e.y - oy) < dt * 0.5;
-        e.inWater = WATERLIKE[this.world.getBlock(Math.floor(e.x), Math.floor(e.y + 0.3), Math.floor(e.z))] === 1;
-        const fl = e.def.flies;
-        if (fl) e.flap += dt * (fl === 'bat' ? 32 : fl === 'parrot' ? (e.onGround ? 0 : 26) : 5);
-        else e.flap = e.def.flutter && !e.onGround ? e.flap + dt * 30 : 0;
-        // (Flyers and dolphins pitch with the way they're going.)
-        if (fl || e.def.anim === 'dolphin') {
-          const vy = (e.y - oy) / Math.max(dt, 1e-3), want = Math.max(-1.2, Math.min(1.2, Math.atan2(vy, Math.max(speed, fl ? 0.5 : 1))));
-          e.tilt = (e.tilt ?? 0) + (want - (e.tilt ?? 0)) * Math.min(1, dt * 5);
-        }
-        if (e.dying) e.dying += dt;
-      }
+      } catch (err) { this.fault(e, err); }
     }
     this.list = this.list.filter((e) => !e.dead);
   }

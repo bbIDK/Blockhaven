@@ -249,6 +249,10 @@ export function initMob(e, type, o = {}) {
     school: o.school ?? 0,
     // (Out of a spawn egg: a peaceful one stays about when everyone's far away, as pets do.)
     hatched: !!o.hatched,
+    // (Finding a way: where it's making for or running from, and how it's getting round what's in
+    // the way; see detourTick. Drawn rising onto a step: see mobPhysics.)
+    goal: false, goalAway: false, goalX: 0, goalZ: 0, goalWay: 0, balked: false, edged: false, bumps: 0, detour: 0, detourSide: 0,
+    detourCalm: 0, stuck: 0, stuckX: 0, stuckZ: 0, fleeing: 0, fleeYaw: 0, stepSmooth: 0,
   });
   if ((type === 'horse' || type === 'mule') && o.health === undefined) e.health = 15 + Math.floor(Math.random() * 16);
   // (A tropical fish's shape goes with its pattern.)
@@ -312,10 +316,15 @@ export function mobTick(ents, e) {
   }
   // Out of water, fish flop and slowly suffocate; squid too. (A dolphin's leap is over before it
   // does it any harm.)
+  // (They flop towards water close by, if there is some; a whale washed up slides back in.)
   if (t.kind === 'water') {
     if (inWater) e.dry = 0;
     else {
-      if (e.onGround && Math.random() < 0.15) { e.vy = 4; e.vx = (Math.random() - 0.5) * 3; e.vz = (Math.random() - 0.5) * 3; }
+      if (e.onGround && Math.random() < 0.15) {
+        const to = waterNear(w, e, 6), s = t.deep ? 4 : 3;
+        e.vx = to ? to[0] * s : (Math.random() - 0.5) * 3; e.vz = to ? to[1] * s : (Math.random() - 0.5) * 3;
+        if (!t.deep) e.vy = 4;
+      }
       if ((e.dry = (e.dry ?? 0) + 1) >= 40) { e.dry = 0; ents.hurtMob(e, 1, null); }
     }
   }
@@ -405,28 +414,45 @@ function wander(e, chance = 0.4) {
   e.speedMul = 1;
 }
 // (Each notes where the creature is making for, or getting away from, for detourTick.)
-const faceTowards = (e, x, z) => { e.yaw = Math.atan2(-(x - e.x), -(z - e.z)); e.goal = true; e.goalX = x; e.goalZ = z; };
-const faceAway = (e, x, z) => { e.yaw = Math.atan2(x - e.x, z - e.z); e.goal = true; e.goalX = x; e.goalZ = z; };
+const faceTowards = (e, x, z) => { e.yaw = Math.atan2(-(x - e.x), -(z - e.z)); e.goal = true; e.goalAway = false; e.goalX = x; e.goalZ = z; };
+const faceAway = (e, x, z) => { e.yaw = Math.atan2(x - e.x, z - e.z); e.goal = true; e.goalAway = true; e.goalX = x; e.goalZ = z; };
 // Balked (it walked into something it can't jump, see mobPhysics): wandering about, a creature
-// turns away, as it does at a cliff's edge; going somewhere (after food, a mate, its owner or its
-// prey, or away from danger), it looks along the obstacle for the nearest way past and goes round
-// that way; with none near (a long fence), or after a few tries, it gives up for a while: it stands
-// and looks, until what it was after moves off. (Not what flies, swims, climbs or hops about as
-// slimes do, nor villagers, who have routes of their own.)
+// turns away, as it does at a cliff's edge. Going somewhere (after food, a mate, its owner or its
+// prey), it looks along the obstacle for the nearest way past and goes round that way; with none
+// near (a long fence), after a few tries, or at the edge of a drop or of water, it gives up for a
+// while: it stands and looks, until what it was after moves off. Running from something, stopped
+// by a wall or at an edge, it runs whichever clear way takes it furthest from it, and keeps to that
+// way a while (rather than standing there turning to and fro). (Not what flies, swims, climbs or
+// hops about as slimes do, nor villagers, who have routes of their own.)
 function detourTick(ents, e) {
-  const t = e.def, goal = e.goal, balked = e.balked;
-  e.goal = false; e.balked = false;
+  const t = e.def, goal = e.goal, away = e.goalAway, balked = e.balked, edged = e.edged;
+  e.goal = false; e.balked = false; e.edged = false;
+  e.goalWay = 0;
   if (t.flies || t.climbs || t.sized || t.kind === 'water' || t.kind === 'civilian') return;
   if (!goal) {
-    e.bumps = e.detour = e.stuck = 0;
+    e.bumps = e.detour = e.stuck = e.fleeing = 0;
     if (balked) { e.yaw += Math.PI * (0.5 + Math.random()); e.wander = Math.max(e.wander, 20); }
     return;
   }
+  // (At an edge it then stops, rather than turning away at random; see mobPhysics.)
+  e.goalWay = away ? -1 : 1;
+  if (away) {
+    e.bumps = e.detour = e.stuck = 0;
+    if (balked || edged) {
+      const yaw = escapeHeading(ents.world, e, e.yaw);
+      if (yaw === null) { e.fleeing = 0; e.moving = false; return; }
+      e.fleeYaw = yaw; e.fleeing = 30;
+    }
+    if (e.fleeing > 0) { e.fleeing--; e.yaw = e.fleeYaw; }
+    return;
+  }
+  e.fleeing = 0;
   if (e.stuck > 0) {
     e.stuck--;
     if (Math.hypot(e.goalX - e.stuckX, e.goalZ - e.stuckZ) < 3) { e.moving = false; return; }
     e.stuck = 0;
   }
+  if (edged) { e.stuck = 60; e.stuckX = e.goalX; e.stuckZ = e.goalZ; e.bumps = e.detour = 0; e.moving = false; return; }
   if (balked) {
     e.detourCalm = 0;
     const way = ++e.bumps <= 4 && wayRound(ents.world, e, e.bumps > 1 ? e.detourSide : 0);
@@ -457,6 +483,25 @@ function wayRound(w, e, prefer) {
     if (!open[1] && !open[-1]) break;
   }
   return null;
+}
+// Which way creature `e` should run (a heading) to get away, `away` being straight away from the
+// danger: of sixteen ways round, the one nearest that which is clear for three blocks, with ground
+// no more than a block down and no water; null when every clear way leads back towards the danger.
+function escapeHeading(w, e, away) {
+  let best = null, score = -0.5;
+  for (let k = 0; k < 16; k++) {
+    const yaw = away + (k / 16) * TAU, s = Math.cos(yaw - away);
+    if (s <= score) continue;
+    const fx = -Math.sin(yaw), fz = -Math.cos(yaw), by = Math.floor(e.y + 0.1);
+    let clear = true;
+    for (let d = 1; d <= 3 && clear; d++) {
+      const dx = fx * d, dz = fz * d, bx = Math.floor(e.x + dx), bz = Math.floor(e.z + dz);
+      clear = !e.collides(w, dx, 0.6, dz) && e.collides(w, dx, -1.05, dz) &&
+        WATERLIKE[w.getBlock(bx, by, bz)] !== 1 && WATERLIKE[w.getBlock(bx, by - 1, bz)] !== 1;
+    }
+    if (clear) { best = yaw; score = s; }
+  }
+  return best;
 }
 const dist2 = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 // (Where a kind has males and females that look different, the variant's lowest bit says which.)
@@ -634,7 +679,8 @@ function swimTick(ents, e) {
   const t = e.def;
   if (t.puffs) puffTick(ents, e);
   if ((t.preys || t.retaliates) && huntTick(ents, e)) return;
-  if (t.breathes && breatheTick(ents, e)) return;
+  // (Going up for air, a whale still keeps out of the shallows.)
+  if (t.breathes && breatheTick(ents, e)) { if (t.deep) keepDeep(ents, e); return; }
   if (t.schools && e.school && schoolTick(ents, e)) return;
   // Dolphins come up for air every so often, leaping clear of the water when they reach the top.
   if (e.def.leaps && (e.leapCd = (e.leapCd ?? 100 + Math.floor(Math.random() * 300)) - 1) <= 0) {
@@ -769,28 +815,65 @@ function breatheTick(ents, e) {
   e.moving = true; e.speedMul = 0.8; e.swimY = 1.6;
   const top = Math.floor(e.y + e.h * 0.9);
   if (!WATERLIKE[w.getBlock(Math.floor(e.x), top + 1, Math.floor(e.z))]) {
-    // At the surface: a spout of spray.
-    ents.game.particles.splash?.(e.x, top + 1.2, e.z, 0x9ecbf0, 40);
-    ents.game.audio.splash?.({ x: e.x, y: top + 1, z: e.z }, 0.6);
+    // At the surface: a breath, and a spout of spray.
     e.breath = 900 + Math.floor(Math.random() * 1500);
     e.swimY = -0.8;
+    ents.game.particles.splash?.(e.x, top + 1.2, e.z, 0x9ecbf0, 40);
+    ents.game.audio.splash?.(0.6, { x: e.x, y: top + 1, z: e.z });
   }
   if (e.breath < -600) e.breath = 600;
   return true;
 }
 
-// Big swimmers keep off the bottom and out of the shallows: they turn back where the water gets
-// shallow ahead of them.
+// Big swimmers keep off the bottom and out of the shallows: where the water ahead gets too shallow
+// for them, they turn for the deepest water round about, and hold that way a while (rather than
+// turning about on the spot, stuck by the shore).
 function keepDeep(ents, e) {
-  const w = ents.world, t = e.def;
-  const reach = (t.scale ?? 1) * 1.2 + 2;
-  const ax = e.x - Math.sin(e.yaw) * reach, az = e.z - Math.cos(e.yaw) * reach;
-  let depth = 0;
-  for (let y = Math.floor(e.y + e.h); y > Math.floor(e.y) - 6; y--) { if (WATERLIKE[w.getBlock(Math.floor(ax), y, Math.floor(az))] === 1) depth++; else break; }
-  if (depth < Math.min(6, e.h + 2)) { e.yaw += Math.PI * (0.6 + Math.random() * 0.4); e.wander = 60; }
+  const w = ents.world, t = e.def, want = Math.min(6, e.h + 2), top = e.y + e.h;
+  if ((e.deepCd = (e.deepCd ?? 0) - 1) <= 0) {
+    e.deepCd = 5;
+    const reach = (t.scale ?? 1) * 1.2 + 2;
+    if (depthAt(w, e.x - Math.sin(e.yaw) * reach, e.z - Math.cos(e.yaw) * reach, top) < want) {
+      // (Looking a little and a long way out each way; the smallest turn of the deepest.)
+      let best = e.yaw + Math.PI, most = -1;
+      for (const k of [1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6, 7, -7, 8]) {
+        const yaw = e.yaw + (k / 16) * TAU;
+        let d = 0;
+        for (const r of [reach, reach + 5, reach + 10]) d += Math.min(want + 3, depthAt(w, e.x - Math.sin(yaw) * r, e.z - Math.cos(yaw) * r, top));
+        if (d > most) { most = d; best = yaw; }
+      }
+      e.yaw = best; e.wander = Math.max(e.wander, 100); e.deepCd = 40;
+    }
+  }
   // (Keep a few blocks off the sea floor.)
   const below = w.getBlock(Math.floor(e.x), Math.floor(e.y) - 2, Math.floor(e.z));
   if (!WATERLIKE[below]) e.swimY = Math.max(e.swimY ?? 0, 0.4);
+}
+// How deep the water is at x, z: from its surface (the highest water from a little above `y`) to
+// the bottom, counting up to 16.
+function depthAt(w, x, z, y) {
+  const bx = Math.floor(x), bz = Math.floor(z);
+  let top = Math.floor(y) + 2;
+  while (top > y - 8 && WATERLIKE[w.getBlock(bx, top, bz)] !== 1) top--;
+  let d = 0;
+  while (d < 16 && WATERLIKE[w.getBlock(bx, top - d, bz)] === 1) d++;
+  return d;
+}
+// Which way (a unit [x, z]) the nearest water is from creature `e`, within `r` blocks and about
+// its level, or null.
+function waterNear(w, e, r) {
+  const bx = Math.floor(e.x), by = Math.floor(e.y), bz = Math.floor(e.z);
+  for (let d = 1; d <= r; d++) {
+    for (let dz = -d; dz <= d; dz++) for (let dx = -d; dx <= d; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dz)) !== d) continue;
+      for (let dy = 1; dy >= -2; dy--) {
+        if (WATERLIKE[w.getBlock(bx + dx, by + dy, bz + dz)] !== 1) continue;
+        const l = Math.hypot(dx, dz);
+        return [dx / l, dz / l];
+      }
+    }
+  }
+  return null;
 }
 
 // Players (and for zombies, villagers) a monster could go after (no more than `tall` blocks above
@@ -1465,7 +1548,8 @@ export function mobPhysics(ents, e, dt, fluid) {
     const ax = Math.floor(e.x + fx * (e.hw + 0.4)), az = Math.floor(e.z + fz * (e.hw + 0.4)), y = Math.floor(e.y + 0.1);
     const ahead = w.getBlock(ax, y - 1, az), ahead2 = w.getBlock(ax, y - 2, az);
     if ((!SOLID[ahead] && !SOLID[ahead2]) || WATERLIKE[ahead] || WATERLIKE[w.getBlock(ax, y, az)]) {
-      e.yaw += Math.PI * (0.5 + Math.random());
+      // (Going somewhere, or away from something, it stops, and thinks again: see detourTick.)
+      if (e.goalWay) e.edged = true; else e.yaw += Math.PI * (0.5 + Math.random());
       speed = 0;
     }
   }

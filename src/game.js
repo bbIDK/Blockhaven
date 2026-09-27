@@ -149,6 +149,7 @@ export class Game {
     this.input = new Input(this.canvas);
     this.touch = new TouchControls(this);
     this.audio = new Audio();
+    this.audio.onError = (err, what) => this.reportError(err, `sound: ${what}`);
     this.settings = storage.loadPrefs(SETTINGS_KEY, DEFAULT_SETTINGS);
     this.keys = new Keys(this.settings);
     // Shaders start on (with shadows) where there's a graphics card to run them.
@@ -262,7 +263,7 @@ export class Game {
       if (!document.hidden && now - this.lastFrame < 300) return;
       const dt = Math.min(1, (now - Math.max(this.lastFrame, this.lastBackground)) / 1000);
       this.lastBackground = now;
-      try { this.updateGame(dt, false); } catch (err) { console.error(err); }
+      try { this.updateGame(dt, false); } catch (err) { this.reportError(err); }
     }, 100);
     window.addEventListener('pagehide', () => this.save());
     this.onResize();
@@ -1520,7 +1521,7 @@ export class Game {
       else if (this.world) this.updateGame(dt);
       else if (this.panorama) this.updatePanorama(dt);
     } catch (err) {
-      console.error(err);
+      this.reportError(err);
     }
     this.input.endFrame();
   }
@@ -1585,14 +1586,15 @@ export class Game {
       const most = draw ? 5 : 20;
       while (this.tickAcc >= 1 && n++ < most) { this.tickAcc -= 1; this.gameTick(); }
       if (this.tickAcc > most) this.tickAcc = 0;
-      this.particles.update(dt, w);
-      if (draw) this.fireflies(dt);
-      this.entities.update(dt);
-      this.fishing.update(dt);
-      this.weather.update(dt);
+      // (Each on its own, like the parts of a tick: see gameTick.)
+      this.safely('particles', () => this.particles.update(dt, w));
+      if (draw) this.safely('fireflies', () => this.fireflies(dt));
+      this.safely('creatures', () => this.entities.update(dt));
+      this.safely('fishing', () => this.fishing.update(dt));
+      this.safely('weather', () => this.weather.update(dt));
     }
     if (this.riding) this.sitOnMount();
-    this.net?.update(dt);
+    this.safely('multiplayer', () => this.net?.update(dt));
     if (!this.world) return; // (the game ended while updating)
     if (!draw) return;
     this.target = this.state === 'play' || this.state === 'container' ? this.pickTarget() : null;
@@ -1838,36 +1840,59 @@ export class Game {
     // (Here as well as when drawing: a host's game carries on in a background tab.)
     updateEnvironment(this.env, this.time);
     this.world.daylight = this.env.daylight;
-    this.world.tick();
-    if (!this.net?.guest) this.world.randomTicks(this.players().map((t) => [Math.floor(t.x) >> 4, Math.floor(t.z) >> 4]));
-    this.entities.tick();
-    this.fishing.tick();
-    if (!this.net?.guest) { this.tickFurnaces(); this.pressPlates(); }
-    const p = this.player;
-    if (!this.creative && this.state !== 'dead') {
-      this.invuln = Math.max(0, this.invuln - 1);
-      this.sinceDamage++;
-      if (p.headInWater && !this.effects.has('water_breathing')) {
-        const r = enchLevel(this.inv.armor[0], 'respiration');
-        if (!r || Math.random() < 1 / (r + 1)) this.air--;
-        if (this.air <= -20) { this.air = 0; this.damage(2, 'You drowned', true); }
-      } else this.air = Math.min(300, this.air + 6);
-      const inFire = this.touching(B.fire) || this.touching(B.campfire);
-      if (inFire && !p.inWater) { this.fire = Math.max(this.fire, 160); if (this.time % 10 === 0) this.damage(1, 'You went up in flames', true, null, true); }
-      if (p.inLava) { this.fire = 300; if (this.time % 10 === 0) this.damage(4, 'You tried to swim in lava', true, null, true); }
-      else if (this.fire > 0) {
-        this.fire = p.inWater ? 0 : this.fire - 1;
-        if (this.fire % 20 === 0 && this.fire > 0) this.damage(1, 'You burned to death', true);
-      }
-      if (p.y < -40 && this.time % 10 === 0) this.damage(4, 'You fell out of the world', true);
-      if (this.time % 10 === 0 && this.touchingCactus()) this.damage(1, 'You were pricked to death', false, null, true);
-      this.hungerTick();
-      this.effectsTick();
-      if (this.eating) this.eatTick();
-    }
-    if (this.time % 20 === 0) this.ambientTick();
+    // (Each part on its own: one going wrong mustn't stop the rest, least of all the saving.)
+    this.safely('water and fire', () => this.world.tick());
+    if (!this.net?.guest) this.safely('growing', () => this.world.randomTicks(this.players().map((t) => [Math.floor(t.x) >> 4, Math.floor(t.z) >> 4])));
+    this.safely('creatures', () => this.entities.tick());
+    this.safely('fishing', () => this.fishing.tick());
+    if (!this.net?.guest) { this.safely('furnaces', () => this.tickFurnaces()); this.safely('pressure plates', () => this.pressPlates()); }
+    this.safely('player', () => this.playerTick());
+    if (this.time % 20 === 0) this.safely('surroundings', () => this.ambientTick());
     this.saveTimer++;
-    if (this.saveTimer >= (this.settings.autosave || 30) * 20) { this.saveTimer = 0; this.save(true); }
+    if (this.saveTimer >= (this.settings.autosave || 30) * 20) { this.saveTimer = 0; this.save(true).catch((err) => this.reportError(err, 'saving')); }
+  }
+
+  // Something went wrong in one part of the game, and the rest carried on (see safely, and
+  // Entities.fault). It goes to the console, and the first few different ones to the chat as well,
+  // so that a screenshot shows what broke.
+  reportError(err, what = '') {
+    const msg = String(err?.message ?? err).slice(0, 140), at = /([\w-]+\.js):(\d+)/.exec(String(err?.stack ?? ''));
+    const key = `${msg}|${at?.[0] ?? ''}`;
+    this.errors ??= new Map();
+    const n = (this.errors.get(key) ?? 0) + 1;
+    this.errors.set(key, n);
+    if (n > 1) return;
+    console.error(`Blockhaven: something went wrong${what ? ` (${what})` : ''}`, err);
+    if (this.errors.size <= 3) this.ui?.message?.(`Something went wrong${what ? ` (${what})` : ''}: ${msg}${at ? ` [${at[1]}:${at[2]}]` : ''}. The game kept going.`, '#e88a78');
+  }
+  safely(what, fn) {
+    try { fn(); } catch (err) { this.reportError(err, what); }
+  }
+
+  // The player's own turn: breath, fire and lava, falling out of the world, cactus, hunger, potion
+  // effects and eating (not in Creative, nor dead).
+  playerTick() {
+    const p = this.player;
+    if (this.creative || this.state === 'dead') return;
+    this.invuln = Math.max(0, this.invuln - 1);
+    this.sinceDamage++;
+    if (p.headInWater && !this.effects.has('water_breathing')) {
+      const r = enchLevel(this.inv.armor[0], 'respiration');
+      if (!r || Math.random() < 1 / (r + 1)) this.air--;
+      if (this.air <= -20) { this.air = 0; this.damage(2, 'You drowned', true); }
+    } else this.air = Math.min(300, this.air + 6);
+    const inFire = this.touching(B.fire) || this.touching(B.campfire);
+    if (inFire && !p.inWater) { this.fire = Math.max(this.fire, 160); if (this.time % 10 === 0) this.damage(1, 'You went up in flames', true, null, true); }
+    if (p.inLava) { this.fire = 300; if (this.time % 10 === 0) this.damage(4, 'You tried to swim in lava', true, null, true); }
+    else if (this.fire > 0) {
+      this.fire = p.inWater ? 0 : this.fire - 1;
+      if (this.fire % 20 === 0 && this.fire > 0) this.damage(1, 'You burned to death', true);
+    }
+    if (p.y < -40 && this.time % 10 === 0) this.damage(4, 'You fell out of the world', true);
+    if (this.time % 10 === 0 && this.touchingCactus()) this.damage(1, 'You were pricked to death', false, null, true);
+    this.hungerTick();
+    this.effectsTick();
+    if (this.eating) this.eatTick();
   }
 
   exhaust(amount) { if (!this.creative) this.exhaustion = Math.min(40, this.exhaustion + amount); }
