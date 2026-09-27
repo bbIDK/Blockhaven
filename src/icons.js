@@ -1,6 +1,8 @@
 // Inventory icons, drawn once from the texture pixels: isometric cubes for blocks, flat sprites
 // for plants and items. Returned as data URLs for <img> tags.
-import { ITEMS } from './items.js';
+import { ITEMS, I } from './items.js';
+import { TEX } from './textures.js';
+import { SPARK_COLOURS } from './fireworks.js';
 import { RENDER, R, TEXL, FFLAGS, TINT, TINT_RGB, F_TINT, F_OVERLAY, SHAPE, ICON_SHAPE, spriteOf, boxLayer } from './blocks.js';
 
 const S = 64;
@@ -140,5 +142,24 @@ export function iconFor(id) {
   }
   const url = c.toDataURL();
   cache.set(id, url);
+  return url;
+}
+
+// A stack's icon: as its item's, but for a firework star, whose colours show over it (the mix of
+// them, as in Minecraft).
+export function iconOf(stack) {
+  if (stack.id !== I.firework_star || !stack.star?.c?.length || !pixels) return iconFor(stack.id);
+  const cols = stack.star.c.map((i) => SPARK_COLOURS[i] ?? 0xffffff);
+  const rgb = [16, 8, 0].map((sh) => Math.round(cols.reduce((a, c) => a + ((c >> sh) & 255), 0) / cols.length));
+  const key = `star:${rgb.join(',')}`;
+  if (cache.has(key)) return cache.get(key);
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const ctx = c.getContext('2d', CPU);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(layerImage(TEX.firework_star, null, null, 1), 4, 4, S - 8, S - 8);
+  ctx.drawImage(layerImage(TEX.firework_star_overlay, rgb, null, 1), 4, 4, S - 8, S - 8);
+  const url = c.toDataURL();
+  cache.set(key, url);
   return url;
 }

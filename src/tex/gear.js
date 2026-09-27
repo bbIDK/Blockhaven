@@ -181,12 +181,33 @@ const BOAT = [
   '..44444444444 3.',
   '...333333333 3..',
   '....22222222....'].map((r) => r.replace(/ /g, '3'));
+const CHEST_BOAT = [
+  '................',
+  '................',
+  '................',
+  '.....hhhhhh.....',
+  '.....mmmmmm.....',
+  '.4...bbllbb...4.',
+  '.45..mmllmm..54.',
+  '.45555555555554.',
+  '..4jjjjjjjjjj3..',
+  '..44444444444 3.',
+  '...333333333 3..',
+  '....22222222....'].map((r) => r.replace(/ /g, '3'));
+const CHEST_TONES = { h: 0xd09a44, m: 0xa46c28, b: 0x5a3812, l: 0xd8d8d8 };
 for (const [name, w] of Object.entries(WOODS)) {
   def(`${name}_boat`, (t) => {
     const p = w.planks;
     sprite(t, BOAT, { 5: p[5], 4: p[4], 3: p[3], 2: p[2], 1: p[1], j: mix(p[0], 0x000000, 0.35), o: 0xc49a5a, O: 0x8a6436 },
       mix(p[0], 0x000000, 0.55));
     // (The planks' seams along the hull.)
+    for (let x = 4; x < 13; x += 4) t.set(x, 9, p[2]);
+    for (let x = 6; x < 11; x += 4) t.set(x, 10, p[1]);
+  });
+  // The boat with a chest: the same hull, a chest sitting in it above the gunwale instead of the oar.
+  def(`${name}_chest_boat`, (t) => {
+    const p = w.planks;
+    sprite(t, CHEST_BOAT, { 5: p[5], 4: p[4], 3: p[3], 2: p[2], 1: p[1], j: mix(p[0], 0x000000, 0.35), ...CHEST_TONES }, mix(p[0], 0x000000, 0.55));
     for (let x = 4; x < 13; x += 4) t.set(x, 9, p[2]);
     for (let x = 6; x < 11; x += 4) t.set(x, 10, p[1]);
   });

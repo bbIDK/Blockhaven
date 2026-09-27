@@ -51,7 +51,7 @@ export const MOBS = {
   polar_bear: { label: 'Polar Bear', rig: 'polar_bear', skins: ['polar_bear'], hw: 0.7, h: 1.4, health: 30, speed: 1.3, kind: 'neutral',
     anim: 'quad', damage: 6, predator: 10, pack: true, giveUp: 24, drops: [d('cod', 0, 2), d('salmon', 0, 2), d('raw_bear', 0, 1)], sound: 'bear' },
   squid: { label: 'Squid', rig: 'squid', skins: ['squid'], hw: 0.4, h: 0.8, health: 10, speed: 1.2, kind: 'water', anim: 'squid',
-    drops: [d('black_dye', 1, 3)], sound: null, scale: 0.8 },
+    drops: [d('ink_sac', 1, 3)], sound: null, scale: 0.8 },
   cod: { label: 'Cod', rig: 'cod', skins: ['cod'], hw: 0.25, h: 0.3, health: 3, speed: 1.4, kind: 'water', anim: 'fish', drops: [d('cod', 1, 1),
     d('bone_meal', 0, 1, 0.05)], sound: 'fish', bucket: 'cod_bucket' },
   salmon: { label: 'Salmon', rig: 'salmon', skins: ['salmon'], hw: 0.3, h: 0.4, health: 3, speed: 1.6, kind: 'water', anim: 'fish',
@@ -304,6 +304,8 @@ export function initMob(e, type, o = {}) {
     prey: null, huntCd: 0,
   });
   if ((type === 'horse' || type === 'mule') && o.health === undefined) e.health = 15 + Math.floor(Math.random() * 16);
+  // (One drowned in sixteen carries a trident.)
+  if (type === 'drowned' && (o.trident ?? Math.random() < 1 / 16)) e.held = I.trident;
   // (A tropical fish's shape goes with its pattern.)
   if (type === 'tropical_fish') e.rig = TROPICAL[Math.min(TROPICAL.length - 1, Math.max(0, e.variant | 0))][1] ? 'tropical_b' : 'tropical_a';
   if (e.owner && t.tameHealth) e.health = t.tameHealth;
@@ -1181,6 +1183,8 @@ function hostileTick(ents, e) {
   if (t.ranged) return archerTick(ents, e, tg, dist);
   if (t.throws) return witchTick(ents, e, tg, dist);
   if (t.sized) return slimeHop(ents, e, tg);
+  // A drowned with a trident throws it (a copy: it keeps its own) from a few blocks off.
+  if (e.held === I.trident && dist > 4 && dist < 14 && tridentThrow(ents, e, tg)) return;
   faceTowards(e, tg.x, tg.z);
   e.moving = dist > 0.8;
   e.speedMul = 1;
@@ -1271,6 +1275,25 @@ function archerTick(ents, e, tg, dist) {
       ents.game.audio.bow({ x: e.x, y: ey, z: e.z });
     }
   } else e.aim = Math.max(0, e.aim - 0.05);
+}
+
+// A drowned's trident throw: it stops, raises it (a second), and throws it at where you are, a
+// little high for its fall; then it's a couple of seconds before the next. False when there's no
+// clear line to throw along (it comes closer instead).
+function tridentThrow(ents, e, tg) {
+  const ex = e.x, ey = e.y + 1.6, ez = e.z, ty = tg.y + (tg.kind === 'mob' ? tg.h * 0.6 : 1.4);
+  if (!clearLine(ents.world, ex, ey, ez, tg.x, ty, tg.z)) return false;
+  faceTowards(e, tg.x, tg.z);
+  e.moving = false;
+  if (e.attackCd === 0) e.aim = Math.min(1, e.aim + 0.05);
+  if (e.aim >= 1) {
+    e.aim = 0;
+    e.attackCd = 40 + Math.floor(Math.random() * 20);
+    const [vx, vy, vz] = aimAt(ex, ey, ez, tg.x, ty, tg.z, 32);
+    ents.spawnTrident(ex, ey, ez, vx, vy, vz, e, { id: I.trident, count: 1, dmg: 0 }, false);
+    ents.game.audio.trident?.('throw', { x: ex, y: ey, z: ez });
+  }
+  return true;
 }
 
 // Slimes get about by hopping; big ones hurt on contact.
@@ -1812,6 +1835,8 @@ export function mobDrops(e) {
   }
   if (e.def.wool && !e.sheared) out.push([woolBlock(e.colour), 1]);
   if (e.saddled) out.push([I.saddle, 1]);
+  // (A drowned's trident, now and then.)
+  if (e.held === I.trident && Math.random() < 0.085 + extra * 0.01) out.push([I.trident, 1]);
   if (e.def.sized && e.size > 1) return [];
   return out;
 }
@@ -2011,9 +2036,11 @@ export function poseMob(e, pose) {
       pose.rightLeg = [a * k, 0, 0]; pose.leftLeg = [-a * k, 0, 0];
       pose.rightArm = [-a * k * 0.8, 0, 0.05]; pose.leftArm = [a * k * 0.8, 0, -0.05];
       if (t.anim === 'zombie') {
-        // Arms out in front, lifting a little more to strike.
+        // Arms out in front, lifting a little more to strike. (A drowned about to throw its
+        // trident raises it over its head.)
         const lift = 1.45 + Math.sin(age * 1.3) * 0.05 + e.swing * 0.4;
         pose.rightArm = [lift, 0, 0.1]; pose.leftArm = [lift, 0, -0.1];
+        if (e.aim > 0 && e.held === I.trident) pose.rightArm = [Math.PI - 0.25, 0, 0.1];
       } else if (t.anim === 'archer' && (e.target || e.aim > 0)) {
         // Bow drawn: the bow arm straight at the target, the other pulling back the string.
         pose.rightArm = [Math.PI / 2 + head[0], head[1] + 0.1, 0];
@@ -2462,7 +2489,7 @@ export function renderMob(ents, e, rx, ry, rz, light, out) {
 // standing in the arm's plane of swing with that diagonal pointing forward and up (Minecraft's
 // third-person hold). A bow stands upright across the hand with its string towards the holder;
 // anything else is held small and upright in front of the fist.
-const HANDHELD = /_(sword|pickaxe|axe|shovel|hoe)$|^(stick|bone|fishing_rod|fishing_rod_cast)$/;
+const HANDHELD = /_(sword|pickaxe|axe|shovel|hoe)$|^(stick|bone|fishing_rod|fishing_rod_cast|trident)$/;
 // Which way round a tool's picture goes in the hand: turned so an axe's or a hoe's blade is on the
 // underside, as Minecraft holds them, but a fishing rod the other way so its line hangs from the tip
 // (Minecraft's own rod hold). (The picture's handle-to-head diagonal points forward either way.)

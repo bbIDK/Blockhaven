@@ -237,11 +237,11 @@ export class Audio {
   }
 
   // A tiny bright tick at the start of a mining hit, so each hit reads crisply.
-  tick(at, volume, freq = 2400) {
+  tick(at, volume, freq = 2400, delay = 0, reach = 1) {
     if (!this.ready) return;
-    const sp = this.spatial(at, 1);
+    const sp = this.spatial(at, reach);
     if (!sp) return;
-    const ctx = this.ctx, t = ctx.currentTime;
+    const ctx = this.ctx, t = ctx.currentTime + delay;
     const src = ctx.createBufferSource();
     src.buffer = this.noise;
     const f = ctx.createBiquadFilter();
@@ -705,6 +705,67 @@ export class Audio {
   bow(at, light = false) {
     this.hiss(at, { f: 1500, q: 1.5, time: 0.12, volume: light ? 0.2 : 0.35, sweep: 600 });
     if (!light) this.tone(at, { type: 'triangle', f0: 180, f1: 90, time: 0.15, volume: 0.2 });
+  }
+  // Fireworks: a rocket going up (a rising hiss), bursting (a sharp bang heard a long way off; a
+  // deeper boom for a large ball; a pop with no stars) and a twinkle's crackling after.
+  firework(kind, at) {
+    if (kind === 'launch') {
+      this.play('tnt.fuse', { volume: 0.5, pitch: 1.9, vary: 0.1, at, offset: 0, length: 0.45 });
+      this.hiss(at, { f: 900, q: 1.2, time: 0.6, volume: 0.3, sweep: 3200 });
+    } else if (kind === 'blast' || kind === 'large') {
+      const large = kind === 'large';
+      this.play('tnt.explode', { volume: large ? 4 : 3, pitch: large ? 1.25 : 1.75, vary: 0.12, at });
+      this.play('fire.fizz', { volume: 2, pitch: 0.7, vary: 0.2, at });
+    } else if (kind === 'twinkle') {
+      for (let i = 0; i < 14; i++) this.tick(at, 0.9, 1800 + Math.random() * 2600, i * 0.045 + Math.random() * 0.05, 3);
+    } else this.play('item.pop', { volume: 1.5, pitch: 0.8, vary: 0.2, at });
+  }
+  // A fire charge set off: a puff and a whoosh of flame.
+  fireball(at) {
+    this.play('fire.ignite', { volume: 1, pitch: 0.8, at });
+    this.hiss(at, { f: 500, q: 0.8, time: 0.3, volume: 0.35, sweep: 1400, type: 'lowpass' });
+  }
+  // A spyglass drawn out to the eye (and pushed shut again): a soft brassy slide.
+  spyglass(on) {
+    this.hiss(null, { f: on ? 1400 : 2200, q: 2.5, time: 0.16, volume: 0.18, sweep: on ? 2600 : 1100 });
+    this.tone(null, { type: 'triangle', f0: on ? 1200 : 1600, f1: on ? 1700 : 1100, time: 0.12, volume: 0.05, delay: 0.05 });
+  }
+  // A trident: a heavy whoosh thrown, a metal thunk into a creature ('hit') or the ground
+  // ('land'), a rising ring as it flies home ('return'), and a rushing swirl of water for Riptide
+  // (longer the higher its level).
+  trident(kind, at, level = 1) {
+    if (kind === 'throw') {
+      this.hiss(at, { f: 900, q: 1, time: 0.25, volume: 0.45, sweep: 300 });
+      this.tone(at, { type: 'triangle', f0: 150, f1: 70, time: 0.22, volume: 0.18 });
+    } else if (kind === 'hit' || kind === 'land') {
+      this.thump(at, kind === 'hit' ? 260 : 180, 60, 0.6, 0.12);
+      this.tone(at, { type: 'square', f0: 1480, f1: 1320, time: 0.18, volume: 0.05, filter: { type: 'lowpass', f: 2400 } });
+      this.tick(at, 0.5, 3200);
+    } else if (kind === 'return') {
+      this.tone(at, { type: 'sine', f0: 660, f1: 1320, time: 0.6, volume: 0.12, vibrato: 12, vibratoRate: 9 });
+      this.tone(at, { type: 'triangle', f0: 990, f1: 1760, time: 0.5, volume: 0.06, delay: 0.08 });
+    } else {
+      const t = 0.35 + 0.15 * level;
+      this.hiss(at, { f: 700, q: 0.8, time: t, volume: 0.55, sweep: 2600 });
+      this.hiss(at, { f: 2200, q: 2, time: t * 0.8, volume: 0.25, sweep: 600, delay: 0.05 });
+      this.tone(at, { type: 'sine', f0: 220, f1: 520, time: t, volume: 0.12 });
+    }
+  }
+  // A crossbow: a ratchet clicking as it winds ('start', 'middle'), the latch catching once it's
+  // loaded, and a sharp thwack when it's let go.
+  crossbow(stage, at) {
+    if (stage === 'start' || stage === 'middle') {
+      for (let i = 0; i < 3; i++) this.tick(at, 0.35, stage === 'start' ? 1400 + i * 120 : 1700 + i * 140, i * 0.07);
+      this.thump(at, stage === 'start' ? 260 : 320, 180, 0.12, 0.05);
+    } else if (stage === 'loaded') {
+      this.tick(at, 0.6, 2200);
+      this.thump(at, 520, 240, 0.35, 0.06);
+      this.tick(at, 0.4, 1600, 0.06);
+    } else {
+      this.hiss(at, { f: 1800, q: 1.2, time: 0.1, volume: 0.4, sweep: 700 });
+      this.thump(at, 300, 70, 0.55, 0.1);
+      this.tone(at, { type: 'triangle', f0: 240, f1: 110, time: 0.12, volume: 0.22 });
+    }
   }
   arrowHit(flesh, at) {
     if (flesh) this.thump(at, 220, 90, 0.4, 0.08);

@@ -141,6 +141,8 @@ export const SKIN_SOURCES = {
   squid: whole(E('squid')),
   // (Mineclonia's glow squid is Minecraft's squid layout too.)
   glow_squid: whole('mcl:mods/ENTITIES/mobs_mc/textures/extra_mobs_glow_squid.png'),
+  // (Update 25's thrown trident: Minecraft's model, so the pack's picture as it is.)
+  trident: whole(E('trident')),
   guardian: whole(E('guardian')),
   guardian_elder: whole(E('guardian_elder')),
   cod: whole(E('fish/cod')),

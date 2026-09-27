@@ -14,13 +14,15 @@ import { mobFlags, mobExtra, cleanTagName } from './entities.js';
 import { isHanging } from './hangings.js';
 import { encodeRLE16, decodeRLE16 } from './storage.js';
 import { B, BLOCKS, REPLACEABLE, CHEST, FURNACE_IDS, SIGN, RAIL, DISPENSER, LOOT_KIND, dispenserId } from './blocks.js';
-import { itemDef, maxStack } from './items.js';
+import { itemDef, maxStack, I } from './items.js';
+import { MAX_SCALE } from './maps.js';
+import { cleanRocket } from './fireworks.js';
 import { extras, cleanExtras } from './inventory.js';
 import { shiny } from './enchanting.js';
 import { chunkKey, HEIGHT, CHUNK_VOLUME, DIFFICULTIES, LATEST_GEN } from './config.js';
 import { S_READY, rayBox } from './world.js';
 import { clamp, hashString } from './math.js';
-import { startRide, seatY, BOAT_WOODS } from './riding.js';
+import { startRide, seatY, seatXZ, BOAT_WOODS } from './riding.js';
 import { POTIONS, EFFECTS } from './potions.js';
 import { EGG_TYPES } from './eggs.js';
 
@@ -190,7 +192,7 @@ class Session {
       pres.p = [r2(p.x), r2(p.y), r2(p.z), r2(p.yaw), r2(p.pitch)];
       pres.f = (p.sneaking ? 1 : 0) | (p.sprinting ? 2 : 0) | (p.flying ? 4 : 0) | (p.onGround ? 8 : 0) |
         (g.state === 'dead' ? 16 : 0) | (g.state === 'sleeping' ? 32 : 0) | (g.creative ? 64 : 0) | (g.effects?.has('invisibility') ? 128 : 0) |
-        (g.guarding ? 256 : 0) | (p.swimming ? 512 : 0) | (g.eating ? 1024 : 0);
+        (g.guarding ? 256 : 0) | (p.swimming ? 512 : 0) | (g.eating ? 1024 : 0) | (g.using ? 2048 : 0) | (g.spin ? 4096 : 0);
       pres.i = g.handLook;
       if (shiny(g.inv.held)) pres.ih = 1;
       pres.a = g.inv.armor.map((s) => s?.id ?? 0);
@@ -220,7 +222,7 @@ class Session {
   seat(rp) {
     const E = this.game.entities, e = E.byNid.get(rp.mountId) ?? E.list.find((x) => x.nid === rp.mountId);
     if (!e || e.dead) return;
-    rp.x = e.x; rp.y = seatY(e); rp.z = e.z;
+    [rp.x, rp.z] = seatXZ(e); rp.y = seatY(e);
     rp.bodyYaw = e.yaw;
   }
 
@@ -319,6 +321,7 @@ export class HostSession extends Session {
     this.entTimer = 0;
     this.furnaceTimer = 0;
     this.viewers = new Map();      // container key -> addresses of guests looking into it
+    this.mapViewers = new Map();   // map number -> addresses of guests who have that map
     this.furnaceSent = new Map();
     this.pendingEdits = new Map(); // chunk key -> guest edits waiting for the chunk to load here
     this.sleepTime = 0;
@@ -417,10 +420,10 @@ export class HostSession extends Session {
     this.game.entities.hatch(m.m, m.x, m.y, m.z, m.b && typeof m.b === 'object' ? cleanExtras({ mob: m.b })?.mob ?? {} : null);
   }
 
-  // A guest's boat, set down where they pointed.
+  // A guest's boat (`c`: with a chest), set down where they pointed.
   placeBoatFor(g, m) {
     if (![m.x, m.y, m.z, m.a].every(num) || !BOAT_WOODS.includes(m.w) || g.x === null || Math.hypot(m.x - g.x, m.y - g.y, m.z - g.z) > 8) return;
-    this.game.entities.spawnBoat(m.x, m.y, m.z, m.w, m.a);
+    this.game.entities.spawnBoat(m.x, m.y, m.z, m.w, m.a, m.c === 1);
   }
 
   remove(g, why) {
@@ -428,6 +431,7 @@ export class HostSession extends Session {
     if (g.ref) g.ref.dead = true;
     this.players.delete(g.addr);
     for (const set of this.viewers.values()) set.delete(g.addr);
+    for (const set of this.mapViewers.values()) set.delete(g.addr);
     for (const e of this.game.entities.list) if (e.rider === g.addr) this.unride(e);
     this.link.forget(g.addr);
     if (why) this.say(`${g.name} ${why}`, 'y');
@@ -444,6 +448,32 @@ export class HostSession extends Session {
       case 'drop': this.drop(msg); break;
       case 'take': this.take(g, msg); break;
       case 'hit': this.hit(g, msg); break;
+      case 'fwk':
+        // A guest's firework rocket, going up where they stand (or shot from their crossbow).
+        if ([msg.x, msg.y, msg.z].every(num) && g.x !== null && Math.hypot(msg.x - g.x, msg.y - g.y, msg.z - g.z) < 8) {
+          const dir = Array.isArray(msg.d) && msg.d.length === 3 && msg.d.every(num) ? msg.d.map((v) => clamp(v, -1, 1)) : null;
+          const owner = this.others().find((o) => o.addr === g.addr) ?? null;
+          this.game.entities.spawnFirework(msg.x, msg.y, msg.z, msg.fw, { dir, owner });
+        }
+        break;
+      // Maps: a guest wants one it hasn't got, makes a new one, or has explored some of one. What
+      // changes on a map goes to those who have it (see mapChanged).
+      case 'mapq':
+        if (int(msg.i) && this.game.maps.get(msg.i)) { this.hasMap(msg.i, g.addr); this.send(g.addr, { t: 'map', m: this.game.maps.saved(this.game.maps.get(msg.i)) }); }
+        break;
+      case 'mapn':
+        if (num(msg.x) && num(msg.z) && g.x !== null && Math.hypot(msg.x - g.x, msg.z - g.z) < 16) {
+          const maps = this.game.maps, id = maps.create(msg.x, msg.z, int(msg.s) ? clamp(msg.s, 0, MAX_SCALE) : 0);
+          this.hasMap(id, g.addr);
+          this.send(g.addr, { t: 'map', m: maps.saved(maps.get(id)), n: 1 });
+        }
+        break;
+      case 'mapd':
+        if (int(msg.i) && this.game.maps.patch(msg.i, msg.r, msg.d)) {
+          this.hasMap(msg.i, g.addr);
+          for (const addr of this.mapViewers.get(msg.i)) if (addr !== g.addr) this.send(addr, { t: 'mapd', i: msg.i, r: msg.r, d: msg.d });
+        }
+        break;
       case 'ride': if (int(msg.e)) this.rideRequest(g, msg); break;
       case 'boat': this.placeBoatFor(g, msg); break;
       case 'egg': this.hatchFor(g, msg); break;
@@ -639,9 +669,15 @@ export class HostSession extends Session {
     const v = [m.vx, m.vy, m.vz], at = [m.x, m.y, m.z];
     if (![...v, ...at].every(num) || g.x === null || Math.hypot(m.x - g.x, m.y - g.y - 1.5, m.z - g.z) > 3) return;
     const owner = this.others().find((o) => o.addr === g.addr) ?? { x: g.x, y: g.y, z: g.z, addr: g.addr };
+    // (A thrown trident: the one they threw, which comes back to them.)
+    if (m.tr && typeof m.tr === 'object') {
+      const st = cleanStack({ id: m.tr.id, count: 1, dmg: m.tr.d, ...cleanExtras(m.tr.ex) });
+      if (st?.id === I.trident) this.game.entities.spawnTrident(m.x, m.y, m.z, clamp(m.vx, -80, 80), clamp(m.vy, -80, 80), clamp(m.vz, -80, 80), owner, st, !!m.p);
+      return;
+    }
     this.game.entities.spawnArrow(m.x, m.y, m.z, clamp(m.vx, -80, 80), clamp(m.vy, -80, 80), clamp(m.vz, -80, 80), owner,
       clamp(num(m.d) ? m.d : 2, 0, 30), !!m.p, { punch: int(m.pu) ? clamp(m.pu, 0, 2) : 0, flame: !!m.fl, potion: POTIONS[m.po] ? m.po : null,
-      snowball: !!m.sb });
+      snowball: !!m.sb, pierce: int(m.pc) ? clamp(m.pc, 0, 4) : 0 });
   }
 
   // One player hits another.
@@ -668,17 +704,20 @@ export class HostSession extends Session {
     this.game.command(line, (text, color) => this.send(g.addr, { t: 'msg', s: text, c: color ? 'r' : null }));
   }
 
-  // A guest looks into a chest or furnace: send what's inside, and keep them posted.
+  // A guest looks into a chest or furnace (or a boat's chest, near them): send what's inside, and
+  // keep them posted.
   open(g, m) {
-    const at = parseKey(m.k), w = this.game.world;
-    if (!at || !w) return;
-    const id = w.getBlock(...at);
-    if (m.kind === 'chest' && (CHEST[id] !== undefined || id === B.barrel || DISPENSER[id] !== undefined)) {
+    const w = this.game.world, at = parseKey(m.k), id = at && w ? w.getBlock(...at) : null;
+    const boat = m.kind === 'boat' ? this.game.entities.list.find((e) => e.kind === 'boat' && e.chest && !e.dead && `boat:${e.cid}` === m.k) : null;
+    if (boat && g.x !== null && Math.hypot(boat.x - g.x, boat.y - g.y, boat.z - g.z) <= 8) {
+      if (!this.game.containers.has(m.k)) this.game.containers.set(m.k, new Array(27).fill(null));
+      this.send(g.addr, { t: 'inv', k: m.k, s: this.game.containers.get(m.k) });
+    } else if (id !== null && m.kind === 'chest' && (CHEST[id] !== undefined || id === B.barrel || DISPENSER[id] !== undefined)) {
       // (A trap's dispenser is loaded with its arrows first: see Game.blockChanged.)
       if (DISPENSER[id] !== undefined && LOOT_KIND[id] !== undefined) w.setBlock(...at, dispenserId(DISPENSER[id]));
       if (!this.game.containers.has(m.k)) this.game.containers.set(m.k, new Array(DISPENSER[id] !== undefined ? 9 : 27).fill(null));
       this.send(g.addr, { t: 'inv', k: m.k, s: this.game.containers.get(m.k) });
-    } else if (m.kind === 'furnace' && FURNACE_IDS.has(id)) {
+    } else if (id !== null && m.kind === 'furnace' && FURNACE_IDS.has(id)) {
       this.send(g.addr, { t: 'fur', k: m.k, ...this.game.furnaceAt(...at).serialize() });
     } else {
       this.send(g.addr, { t: 'shut', k: m.k });
@@ -787,6 +826,22 @@ export class HostSession extends Session {
   hurt(addr, amount, why, knock, armored) {
     this.send(addr, { t: 'hurt', a: r2(amount), why, k: knock ? knock.map(r2) : null, arm: armored ? 1 : 0 });
   }
+  // What the host explored of a map, to everyone.
+  hasMap(id, addr) {
+    let set = this.mapViewers.get(id);
+    if (!set) this.mapViewers.set(id, set = new Set());
+    set.add(addr);
+  }
+  mapChanged(m, r) {
+    const to = this.mapViewers.get(m.id);
+    if (!to?.size) return;
+    const d = this.game.maps.cut(m, r);
+    for (const addr of to) this.send(addr, { t: 'mapd', i: m.id, r, d });
+  }
+  // (Map drawings wait while the link is backed up; see Maps.tick.)
+  get congested() { return this.link.backlog > 6; }
+  // A thrown trident comes back to a guest (or they pick it up).
+  giveStack(addr, st) { this.send(addr, { t: 'give', id: st.id, n: 1, d: st.dmg ?? 0, ex: extras(st) ?? undefined }); }
   // A status effect (a cave spider's bite) or a splash potion reaches a guest.
   giveEffect(addr, name, seconds, level) { this.send(addr, { t: 'eff', n: name, s: seconds, l: level }); }
   potionOn(addr, name, scale) { this.send(addr, { t: 'pot', n: name, k: r2(scale) }); }
@@ -841,11 +896,13 @@ function entityState(e) {
   if (e.kind === 'tnt') return Object.assign(s, { k: 't', f: e.fuse });
   if (e.kind === 'falling') return Object.assign(s, { k: 'f', b: e.block });
   if (e.kind === 'arrow') {
-    return Object.assign(s, { k: 'a', a: r2(e.ayaw ?? Math.atan2(-e.vx, -e.vz)), p: r2(e.apitch ?? 0), po: e.potion ?? undefined, sb: e.snowball ? 1 : undefined });
+    return Object.assign(s, { k: 'a', a: r2(e.ayaw ?? Math.atan2(-e.vx, -e.vz)), p: r2(e.apitch ?? 0), po: e.potion ?? undefined, sb: e.snowball ? 1 : undefined,
+      tr: e.trident ? 1 : undefined, gl: e.trident?.ench ? 1 : undefined });
   }
-  if (e.kind === 'boat') return Object.assign(s, { k: 'b', w: e.wood, a: r2(e.yaw), f: boatFlags(e) });
+  if (e.kind === 'boat') return Object.assign(s, { k: 'b', w: e.wood, a: r2(e.yaw), f: boatFlags(e), c: e.chest ? e.cid : undefined });
   if (e.kind === 'cart') return Object.assign(s, { k: 'c', a: r2(e.yaw), p: r2(e.pitch ?? 0), f: boatFlags(e) });
   if (e.kind === 'xp') return Object.assign(s, { k: 'x', v: e.value });
+  if (e.kind === 'firework') return Object.assign(s, { k: 'w' });
   if (isHanging(e)) {
     return Object.assign(s, { k: 'h', t: e.kind, b: [e.bx, e.by, e.bz], f: e.face, a: e.art ?? undefined, r: e.rot || undefined, g: e.glow ? 1 : undefined,
       it: e.item ? { id: e.item.id, d: e.item.dmg ?? 0, ex: extras(e.item) ?? undefined } : undefined });
@@ -1002,6 +1059,11 @@ export class GuestSession extends Session {
       case 'b': if (Array.isArray(msg.c)) this.applyBlocks(msg.c); break;
       case 'chunk': this.chunk(msg); break;
       case 'en': this.entities(msg); break;
+      case 'map':
+        // A whole map (one asked for, or a new one of ours: `n`).
+        if (game.world) { const m = game.maps.put(msg.m); if (m && msg.n === 1) game.gotMap(m.id, m.scale); }
+        break;
+      case 'mapd': if (int(msg.i)) game.maps.patch(msg.i, msg.r, msg.d); break;
       case 'give': {
         const s = cleanStack({ id: msg.id, count: msg.n, dmg: msg.d, ...cleanExtras(msg.ex) });
         if (!s || !game.world) break;
@@ -1154,6 +1216,10 @@ export class GuestSession extends Session {
     else if (msg.k === 'snow') game.entities.snowFx(at.x, at.y, at.z);
     else if (msg.k === 'note') game.playNote(Math.floor(at.x), Math.floor(at.y), Math.floor(at.z));
     else if (msg.k === 'hearts') game.particles.hearts(at.x, at.y, at.z, Math.max(1, Math.min(12, msg.n | 0)), 0.5);
+    else if (msg.k === 'firework' && msg.n && typeof msg.n === 'object') {
+      const v = Array.isArray(msg.n.v) && msg.n.v.length === 3 && msg.n.v.every(num) ? msg.n.v.map((c) => clamp(c, -80, 80)) : [0, 1, 0];
+      game.fireworkFx(at.x, at.y, at.z, cleanRocket(msg.n), v);
+    }
   }
 
   // Game hooks.
@@ -1174,7 +1240,7 @@ export class GuestSession extends Session {
   }
 
   primeTNT(x, y, z, fuse) { this.toHost({ t: 'tnt', x, y, z, f: fuse }); }
-  placeBoat(x, y, z, wood, yaw) { this.toHost({ t: 'boat', x: r2(x), y: r2(y), z: r2(z), w: wood, a: r2(yaw) }); }
+  placeBoat(x, y, z, wood, yaw, chest) { this.toHost({ t: 'boat', x: r2(x), y: r2(y), z: r2(z), w: wood, a: r2(yaw), c: chest ? 1 : undefined }); }
   hatch(type, x, y, z, from = null) { this.toHost({ t: 'egg', m: type, x: r2(x), y: r2(y), z: r2(z), b: from ?? undefined }); }
   placeCart(x, y, z, yaw) { this.toHost({ t: 'cart', x: r2(x), y: r2(y), z: r2(z), a: r2(yaw) }); }
   dropXp(x, y, z, n) { this.toHost({ t: 'orb', x: r2(x), y: r2(y), z: r2(z), n }); }
@@ -1186,7 +1252,8 @@ export class GuestSession extends Session {
   writeSign(x, y, z, lines, glow = false) { this.toHost({ t: 'sign', k: `${x},${y},${z}`, l: lines, g: glow ? 1 : 0 }); }
   shootArrow(x, y, z, vx, vy, vz, damage, pickup, fx) {
     this.toHost({ t: 'arw', x: r2(x), y: r2(y), z: r2(z), vx: r2(vx), vy: r2(vy), vz: r2(vz), d: damage, p: pickup ? 1 : 0,
-      pu: fx?.punch || undefined, fl: fx?.flame ? 1 : undefined, po: fx?.potion || undefined, sb: fx?.snowball ? 1 : undefined });
+      pu: fx?.punch || undefined, fl: fx?.flame ? 1 : undefined, po: fx?.potion || undefined, sb: fx?.snowball ? 1 : undefined, pc: fx?.pierce || undefined,
+      tr: fx?.trident ? { id: fx.trident.id, d: fx.trident.dmg ?? 0, ex: extras(fx.trident) ?? undefined } : undefined });
   }
 
   hitMob(e, amount, bonus, opts = null) {
@@ -1199,6 +1266,13 @@ export class GuestSession extends Session {
     const p = this.game.player;
     this.toHost({ t: 'pvp', p: rp.addr, a: r2(amount), b: bonus, x: r2(p.x), z: r2(p.z), ax: axe ? 1 : undefined });
   }
+
+  launchFirework(x, y, z, fw, dir) { this.toHost({ t: 'fwk', x: r2(x), y: r2(y), z: r2(z), fw, d: dir ? dir.map(r2) : undefined }); }
+  // Maps: one we haven't got; a new one (made from an empty map); what we explored of one.
+  askMap(id) { this.toHost({ t: 'mapq', i: id }); }
+  newMap(x, z, scale) { this.toHost({ t: 'mapn', x: r2(x), z: r2(z), s: scale }); }
+  mapChanged(m, r) { this.toHost({ t: 'mapd', i: m.id, r, d: this.game.maps.cut(m, r) }); }
+  get congested() { return this.link.backlog > 6; }
 
   // Walking over an item: ask the host for as much of it as fits.
   wantItem(e) {

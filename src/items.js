@@ -107,6 +107,9 @@ item(377, 'rabbit_stew', { label: 'Rabbit Stew', stack: 1, food: 10, sat: 0.6, l
 item(378, 'fishing_rod', { label: 'Fishing Rod', stack: 1, durability: 64 });
 item(379, 'saddle', { stack: 1 });
 ['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'cherry'].forEach((wood, i) => item(400 + i, `${wood}_boat`, { stack: 1, boat: wood }));
+// (Update 25's: each with a chest in it, 27 slots of room.)
+['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'cherry'].forEach((wood, i) => item(622 + i, `${wood}_chest_boat`,
+  { stack: 1, boat: wood, chest: true, label: `${wood === 'dark_oak' ? 'Dark Oak' : wood[0].toUpperCase() + wood.slice(1)} Boat with Chest` }));
 item(407, 'tropical_fish', { label: 'Tropical Fish', food: 1, sat: 0.1 });
 item(408, 'pufferfish', { food: 1, sat: 0.1, effects: [['poison', 60, 2], ['hunger', 15, 3]] });
 item(409, 'enchanted_book', { label: 'Enchanted Book', stack: 1 });
@@ -156,6 +159,28 @@ item(601, 'prismarine_crystals', { label: 'Prismarine Crystals' });
 // tadpole) to carry about and let go again (see behaviors.js).
 item(602, 'glow_ink_sac', { label: 'Glow Ink Sac' });
 item(603, 'glow_item_frame', { label: 'Glow Item Frame', hangs: 'frame', glow: true, tex: TEX.glow_item_frame_item });
+// The Update 25 things: squid ink (a quill's ink, or black dye), a book and quill to write in and
+// the written book it becomes once signed.
+item(610, 'ink_sac', { label: 'Ink Sac' });
+item(611, 'writable_book', { label: 'Book and Quill', stack: 1, book: 'write' });
+item(612, 'written_book', { label: 'Written Book', stack: 16, book: 'read' });
+// A crossbow: wound up (hold use), it keeps its arrow (or firework rocket) loaded until you shoot.
+// Held in first person it lies flat, pointing ahead (`fp`: its turn in the hand, as Minecraft's
+// model has it).
+item(613, 'crossbow', { stack: 1, durability: 465, fp: [-90, 0, -55] });
+// A trident: a weapon in the hand, and thrown (hold use, let go); see Game.throwTrident.
+item(614, 'trident', { stack: 1, durability: 250, damage: 9, attackSpeed: 1.1, weapon: true, trident: true });
+// A spyglass to look through (hold use).
+item(615, 'spyglass', { stack: 1 });
+// Maps: an empty one, used, becomes a map of the land round about (see maps.js).
+item(616, 'map', { label: 'Empty Map' });
+item(617, 'filled_map', { label: 'Map', stack: 64 });
+// Fireworks (see fireworks.js): rockets and the stars that burst out of them, and what goes into
+// a star's shape and sparkle (a fire charge also lights fires, like flint and steel).
+item(618, 'firework_rocket', { label: 'Firework Rocket' });
+item(619, 'firework_star', { label: 'Firework Star' });
+item(620, 'fire_charge', { label: 'Fire Charge' });
+item(621, 'glowstone_dust', { label: 'Glowstone Dust' });
 for (const [i, [type, label]] of [['cod', 'Bucket of Cod'], ['salmon', 'Bucket of Salmon'], ['tropical_fish', 'Bucket of Tropical Fish'],
   ['pufferfish', 'Bucket of Pufferfish'], ['axolotl', 'Bucket of Axolotl'], ['tadpole', 'Bucket of Tadpole']].entries()) {
   item(604 + i, `${type}_bucket`, { label, stack: 1, leftover: 'bucket', holds: type });
@@ -164,6 +189,11 @@ for (const [i, [type, label]] of [['cod', 'Bucket of Cod'], ['salmon', 'Bucket o
 EGGS.forEach(([type], i) => item(EGG_ID + i, `${type}_spawn_egg`, { label: `${eggLabel(type)} Spawn Egg`, spawns: type }));
 // (Only ever seen in a hand: the rod while its line is out.)
 item(1020, 'fishing_rod_cast', { label: 'Fishing Rod', stack: 1, hidden: true });
+// (And a crossbow as it winds up and once loaded, and a bow as it's drawn. Item ids stop at 1023:
+// the blocks go on from 1024.)
+['crossbow_pulling_0', 'crossbow_pulling_1', 'crossbow_pulling_2', 'crossbow_arrow', 'crossbow_firework'].forEach((name, i) =>
+  item(1000 + i, name, { label: 'Crossbow', stack: 1, hidden: true, fp: [-90, 0, -55] }));
+['bow_pulling_0', 'bow_pulling_1', 'bow_pulling_2'].forEach((name, i) => item(1005 + i, name, { label: 'Bow', stack: 1, hidden: true }));
 // Dyes are one texture in sixteen colours.
 DYES.forEach((d, i) => item(380 + i, `${d.name}_dye`, { tex: TEX.dye, tint: rgb(d.dye),
   label: `${d.name === 'light_gray' ? 'Light Gray' : d.name === 'light_blue' ? 'Light Blue' : d.name[0].toUpperCase() + d.name.slice(1)} Dye` }));

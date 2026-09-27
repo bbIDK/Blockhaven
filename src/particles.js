@@ -3,8 +3,11 @@
 import { STRIDE } from './mesher.js';
 import { TEXL, FFLAGS, TINT, TINT_RGB, SOLID, F_TINT, F_OVERLAY, WATERLIKE } from './blocks.js';
 import { TEX } from './textures.js';
+import { SPARK_COLOURS as SPARK } from './fireworks.js';
 
-const MAX = 600;
+const rgbOf = (c) => [(c >> 16) & 255, (c >> 8) & 255, c & 255];
+
+const MAX = 1400;
 const DEFAULT_TINT = { 1: [124, 189, 84], 2: [96, 168, 64] };
 
 export class Particles {
@@ -147,6 +150,57 @@ export class Particles {
   // newborn): they float up about half a block.
   hearts(x, y, z, n = 1, w = 0.4) { this.icons(TEX.heart, x, y, z, n, w, 0.5, 0.1); }
 
+  // ---------------------------------------------------------------- fireworks
+  // One of a firework's stars bursting at (x, y, z) (see fireworks.js): sparks in its colours, in
+  // its shape - a ball (bigger for a large ball), a five-pointed star, or a burst thrown the way the
+  // rocket was going (`dir`) - that slow, sink and, with a fade, turn to the fade colours; with a
+  // trail they leave sparks behind them, with a twinkle they flicker.
+  firework(x, y, z, star, dir = [0, 1, 0]) {
+    const cols = star.c.map((i) => rgbOf(SPARK[i] ?? 0xffffff)), fades = star.d?.length ? star.d.map((i) => rgbOf(SPARK[i] ?? 0xffffff)) : null;
+    const add = (vx, vy, vz) => {
+      const c = cols[Math.floor(Math.random() * cols.length)];
+      this.add({ x, y, z, vx, vy, vz, life: 1.6 + Math.random() * 0.6, age: 0, size: 0.1 + Math.random() * 0.03, layer: TEX.spark, flags: 1,
+        tint: c, base: c, u: 0, v: 0, whole: true, glow: true,
+        fw: { fade: fades ? fades[Math.floor(Math.random() * fades.length)] : null, trail: !!star.tr, twinkle: !!star.tw, t: Math.random() * 6 } });
+    };
+    if (star.t === 2) {
+      // A star: its outline in a plane turned about the upright, pushed out from the middle.
+      const turn = Math.random() * Math.PI * 2, c = Math.cos(turn), sn = Math.sin(turn);
+      for (let k = 0; k < 5; k++) {
+        const a0 = -Math.PI / 2 + (k * 2 * Math.PI) / 5, a1 = a0 + Math.PI / 5, a2 = a0 + (2 * Math.PI) / 5;
+        const pts = [[Math.cos(a0), Math.sin(a0)], [Math.cos(a1) * 0.45, Math.sin(a1) * 0.45], [Math.cos(a2), Math.sin(a2)]];
+        for (let e = 0; e < 2; e++) for (let i = 0; i < 8; i++) {
+          const f = i / 8, u = pts[e][0] + (pts[e + 1][0] - pts[e][0]) * f, v = pts[e][1] + (pts[e + 1][1] - pts[e][1]) * f, sp = 9;
+          add(u * c * sp, -v * sp, u * sn * sp);
+        }
+      }
+    } else if (star.t === 4) {
+      // A burst: thrown on the way the rocket went, fanning out.
+      const l = Math.hypot(...dir) || 1, g = () => (Math.random() + Math.random() + Math.random() - 1.5) * 0.9;
+      for (let i = 0; i < 70; i++) add((dir[0] / l) * 5 + g() * 6, (dir[1] / l) * 5 + g() * 6, (dir[2] / l) * 5 + g() * 6);
+    } else {
+      // A ball, or a large ball: all round, evenly (a little rough).
+      const big = star.t === 1, n = big ? 170 : 90, sp = big ? 11 : 6;
+      for (let i = 0; i < n; i++) {
+        const u = Math.random() * 2 - 1, a = Math.random() * Math.PI * 2, r = Math.sqrt(1 - u * u), k = sp * (0.85 + Math.random() * 0.3);
+        add(r * Math.cos(a) * k, u * k, r * Math.sin(a) * k);
+      }
+    }
+  }
+  // The pop of white-hot sparks at the heart of a burst.
+  flash(x, y, z) {
+    for (let i = 0; i < 14; i++) {
+      const u = Math.random() * 2 - 1, a = Math.random() * Math.PI * 2, r = Math.sqrt(1 - u * u), k = 1.5 + Math.random() * 2;
+      this.add({ x, y, z, vx: r * Math.cos(a) * k, vy: u * k, vz: r * Math.sin(a) * k, life: 0.2 + Math.random() * 0.15, age: 0, size: 0.12,
+        layer: TEX.spark, flags: 1, tint: [255, 252, 235], u: 0, v: 0, whole: true, glow: true, spark: true });
+    }
+  }
+  // A rocket's trail of sparks as it climbs.
+  trail(x, y, z) {
+    this.add({ x: x + (Math.random() - 0.5) * 0.1, y, z: z + (Math.random() - 0.5) * 0.1, vx: (Math.random() - 0.5) * 0.4, vy: -1.5, vz: (Math.random() - 0.5) * 0.4,
+      life: 0.5 + Math.random() * 0.3, age: 0, size: 0.05, layer: TEX.spark, flags: 1, tint: [255, 236, 190], u: 0, v: 0, whole: true, glow: true, spark: true });
+  }
+
   // A firefly: a tiny green-gold light that wanders slowly and blinks (lit by itself).
   firefly(x, y, z) {
     if (this.list.length >= MAX) this.list.shift();
@@ -198,6 +252,20 @@ export class Particles {
         continue;
       }
       if (p.drift) { p.vy *= Math.exp(-4 * dt); p.y += p.vy * dt; continue; }
+      if (p.fw) {
+        // A firework's spark: slowing (as Minecraft's, nine tenths a tick) and sinking slowly,
+        // turning to its fade colour in the second half of its life; a trail behind it.
+        const k = Math.pow(0.91, dt * 20);
+        p.vx *= k; p.vz *= k; p.vy = p.vy * k - 1.6 * dt;
+        p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+        const h = p.age / p.life;
+        if (p.fw.fade && h > 0.5) { const f = Math.min(1, (h - 0.5) * 3); p.tint = p.base.map((c, j) => Math.round(c + (p.fw.fade[j] - c) * f)); }
+        if (p.fw.trail && h < 0.5 && Math.random() < dt * 14 && list.length < MAX) {
+          list.push({ x: p.x, y: p.y, z: p.z, vx: 0, vy: -0.3, vz: 0, life: 0.5 + Math.random() * 0.3, age: 0, size: p.size * 0.7, layer: p.layer, flags: 1,
+            tint: p.tint, u: 0, v: 0, whole: true, glow: true, spark: true });
+        }
+        continue;
+      }
       if (p.firefly !== undefined) {
         const k = p.firefly + p.age;
         p.vx += (Math.sin(k * 1.3) * 0.7 - p.vx) * dt; p.vy += (Math.sin(k * 0.9) * 0.35 - p.vy) * dt; p.vz += (Math.cos(k * 1.1) * 0.7 - p.vz) * dt;
@@ -243,7 +311,9 @@ export class Particles {
       const px = p.x - this.base[0], py = p.y - this.base[1], pz = p.z - this.base[2];
       if (px < 1 || py < 1 || pz < 1 || px > 250 || py > 250 || pz > 250) continue;
       const l = world.getLight(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z));
-      const s = p.smoke ? p.size * (1 - 0.7 * (p.age / p.life)) : p.spark ? p.size * (1 - 0.6 * (p.age / p.life))
+      // (A firework's twinkling spark flickers in and out in the later part of its life.)
+      if (p.fw?.twinkle && p.age > p.life * 0.35 && Math.sin((p.age + p.fw.t) * 40) > 0.2) continue;
+      const s = p.fw ? p.size * Math.min(1, (1 - p.age / p.life) * 3) : p.smoke ? p.size * (1 - 0.7 * (p.age / p.life)) : p.spark ? p.size * (1 - 0.6 * (p.age / p.life))
         : p.firefly !== undefined ? p.size * Math.max(0, Math.sin((p.age + p.firefly) * 2.3)) * Math.min(1, p.age, p.life - p.age) : p.size;
       if (s <= 0.002) continue;
       const full = p.smoke || p.whole ? 16 : 3;

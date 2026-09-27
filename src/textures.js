@@ -26,6 +26,7 @@ import './tex/wild.js';
 import './tex/eggs.js';
 import './tex/structures.js';
 import './tex/critters.js';
+import './tex/gadgets.js';
 
 export const ARRAY_LAYERS = 256;
 

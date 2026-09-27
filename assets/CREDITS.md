@@ -425,12 +425,19 @@ doubled in size (the particles). Anything not listed is drawn by the game's own 
 | `textures/lead.png` | Pixel Perfection CE item/lead.png |  |
 | `textures/snowball.png` | Pixel Perfection CE item/snowball.png |  |
 | `textures/oak_boat.png` | Pixel Perfection CE item/oak_boat.png |  |
+| `textures/oak_chest_boat.png` | Mineclonia mods/ENTITIES/mcl_boats/textures/mcl_boats_oak_chest_boat.png |  |
 | `textures/spruce_boat.png` | Pixel Perfection CE item/spruce_boat.png |  |
+| `textures/spruce_chest_boat.png` | Mineclonia mods/ENTITIES/mcl_boats/textures/mcl_boats_spruce_chest_boat.png |  |
 | `textures/birch_boat.png` | Pixel Perfection CE item/birch_boat.png |  |
+| `textures/birch_chest_boat.png` | Mineclonia mods/ENTITIES/mcl_boats/textures/mcl_boats_birch_chest_boat.png |  |
 | `textures/jungle_boat.png` | Pixel Perfection CE item/jungle_boat.png |  |
+| `textures/jungle_chest_boat.png` | Mineclonia mods/ENTITIES/mcl_boats/textures/mcl_boats_jungle_chest_boat.png |  |
 | `textures/acacia_boat.png` | Pixel Perfection CE item/acacia_boat.png |  |
+| `textures/acacia_chest_boat.png` | Mineclonia mods/ENTITIES/mcl_boats/textures/mcl_boats_acacia_chest_boat.png |  |
 | `textures/dark_oak_boat.png` | Pixel Perfection CE item/dark_oak_boat.png |  |
+| `textures/dark_oak_chest_boat.png` | Mineclonia mods/ENTITIES/mcl_boats/textures/mcl_boats_dark_oak_chest_boat.png |  |
 | `textures/cherry_boat.png` | Mineclonia mods/ENTITIES/mcl_boats/textures/mcl_boats_cherry_blossom_boat.png |  |
+| `textures/cherry_chest_boat.png` | Mineclonia mods/ENTITIES/mcl_boats/textures/mcl_boats_cherry_blossom_chest_boat.png |  |
 | `textures/minecart_item.png` | Pixel Perfection CE item/minecart.png |  |
 | `textures/item_frame_item.png` | Pixel Perfection CE item/item_frame.png |  |
 | `textures/painting_item.png` | Pixel Perfection CE item/painting.png |  |
@@ -800,6 +807,27 @@ doubled in size (the particles). Anything not listed is drawn by the game's own 
 | `textures/pufferfish_bucket.png` | Pixel Perfection CE item/pufferfish_bucket.png |  |
 | `textures/axolotl_bucket.png` | Mineclonia mods/ITEMS/mcl_buckets/textures/axolotl_bucket.png |  |
 | `textures/tadpole_bucket.png` | Pixel Perfection CE item/water_bucket.png | changed |
+| `textures/ink_sac.png` | Pixel Perfection CE item/ink_sac.png |  |
+| `textures/writable_book.png` | Pixel Perfection CE item/writable_book.png |  |
+| `textures/written_book.png` | Pixel Perfection CE item/written_book.png |  |
+| `textures/bow_pulling_0.png` | Pixel Perfection CE item/bow_pulling_0.png |  |
+| `textures/bow_pulling_1.png` | Pixel Perfection CE item/bow_pulling_1.png |  |
+| `textures/bow_pulling_2.png` | Pixel Perfection CE item/bow_pulling_2.png |  |
+| `textures/crossbow.png` | Pixel Perfection CE item/crossbow_standby.png |  |
+| `textures/crossbow_pulling_0.png` | Pixel Perfection CE item/crossbow_pulling_0.png |  |
+| `textures/crossbow_pulling_1.png` | Pixel Perfection CE item/crossbow_pulling_1.png |  |
+| `textures/crossbow_pulling_2.png` | Pixel Perfection CE item/crossbow_pulling_2.png |  |
+| `textures/crossbow_arrow.png` | Pixel Perfection CE item/crossbow_arrow.png |  |
+| `textures/crossbow_firework.png` | Pixel Perfection CE item/crossbow_firework.png |  |
+| `textures/trident.png` | Pixel Perfection CE item/trident.png |  |
+| `textures/spyglass.png` | Mineclonia mods/ITEMS/mcl_spyglass/textures/mcl_spyglass.png |  |
+| `textures/map.png` | Pixel Perfection CE item/map.png |  |
+| `textures/filled_map.png` | Pixel Perfection CE item/filled_map.png |  |
+| `textures/firework_rocket.png` | Pixel Perfection CE item/firework_rocket.png |  |
+| `textures/firework_star.png` | Pixel Perfection CE item/firework_star.png |  |
+| `textures/firework_star_overlay.png` | Pixel Perfection CE item/firework_star_overlay.png |  |
+| `textures/fire_charge.png` | Pixel Perfection CE item/fire_charge.png |  |
+| `textures/glowstone_dust.png` | Pixel Perfection CE item/glowstone_dust.png |  |
 | `skins/zombie.png` | Pixel Perfection CE entity/zombie/zombie.png | changed |
 | `skins/husk.png` | Pixel Perfection CE entity/zombie/husk.png | changed |
 | `skins/drowned.png` | Pixel Perfection CE entity/zombie/drowned.png; Pixel Perfection CE entity/zombie/drowned_outer_layer.png | changed |
@@ -811,6 +839,7 @@ doubled in size (the particles). Anything not listed is drawn by the game's own 
 | `skins/cave_spider.png` | Pixel Perfection CE entity/spider/cave_spider.png | changed |
 | `skins/squid.png` | Pixel Perfection CE entity/squid.png | changed |
 | `skins/glow_squid.png` | Mineclonia mods/ENTITIES/mobs_mc/textures/extra_mobs_glow_squid.png | changed |
+| `skins/trident.png` | Pixel Perfection CE entity/trident.png | changed |
 | `skins/guardian.png` | Pixel Perfection CE entity/guardian.png | changed |
 | `skins/guardian_elder.png` | Pixel Perfection CE entity/guardian_elder.png | changed |
 | `skins/cod.png` | Pixel Perfection CE entity/fish/cod.png | changed |

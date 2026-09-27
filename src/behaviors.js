@@ -241,7 +241,7 @@ export function placeBoat(game, held) {
   else return false;
   // Room for it?
   if (w.collides(x - 0.6, y + 0.05, z - 0.6, x + 0.6, y + 0.55, z + 0.6)) return false;
-  game.entities.spawnBoat(x, y, z, itemDef(held.id)?.boat ?? 'oak', p.yaw);
+  game.entities.spawnBoat(x, y, z, itemDef(held.id)?.boat ?? 'oak', p.yaw, !!itemDef(held.id)?.chest);
   game.audio.place('wood', { x, y, z });
   return consumed(game);
 }

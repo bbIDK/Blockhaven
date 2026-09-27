@@ -90,7 +90,7 @@ export const ROLES = {
     ['buy', 'red_mushroom', 1, 1], ['buy', 'lily_pad', 2, 1], ['buy', 'small_dripleaf', 2, 1], ['buy', 'sand', 8, 1], ['buy', 'red_sand', 4, 1],
     ['buy', 'pointed_dripstone', 2, 1], ['buy', 'rooted_dirt', 2, 1], ['buy', 'moss_block', 2, 1], ['buy', 'glow_berries', 2, 1], ['buy', 'azalea', 1, 2]],
   rare: [['buy', 'tropical_fish_bucket', 1, 5], ['buy', 'pufferfish_bucket', 1, 5], ['buy', 'packed_ice', 1, 3], ['buy', 'blue_ice', 1, 6],
-    ['buy', 'gunpowder', 1, 1], ['buy', 'podzol', 3, 3], ['buy', 'axolotl_bucket', 1, 8], ['buy', 'glow_ink_sac', 2, 2]] },
+    ['buy', 'gunpowder', 1, 1], ['buy', 'podzol', 3, 3], ['buy', 'axolotl_bucket', 1, 8], ['buy', 'glow_ink_sac', 2, 2], ['buy', 'trident', 1, 28]] },
   traveller: { title: 'Traveller', held: null, trades: [['buy', 'compass', 1, 4], ['buy', 'clock', 1, 4], ['buy', 'cherry_sapling', 2, 2], ['buy', 'cactus', 4, 1],
     ['buy', 'sugar_cane', 6, 1], ['buy', 'melon_slice', 8, 1], ['buy', 'lead', 1, 2], ['buy', 'saddle', 1, 7], ['buy', 'name_tag', 1, 5],
     ['buy', 'potion_night_vision', 1, 5], ['sell', 'emerald', 1, 4], ['sell', 'diamond', 1, 9], ['sell', 'gold_ingot', 1, 3], ['sell', 'leather', 5, 1]] },

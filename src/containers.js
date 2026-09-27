@@ -4,7 +4,7 @@
 // slots and double-clicking work the same way on all of them.
 import { maxStack, itemDef, I } from './items.js';
 import { sameItem, extras } from './inventory.js';
-import { matchGrid, planRecipe, countItems, recipeFits, smeltsIn, fuelTime } from './crafting.js';
+import { matchGrid, specialCraft, planRecipe, countItems, recipeFits, smeltsIn, fuelTime } from './crafting.js';
 import { tableOffers, enchantable, anvil, grind } from './enchanting.js';
 
 class Slot {
@@ -257,15 +257,21 @@ export class CraftingMenu extends Menu {
 
   updateResult() {
     const r = matchGrid(this.grid, this.size);
+    // (Nothing with a fixed recipe: maybe one of the special ones - map copies, book copies,
+    // fireworks.)
+    const maps = this.game.maps;
+    this.special = r ? null : specialCraft(this.grid, this.size, { mapScale: (id) => { const m = maps?.get(id); if (!m) maps?.want(id); return m ? m.scale : null; } });
     this.recipe = r;
-    this.result[0] = r ? { id: r.out, count: r.count, dmg: 0 } : null;
+    this.result[0] = r ? { id: r.out, count: r.count, dmg: 0 } : this.special ? { ...this.special.out } : null;
   }
 
-  // One of everything in the grid is used up. (A bucket of milk leaves its bucket behind.)
+  // One of everything in the grid is used up. (A bucket of milk leaves its bucket behind; a
+  // written book being copied stays.)
   consumeGrid() {
+    const keep = this.special?.keep ?? [];
     for (let i = 0; i < this.grid.length; i++) {
       const s = this.grid[i];
-      if (!s) continue;
+      if (!s || keep.includes(i)) continue;
       const rest = I[itemDef(s.id)?.leftover] ?? 0;
       if (s.count > 1) {
         this.grid[i] = { ...s, count: s.count - 1 };

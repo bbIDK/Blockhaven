@@ -1,6 +1,6 @@
 // DOM side of the game: screens, HUD and options. Game logic lives in game.js; this module renders
 // state and reports user actions through on()/emit(). Sizes are in GUI pixels (--u, see applyScale).
-import { iconFor, setGlint } from './icons.js';
+import { iconFor, setGlint, iconOf } from './icons.js';
 import { shiny } from './enchanting.js';
 import { itemDef } from './items.js';
 import { EFFECTS, clock, roman } from './potions.js';
@@ -140,7 +140,7 @@ function fillSlot(el, stack) {
     setGlint(el, false);
     return;
   }
-  const src = iconFor(stack.id);
+  const src = iconOf(stack);
   if (img.getAttribute('src') !== src) img.src = src;
   img.style.visibility = '';
   setGlint(el, shiny(stack), src);

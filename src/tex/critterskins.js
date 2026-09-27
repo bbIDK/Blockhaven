@@ -173,3 +173,15 @@ skin('llama_trader_decor', (sk) => {
     if (side === 'right' || side === 'left') for (let y = 1; y < drop - 1; y += 2) for (let x = 2; x < r[2] - 2; x += 4) at(sk, r, x, y, GOLD);
   }
 });
+
+// A thrown trident: a teal shaft, a darker crosspiece and pale prongs (the pack's is used; this is
+// the fallback).
+skin('trident', (sk) => {
+  fur(sk, 'trident', ['pole'], ramp(0x2e7a6c, 4, 0.1, 6), { cell: 1, grain: 0.2 });
+  const cubes = cubesOf('trident', 'pole');
+  for (const [i, cb] of cubes.entries()) {
+    if (i === 0) continue;
+    const r = reg(cb);
+    for (const f of Object.values(r)) for (let y = 0; y < f[3]; y++) for (let x = 0; x < f[2]; x++) at(sk, f, x, y, i === 1 ? 0x3a5a58 : y === 0 ? 0xe8fff8 : 0x9ad8cc);
+  }
+});

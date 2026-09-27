@@ -36,13 +36,17 @@ import { rollLoot } from './loot.js';
 import { useItemOnBlock, useBucket, placeLilyPad, placeBoat, useWorkstation, plantGlowBerries } from './behaviors.js';
 import { nearestVillage, KINDS } from './villages.js';
 import { TalkScreen } from './tradeui.js';
-import { seatY, startRide, driveFrom, dismountSpot } from './riding.js';
+import { seatY, seatXZ, startRide, driveFrom, dismountSpot } from './riding.js';
 import { addXp, xpToNext, enchLevel, SMELT_XP, ORE_XP, shiny } from './enchanting.js';
 import { Fishing, bobberMesh, bobberModel, linePoints } from './fishing.js';
 import { tableBook } from './tablebook.js';
 import { POTIONS, EFFECTS } from './potions.js';
 import { nearestStructure, STRUCTURE_NAMES } from './structures.js';
 import { Signs, SignEditor } from './signs.js';
+import { BookScreen } from './books.js';
+import { cleanRocket } from './fireworks.js';
+import { AQUATIC } from './tridents.js';
+import { Maps, HeldMap, initMapColours, isMap } from './maps.js';
 import { drawLeads, isFence, LEAD_SNAP } from './leads.js';
 import { Jukeboxes, instrumentFor, noteColour, noteClear, nextNote } from './jukebox.js';
 import { isHanging } from './hangings.js';
@@ -115,6 +119,7 @@ function enchantDamage(ench, type) {
   if (ench.sharpness) n += 0.5 * ench.sharpness + 0.5;
   if (ench.smite && UNDEAD.has(type)) n += 2.5 * ench.smite;
   if (ench.bane_of_arthropods && ARTHROPODS.has(type)) n += 2.5 * ench.bane_of_arthropods;
+  if (ench.impaling && AQUATIC.has(type)) n += 2.5 * ench.impaling;
   return n;
 }
 
@@ -147,6 +152,7 @@ export class Game {
     this.ui = new UI();
     this.renderer = new Renderer(this.canvas);
     initIcons(this.renderer.pixels);
+    initMapColours(this.renderer.pixels);
     warmIcons();
     (globalThis.requestIdleCallback ?? setTimeout)(() => sprites());
     this.ui.drawLogo(this.renderer.pixels, TEX);
@@ -244,6 +250,9 @@ export class Game {
     this.talk = new TalkScreen(this);
     this.signs = new Signs(this);
     this.signEditor = new SignEditor(this);
+    this.bookScreen = new BookScreen(this);
+    this.maps = new Maps(this);
+    this.heldMap = new HeldMap(this);
     this.jukeboxes = new Jukeboxes(this);
     this.applySettings();
     this.bindUI();
@@ -369,7 +378,32 @@ export class Game {
   saveSettings() { storage.savePrefs(SETTINGS_KEY, this.settings); }
 
   // What others see in this player's hand (a fishing rod with its line out looks different).
-  get handLook() { const id = this.inv.heldId; return id === I.fishing_rod && this.fishing.out ? I.fishing_rod_cast : id; }
+  get handLook() { return this.lookOf(this.inv.heldId); }
+  // Holding up a trident to throw it (or a spyglass to look through), for how others see you.
+  get using() { return !!(this.drawing?.spear || this.drawing?.scope); }
+  // How an item in hand looks just now: a fishing rod with its line out, a bow as it's drawn, a
+  // crossbow winding up or loaded (as Minecraft shows them).
+  lookOf(id) {
+    if (id === I.fishing_rod) return this.fishing.out ? I.fishing_rod_cast : id;
+    if (id === I.bow && this.drawing) { const t = this.drawing.t * 20; return t >= 18 ? I.bow_pulling_2 : t >= 13 ? I.bow_pulling_1 : I.bow_pulling_0; }
+    if (id === I.crossbow) {
+      const st = this.inv.held;
+      if (st?.id === I.crossbow && st.load) return st.load === 'arrow' ? I.crossbow_arrow : I.crossbow_firework;
+      if (this.drawing?.crossbow) {
+        const k = this.drawing.t / this.chargeTime(st);
+        return k >= 1 ? I.crossbow_pulling_2 : k >= 0.58 ? I.crossbow_pulling_1 : I.crossbow_pulling_0;
+      }
+    }
+    return id;
+  }
+  // What the hand's doing with it, for how it's held: drawing a bow or winding a crossbow ({ kind,
+  // t: ticks so far, full: ticks to wind a crossbow }).
+  handUse() {
+    const d = this.drawing;
+    if (!d) return null;
+    if (d.scope) return null;
+    return d.crossbow ? { kind: 'crossbow', t: d.t * 20, full: this.chargeTime(this.inv.held) * 20 } : { kind: d.spear ? 'spear' : 'bow', t: d.t * 20 };
+  }
 
   // The skin this player wears: the one they picked, or one chosen by their name.
   get skinName() { return playerSkin(this.settings.name, this.settings.look); }
@@ -563,6 +597,8 @@ export class Game {
     this.containers = new Map((meta.containers ?? []).map((c) => [c.k, c.slots.map((x) => (x && itemDef(x.id) ? x : null))]));
     this.furnaces = new Map((meta.furnaces ?? []).map((f) => [f.k, new Furnace(f)]));
     this.signs.load(meta.signs);
+    // (A guest's maps come from the host, as they're needed.)
+    this.maps.reset(remote ? null : meta.maps);
     this.attackTicks = 100;
     this.fire = 0;
     this.loadStart = performance.now();
@@ -890,6 +926,7 @@ export class Game {
       entities: this.entities.serialize(),
       containers: [...this.containers].map(([k, slots]) => ({ k, slots: slots.map((x) => (x ? { ...x } : null)) })),
       signs: this.signs.serialize(),
+      maps: this.maps.serialize(),
       furnaces: [...this.furnaces].filter(([, f]) => !f.empty).map(([k, f]) => ({ k, ...f.serialize() })),
       weather: this.weather.serialize(),
     });
@@ -926,6 +963,8 @@ export class Game {
 
   // ---------------------------------------------------------------- container screens
   openInventory() {
+    // (Sitting in a boat with a chest, it's the chest that opens, as in the original.)
+    if (this.riding?.kind === 'boat' && this.riding.chest) { this.openBoatChest(this.riding); return; }
     this.openMenu(this.creative && this.gui.tab !== 'inventory' ? new CreativeMenu(this) : new InventoryMenu(this));
   }
 
@@ -1161,6 +1200,17 @@ export class Game {
     this.watched = owner ? { plan: owner, keys, at, count: this.itemsIn(keys) } : null;
   }
 
+  // The chest in a boat (sneak and use it, or the inventory key when sitting in it): 27 slots, kept
+  // under the boat's own key (see Entities.spawnBoat). It shuts if the boat goes (see updateGame).
+  openBoatChest(e) {
+    const key = `boat:${e.cid}`, at = { x: e.x, y: e.y + 0.5, z: e.z };
+    if (!this.containers.has(key)) this.containers.set(key, new Array(27).fill(null));
+    this.audio.chest(true, at);
+    const menu = new ChestMenu(this, [this.containers.get(key)], itemDef(I[`${e.wood}_chest_boat`])?.label ?? 'Boat with Chest');
+    if (this.net?.guest) { menu.waiting = new Set([key]); this.net.openContainer(key, 'boat'); }
+    this.openMenu(menu, { key, keys: [key], at, boat: e });
+  }
+
   // A dispenser's nine slots. (One of a trap's is loaded with its arrows first: see blockChanged.)
   openDispenserAt(x, y, z) {
     const w = this.world, key = this.containerKey(x, y, z), at = { x: x + 0.5, y: y + 0.5, z: z + 0.5 };
@@ -1318,15 +1368,17 @@ export class Game {
   }
 
   // Spill a broken chest's or furnace's contents (in multiplayer, the host does).
-  dropContainer(x, y, z) {
-    const key = this.containerKey(x, y, z);
+  dropContainer(x, y, z) { this.spillContainer(this.containerKey(x, y, z), x + 0.5, y + 0.5, z + 0.5); }
+
+  // Spill the contents kept under `key` at (x, y, z) (a broken boat's chest, too), and forget them.
+  spillContainer(key, x, y, z) {
     if (this.openBlock?.key === key || this.openBlock?.keys?.includes(key)) this.closeMenu();
     const slots = this.containers.get(key) ?? this.furnaces.get(key)?.slots;
     this.containers.delete(key);
     this.furnaces.delete(key);
     this.net?.containerRemoved(key);
     if (!slots || this.net?.guest) return;
-    for (const s of slots) if (s) this.entities.spawnItem(x + 0.5, y + 0.5, z + 0.5, s.id, s.count, s.dmg ?? 0, 0.6, null, extras(s));
+    for (const s of slots) if (s) this.entities.spawnItem(x, y, z, s.id, s.count, s.dmg ?? 0, 0.6, null, extras(s));
   }
 
   sleepIn(x, y, z) {
@@ -1568,6 +1620,8 @@ export class Game {
         else if (c === 'Escape' && !this.input.locked) this.pause();
       } else if (s === 'talk') {
         if (k.is(c, 'inventory') || c === 'Escape') this.closeTalk();
+      } else if (s === 'book') {
+        if (c === 'Escape') this.closeBook();
       } else if (s === 'container') {
         const slot = HOTBAR_KEYS.findIndex((id) => k.is(c, id));
         if (k.is(c, 'inventory') || c === 'Escape') this.closeMenu();
@@ -1615,7 +1669,8 @@ export class Game {
 
   handleLook() {
     const k = this.input, p = this.player;
-    const sens = (this.settings.sensitivity / 100) * 0.0023;
+    // (Looking through a spyglass, the view turns an eighth as fast.)
+    const sens = (this.settings.sensitivity / 100) * 0.0023 * (this.drawing?.scope && this.view === 0 ? 0.125 : 1);
     let dx = k.mdx, dy = k.mdy;
     if (this.touch.enabled) { dx += this.touch.look[0]; dy += this.touch.look[1]; this.touch.look[0] = this.touch.look[1] = 0; }
     p.yaw -= dx * sens;
@@ -1712,14 +1767,18 @@ export class Game {
       this.safely('creatures', () => this.entities.update(dt));
       this.safely('fishing', () => this.fishing.update(dt));
       this.safely('weather', () => this.weather.update(dt));
+      if (this.spin) this.safely('riptide', () => this.spinTick(dt));
     }
     if (this.riding) this.sitOnMount();
+    // (A boat's chest shuts when the boat is gone or has drifted off.)
+    const boat = this.openBlock?.boat;
+    if (boat && (boat.dead || !this.entities.list.includes(boat) || Math.hypot(boat.x - p.x, boat.y - p.y, boat.z - p.z) > 8)) this.closeMenu();
     this.safely('multiplayer', () => this.net?.update(dt));
     if (!this.world) return; // (the game ended while updating)
     if (!draw) return;
     this.target = this.state === 'play' || this.state === 'container' ? this.pickTarget() : null;
     if (active) this.handleActions(dt);
-    else { this.mining = null; this.eating = null; }
+    else { this.mining = null; this.eating = null; this.drawing = null; }
     this.updateHand(dt);
     this.hurtFlash = Math.max(0, this.hurtFlash - dt * 2.5);
     this.hurtTime = Math.max(0, this.hurtTime - dt);
@@ -1940,7 +1999,7 @@ export class Game {
       p.yaw = (((p.yaw + d) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
       this.boatYaw = null;
     }
-    p.x = e.x; p.z = e.z; p.y = seatY(e);
+    [p.x, p.z] = seatXZ(e); p.y = seatY(e);
     p.vx = e.vx; p.vz = e.vz; p.vy = 0;
     // (No walking sway of the view while riding, as in the original.)
     p.bob = 0;
@@ -1970,6 +2029,7 @@ export class Game {
       this.safely('pressure plates', () => { this.pressPlates(); this.tripwires(); });
     }
     this.safely('player', () => this.playerTick());
+    this.safely('maps', () => this.maps.tick());
     if (this.time % 20 === 0) this.safely('surroundings', () => this.ambientTick());
     this.saveTimer++;
     if (this.saveTimer >= (this.settings.autosave || 30) * 20) { this.saveTimer = 0; this.save(true).catch((err) => this.reportError(err, 'saving')); }
@@ -2221,15 +2281,67 @@ export class Game {
     const usable = target && !target.entity && !target.player && !this.player.sneaking && this.interactive(target.id);
     // (On touch screens a tap starts eating and it carries on by itself.)
     const eatInput = use || useClick || (this.eating?.touch && !useClick);
+    // (What was being drawn, wound up, raised or looked through is let go when the hand changes.)
+    if (this.drawing && this.drawing.id !== held?.id) { if (this.drawing.scope) this.audio.spyglass(false); this.drawing = null; }
     // Holding right click with a bow draws it; letting go shoots (a tap on touch screens starts
     // the draw and the next one shoots).
     if (held?.id === I.bow && !usable) {
       const ready = this.creative || this.inv.count(I.arrow) > 0;
       const holding = touchTap ? !this.drawing : use || (this.drawing?.touch && !useClick);
       if (holding && ready) {
-        this.drawing ??= { t: 0, touch: touchTap };
+        this.drawing ??= { t: 0, touch: touchTap, id: I.bow };
         this.drawing.t += dt;
       } else if (this.drawing) { this.shootBow(this.drawing.t); this.drawing = null; }
+      this.useCooldown -= dt;
+      return;
+    }
+    // Holding right click with a spyglass puts it to your eye (a tap on touch screens, and another
+    // takes it down).
+    if (held?.id === I.spyglass && !usable) {
+      const holding = touchTap ? !this.drawing : use || (this.drawing?.touch && !useClick);
+      if (holding) {
+        if (!this.drawing) { this.drawing = { t: 0, touch: touchTap, scope: true, id: I.spyglass }; this.audio.spyglass(true); }
+        this.drawing.t += dt;
+      } else if (this.drawing) { this.drawing = null; this.audio.spyglass(false); }
+      this.useCooldown -= dt;
+      return;
+    }
+    // Holding right click with a trident raises it; let go once it's up (half a second) to throw
+    // it. With Riptide it can't be thrown: in water or rain it carries you off with it instead.
+    if (held?.id === I.trident && !usable) {
+      const holding = touchTap ? !this.drawing : use || (this.drawing?.touch && !useClick);
+      const riptide = enchLevel(held, 'riptide');
+      if (holding && (!riptide || this.wetForRiptide())) {
+        this.drawing ??= { t: 0, touch: touchTap, spear: true, id: I.trident };
+        this.drawing.t += dt;
+      } else if (this.drawing) {
+        if (this.drawing.t >= 0.5) this.throwTrident();
+        this.drawing = null;
+      }
+      this.useCooldown -= dt;
+      return;
+    }
+    // A crossbow winds up while right click is held (a tap on touch screens starts it and the
+    // next one lets go); let go once it's wound, it's loaded; loaded, a click shoots it.
+    if (held?.id === I.crossbow && !usable) {
+      if (held.load) {
+        this.drawing = null;
+        if (useClick) this.shootCrossbow();
+      } else {
+        const holding = touchTap ? !this.drawing : use || (this.drawing?.touch && !useClick);
+        if (holding && (this.creative || this.crossbowAmmo() >= 0)) {
+          this.drawing ??= { t: 0, touch: touchTap, crossbow: true, id: I.crossbow };
+          const was = this.drawing.t / this.chargeTime(held);
+          this.drawing.t += dt;
+          const k = this.drawing.t / this.chargeTime(held);
+          // (Its sounds as it winds: the start, the middle, and loaded once you let go.)
+          if (was < 0.2 && k >= 0.2) this.audio.crossbow('start', this.earPos());
+          if (was < 0.5 && k >= 0.5) this.audio.crossbow('middle', this.earPos());
+        } else if (this.drawing) {
+          if (this.drawing.t >= this.chargeTime(held)) this.loadCrossbow();
+          this.drawing = null;
+        }
+      }
       this.useCooldown -= dt;
       return;
     }
@@ -2294,6 +2406,117 @@ export class Game {
       if (!infinite) this.inv.take(I.arrow, 1);
       if (this.inv.damageHeld(1)) this.audio.toolBreak();
       this.invChanged();
+    }
+  }
+
+  // How long a crossbow takes to wind up: a second and a quarter, a quarter less for each level of
+  // Quick Charge.
+  chargeTime(stack) { return Math.max(0.05, 1.25 - 0.25 * enchLevel(stack, 'quick_charge')); }
+  // Where a crossbow's next shot comes from: the first arrows or firework rockets in the inventory,
+  // the hotbar first (so to load a rocket, have one on the hotbar before any arrows). -1: none.
+  crossbowAmmo() {
+    for (let k = 0; k < 36; k++) {
+      const s = this.inv.slots[k];
+      if (s && (s.id === I.arrow || s.id === I.firework_rocket)) return k;
+    }
+    return -1;
+  }
+  loadCrossbow() {
+    const st = this.inv.held;
+    if (st?.id !== I.crossbow || st.load) return;
+    const k = this.crossbowAmmo();
+    if (k < 0 && !this.creative) return;
+    const ammo = k >= 0 ? this.inv.slots[k] : null;
+    st.load = ammo?.id === I.firework_rocket ? { fw: cleanRocket(ammo.fw) } : 'arrow';
+    if (!this.creative) { ammo.count--; if (!ammo.count) this.inv.slots[k] = null; }
+    this.audio.crossbow('loaded', this.earPos());
+    this.invChanged();
+  }
+  // Lets a loaded crossbow's arrow (or rocket) fly: fast and flat. Multishot sends three, spread
+  // a little (only the middle one's arrow can be picked up again); Piercing arrows go on through
+  // that many creatures.
+  shootCrossbow() {
+    const st = this.inv.held;
+    if (st?.id !== I.crossbow || !st.load) return;
+    const p = this.player, d = p.lookDir(), me = this.players()[0], load = st.load;
+    const spread = enchLevel(st, 'multishot') ? [0, -10, 10] : [0];
+    for (const [i, deg] of spread.entries()) {
+      const a = deg * DEG, c = Math.cos(a), s = Math.sin(a);
+      const dx = d[0] * c + d[2] * s, dz = -d[0] * s + d[2] * c, v = load === 'arrow' ? 63 : 32;
+      const x = p.x + dx * 0.4, y = p.eyeY - 0.1 + d[1] * 0.4, z = p.z + dz * 0.4;
+      if (load === 'arrow') {
+        this.entities.spawnArrow(x, y, z, dx * v + p.vx, d[1] * v, dz * v + p.vz, me, 6 + Math.random() * 1.4, i === 0 && !this.creative,
+          { pierce: enchLevel(st, 'piercing') });
+      } else this.entities.spawnFirework(x, y, z, load.fw, { dir: [dx, d[1], dz], owner: me });
+    }
+    delete st.load;
+    this.audio.crossbow('shoot', this.earPos());
+    if (!this.creative && this.inv.damageHeld(spread.length)) this.audio.toolBreak();
+    this.invChanged();
+  }
+  earPos() { const p = this.player; return { x: p.x, y: p.eyeY, z: p.z }; }
+
+  // A firework rocket bursting at (x, y, z) (on the host and every guest): each of its stars, a
+  // flash, and its bangs (a bigger one for a large ball) and crackles (for a twinkle).
+  fireworkFx(x, y, z, fw, dir = [0, 1, 0]) {
+    if (!fw.s.length) { this.particles.smoke(x, y, z, 6, 0.2); this.audio.firework('pop', { x, y, z }); return; }
+    for (const star of fw.s) this.particles.firework(x, y, z, star, dir);
+    this.particles.flash(x, y, z);
+    this.audio.firework(fw.s.some((st) => st.t === 1) ? 'large' : 'blast', { x, y, z });
+    if (fw.s.some((st) => st.tw)) setTimeout(() => this.audio.firework('twinkle', { x, y, z }), 700);
+  }
+
+  // Out in the rain, or in water: where Riptide works.
+  wetForRiptide() { const p = this.player; return p.inWater || this.rainingOn(p.x, p.eyeY + 0.2, p.z); }
+  // Throws the trident in hand (worn by one; in Creative a copy flies and yours stays). With
+  // Riptide: you go instead, spinning, hitting whatever you run into.
+  throwTrident() {
+    const st = this.inv.held;
+    if (st?.id !== I.trident) return;
+    const p = this.player, d = p.lookDir(), riptide = enchLevel(st, 'riptide');
+    if (riptide && !this.wetForRiptide()) return;
+    if (!this.creative && this.inv.damageHeld(1)) { this.audio.toolBreak(); this.invChanged(); return; }
+    this.swingArm();
+    if (riptide) {
+      // (Minecraft's push: three-quarters of three blocks a tick per level plus one.)
+      const f = 15 * (1 + riptide);
+      p.vx += d[0] * f; p.vy += d[1] * f; p.vz += d[2] * f;
+      if (p.onGround) p.y += 1.2;
+      this.spin = { t: 1, hit: new Set() };
+      p.fallDistance = 0;
+      this.audio.trident('riptide', this.earPos(), riptide);
+      this.invChanged();
+      return;
+    }
+    const stack = { ...st, count: 1, ench: st.ench ? { ...st.ench } : undefined };
+    if (!stack.ench) delete stack.ench;
+    const v = 50;
+    this.entities.spawnTrident(p.x + d[0] * 0.4, p.eyeY - 0.1 + d[1] * 0.4, p.z + d[2] * 0.4, d[0] * v + p.vx, d[1] * v + p.vy * 0.5, d[2] * v + p.vz,
+      this.players()[0], stack, !this.creative);
+    if (!this.creative) this.inv.slots[this.inv.selected] = null;
+    this.audio.trident('throw', this.earPos());
+    this.invChanged();
+  }
+  // Spinning off with Riptide: for a second, the first creature you run into is struck (and you
+  // bounce off it); a trail of spray behind you.
+  spinTick(dt) {
+    const sp = this.spin;
+    if (!sp) return;
+    sp.t -= dt;
+    const p = this.player;
+    if (Math.random() < dt * 30) this.particles.splash(p.x, p.y + 0.9, p.z, 0xc8e8ff, 3);
+    if (sp.t <= 0 || this.state !== 'play') { this.spin = null; return; }
+    const st = this.inv.held;
+    for (const e of this.entities.list) {
+      if (e.kind !== 'mob' || e.dead || e.dying || sp.hit.has(e) || Math.abs(e.x - p.x) > e.hw + 0.9 || Math.abs(e.z - p.z) > e.hw + 0.9 ||
+        e.y > p.y + 1.8 || e.y + e.h < p.y) continue;
+      sp.hit.add(e);
+      const amount = attackDamage(I.trident) - 1 + enchantDamage(st?.ench, e.type);
+      this.entities.attack(e, amount, 0, null);
+      p.vx *= -0.2; p.vy *= -0.2; p.vz *= -0.2;
+      this.spin = null;
+      this.audio.trident('hit', { x: e.x, y: e.y + e.h / 2, z: e.z });
+      return;
     }
   }
 
@@ -2526,7 +2749,11 @@ export class Game {
       else if (CHEST[t.id] !== undefined) this.openChestAt(t.x, t.y, t.z);
       else if (t.id === B.crafting_table) this.openCraftingTable(t.x, t.y, t.z);
       else if (t.id === B.enchanting_table) this.openEnchanting(t.x, t.y, t.z);
-      else if (SIGN[t.id]) { if (!(held?.id === I.glow_ink_sac && this.glowSign(t.x, t.y, t.z))) this.editSign(t.x, t.y, t.z); }
+      else if (SIGN[t.id]) {
+        // (Glow ink makes its writing glow; ink takes the glow off again.)
+        const inked = (held?.id === I.glow_ink_sac && this.glowSign(t.x, t.y, t.z, true)) || (held?.id === I.ink_sac && this.glowSign(t.x, t.y, t.z, false));
+        if (!inked) this.editSign(t.x, t.y, t.z);
+      }
       else if (CAKE[t.id] !== undefined) this.eatCake(t.x, t.y, t.z);
       // A note block goes up a semitone (and plays it; see blockChanged). A jukebox gives its disc back.
       else if (NOTE[t.id] !== undefined) w.setBlock(t.x, t.y, t.z, nextNote(t.id));
@@ -2553,6 +2780,8 @@ export class Game {
     }
     if (held?.id === B.lily_pad || held?.id === B.frogspawn) { if (!repeat) placeLilyPad(this, held.id); return; }
     if (def?.spawns) { if (!repeat) this.useSpawnEgg(def); return; }
+    if (def?.book) { if (!repeat) this.openBook(); return; }
+    if (held?.id === I.map) { if (!repeat) this.useEmptyMap(); return; }
     if (def?.boat && !t?.entity && !t?.player) { if (!repeat) placeBoat(this, held); return; }
     if (held?.id === I.fishing_rod) { if (!repeat) this.fishing.use(); return; }
     // Right-clicking with armor puts it on (swapping with what you were wearing).
@@ -2586,6 +2815,27 @@ export class Game {
         this.swingArm();
         if (!this.creative) { this.inv.consumeHeld(); this.invChanged(); }
       }
+      return;
+    }
+    // A firework rocket goes up from where you point (on the ground, a wall, anything).
+    if (held?.id === I.firework_rocket) {
+      if (repeat) return;
+      const d = FACE_DIRS[t.face] ?? [0, 1, 0], at = p.lookDir(), k = t.t ?? 0;
+      this.entities.spawnFirework(p.x + at[0] * k + d[0] * 0.15, p.eyeY + at[1] * k + d[1] * 0.15, p.z + at[2] * k + d[2] * 0.15, held.fw);
+      this.swingArm();
+      if (!this.creative) { this.inv.consumeHeld(); this.invChanged(); }
+      return;
+    }
+    // A fire charge lights a fire (or TNT) like flint and steel, and is used up.
+    if (held?.id === I.fire_charge) {
+      if (repeat) return;
+      if (t.id === B.tnt) { w.setBlock(t.x, t.y, t.z, 0); this.entities.primeTNT(t.x, t.y, t.z, 80); } else {
+        const d = FACE_DIRS[t.face] ?? [0, 1, 0];
+        if (!w.ignite(t.x + d[0], t.y + d[1], t.z + d[2])) return;
+      }
+      this.audio.fireball?.({ x: t.x + 0.5, y: t.y + 0.5, z: t.z + 0.5 });
+      this.swingArm();
+      if (!this.creative) { this.inv.consumeHeld(); this.invChanged(); }
       return;
     }
     if (held?.id === I.flint_and_steel) {
@@ -2776,14 +3026,87 @@ export class Game {
       if (!this.touch.enabled) this.input.lock();
     }
   }
+  // An empty map used becomes a map of the land round about (a guest asks the host for its
+  // number, then gotMap).
+  useEmptyMap() {
+    const held = this.inv.held, p = this.player;
+    if (held?.id !== I.map) return;
+    const scale = held.scale ?? 0;
+    this.swingArm();
+    if (this.net?.guest) { this.net.newMap(p.x, p.z, scale); return; }
+    this.gotMap(this.maps.create(p.x, p.z, scale), scale);
+  }
+  // Map `id` is made: an empty map (of that scale) becomes it, in hand if the empties were a
+  // single one. (In Creative the empty map stays.)
+  gotMap(id, scale = 0) {
+    const inv = this.inv, filled = { id: I.filled_map, count: 1, dmg: 0, map: id };
+    const k = inv.slots[inv.selected]?.id === I.map && (inv.slots[inv.selected].scale ?? 0) === scale ? inv.selected
+      : inv.slots.findIndex((st) => st?.id === I.map && (st.scale ?? 0) === scale);
+    if (k < 0 && !this.creative) return;
+    if (!this.creative) {
+      const st = inv.slots[k];
+      if (st.count === 1) { inv.slots[k] = filled; this.afterMap(); return; }
+      inv.slots[k] = { ...st, count: st.count - 1 };
+    }
+    if (inv.add(I.filled_map, 1, 0, { map: id })) this.entities.dropItem(this.player, filled);
+    this.afterMap();
+  }
+  afterMap() {
+    this.audio.place('cloth', null);
+    this.audio.pop();
+    this.invChanged();
+  }
+
+  // Reading (or writing in) the book in hand: the world carries on meanwhile.
+  openBook() {
+    const held = this.inv.held;
+    if (this.state !== 'play' || !held || !itemDef(held.id)?.book) return;
+    this.state = 'book';
+    this.releasePointer();
+    this.mining = null;
+    this.eating = null;
+    this.bookScreen.show(this.inv.selected, held);
+    this.audio.place('cloth', null);
+  }
+  // Done: a book and quill keeps what was written in it.
+  closeBook() {
+    const bs = this.bookScreen;
+    if (!bs.open) return;
+    const st = this.inv.slots[bs.slot];
+    if (!bs.written && st?.id === I.writable_book) {
+      const pages = bs.kept();
+      if (pages.length > 1 || pages[0].trim()) st.book = { p: pages }; else delete st.book;
+      this.invChanged();
+    }
+    this.leaveBook();
+  }
+  // Signed: the book and quill becomes a written book, with its title and author.
+  signBook(slot, book) {
+    const st = this.inv.slots[slot];
+    if (st?.id === I.writable_book) {
+      this.inv.slots[slot] = { id: I.written_book, count: 1, dmg: 0, book };
+      this.audio.place('cloth', null);
+      this.invChanged();
+    }
+    this.leaveBook();
+  }
+  leaveBook() {
+    this.bookScreen.hide();
+    if (this.state === 'book') {
+      this.state = 'play';
+      this.input.capture = true;
+      if (!this.touch.enabled) this.input.lock();
+    }
+  }
+
   writeSign(x, y, z, lines, glow = undefined) {
     const clean = this.signs.set(x, y, z, lines, glow);
     this.net?.writeSign?.(x, y, z, clean, this.signs.glowing(x, y, z));
   }
-  // Glow ink rubbed into a sign's writing: it glows. True if it didn't already.
-  glowSign(x, y, z) {
-    if (this.signs.glowing(x, y, z)) return false;
-    this.writeSign(x, y, z, this.signs.get(x, y, z), true);
+  // Glow ink rubbed into a sign's writing: it glows (or ink: it stops). True if it changed.
+  glowSign(x, y, z, on = true) {
+    if (this.signs.glowing(x, y, z) === on) return false;
+    this.writeSign(x, y, z, this.signs.get(x, y, z), on);
     this.audio.place('water', { x: x + 0.5, y: y + 0.5, z: z + 0.5 });
     this.particles.icons(TEX.happy, x + 0.5, y + 0.7, z + 0.5, 5, 0.3);
     this.swingArm();
@@ -3161,8 +3484,9 @@ export class Game {
     const cam = { x: p.x, y: p.eyeY, z: p.z, yaw: p.yaw, pitch: p.pitch, pre };
     if (third) this.pullBack(cam);
     this.lastCam = cam;
-    const draw = this.drawing ? Math.min(1, this.drawing.t) : 0;
-    const fovTarget = (p.sprinting ? 1.12 : 1) * (p.flying && p.sprinting ? 1.08 : 1) * (p.headInWater ? 0.9 : 1) * (1 - draw * draw * 0.15) *
+    const draw = this.drawing && !this.drawing.crossbow && !this.drawing.spear && !this.drawing.scope ? Math.min(1, this.drawing.t) : 0;
+    const scope = !!this.drawing?.scope && this.view === 0;
+    const fovTarget = (scope ? 0.1 : 1) * (p.sprinting ? 1.12 : 1) * (p.flying && p.sprinting ? 1.08 : 1) * (p.headInWater ? 0.9 : 1) * (1 - draw * draw * 0.15) *
       (1 + 0.05 * this.effectLevel('speed')) * (1 - 0.05 * this.effectLevel('slowness'));
     this.fovMul += (fovTarget - this.fovMul) * Math.min(1, dt * 8);
     const rd = s.renderDistance;
@@ -3204,8 +3528,9 @@ export class Game {
       lines: this.fishingLines(),
       beams: this.guardianBeams(),
       rod: this.rodLine(),
-      hand: loading || this.hideHud || this.state === 'dead' || third ? null : {
-        item: this.handItem === I.fishing_rod && this.fishing.out ? I.fishing_rod_cast : this.handItem, swing: this.swinging ? this.swing : 0,
+      hand: loading || this.hideHud || this.state === 'dead' || third || scope || isMap(this.handItem) ? null : {
+        item: this.lookOf(this.handItem), swing: this.swinging ? this.swing : 0,
+        use: this.handItem === this.inv.heldId ? this.handUse() : null, aim: this.handItem === I.crossbow && !!this.inv.held?.load,
         equip: 1 - this.handHeight,
         bob, walk, roll, lag: [(this.lagPitch - p.pitch) * 0.1, (this.lagYaw - p.yaw) * 0.1],
         // (How far through eating, to the fraction of a tick, so the hand moves smoothly.)
@@ -3245,7 +3570,7 @@ export class Game {
     Object.assign(a, {
       x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, name: this.settings.name, look: this.settings.look,
       flags: (p.sneaking ? 1 : 0) | (this.guarding ? 256 : 0) | (p.swimming ? 512 : 0) | (this.effects?.has('invisibility') ? 128 : 0) |
-        (this.eating ? 1024 : 0),
+        (this.eating ? 1024 : 0) | (this.using ? 2048 : 0) | (this.spin ? 4096 : 0),
       held: this.handLook, heldShiny: shiny(this.inv.held), armor: this.inv.armor.map((s) => s?.id ?? 0),
       mountId: this.riding ? 1 : null,
     });
@@ -3386,6 +3711,8 @@ export class Game {
     ui.renderXp(!this.creative, this.xp.level, this.xp.points / xpToNext(this.xp.level));
     const wind = this.attackStrength(this.tickAcc);
     ui.setAttackMeter(this.state === 'play' && wind < 1 ? wind : -1);
+    // (A map in hand is held up in front, drawn over the view.)
+    this.heldMap.update(isMap(this.inv.heldId) && isMap(this.handItem) ? this.inv.held : null);
     this.touch.update();
     const burning = this.fire > 0 && !this.creative && (this.state === 'play' || this.state === 'chat');
     if (burning && !this._fireSet) { this._fireSet = true; $('overlay-fire').style.setProperty('--fire', `url(${this.fireStrip()})`); }
@@ -3398,7 +3725,8 @@ export class Game {
       'overlay-fire': burning,
       water: p.headInWater,
       hurt: Math.round(this.hurtFlash * 0.9 * 20) / 20,
-      crosshair: this.state === 'play' || this.state === 'chat',
+      crosshair: (this.state === 'play' || this.state === 'chat') && !(this.drawing?.scope && this.view === 0),
+      'overlay-scope': !!this.drawing?.scope && this.view === 0 && this.state === 'play',
     });
     if (this.lastCam) this.renderTags();
     $('leave-bed').hidden = !(this.net && this.state === 'sleeping');

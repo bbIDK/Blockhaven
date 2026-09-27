@@ -561,6 +561,14 @@ export const RIGS = {
       finL: { pivot: [-4, 1.5, -5], rest: [0, 0.45, 0.4], cubes: [c([-12, 1, -7], [8, 1, 4], [0, 47], { mirror: true })] },
     },
   },
+  // A thrown trident (Minecraft's model): the shaft, the crosspiece and three prongs, standing up
+  // (entities.js lays it along its flight).
+  trident: {
+    bones: {
+      pole: { pivot: [0, 0, 0], cubes: [c([-0.5, -3, -0.5], [1, 25, 1], [0, 6]), c([-1.5, 22, -0.5], [3, 2, 1], [4, 0]), c([1.5, 23, -0.5], [1, 4, 1], [4, 3]),
+        c([-0.5, 24, -0.5], [1, 4, 1], [0, 0]), c([-2.5, 23, -0.5], [1, 4, 1], [4, 3], { mirror: true })] },
+    },
+  },
   whale_humpback: { bones: WHALES.humpback },
   whale_blue: { bones: WHALES.blue },
   // (The wildlife update's: see wildrigs.js.)

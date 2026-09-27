@@ -15,8 +15,9 @@ const wrap = (a) => a - Math.round(a / TAU) * TAU;
 export const BOAT_WOODS = ['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'cherry'];
 
 // A boat, in pixels: a flat bottom, four sides, a thwart to sit on and two oars resting in their
-// locks. Faces tile the planks at one texel per pixel (like the blocks).
-function boatParts(wood) {
+// locks. Faces tile the planks at one texel per pixel (like the blocks). A boat with a chest has
+// one in the stern, its lid and latch to the back.
+function boatParts(wood, chest = false) {
   const planks = TEX[`${wood}_planks`], oar = TEX.lever;
   const P = 1 / 16;
   const box = (x0, y0, z0, x1, y1, z1, layer) => {
@@ -24,19 +25,32 @@ function boatParts(wood) {
     const size = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
     return { from: [x0 * P, y0 * P, z0 * P], to: [x1 * P, y1 * P, z1 * P], faces: size.map(([u, v]) => ({ layer, uv: [0, 0, u, v] })) };
   };
-  return [
+  const parts = [
     box(-9, 0, -14, 9, 3, 14, planks),
     box(-9, 3, -14, -7, 9, 14, planks), box(7, 3, -14, 9, 9, 14, planks),
     box(-7, 3, -14, 7, 8, -12, planks), box(-7, 3, 12, 7, 8, 14, planks),
     box(-7, 5, 1, 7, 6, 4, planks),
     box(-11, 7, -3, -9, 8, 9, oar), box(9, 7, -3, 11, 8, 9, oar),
   ];
+  if (chest) {
+    const side = { layer: TEX.chest_side, uv: [1, 2, 15, 16] };
+    parts.push({ from: [-6 * P, 3 * P, 0], to: [6 * P, 15 * P, 11.5 * P],
+      faces: [side, side, { layer: TEX.chest_top, uv: [1, 1, 15, 15] }, side, { layer: TEX.chest_front, uv: [1, 2, 15, 16] }, side] });
+  }
+  return parts;
 }
 const boatMeshes = new Map();
-export function boatMesh(renderer, wood) {
-  let m = boatMeshes.get(wood);
-  if (!m) { m = renderer.createMesh(boxMesh(boatParts(BOAT_WOODS.includes(wood) ? wood : 'oak'))); boatMeshes.set(wood, m); }
+export function boatMesh(renderer, wood, chest = false) {
+  const key = `${wood}${chest ? '+chest' : ''}`;
+  let m = boatMeshes.get(key);
+  if (!m) { m = renderer.createMesh(boxMesh(boatParts(BOAT_WOODS.includes(wood) ? wood : 'oak', chest))); boatMeshes.set(key, m); }
   return m;
+}
+// Where a rider sits: over the middle of a mount, or a little forward in a boat with a chest (as
+// in the original).
+export function seatXZ(e) {
+  if (e.kind !== 'boat' || !e.chest) return [e.x, e.z];
+  return [e.x - Math.sin(e.yaw) * 0.15, e.z - Math.cos(e.yaw) * 0.15];
 }
 export function boatModel(m, rx, ry, rz, yaw) {
   identity(m);

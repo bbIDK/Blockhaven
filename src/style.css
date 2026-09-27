@@ -364,6 +364,17 @@ kbd {
 @media (prefers-reduced-motion: reduce) { #overlay-curse.on { animation-name: curse-still; } }
 @keyframes curse-still { 0%, 100% { opacity: 0; } 20% { opacity: 0.4; } }
 #overlay-sleep.on { opacity: 1; }
+/* A map held in both hands: over the bottom of the view, raised as you look down. */
+#held-map {
+  position: absolute; left: 50%; bottom: calc(var(--u) * 26); width: min(58vmin, calc(var(--u) * 150)); height: auto;
+  image-rendering: pixelated; pointer-events: none; transform-origin: 50% 100%;
+  filter: drop-shadow(0 calc(var(--u) * 2) calc(var(--u) * 3) rgba(0, 0, 0, 0.45));
+}
+/* Looking through a spyglass: a round view in a brass rim, dark all round it. */
+#overlay-scope {
+  position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(circle at 50% 50%, transparent 0 38vmin, rgba(0, 0, 0, 0.55) 40vmin, #6a4a22 40.2vmin, #3a2810 42vmin, #0a0806 42.4vmin);
+}
 
 /* Hotbar (182 x 22) at the bottom edge, with health and armor above its left end and hunger and
    air above its right end. */
@@ -572,6 +583,60 @@ kbd {
 }
 .sign-board input:focus { background: rgba(255, 255, 255, 0.12); }
 .sign-post { width: calc(var(--u) * 12); height: calc(var(--u) * 40); background: #6e5230; border: calc(var(--u) * 2) solid #4a3418; border-top: 0; margin-bottom: calc(var(--u) * 12); }
+/* A book: one page of an open book, its writing typed straight on, the arrows to turn it at the
+   bottom corners, and the buttons underneath. */
+.book-screen { background: rgba(16, 16, 16, 0.6); gap: calc(var(--u) * 8); }
+.book-page {
+  position: relative;
+  width: calc(var(--u) * 146);
+  height: calc(var(--u) * 180);
+  box-sizing: border-box;
+  padding: calc(var(--u) * 22) calc(var(--u) * 18) calc(var(--u) * 26);
+  background:
+    linear-gradient(90deg, rgba(120, 96, 60, 0.28) 0 calc(var(--u) * 5), transparent calc(var(--u) * 9)),
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.018) 0 calc(var(--u) * 2), transparent calc(var(--u) * 2) calc(var(--u) * 4)),
+    #f2e8cf;
+  border: calc(var(--u) * 2) solid #8a6a3e;
+  box-shadow: inset 0 0 0 var(--u) #fff8e6, calc(var(--u) * 3) calc(var(--u) * 3) 0 rgba(0, 0, 0, 0.35);
+  color: #1e160c;
+  font: 400 calc(var(--u) * 8)/1.25 var(--font-ui);
+}
+.book-count { position: absolute; top: calc(var(--u) * 8); right: calc(var(--u) * 14); color: #4a3a24; }
+.book-page textarea, .book-text {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  resize: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  caret-color: #1e160c;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow: hidden;
+}
+.book-sign { display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * 6); padding-top: calc(var(--u) * 8); text-align: center; }
+.book-sign input { width: 100%; background: rgba(0, 0, 0, 0.06); border: 0; outline: 0; text-align: center; font: inherit; color: #1e160c; height: calc(var(--u) * 12); }
+.book-by, .book-note { color: #6a5638; }
+.book-arrow {
+  position: absolute;
+  bottom: calc(var(--u) * 6);
+  width: calc(var(--u) * 18);
+  height: calc(var(--u) * 12);
+  border: 0;
+  background: transparent;
+  color: #8a5a28;
+  font: 400 calc(var(--u) * 10)/1 var(--font-ui);
+  cursor: pointer;
+}
+.book-arrow:hover { color: #c07a2a; }
+.book-prev { left: calc(var(--u) * 12); }
+.book-next { right: calc(var(--u) * 12); }
+.book-buttons { display: flex; gap: calc(var(--u) * 4); }
+.book-buttons .btn { width: calc(var(--u) * 98); }
 .mc-wrap { display: flex; align-items: flex-start; gap: calc(var(--u) * 4); margin: auto; }
 .mc-wrap.stacked { flex-direction: column-reverse; align-items: center; }
 .mc-panel { position: relative; flex: none; }

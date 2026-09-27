@@ -4,6 +4,7 @@
 import { I, maxStack } from './items.js';
 import { WOOD_NAMES, WALL_MATERIALS } from './blocks.js';
 import { DYES } from './colors.js';
+import { cleanStar, cleanRocket } from './fireworks.js';
 
 // '#name' in a recipe accepts any item of a group.
 export const GROUPS = {
@@ -174,6 +175,18 @@ shaped('iron_bars', 16, ['###', '###'], { '#': 'iron_ingot' }, 'building');
 // Gear.
 shaped('bow', 1, [' #S', '# S', ' #S'], { '#': 'stick', S: 'string' }, 'equipment');
 shaped('arrow', 4, ['F', '#', 'E'], { F: 'flint', '#': 'stick', E: 'feather' }, 'equipment');
+// (Update 25's crossbow: Minecraft's shape, with a plank where its tripwire hook goes.)
+shaped('crossbow', 1, ['#I#', '~P~', ' # '], { '#': 'stick', I: 'iron_ingot', '~': 'string', P: '#planks' }, 'equipment');
+shaped('spyglass', 1, ['A', 'C', 'C'], { A: 'amethyst_shard', C: 'copper_ingot' }, 'equipment');
+shaped('map', 1, ['PPP', 'PCP', 'PPP'], { P: 'paper', C: 'compass' }, 'misc');
+// Fireworks: a plain rocket (more gunpowder, or stars, are special recipes: see specialCraft), a
+// fire charge (with flint for the blaze powder there's none of), glowstone dust from glowstone.
+shapeless('firework_rocket', 3, ['paper', 'gunpowder'], 'misc');
+shapeless('fire_charge', 3, ['gunpowder', '#coals', 'flint'], 'misc');
+shapeless('glowstone_dust', 4, ['glowstone'], 'misc');
+// A boat with a chest in it.
+for (const w of ['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'cherry']) shapeless(`${w}_chest_boat`, 1, [`${w}_boat`, 'chest'], 'equipment');
+shaped('glowstone', 1, ['DD', 'DD'], { D: 'glowstone_dust' }, 'building');
 shaped('shears', 1, [' I', 'I '], { I: 'iron_ingot' }, 'equipment');
 shaped('bucket', 1, ['I I', ' I '], { I: 'iron_ingot' }, 'equipment');
 shaped('glass_bottle', 3, ['G G', ' G '], { G: 'glass' }, 'misc');
@@ -186,6 +199,9 @@ shaped('jukebox', 1, ['###', '#D#', '###'], { '#': '#planks', D: 'diamond' }, 'm
 shaped('item_frame', 1, ['SSS', 'SLS', 'SSS'], { S: 'stick', L: 'leather' }, 'misc');
 // (The wild update's: a glow item frame, from an item frame and a glow squid's ink.)
 shapeless('glow_item_frame', 1, ['item_frame', 'glow_ink_sac'], 'misc');
+// (Update 25's: squid ink as black dye, and a book and quill.)
+shapeless('black_dye', 1, ['ink_sac'], 'misc');
+shapeless('writable_book', 1, ['book', 'ink_sac', 'feather'], 'misc');
 shaped('painting', 1, ['SSS', 'SWS', 'SSS'], { S: 'stick', W: '#wool' }, 'misc');
 shaped('shield', 1, ['WIW', 'WWW', ' W '], { W: '#planks', I: 'iron_ingot' }, 'equipment');
 shaped('rail', 16, ['I I', 'ISI', 'I I'], { I: 'iron_ingot', S: 'stick' }, 'misc');
@@ -271,6 +287,59 @@ export function matchGrid(grid, size) {
     if (r.shaped) {
       if (r.w === w && r.h === h && (fitsAt(r, grid, size, x0, y0, false) || fitsAt(r, grid, size, x0, y0, true))) return r;
     } else if (r.ings.length === stacks.length && shapelessFits(r, stacks)) return r;
+  }
+  return null;
+}
+
+// Crafts with no fixed recipe (what comes out depends on what goes in), as Minecraft's "special"
+// recipes: a map copied onto empty maps; a map with eight paper round it, an empty map that draws
+// at the next scale out; a written book copied into books and quills (the original stays in the
+// grid). { out, keep: [slots left as they are] } or null. (`mapScale(id)`: a map's scale, if
+// it's known.)
+export function specialCraft(grid, size, { mapScale = () => null } = {}) {
+  const items = [];
+  grid.forEach((s, i) => { if (s) items.push({ s, i }); });
+  if (!items.length || items.some(({ s }) => s.dmg)) return null;
+  const of = (id) => items.filter(({ s }) => s.id === id), only = (...lists) => lists.reduce((a, l) => a + l.length, 0) === items.length;
+  const filled = of(I.filled_map), empty = of(I.map), paper = of(I.paper);
+  if (filled.length === 1 && empty.length && only(filled, empty)) return { out: { id: I.filled_map, count: empty.length + 1, dmg: 0, map: filled[0].s.map } };
+  if (size === 3 && filled.length === 1 && filled[0].i === 4 && paper.length === 8 && only(filled, paper)) {
+    const scale = mapScale(filled[0].s.map);
+    if (scale === null || scale >= 4) return null;
+    return { out: { id: I.map, count: 1, dmg: 0, scale: scale + 1 } };
+  }
+  // Fireworks: a star (gunpowder, dyes, and maybe a shape, a diamond for a trail, glowstone dust
+  // for a twinkle), a star's fade (a star and dyes), a rocket (paper, gunpowder for how high, and
+  // any stars).
+  const fw = fireworkCraft(items, of);
+  if (fw) return { out: fw };
+  const written = of(I.written_book), quills = of(I.writable_book);
+  if (written.length === 1 && quills.length && only(written, quills)) {
+    const b = written[0].s.book;
+    if (!b?.t || (b.g ?? 0) >= 2) return null;
+    return { out: { id: I.written_book, count: quills.length, dmg: 0, book: { p: [...b.p], t: b.t, a: b.a, g: (b.g ?? 0) + 1 } }, keep: [written[0].i] };
+  }
+  return null;
+}
+
+// (Each dye's number, and the shape each ingredient gives a star.)
+const DYE_OF = new Map(DYES.map((d, i) => [I[`${d.name}_dye`], i]));
+const SHAPE_OF = () => new Map([[I.fire_charge, 1], [I.gold_nugget, 2], [I.feather, 4]]);
+function fireworkCraft(items, of) {
+  const dyes = items.filter(({ s }) => DYE_OF.has(s.id)).map(({ s }) => DYE_OF.get(s.id));
+  const gun = of(I.gunpowder), stars = of(I.firework_star), paper = of(I.paper), shapes = items.filter(({ s }) => SHAPE_OF().has(s.id));
+  const diamond = of(I.diamond), dust = of(I.glowstone_dust);
+  if (gun.length === 1 && dyes.length && dyes.length <= 8 && shapes.length <= 1 && diamond.length <= 1 && dust.length <= 1 &&
+    1 + dyes.length + shapes.length + diamond.length + dust.length === items.length) {
+    const star = cleanStar({ t: shapes.length ? SHAPE_OF().get(shapes[0].s.id) : 0, c: dyes, tr: diamond.length, tw: dust.length });
+    return { id: I.firework_star, count: 1, dmg: 0, star };
+  }
+  if (stars.length === 1 && stars[0].s.star && dyes.length && 1 + dyes.length === items.length) {
+    return { id: I.firework_star, count: 1, dmg: 0, star: cleanStar({ ...stars[0].s.star, d: dyes }) };
+  }
+  if (paper.length === 1 && gun.length >= 1 && gun.length <= 3 && stars.every(({ s }) => s.star) && 1 + gun.length + stars.length === items.length &&
+    (gun.length > 1 || stars.length)) {
+    return { id: I.firework_rocket, count: 3, dmg: 0, fw: cleanRocket({ f: gun.length, s: stars.map(({ s }) => s.star) }) };
   }
   return null;
 }
@@ -372,7 +441,7 @@ export const SMELTABLE = [...SMELTING.keys()];
 const FUELS = [
   ['coal', 1600], ['charcoal', 1600], ['coal_block', 16000], ['lava_bucket', 20000], ['stick', 100], ['wooden_pickaxe', 200],
   ['wooden_axe', 200], ['wooden_shovel', 200], ['wooden_sword', 200], ['wooden_hoe', 200], ['crafting_table', 300], ['chest', 300],
-  ['bookshelf', 300], ['ladder', 300], ['bowl', 100], ['barrel', 300], ['bow', 300], ['fishing_rod', 300], ['fletching_table', 300],
+  ['bookshelf', 300], ['ladder', 300], ['bowl', 100], ['barrel', 300], ['bow', 300], ['crossbow', 300], ['fishing_rod', 300], ['fletching_table', 300],
   ['smithing_table', 300], ['composter', 300], ['loom', 300], ['lectern', 300], ['cartography_table', 300],
   ...WOOD_NAMES.flatMap((w) => [[`${w}_log`, 300], [`${w}_planks`, 300], [`${w}_slab`, 150], [`${w}_fence`, 300], [`${w}_fence_gate`, 300],
     [`${w}_door`, 200], [`${w}_sapling`, 100], ...(I[`${w}_stairs`] !== undefined ? [[`${w}_stairs`, 300]] : [])]),

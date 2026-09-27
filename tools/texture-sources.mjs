@@ -295,10 +295,17 @@ export const SOURCES = {
     }
     return out;
   },
+  // Update 25's: the crossbow at rest is the pack's `crossbow_standby` (its other looks, the ink sac,
+  // books, maps and the rest go by their own names); the spyglass is Mineclonia's.
+  crossbow: 'item/crossbow_standby',
+  spyglass: 'mcl:mods/ITEMS/mcl_spyglass/textures/mcl_spyglass.png',
   painting_item: 'item/painting',
   ...Object.fromEntries(['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'iron'].map((w) => [`${w}_door_item`, `item/${w}_door`])),
   cherry_door_item: mcl(`${MCL.cherry}_door_inv`),
   cherry_boat: 'mcl:mods/ENTITIES/mcl_boats/textures/mcl_boats_cherry_blossom_boat.png',
+  // (Update 25's boats with chests, all Mineclonia's.)
+  ...Object.fromEntries(['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'cherry'].map((w) =>
+    [`${w}_chest_boat`, `mcl:mods/ENTITIES/mcl_boats/textures/mcl_boats_${w === 'cherry' ? 'cherry_blossom' : w}_chest_boat.png`])),
   sign_item: 'item/oak_sign',
   // (Pixel Perfection's bed is blue; the game's beds are red, like its bed model's.)
   bed_item: (H) => H.remap(H.load('item/bed'), (r, g, b) => b > r + 20, [0x561a1e, 0x7c2c34, 0x8c2a2d, 0x962a2a, 0xa32e2a, 0xb8423a]),

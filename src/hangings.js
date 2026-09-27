@@ -123,6 +123,17 @@ function paintingMesh(r, art) {
   return meshes.get(key);
 }
 
+// A map's picture over a frame's whole face, just in front of it (one for each of the maps'
+// layers).
+function mapMesh(r, slot, layer) {
+  const key = `map${slot}`;
+  if (!meshes.has(key)) {
+    const face = { layer, uv: [0, 0, 64, 64] };
+    meshes.set(key, r.createMesh(boxMesh([{ from: [0, 0, THICK + 0.004], to: [1, 1, THICK + 0.004], faces: [null, null, null, null, face, null] }])));
+  }
+  return meshes.get(key);
+}
+
 // A model matrix that stands a model built facing +z (lower left at the origin) on the wall.
 function wallModel(m, e, cam) {
   const [r, u, o] = BASIS[e.face], c = corner(e.bx, e.by, e.bz, e.face), O = MODEL_OFFSET;
@@ -141,7 +152,19 @@ export function drawHanging(ents, e, cam, mat, out) {
   const m = wallModel(mat(), e, cam);
   if (e.kind === 'painting') { out.push({ parts: [{ mesh: paintingMesh(r, e.art), model: m }], light, tint: null }); return; }
   const parts = [{ mesh: frameMesh(r, e.glow), model: m }];
-  const mesh = e.item ? r.itemMesh(e.item.id) : null;
+  // A map covers the frame (turned a quarter at a time).
+  const map = e.item?.id === I.filled_map ? ents.game.maps?.framedLayer(e.item.map) : null;
+  if (map) {
+    const im = mat();
+    im.set(m);
+    translate(im, im, 0.5 + MODEL_OFFSET, 0.5 + MODEL_OFFSET, MODEL_OFFSET);
+    rotateZ(im, im, -((e.rot ?? 0) & 3) * Math.PI / 2);
+    translate(im, im, -0.5 - MODEL_OFFSET, -0.5 - MODEL_OFFSET, -MODEL_OFFSET);
+    parts.push({ mesh: mapMesh(r, map.slot, map.layer), model: im });
+    out.push({ parts, light, tint: null });
+    return;
+  }
+  const mesh = e.item && e.item.id !== I.filled_map ? r.itemMesh(e.item.id) : null;
   if (mesh) {
     // The item lies on the frame, turned an eighth at a time: flat pictures at half size, blocks
     // as little blocks.

@@ -1,21 +1,26 @@
 // Inventory: 9 hotbar slots (0-8) + 27 storage slots (9-35), four armor slots and the stack held
 // on the mouse cursor. Slots hold { id, count, dmg }, and sometimes extras: `ench` (enchantments,
-// see enchanting.js), `name` (given at an anvil), `work` (how often it's been to the anvil) and
+// see enchanting.js), `name` (given at an anvil), `work` (how often it's been to the anvil),
 // `mob` (the creature in a bucket: its look `v`, `b` if young, health `hp`, name `nm`, and for a
-// tadpole `g`, how long until it's a frog).
+// tadpole `g`, how long until it's a frog), `book` (a book's pages `p`, and once it's signed its
+// title `t`, author `a` and generation `g`: 0 the original, 1 a copy, 2 a copy of a copy), `load`
+// (what's in a loaded crossbow: 'arrow', or { fw } a firework rocket), `fw` and `star` (a firework
+// rocket's and a firework star's makings, see fireworks.js), `map` (a map's number) and `scale`
+// (an empty map made to draw zoomed out, 1 to 4).
 import { maxStack, itemDef } from './items.js';
 import { cleanEnch, enchLevel } from './enchanting.js';
+import { BOOK_PAGES, cleanPage, cleanTitle } from './books.js';
+import { cleanStar, cleanRocket } from './fireworks.js';
 
 const TAKE_ORDER = Array.from({ length: 36 }, (_, k) => (k + 9) % 36);
+const EXTRAS = ['ench', 'name', 'work', 'mob', 'book', 'load', 'fw', 'star', 'map', 'scale'];
+const bare = (s) => EXTRAS.every((k) => !s[k]);
 
 // A stack's extras (or null when it has none).
 export function extras(s) {
-  if (!s || (!s.ench && !s.name && !s.work && !s.mob)) return null;
+  if (!s || bare(s)) return null;
   const o = {};
-  if (s.ench) o.ench = s.ench;
-  if (s.name) o.name = s.name;
-  if (s.work) o.work = s.work;
-  if (s.mob) o.mob = s.mob;
+  for (const k of EXTRAS) if (s[k]) o[k] = s[k];
   return o;
 }
 // The same, checked over (from a save, or from another player).
@@ -34,10 +39,25 @@ export function cleanExtras(s) {
     if (typeof m.nm === 'string' && m.nm.trim()) o.mob.nm = m.nm.replace(/\p{C}/gu, '').slice(0, 50);
     if (Number.isInteger(m.g) && m.g > 0) o.mob.g = Math.min(m.g, 24000);
   }
+  const b = s.book;
+  if (b && typeof b === 'object' && Array.isArray(b.p)) {
+    o.book = { p: b.p.slice(0, BOOK_PAGES).map(cleanPage) };
+    if (typeof b.t === 'string' && cleanTitle(b.t)) {
+      o.book.t = cleanTitle(b.t);
+      o.book.a = typeof b.a === 'string' ? b.a.replace(/[^\x20-\x7e]/g, '').slice(0, 24) : '';
+      o.book.g = Number.isInteger(b.g) ? Math.max(0, Math.min(3, b.g)) : 0;
+    }
+  }
+  if (s.load === 'arrow') o.load = 'arrow';
+  else if (s.load && typeof s.load === 'object') o.load = { fw: cleanRocket(s.load.fw) };
+  if (s.fw && typeof s.fw === 'object') o.fw = cleanRocket(s.fw);
+  const star = cleanStar(s.star);
+  if (star) o.star = star;
+  if (Number.isInteger(s.map) && s.map > 0 && s.map < 1e6) o.map = s.map;
+  if (Number.isInteger(s.scale) && s.scale >= 1 && s.scale <= 4) o.scale = s.scale;
   return Object.keys(o).length ? o : null;
 }
-const sameExtras = (a, b) => (!a.ench && !a.name && !a.work && !a.mob && !b.ench && !b.name && !b.work && !b.mob) ||
-  JSON.stringify(extras(a)) === JSON.stringify(extras(b));
+const sameExtras = (a, b) => (bare(a) && bare(b)) || JSON.stringify(extras(a)) === JSON.stringify(extras(b));
 
 // Can two stacks merge? (Same item, same wear, same enchantments and name.)
 export const sameItem = (a, b) => !!a && !!b && a.id === b.id && (a.dmg ?? 0) === (b.dmg ?? 0) && sameExtras(a, b);

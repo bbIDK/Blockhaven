@@ -15,6 +15,17 @@ const INTERP_DELAY = 120; // ms behind the newest position, to smooth out uneven
 
 const num = (v) => typeof v === 'number' && Number.isFinite(v);
 const wrap = (a) => a - Math.round(a / TAU) * TAU;
+// What a player's doing with what they hold, for their pose: a bow or crossbow's look says it's
+// drawn, winding up or loaded; a trident or a spyglass comes with the "using" flag.
+function aimPose(rp) {
+  const name = itemDef(rp.held)?.name ?? '';
+  if (name.startsWith('bow_pulling')) return { kind: 'bow' };
+  if (name.startsWith('crossbow_pulling')) return { kind: 'charge', k: [0.3, 0.7, 1][Number(name.slice(-1))] ?? 1 };
+  if (name === 'crossbow_arrow' || name === 'crossbow_firework') return { kind: 'hold' };
+  if (rp.using && name === 'trident') return { kind: 'spear' };
+  if (rp.using && name === 'spyglass') return { kind: 'spyglass' };
+  return null;
+}
 
 // ---------------------------------------------------------------- state
 // Another player as this page knows them: their presence, and a smoothed position to draw.
@@ -52,6 +63,8 @@ export class RemotePlayer {
   get guarding() { return !!(this.flags & 256); }
   get swimming() { return !!(this.flags & 512); }
   get eating() { return !!(this.flags & 1024); }
+  get using() { return !!(this.flags & 2048); } // (a trident raised to throw, a spyglass up)
+  get spinning() { return !!(this.flags & 4096); } // (carried off by a Riptide trident)
 
   // Presence: { n: name, p: [x, y, z, yaw, pitch], f: flags, i: held item, a: armour, k: look,
   // s: swings, u: hurts }.
@@ -209,6 +222,15 @@ export class Avatars {
       const parts = [];
       const base = (mat) => {
         identity(mat);
+        if (rp.spinning && !sit) {
+          // Riptide: stretched out along the way they look, spinning round and round.
+          translate(mat, mat, rx, ry + 0.9, rz);
+          rotateY(mat, mat, rp.yaw);
+          rotateX(mat, mat, -Math.PI / 2 + clamp(rp.pitch, -1.5, 1.5));
+          rotateY(mat, mat, (performance.now() / 1000) * 18);
+          translate(mat, mat, 0, -0.9, 0);
+          return mat;
+        }
         if (swim) {
           // Swimming: laid out face down along the way they swim, turned about the hips (which
           // sit in the middle of the 0.6-high swimmer).
@@ -266,8 +288,7 @@ export class Avatars {
       }
       add(m.body, torso(this.mat()));
       add(m.head, joint(lower(base(this.mat()), 4.2), m.head.pivot, swim ? 0.85 : rp.pitch, wrap(rp.yaw - rp.bodyYaw)));
-      const leftA = swim ? swingA : walkA * 0.7 - armBack + (sit ? 0.63 : 0);
-      add(m.leftArm, joint(shoulders(this.mat()), m.leftArm.pivot, leftA, 0, swim ? -sweep : -0.05));
+      let leftA = swim ? swingA : walkA * 0.7 - armBack + (sit ? 0.63 : 0), leftY = 0;
       // The right arm swings forward and up to hit or use something, and holds the item.
       // (A shield held up: the arm across in front, the shield facing out.)
       // (Eating: the hand up at the mouth, bobbing as they chew.)
@@ -275,21 +296,43 @@ export class Avatars {
       let rightA = swim ? swingA : guard ? 0.95 : -walkA * 0.7 - armBack + (rp.held ? 0.3 : 0) + attack * 1.3 + (sit ? 0.63 : 0);
       let rightY = guard && !swim ? -0.5 : -attack * 0.4;
       if (eat) { rightA += (1.42 + Math.sin(rp.chew) * 0.07 - rightA) * eat; rightY += (0.55 - rightY) * eat; }
+      // Aiming, in Minecraft's poses: a bow drawn (both arms out where they look), a crossbow
+      // winding up (drawn back across the chest) or loaded (up at the eye), a trident raised over
+      // the shoulder to throw, a spyglass at the eye.
+      const pose = swim ? null : aimPose(rp), headY = wrap(rp.yaw - rp.bodyYaw), look = clamp(rp.pitch, -1.2, 1.2);
+      // (A positive turn brings the right arm in across the body, and the left arm out.)
+      if (pose?.kind === 'bow') { rightA = Math.PI / 2 + look; rightY = 0.1 + headY; leftA = Math.PI / 2 + look; leftY = -0.5 + headY; }
+      else if (pose?.kind === 'charge') { rightA = 0.97; rightY = 0.8; leftA = 0.97 + (Math.PI / 2 - 0.97) * pose.k; leftY = -0.4 - 0.45 * pose.k; }
+      else if (pose?.kind === 'hold') { rightA = Math.PI / 2 + look - 0.1; rightY = 0.3 + headY; leftA = 1.5 + look; leftY = -0.6 + headY; }
+      else if (pose?.kind === 'spear') { rightA = Math.PI + rightA * 0.5; rightY = 0; }
+      else if (pose?.kind === 'spyglass') { rightA = clamp(1.92 + look + (sneak ? 0.26 : 0), -3.3, 2.4); rightY = headY + 0.26; }
+      add(m.leftArm, joint(shoulders(this.mat()), m.leftArm.pivot, leftA, leftY, swim ? -sweep : -0.05));
       const arm = joint(shoulders(this.mat()), m.rightArm.pivot, rightA, rightY, swim ? sweep : 0.05);
       const held = rp.held ? this.renderer.itemMesh(rp.held) : null;
-      if (held) parts.push({ mesh: held, model: shield ? this.heldShield(arm, rightA) : this.heldItem(arm, held, rp.held), glint: rp.heldShiny ? 1 : 0 });
+      if (held) parts.push({ mesh: held, model: shield ? this.heldShield(arm, rightA) : this.heldItem(arm, held, rp.held, pose), glint: rp.heldShiny ? 1 : 0 });
       add(m.rightArm, arm);
       out.push({ parts, light: [l >> 4, l & 15], tint: null, hurt: rp.hurt > 0 });
     }
   }
 
   // The item in a right hand: a block as a little cube in the fist, anything else (tools, food)
-  // gripped at its handle and pointing forward.
-  heldItem(arm, mesh, id) {
-    const m = this.mat();
+  // gripped at its handle and pointing forward; a crossbow held flat by its stock, pointing ahead
+  // (along the arm when it's raised to aim); a bow upright (drawn, held out in front).
+  heldItem(arm, mesh, id, pose = null) {
+    const m = this.mat(), name = itemDef(id)?.name ?? '';
     m.set(arm);
     translate(m, m, 6 * PX, 12.5 * PX, -1 * PX);
-    if (mesh.kind === 'block') {
+    if (/^crossbow/.test(name)) {
+      if (!pose) rotateX(m, m, Math.PI / 2);
+      rotateZ(m, m, (3 * Math.PI) / 4);
+      scale(m, m, 0.7, 0.7, 0.7);
+      translate(m, m, -0.62 - MODEL_OFFSET, -0.38 - MODEL_OFFSET, -0.5 - MODEL_OFFSET);
+    } else if (/^bow/.test(name) && pose) {
+      rotateY(m, m, Math.PI / 2);
+      rotateZ(m, m, -Math.PI / 4);
+      scale(m, m, 0.7, 0.7, 0.7);
+      translate(m, m, -0.5 - MODEL_OFFSET, -0.5 - MODEL_OFFSET, -0.5 - MODEL_OFFSET);
+    } else if (mesh.kind === 'block') {
       translate(m, m, 0, -1.5 * PX, -1 * PX);
       rotateY(m, m, Math.PI / 4);
       scale(m, m, 0.25, 0.25, 0.25);
@@ -298,7 +341,11 @@ export class Avatars {
       // Item pictures have the handle at the bottom left and the tip at the top right: turned
       // side-on, with the handle in the fist and the tip pointing forward and up.
       translate(m, m, 0, 1.5 * PX, 0);
-      toolSide(m, itemDef(id)?.name ?? '');
+      // (Raised over the shoulder to throw, a trident points ahead; a spyglass at the eye points
+      // the way the arm does.)
+      if (pose?.kind === 'spear') rotateX(m, m, (3 * Math.PI) / 4);
+      else if (pose?.kind === 'spyglass') rotateX(m, m, (5 * Math.PI) / 4);
+      toolSide(m, name);
       scale(m, m, 0.62, 0.62, 0.62);
       translate(m, m, -0.12 - MODEL_OFFSET, -0.12 - MODEL_OFFSET, -0.5 - MODEL_OFFSET);
     }

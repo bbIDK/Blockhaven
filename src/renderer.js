@@ -10,6 +10,7 @@ import { STRIDE, meshBlockItem, SECTION_OFFSET, FACE_PAIR, ALL_OPEN } from './me
 import { boxMesh, spriteMesh, skinMesh, MODEL_OFFSET } from './models.js';
 import { generateSkins, SKINS, SKIN_SIZE, SKIN_LAYER, skinLayer } from './skins.js';
 import { SIGN_SLOTS } from './signs.js';
+import { MAP_SLOTS } from './maps.js';
 import { RIGS } from './rigs.js';
 import './tex/mobskins.js';
 import './tex/wildskins.js';
@@ -89,11 +90,11 @@ export class Renderer {
 
     // Creature skins (and after them, spare layers for the writing on signs: see signs.js).
     const skins = generateSkins(), layerBytes = SKIN_SIZE * SKIN_SIZE * 4;
-    this.skinPixels = new Uint8Array(layerBytes * (SKINS.length + SIGN_SLOTS));
+    this.skinPixels = new Uint8Array(layerBytes * (SKINS.length + SIGN_SLOTS + MAP_SLOTS));
     this.skinPixels.set(skins);
     this.skinTex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.skinTex);
-    gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA8, SKIN_SIZE, SKIN_SIZE, SKINS.length + SIGN_SLOTS, 0, gl.RGBA, gl.UNSIGNED_BYTE, this.skinPixels);
+    gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA8, SKIN_SIZE, SKIN_SIZE, SKINS.length + SIGN_SLOTS + MAP_SLOTS, 0, gl.RGBA, gl.UNSIGNED_BYTE, this.skinPixels);
     gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST_MIPMAP_LINEAR);
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
@@ -316,6 +317,9 @@ export class Renderer {
     gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
     return SKIN_LAYER + i;
   }
+
+  // A map's picture into its spare skin layer (`slot`; see maps.js), and the layer number.
+  mapLayer(slot, pixels) { return this.signLayer(SIGN_SLOTS + slot, pixels); }
 
   setCommon(f) {
     const gl = this.gl, u = this.terrain.u;
@@ -922,6 +926,35 @@ export class Renderer {
       rotateX(m, m, k * 10 * deg);
       rotateZ(m, m, k * 30 * deg);
       translate(m, m, 0.56, -0.52 - eq * 0.6, -0.72);
+    } else if (hand.use) {
+      // Drawing a bow, winding up a crossbow or raising a trident to throw, in Minecraft's poses:
+      // brought up across the view, pulled back and shaking a little as it gets harder (`use.t`:
+      // ticks so far; `use.full`: the ticks a crossbow takes).
+      const u = hand.use, t = u.t;
+      translate(m, m, 0.56, -0.52 - eq * 0.6, -0.72);
+      let k;
+      if (u.kind === 'spear') {
+        // (Lower and tipped further forward than Minecraft's, whose trident in hand is a model
+        // twice as long as the picture held here.)
+        translate(m, m, -0.3, 0.1, 0.1);
+        rotateX(m, m, -80 * deg);
+        k = Math.min(1, t / 10);
+      } else if (u.kind === 'crossbow') {
+        translate(m, m, -0.4785682, -0.094387, 0.05731531);
+        rotateX(m, m, -11.935 * deg);
+        k = Math.min(1, t / u.full);
+      } else {
+        translate(m, m, -0.2785682, 0.18344387, 0.15731531);
+        rotateX(m, m, -13.935 * deg);
+        k = t / 20;
+        k = Math.min(1, (k * k + k * 2) / 3);
+      }
+      rotateY(m, m, (u.kind === 'crossbow' ? 65.3 : 35.3) * deg);
+      rotateZ(m, m, -9.785 * deg);
+      if (k > 0.1) translate(m, m, 0, Math.sin((t - 0.1) * 1.3) * (k - 0.1) * 0.004, 0);
+      translate(m, m, 0, 0, k * (u.kind === 'spear' ? 0.2 : 0.04));
+      scale(m, m, 1, 1, 1 + k * 0.2);
+      rotateY(m, m, -45 * deg);
     } else {
       translate(m, m, -0.4 * Math.sin(sq * Math.PI), 0.2 * Math.sin(sq * Math.PI * 2), -0.2 * Math.sin(s * Math.PI));
       translate(m, m, 0.56, -0.52 - eq * 0.6, -0.72);
@@ -929,6 +962,8 @@ export class Renderer {
       rotateZ(m, m, Math.sin(sq * Math.PI) * -20 * deg);
       rotateX(m, m, Math.sin(sq * Math.PI) * -80 * deg);
       rotateY(m, m, -45 * deg);
+      // (A loaded crossbow is held up in the middle, aimed.)
+      if (hand.aim && s < 0.001) { translate(m, m, -0.641864, 0, 0); rotateY(m, m, 10 * deg); }
     }
     if (mesh.kind === 'block') {
       // (Raised a little from the original so the hotbar doesn't hide it.)
@@ -936,9 +971,10 @@ export class Renderer {
       rotateY(m, m, 45 * deg);
       scale(m, m, 0.4, 0.4, 0.4);
     } else {
+      // (Held as Minecraft's item models are, turned as each has it: most alike, a crossbow flat.)
+      const fp = ITEMS.get(hand.item)?.fp;
       translate(m, m, 1.13 / 16, 3.2 / 16, 1.13 / 16);
-      rotateY(m, m, -90 * deg);
-      rotateZ(m, m, 25 * deg);
+      if (fp) { rotateX(m, m, fp[0] * deg); rotateY(m, m, fp[1] * deg); rotateZ(m, m, fp[2] * deg); } else { rotateY(m, m, -90 * deg); rotateZ(m, m, 25 * deg); }
       scale(m, m, 0.68, 0.68, 0.68);
     }
     translate(m, m, -0.5 - MODEL_OFFSET, -0.5 - MODEL_OFFSET, -0.5 - MODEL_OFFSET);

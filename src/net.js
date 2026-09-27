@@ -107,6 +107,8 @@ export class RoomTransport {
   get ready() { return !this.dead && !!this.me; }
   // (Packets still waiting their turn to go out, or not yet acknowledged from the mailbox.)
   get busy() { return !this.dead && this.connected && (this.queue.length > 0 || this.mailbox.length > 0); }
+  // (How many packets are waiting their turn: see Link.backlog.)
+  get backlog() { return this.queue.length; }
   get self() { return this.me ? `r:${this.me}` : null; }
 
   // Resolves true once the room knows who we are and we're connected (false after `ms`).
@@ -555,6 +557,9 @@ export class Link {
   broadcast(msg) { this.stream('*').queue.push(msg); }
   // True while anything handed over hasn't gone out yet.
   get busy() { return [...this.out.values()].some((s) => s.queue.length > 0) || this.transports.some((t) => t.busy); }
+  // Packets waiting to go out on a rate-limited transport (the claude.ai room); what can wait
+  // (map drawings) holds back while there are many.
+  get backlog() { return Math.max(0, ...this.transports.map((t) => t.backlog ?? 0)); }
 
   setPresence(obj) { for (const t of this.transports) t.setPresence(obj); }
 

@@ -22,11 +22,13 @@ import { Wanderers } from './wanderer.js';
 import { extras, cleanExtras } from './inventory.js';
 import { boatPhysics, boatMesh, boatModel, BOAT_WOODS } from './riding.js';
 import { cartPhysics, cartMesh, cartModel, CART_SIZE } from './rails.js';
-import { splitXp, orbSize } from './enchanting.js';
+import { splitXp, orbSize, enchLevel } from './enchanting.js';
 import { POTIONS, UNDEAD } from './potions.js';
 import { holdsLead, useFence, unleash } from './leads.js';
 import { isHanging, placement, place, holds, drops, frameUse, drawHanging } from './hangings.js';
 import { PAINTINGS } from './tex/paintings.js';
+import { tridentPhysics, tridentHit, drawTrident, saveTrident } from './tridents.js';
+import { fireworkPhysics, flightTicks, cleanRocket } from './fireworks.js';
 
 class Entity extends Body {
   constructor(kind, hw, h, x, y, z) {
@@ -57,6 +59,7 @@ export function mobExtra(e) {
   if (e.leash) o.le = e.leash.uid ?? [e.leash.x, e.leash.y, e.leash.z];
   if (e.school) o.sc = e.school;
   if (e.trusting) o.tr = 1;
+  if (e.held === I.trident && e.type === 'drowned') o.td = 1;
   if (e.def.growsInto) o.g = e.growUp;
   if (e.def.kind === 'civilian') { o.r = e.rid; o.sk = e.skin; o.n = e.name; o.ro = e.role; }
   // (A wandering trader's id, how long they'll stay, and where they came.)
@@ -71,6 +74,9 @@ const isWild = (e) => !e.def.hostile && e.def.kind !== 'civilian' && e.def.kind 
 
 // The monsters that no longer come on their own: only from spawn eggs (see reset).
 const NOT_WILD = new Set(['phantom', 'drowned']);
+// A boat's chest's id (its contents are kept under `boat:<id>`), and a boat as saved.
+const chestId = (c) => (typeof c === 'string' && /^[a-z0-9]{1,16}$/.test(c) ? c : null);
+const saveBoat = (e) => ({ k: 'boat', x: e.x, y: e.y, z: e.z, yaw: e.yaw, w: e.wood, c: e.chest ? e.cid : undefined });
 // The animals that may turn up inside a settlement (see spawnHerds).
 const FARM = new Set(['pig', 'cow', 'sheep', 'chicken', 'horse', 'donkey']);
 // The birds and insects that come and go about the land (see trySpawnAmbient).
@@ -81,7 +87,7 @@ const extraOpts = (s) => ({ variant: Number.isInteger(s.v) ? s.v : 0, colour: Nu
   baby: !!s.b, sheared: !!s.sh, tame: !!s.tm, saddled: !!s.sd, temper: Number.isFinite(s.te) ? Math.max(0, Math.min(100, s.te)) : 0,
   owner: typeof s.ow === 'string' && s.ow ? s.ow.slice(0, 64) : null, sitting: !!s.si, collar: Number.isInteger(s.co) && s.co >= 0 && s.co < 16 ? s.co : undefined,
   made: !!s.md, hatched: !!s.ht, named: typeof s.nm === 'string' ? cleanTagName(s.nm) : null, school: Number.isInteger(s.sc) ? s.sc : 0,
-  trusting: !!s.tr, growUp: Number.isInteger(s.g) && s.g > 0 ? Math.min(s.g, 24000) : undefined,
+  trusting: !!s.tr, growUp: Number.isInteger(s.g) && s.g > 0 ? Math.min(s.g, 24000) : undefined, trident: s.td === 1,
   leash: typeof s.le === 'string' && s.le ? { uid: s.le.slice(0, 64) }
     : Array.isArray(s.le) && s.le.length === 3 && s.le.every(Number.isInteger) ? { x: s.le[0], y: s.le[1], z: s.le[2] } : null });
 // A name from a name tag: printable, and no longer than the original allows.
@@ -135,10 +141,17 @@ export class Entities {
         m.yaw = s.yaw ?? 0; m.health = s.hp ?? m.health;
         if (Number.isFinite(s.mh)) m.maxHealth = s.mh;
         if (typeof s.hd === 'string' && /^-?\d+,-?\d+$/.test(s.hd)) m.herd = s.hd;
-      } else if (s.k === 'boat') this.spawnBoat(s.x, s.y, s.z, BOAT_WOODS.includes(s.w) ? s.w : 'oak', s.yaw ?? 0);
+      } else if (s.k === 'boat') this.spawnBoat(s.x, s.y, s.z, BOAT_WOODS.includes(s.w) ? s.w : 'oak', s.yaw ?? 0, !!chestId(s.c), chestId(s.c));
       else if (s.k === 'cart') this.spawnCart(s.x, s.y, s.z, Number.isFinite(s.yaw) ? s.yaw : 0);
       else if (s.k === 'xp' && Number.isInteger(s.v) && s.v > 0) this.spawnXp(s.x, s.y, s.z, Math.min(s.v, 2477));
-      else if ((s.k === 'frame' || s.k === 'painting') && [s.bx, s.by, s.bz, s.f].every(Number.isInteger) && s.f >= 0 && s.f < 6) {
+      else if (s.k === 'trident' && [s.x, s.y, s.z].every(Number.isFinite) && s.it?.id === I.trident) {
+        // (Back where it was: stuck in its block, or falling if that's gone. Its thrower is
+        // whoever picks it up.)
+        const st = { id: I.trident, count: 1, dmg: Number.isInteger(s.it.dmg) ? s.it.dmg : 0, ...(cleanExtras(s.it.ex) ?? {}) };
+        const e = this.spawnTrident(s.x, s.y, s.z, 0, 0, 0, null, st, true);
+        Object.assign(e, { ayaw: Number.isFinite(s.a) ? s.a : 0, apitch: Number.isFinite(s.p) ? s.p : 0, life: 1, loyalty: 0 });
+        if (Array.isArray(s.b) && s.b.length === 3 && s.b.every(Number.isInteger)) Object.assign(e, { stuck: true, bx: s.b[0], by: s.b[1], bz: s.b[2], stuckFor: 1 });
+      } else if ((s.k === 'frame' || s.k === 'painting') && [s.bx, s.by, s.bz, s.f].every(Number.isInteger) && s.f >= 0 && s.f < 6) {
         this.spawnHanging(s.k, s.bx, s.by, s.bz, s.f, { art: s.a, item: s.it, rot: s.r, glow: s.g === 1 });
       }
     }
@@ -148,11 +161,14 @@ export class Entities {
     // (Things hung up are kept however many there are; the rest, up to 300.)
     const hung = this.list.filter((e) => !e.dead && isHanging(e)).map((e) => ({ k: e.kind, bx: e.bx, by: e.by, bz: e.bz, f: e.face, a: e.art ?? undefined,
       it: e.item ? { id: e.item.id, count: 1, dmg: e.item.dmg ?? 0, ex: extras(e.item) ?? undefined } : undefined, r: e.rot || undefined, g: e.glow ? 1 : undefined }));
-    return hung.concat(this.list.filter((e) => !e.dead && (e.kind === 'item' || e.kind === 'boat' || e.kind === 'cart' || e.kind === 'xp' ||
+    // (And thrown tridents: a player's is never lost. Nor a boat with a chest, and what's in it.)
+    const tridents = this.list.filter((e) => !e.dead && e.kind === 'arrow' && e.trident && e.pickup).map(saveTrident);
+    const chests = this.list.filter((e) => !e.dead && e.kind === 'boat' && e.chest).map(saveBoat);
+    return hung.concat(tridents, chests, this.list.filter((e) => !e.dead && ((e.kind === 'boat' && !e.chest) || e.kind === 'item' || e.kind === 'cart' || e.kind === 'xp' ||
       (e.kind === 'mob' && (e.def.kind !== 'civilian' || e.def.wanderer) && !e.pinned && !e.dying)))
       .slice(0, 300)
       .map((e) => (e.kind === 'item' ? { k: 'item', x: e.x, y: e.y, z: e.z, id: e.id, count: e.count, dmg: e.dmg, ex: e.extra ?? undefined }
-        : e.kind === 'boat' ? { k: 'boat', x: e.x, y: e.y, z: e.z, yaw: e.yaw, w: e.wood }
+        : e.kind === 'boat' ? saveBoat(e)
           : e.kind === 'cart' ? { k: 'cart', x: e.x, y: e.y, z: e.z, yaw: e.yaw }
           : e.kind === 'xp' ? { k: 'xp', x: e.x, y: e.y, z: e.z, v: e.value }
           : { k: 'mob', t: e.type, x: e.x, y: e.y, z: e.z, yaw: e.yaw, hp: e.health, mh: e.maxHealth, ...mobExtra(e), ...(e.herd ? { hd: e.herd } : {}) })));
@@ -276,11 +292,13 @@ export class Entities {
     this.game.net?.entityGone?.(e, 'x');
   }
 
-  // A boat of `wood` set down at (x, y, z) (the middle of its bottom), pointing along `yaw`.
-  spawnBoat(x, y, z, wood, yaw = 0) {
-    if (this.guest) { this.game.net.placeBoat?.(x, y, z, wood, yaw); return null; }
+  // A boat of `wood` set down at (x, y, z) (the middle of its bottom), pointing along `yaw`. One with
+  // a `chest` keeps what's in it under the key `boat:<cid>` (see Game.openBoatChest).
+  spawnBoat(x, y, z, wood, yaw = 0, chest = false, cid = null) {
+    if (this.guest) { this.game.net.placeBoat?.(x, y, z, wood, yaw, chest); return null; }
     const e = new Entity('boat', 0.65, 0.55, x, y, z);
-    Object.assign(e, { wood, yaw, hits: 0, hurt: 0, rider: null, def: { label: 'Boat' } });
+    Object.assign(e, { wood, yaw, hits: 0, hurt: 0, rider: null, def: { label: chest ? 'Boat with Chest' : 'Boat' } });
+    if (chest) Object.assign(e, { chest: true, cid: chestId(cid) ?? Math.random().toString(36).slice(2, 12) });
     this.list.push(e);
     return e;
   }
@@ -375,7 +393,8 @@ export class Entities {
     if (e.age > 300) e.dead = true;
   }
 
-  // Someone knocks at a boat: a few knocks (one in Creative) and it breaks, dropping itself.
+  // Someone knocks at a boat: a few knocks (one in Creative) and it breaks, dropping itself (and
+  // whatever was in its chest, even in Creative).
   hitBoat(e, creative) {
     const game = this.game;
     e.hurt = 0.35;
@@ -385,7 +404,8 @@ export class Entities {
     e.dead = true;
     game.particles.burst(Math.floor(e.x), Math.floor(e.y), Math.floor(e.z), B[`${e.wood}_planks`] ?? B.oak_planks);
     game.net?.entityGone?.(e, 'b');
-    if (!creative) this.spawnItem(e.x, e.y + 0.4, e.z, I[`${e.wood}_boat`] ?? I.oak_boat, 1);
+    if (!creative) this.spawnItem(e.x, e.y + 0.4, e.z, I[`${e.wood}_${e.chest ? 'chest_' : ''}boat`] ?? I.oak_boat, 1);
+    if (e.chest) game.spillContainer(`boat:${e.cid}`, e.x, e.y + 0.5, e.z);
   }
 
   // A mount throws its rider off (an untamed horse, a broken boat).
@@ -414,14 +434,37 @@ export class Entities {
 
   // An arrow flying from (x, y, z). `owner`: who shot it (not hit by it at first); `pickup`:
   // whether it can be collected where it lands.
-  // (`fx`: what the bow's enchantments add: { punch: extra knockback, flame: sets things alight };
-  // or { potion }: a thrown splash potion rather than an arrow.)
+  // (`fx`: what the bow's enchantments add: { punch: extra knockback, flame: sets things alight },
+  // a crossbow's { pierce: how many creatures it goes on through }; or { potion }: a thrown splash
+  // potion rather than an arrow.)
   spawnArrow(x, y, z, vx, vy, vz, owner, damage, pickup, fx = null) {
     if (this.guest) { this.game.net.shootArrow?.(x, y, z, vx, vy, vz, damage, pickup, fx); return null; }
     const e = new Entity('arrow', 0.05, 0.1, x, y, z);
     Object.assign(e, { vx, vy, vz, owner, damage, pickup, stuck: false, life: 0, punch: fx?.punch ?? 0, flame: !!fx?.flame,
-      potion: POTIONS[fx?.potion] ? fx.potion : null, snowball: !!fx?.snowball });
+      potion: POTIONS[fx?.potion] ? fx.potion : null, snowball: !!fx?.snowball, pierce: fx?.pierce ?? 0, pierced: null });
     this.list.push(e);
+    return e;
+  }
+
+  // A firework rocket going up from (x, y, z) - or with `dir`, shot that way from a crossbow - that
+  // bursts into the stars of `fw` (see fireworks.js).
+  spawnFirework(x, y, z, fw, { dir = null, owner = null } = {}) {
+    fw = cleanRocket(fw);
+    if (this.guest) { this.game.net.launchFirework?.(x, y, z, fw, dir); return null; }
+    const e = new Entity('firework', 0.125, 0.25, x, y, z);
+    const drift = () => (Math.random() - Math.random()) * 0.046;
+    Object.assign(e, { fw, owner, life: 0, lifetime: flightTicks(fw.f), shot: !!dir, pierced: null, dealt: false,
+      vx: dir ? dir[0] * 32 : drift(), vy: dir ? dir[1] * 32 : 1, vz: dir ? dir[2] * 32 : drift() });
+    this.list.push(e);
+    this.game.audio.firework?.('launch', { x, y, z });
+    return e;
+  }
+
+  // A thrown trident (see tridents.js): `stack` is the trident itself, which comes back with it.
+  spawnTrident(x, y, z, vx, vy, vz, owner, stack, pickup = true) {
+    if (this.guest) { this.game.net.shootArrow?.(x, y, z, vx, vy, vz, 8, pickup, { trident: stack }); return null; }
+    const e = this.spawnArrow(x, y, z, vx, vy, vz, owner, 8, pickup);
+    Object.assign(e, { trident: stack, loyalty: enchLevel(stack, 'loyalty'), dealt: false, returning: false, stuckFor: 0 });
     return e;
   }
 
@@ -815,6 +858,8 @@ export class Entities {
       if (e.onGround || e.age > 30 || e.y < 0) this.land(e);
     } else if (e.kind === 'arrow') {
       this.arrowPhysics(e, dt, fluid);
+    } else if (e.kind === 'firework') {
+      fireworkPhysics(this, e, dt);
     } else if (e.kind === 'xp') {
       this.orbPhysics(e, dt, fluid);
     } else if (e.kind === 'boat') {
@@ -834,6 +879,7 @@ export class Entities {
   // Arrows fly under gravity and drag, stick in what they hit, and hurt whoever they strike.
   arrowPhysics(e, dt, fluid) {
     const w = this.world, game = this.game;
+    if (e.trident && tridentPhysics(this, e, dt)) return;
     if (e.stuck) {
       e.life += dt;
       if (e.life > 60 || !SOLID[w.getBlock(e.bx, e.by, e.bz)]) e.dead = true;
@@ -845,50 +891,79 @@ export class Entities {
     }
     e.life += dt;
     if (e.flame && !fluid && Math.random() < dt * 20) game.particles.smoke(e.x, e.y, e.z, 1, 0.05);
-    const drag = Math.exp(-(fluid ? 3 : 0.2) * dt);
+    // (A trident hardly slows in water.)
+    const drag = Math.exp(-(fluid && !e.trident ? 3 : 0.2) * dt);
     e.vx *= drag; e.vy = e.vy * drag - 20 * dt; e.vz *= drag;
     const sp = Math.hypot(e.vx, e.vy, e.vz), step = sp * dt;
     if (step < 1e-6) return;
     const dx = e.vx / sp, dy = e.vy / sp, dz = e.vz / sp;
-    const hit = w.raycast(e.x, e.y, e.z, dx, dy, dz, step);
-    let len = hit ? hit.t : step;
-    // Creatures and players along the way.
+    // (Along this frame's flight, piercing arrows going on through whoever they've hit.)
+    let left = step;
+    for (let n = 0; n < 8 && left > 1e-6; n++) {
+      const { hit, len, victim } = this.arrowPath(e, dx, dy, dz, left);
+      if ((e.potion || e.snowball) && (victim || hit)) {
+        e.x += dx * len; e.y += dy * len; e.z += dz * len;
+        if (e.potion) this.shatter(e, victim); else this.snowballHit(e, victim);
+        return;
+      }
+      if (victim && e.trident) {
+        tridentHit(this, e, victim, dx, dz);
+        e.x += dx * len; e.y += dy * len; e.z += dz * len;
+        break;
+      }
+      if (victim) {
+        const dmg = Math.max(1, Math.round(e.damage * Math.min(1.5, sp / 25)));
+        const at = { x: e.x, y: e.y, z: e.z };
+        if (victim.kind === 'mob') this.hurtMob(victim, dmg, e.owner ?? at, e.punch, e.flame ? { fire: 5 } : null);
+        else {
+          game.hurtPlayer(victim, dmg, e.owner?.label ? `You were shot by a ${e.owner.label.toLowerCase()}` : 'You were shot', [dx * 3, 2, dz * 3], true,
+            e.owner?.kind === 'mob');
+          if (e.owner?.kind === 'mob') rallyPets(this, victim.uid, e.owner);
+        }
+        game.audio.arrowHit?.(true, at);
+        // (A piercing arrow goes on through, for as many as its level.)
+        if (e.pierce > 0) {
+          e.pierce--;
+          (e.pierced ??= new Set()).add(victim.kind === 'mob' ? victim : victim.addr ?? '');
+          e.x += dx * len; e.y += dy * len; e.z += dz * len;
+          left -= len;
+          continue;
+        }
+        e.dead = true;
+        return;
+      }
+      e.x += dx * len; e.y += dy * len; e.z += dz * len;
+      if (hit) {
+        e.stuck = true; e.life = 0; e.stuckFor = 0; e.bx = hit.x; e.by = hit.y; e.bz = hit.z;
+        e.ayaw = Math.atan2(-dx, -dz); e.apitch = Math.atan2(dy, Math.hypot(dx, dz));
+        e.x -= dx * 0.05; e.y -= dy * 0.05; e.z -= dz * 0.05;
+        if (e.trident) game.audio.trident?.('land', { x: e.x, y: e.y, z: e.z }); else game.audio.arrowHit?.(false, { x: e.x, y: e.y, z: e.z });
+      }
+      break;
+    }
+    // (A trident flies on until it lands, however long that takes.)
+    if (e.trident ? e.y < -64 && !e.loyalty : e.life > 30 || e.y < -20) e.dead = true;
+  }
+
+  // What's first along an arrow's way for `len`: a block (`hit`), or a creature or player
+  // (`victim`), and how far (`len`).
+  arrowPath(e, dx, dy, dz, len) {
+    const hit = this.world.raycast(e.x, e.y, e.z, dx, dy, dz, len);
+    if (hit) len = hit.t;
     let victim = null;
+    // (A trident that has struck once passes by whoever else is there.)
+    if (e.dealt) return { hit, len, victim };
     for (const o of this.list) {
-      if (o.kind !== 'mob' || o.dead || o.dying || (o === e.owner && e.life < 0.5)) continue;
+      if (o.kind !== 'mob' || o.dead || o.dying || (o === e.owner && e.life < 0.5) || e.pierced?.has(o)) continue;
       const r = rayBox(e.x - o.x, e.y - o.y, e.z - o.z, dx, dy, dz, [-o.hw - 0.1, 0, -o.hw - 0.1, o.hw + 0.1, o.h, o.hw + 0.1]);
       if (r && r.t <= len) { len = r.t; victim = o; }
     }
     for (const q of this.players) {
-      if (q.dead || (e.owner?.addr === q.addr && e.owner && e.life < 0.5) || (!e.owner?.kind && e.owner?.addr === q.addr)) continue;
+      if (q.dead || (e.owner?.addr === q.addr && e.owner && e.life < 0.5) || (!e.owner?.kind && e.owner?.addr === q.addr) || e.pierced?.has(q.addr ?? '')) continue;
       const r = rayBox(e.x - q.x, e.y - q.y, e.z - q.z, dx, dy, dz, [-0.4, 0, -0.4, 0.4, 1.8, 0.4]);
       if (r && r.t <= len) { len = r.t; victim = q; }
     }
-    if ((e.potion || e.snowball) && (victim || hit)) {
-      e.x += dx * len; e.y += dy * len; e.z += dz * len;
-      if (e.potion) this.shatter(e, victim); else this.snowballHit(e, victim);
-      return;
-    }
-    if (victim) {
-      const dmg = Math.max(1, Math.round(e.damage * Math.min(1.5, sp / 25)));
-      const at = { x: e.x, y: e.y, z: e.z };
-      if (victim.kind === 'mob') this.hurtMob(victim, dmg, e.owner ?? at, e.punch, e.flame ? { fire: 5 } : null);
-      else {
-        game.hurtPlayer(victim, dmg, e.owner?.label ? `You were shot by a ${e.owner.label.toLowerCase()}` : 'You were shot', [dx * 3, 2, dz * 3], true,
-          e.owner?.kind === 'mob');
-        if (e.owner?.kind === 'mob') rallyPets(this, victim.uid, e.owner);
-      }
-      game.audio.arrowHit?.(true, at);
-      e.dead = true;
-      return;
-    }
-    e.x += dx * len; e.y += dy * len; e.z += dz * len;
-    if (hit) {
-      e.stuck = true; e.life = 0; e.bx = hit.x; e.by = hit.y; e.bz = hit.z;
-      e.x -= dx * 0.05; e.y -= dy * 0.05; e.z -= dz * 0.05;
-      game.audio.arrowHit?.(false, { x: e.x, y: e.y, z: e.z });
-    }
-    if (e.life > 30 || e.y < -20) e.dead = true;
+    return { hit: victim ? null : hit, len, victim };
   }
 
   // A splash potion breaks: glass, a burst of its colour, and everyone within four blocks gets
@@ -1051,6 +1126,8 @@ export class Entities {
   // boat or onto a horse. True if anything came of it.
   interact(e, held) {
     if (isHanging(e)) { if (this.useHanging(e, held) === 'put' && !this.game.creative) { this.game.inv.consumeHeld(); this.game.invChanged(); } this.game.swingArm(); return true; }
+    // (Sneaking at a boat with a chest opens the chest instead.)
+    if (e.kind === 'boat' && e.chest && this.game.player.sneaking) { this.game.openBoatChest(e); return true; }
     if (e.kind === 'boat' || e.kind === 'cart') { this.game.mount(e); return true; }
     if (e.def.kind === 'civilian') { this.civilians.talk(e); return true; }
     // (A guest's copies of creatures know players by their keys; see playerKey.)
@@ -1147,7 +1224,9 @@ export class Entities {
       } else if (s.k === 'a') {
         e = new Entity('arrow', 0.05, 0.1, s.x, s.y, s.z);
         Object.assign(e, { stuck: false, life: 0, ayaw: Number.isFinite(s.a) ? s.a : 0, apitch: Number.isFinite(s.p) ? s.p : 0,
-          potion: POTIONS[s.po] ? s.po : null, snowball: !!s.sb });
+          potion: POTIONS[s.po] ? s.po : null, snowball: !!s.sb, trident: s.tr === 1 ? { id: I.trident } : null, glint: s.gl === 1 });
+      } else if (s.k === 'w') {
+        e = new Entity('firework', 0.125, 0.25, s.x, s.y, s.z);
       } else if (s.k === 'x') {
         e = new Entity('xp', 0.125, 0.25, s.x, s.y, s.z);
         e.value = Number.isInteger(s.v) && s.v > 0 ? s.v : 1;
@@ -1156,7 +1235,9 @@ export class Entities {
         Object.assign(e, { yaw: Number.isFinite(s.a) ? s.a : 0, pitch: Number.isFinite(s.p) ? s.p : 0, hits: 0, hurt: 0, rail: null, def: { label: 'Minecart' } });
       } else if (s.k === 'b') {
         e = new Entity('boat', 0.65, 0.55, s.x, s.y, s.z);
-        Object.assign(e, { wood: BOAT_WOODS.includes(s.w) ? s.w : 'oak', yaw: Number.isFinite(s.a) ? s.a : 0, hits: 0, hurt: 0, def: { label: 'Boat' } });
+        const cid = chestId(s.c);
+        Object.assign(e, { wood: BOAT_WOODS.includes(s.w) ? s.w : 'oak', yaw: Number.isFinite(s.a) ? s.a : 0, hits: 0, hurt: 0, def: { label: cid ? 'Boat with Chest' : 'Boat' } });
+        if (cid) Object.assign(e, { chest: true, cid });
       } else if (s.k === 'h' && (s.t === 'frame' || s.t === 'painting') && Array.isArray(s.b) && s.b.every(Number.isInteger) && [0, 1, 2, 3, 4, 5].includes(s.f)) {
         e = new Entity(s.t, 0.5, 1, 0, 0, 0);
         Object.assign(e, { bx: s.b[0], by: s.b[1], bz: s.b[2], face: s.f, art: s.t === 'painting' && PAINTINGS[s.a] ? s.a : s.t === 'painting' ? 0 : null, item: null, rot: 0,
@@ -1441,6 +1522,21 @@ export class Entities {
         scale(m, m, 0.4, 0.4, 0.4);
         translate(m, m, -0.5 - MODEL_OFFSET, -0.5 - MODEL_OFFSET, -MODEL_OFFSET);
         out.push({ parts: [{ mesh, model: m }], light, tint: null });
+      } else if (e.kind === 'firework') {
+        // A rocket, pointing the way it goes (up, or ahead from a crossbow), lit by its fuse.
+        const mesh = r.itemMesh(I.firework_rocket);
+        if (!mesh) continue;
+        const m = identity(this.mat()), v = e.remote ? [0, 1, 0] : [e.vx, e.vy, e.vz], h = Math.hypot(v[0], v[2]);
+        translate(m, m, rx, ry, rz);
+        rotateY(m, m, Math.atan2(v[0], v[2]));
+        rotateX(m, m, Math.atan2(h, v[1]));
+        rotateZ(m, m, -Math.PI / 4);
+        scale(m, m, 0.5, 0.5, 0.5);
+        translate(m, m, -0.5 - MODEL_OFFSET, -0.5 - MODEL_OFFSET, -0.5 - MODEL_OFFSET);
+        out.push({ parts: [{ mesh, model: m }], light: [15, 15], tint: null });
+      } else if (e.kind === 'arrow' && e.trident) {
+        if (!e.stuck && !e.remote && !e.returning && Math.hypot(e.vx, e.vy, e.vz) > 1) { e.ayaw = Math.atan2(-e.vx, -e.vz); e.apitch = Math.atan2(e.vy, Math.hypot(e.vx, e.vz)); }
+        drawTrident(this, e, rx, ry, rz, light, out);
       } else if (e.kind === 'arrow') {
         if (!e.stuck && !e.remote) { e.ayaw = Math.atan2(-e.vx, -e.vz); e.apitch = Math.atan2(e.vy, Math.hypot(e.vx, e.vz)); }
         const m = identity(this.mat());
@@ -1451,7 +1547,7 @@ export class Entities {
         translate(m, m, -MODEL_OFFSET, -MODEL_OFFSET, -MODEL_OFFSET);
         out.push({ parts: [{ mesh: this.arrowModel(), model: m }], light, tint: null });
       } else if (e.kind === 'boat') {
-        out.push({ parts: [{ mesh: boatMesh(r, e.wood), model: boatModel(this.mat(), rx, ry, rz, e.yaw) }], light, tint: null, hurt: e.hurt > 0 });
+        out.push({ parts: [{ mesh: boatMesh(r, e.wood, e.chest), model: boatModel(this.mat(), rx, ry, rz, e.yaw) }], light, tint: null, hurt: e.hurt > 0 });
       } else if (e.kind === 'cart') {
         out.push({ parts: [{ mesh: cartMesh(r), model: cartModel(this.mat(), rx, ry, rz, e.yaw, e.pitch) }], light, tint: null, hurt: e.hurt > 0 });
       } else if (e.kind === 'mob') {

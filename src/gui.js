@@ -4,7 +4,11 @@
 // coordinates. Menus (containers.js) hold the rules; this module draws them and turns pointer
 // input into menu actions.
 import { $ } from './ui.js';
-import { iconFor, setGlint } from './icons.js';
+import { generationLabel } from './books.js';
+import { mapInfo } from './maps.js';
+import { SHAPES } from './fireworks.js';
+import { DYES } from './colors.js';
+import { iconFor, setGlint, iconOf } from './icons.js';
 import { shiny, enchantLabel } from './enchanting.js';
 import { POTIONS, EFFECTS, potionLine } from './potions.js';
 import { ITEMS, I, itemDef, itemLabel, ARMOR_PIECES, attackDamage, attackSpeed, discTitle } from './items.js';
@@ -145,7 +149,7 @@ const BOOK_TABS = [
   { id: 'misc', label: 'Miscellaneous', icon: 'torch' },
 ];
 const GEAR = new Set(['flint_and_steel', 'bow', 'arrow', 'shears', 'bucket', 'water_bucket', 'lava_bucket', 'compass', 'clock',
-  'fishing_rod', 'saddle', 'name_tag', 'lead', 'shield', 'minecart']);
+  'fishing_rod', 'saddle', 'name_tag', 'lead', 'shield', 'minecart', 'crossbow', 'spyglass']);
 function creativeTab(id) {
   const d = itemDef(id);
   if (d.block !== null) {
@@ -204,7 +208,7 @@ export function fillSlot(el, stack, count = stack?.count) {
     setGlint(el, false);
     return;
   }
-  const src = iconFor(stack.id);
+  const src = iconOf(stack);
   if (img.getAttribute('src') !== src) img.src = src;
   img.hidden = false;
   setGlint(el, shiny(stack), src);
@@ -224,13 +228,35 @@ const fmt = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 const ARMOR_WHERE = ['When on Head:', 'When on Body:', 'When on Legs:', 'When on Feet:'];
 
 // Tooltip lines for an item: name, then combat and armor stats like the original shows them.
+// What a firework star is, a line each, in grey.
+const colourName = (i) => (DYES[i]?.name ?? 'white').split('_').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
+function starLines(st, pad) {
+  const out = [SHAPES[st.t] ?? SHAPES[0], st.c.map(colourName).join(', ')];
+  if (st.d?.length) out.push(`Fade to ${st.d.map(colourName).join(', ')}`);
+  if (st.tr) out.push('Trail');
+  if (st.tw) out.push('Twinkle');
+  return out.map((l) => `<span class="t-gray">${pad}${escape(l)}</span>`);
+}
+
 export function tooltipLines(stack) {
   const d = itemDef(stack.id);
   // A name given at the anvil is in italics; enchanted things are named in aqua, enchanted books
   // in yellow, and their enchantments are listed underneath.
   const cls = d.name === 'enchanted_book' ? 't-yellow' : stack.ench ? 't-aqua' : '';
-  const name = stack.name ? `<i>${escape(stack.name)}</i>` : escape(d.label);
+  // (A written book goes by its title, and says who wrote it.)
+  const name = stack.name ? `<i>${escape(stack.name)}</i>` : stack.book?.t ? escape(stack.book.t) : escape(d.label);
   const lines = [`<b${cls ? ` class="${cls}"` : ''}>${name}</b>`];
+  if (stack.book?.t) lines.push(`<span class="t-gray">by ${escape(stack.book.a || '?')}</span>`, `<span class="t-gray">${generationLabel(stack.book.g)}</span>`);
+  // (Fireworks: a rocket's flight and its stars; a star's shape, colours, fade, trail, twinkle.)
+  if (stack.id === I.firework_rocket) {
+    lines.push(`<span class="t-gray">Flight Duration: ${stack.fw?.f ?? 1}</span>`);
+    for (const st of stack.fw?.s ?? []) lines.push(...starLines(st, '&nbsp;&nbsp;'));
+  }
+  if (stack.id === I.firework_star && stack.star) lines.push(...starLines(stack.star, ''));
+  // (A map: its number and scale; an empty map made to draw zoomed out, its scale.)
+  const scale = stack.map ? mapInfo(stack.map)?.scale : stack.scale;
+  if (stack.map) lines.push(`<span class="t-gray">Map #${stack.map}</span>`);
+  if (scale !== undefined && (stack.map || scale)) lines.push(`<span class="t-gray">Scale 1:${2 ** scale}</span>`);
   for (const [n, lv] of Object.entries(stack.ench ?? {})) lines.push(`<span class="t-gray">${escape(enchantLabel(n, lv))}</span>`);
   if (d.tool || d.weapon) {
     lines.push('', '<span class="t-gray">When in Main Hand:</span>',

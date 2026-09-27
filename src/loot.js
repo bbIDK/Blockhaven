@@ -45,10 +45,10 @@ const TABLES = {
     ['tnt', 1, 2, 1], ['moss_block', 1, 4, 2], ['leather_helmet', 1, 1, 3], ['leather_chestplate', 1, 1, 3], ['leather_boots', 1, 1, 3],
     ['gold_coin', 2, 8, 4]] },
   shipwreck_treasure: { rolls: [3, 6], items: [['iron_ingot', 1, 5, 90], ['gold_ingot', 1, 5, 10], ['emerald', 1, 5, 40], ['diamond', 1, 1, 5],
-    ['lapis_lazuli', 1, 10, 20], ['iron_nugget', 1, 10, 50], ['gold_nugget', 1, 10, 10], ['gold_coin', 5, 20, 30]] },
+    ['lapis_lazuli', 1, 10, 20], ['iron_nugget', 1, 10, 50], ['gold_nugget', 1, 10, 10], ['gold_coin', 5, 20, 30], ['trident', 1, 1, 4]] },
   // (The captain's chest: what's left of his charts and logbooks.)
   shipwreck_map: { rolls: [3, 5], items: [['paper', 1, 10, 20], ['feather', 1, 5, 10], ['book', 1, 5, 5], ['compass', 1, 1, 3], ['clock', 1, 1, 1],
-    ['gold_coin', 2, 10, 6]] },
+    ['gold_coin', 2, 10, 6], ['map', 1, 2, 8], ['ink_sac', 1, 3, 5], ['writable_book', 1, 1, 2]] },
   mineshaft: { rolls: [3, 7], items: [['rail', 4, 8, 20], ['powered_rail', 1, 4, 5], ['detector_rail', 1, 4, 5], ['torch', 1, 16, 15],
     ['bread', 1, 3, 15], ['iron_ingot', 1, 5, 10], ['gold_ingot', 1, 3, 5], ['redstone', 4, 9, 5], ['lapis_lazuli', 4, 9, 5], ['coal', 3, 8, 10],
     ['diamond', 1, 2, 3], ['name_tag', 1, 1, 10], ['golden_apple', 1, 1, 10], ['iron_pickaxe', 1, 1, 1], ['enchanted_book', 1, 1, 10],

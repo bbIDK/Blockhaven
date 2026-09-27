@@ -74,6 +74,15 @@ export const ENCHANTS = {
   punch: { label: 'Punch', max: 2, weight: 2, on: 'bow', power: range(12, 20, 25) },
   flame: { label: 'Flame', max: 1, weight: 2, on: 'bow', power: () => [20, 50] },
   infinity: { label: 'Infinity', max: 1, weight: 1, on: 'bow', power: () => [20, 50], group: 'arrows' },
+  // A crossbow's: winding up faster, three arrows at once, or arrows that go through several things.
+  quick_charge: { label: 'Quick Charge', max: 3, weight: 5, on: 'crossbow', power: range(12, 20, 50) },
+  multishot: { label: 'Multishot', max: 1, weight: 2, on: 'crossbow', power: () => [20, 50], group: 'shot' },
+  piercing: { label: 'Piercing', max: 4, weight: 10, on: 'crossbow', power: range(1, 10, 50), group: 'shot' },
+  // A trident's: harder on sea creatures, coming back after it's thrown, or carrying you with it
+  // through water and rain.
+  impaling: { label: 'Impaling', max: 5, weight: 2, on: 'trident', power: range(1, 8, 20) },
+  loyalty: { label: 'Loyalty', max: 3, weight: 5, on: 'trident', power: range(12, 7, 50), group: 'throw' },
+  riptide: { label: 'Riptide', max: 3, weight: 2, on: 'trident', power: range(17, 7, 50), group: 'throw' },
   luck_of_the_sea: { label: 'Luck of the Sea', max: 3, weight: 2, on: 'rod', power: range(15, 9, 50) },
   lure: { label: 'Lure', max: 3, weight: 2, on: 'rod', power: range(15, 9, 50) },
   // Only from books (fishing, trading): experience you pick up mends your gear instead.
@@ -105,11 +114,13 @@ function suits(name, def) {
     case 'armor': return !!a;
     case 'boots': return a?.slot === 3;
     case 'helmet': return a?.slot === 0;
-    case 'weapon': return !!def.weapon || def.tool?.type === 'axe';
-    case 'sword': return !!def.weapon;
+    case 'weapon': return (!!def.weapon && !def.trident) || def.tool?.type === 'axe';
+    case 'sword': return !!def.weapon && !def.trident;
     case 'tool': return !!def.tool;
     case 'durable': return !!def.durability;
     case 'bow': return def.name === 'bow';
+    case 'crossbow': return def.name === 'crossbow';
+    case 'trident': return !!def.trident;
     case 'rod': return def.name === 'fishing_rod';
     default: return false;
   }
@@ -120,7 +131,7 @@ export const canCombine = (a, b) => a === b || compatible(a, b);
 // How well an item takes enchanting (by material, as in the original).
 export function enchantability(def) {
   if (!def) return 0;
-  if (def.name === 'book') return 1;
+  if (def.name === 'book' || def.name === 'crossbow' || def.trident) return 1;
   const m = def.armor?.material ?? def.name.split('_')[0];
   if (def.armor) return { leather: 15, chainmail: 12, iron: 9, golden: 25, diamond: 10 }[m] ?? 0;
   if (def.tool || def.weapon) return { wooden: 15, stone: 5, iron: 14, golden: 22, diamond: 10 }[m] ?? 0;
