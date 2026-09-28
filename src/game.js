@@ -121,6 +121,9 @@ const TIPS = [
 const CLOUD_HEIGHT = 216.5; // above all but the highest peaks
 // Which face of a lit furnace has the fire in it.
 const REACH = { creative: 5.5, survival: 4.6 };
+const MODE_NAMES = { survival: 'Survival', creative: 'Creative', adventure: 'Adventure', spectator: 'Spectator' };
+// How long what someone had on them lies where they died (seconds of play; see dropEverything).
+const DEATH_DROP_LIFE = 600;
 
 // Extra damage from a weapon's enchantments against creature `type`.
 const UNDEAD = new Set(['zombie', 'husk', 'skeleton', 'stray', 'drowned', 'zombie_villager', 'phantom']);
@@ -368,20 +371,60 @@ export class Game {
     this.onResize();
   }
 
+  // The game modes, as in Minecraft: Survival; Creative; Adventure (nothing built or broken); and
+  // Spectator (flying through everything, touching nothing). Hardcore is Survival on Hard with one
+  // life (see die), and Keep Inventory whether dying leaves what you carry where you fell.
   get creative() { return this.meta?.mode === 'creative'; }
+  get adventure() { return this.meta?.mode === 'adventure'; }
+  get spectator() { return this.meta?.mode === 'spectator'; }
+  // (Out of harm's way.)
+  get invulnerable() { return this.creative || this.spectator; }
+  // (Breaks and places blocks.)
+  get mayBuild() { return !this.adventure && !this.spectator; }
+  get hardcore() { return !!this.meta?.hardcore; }
+  get keepInventory() { return !!this.meta?.keepInventory; }
   // This player's lasting id (their pets know them by it).
   get uid() { return playerUid(); }
   get mode() { return this.creative ? 'creative' : 'survival'; }
-  // Peaceful 0, Easy 1, Normal 2, Hard 3 (worlds made before there was a choice are Normal).
-  get difficulty() { const d = this.meta?.difficulty; return d >= 0 && d <= 3 ? d : 2; }
+  // Peaceful 0, Easy 1, Normal 2, Hard 3 (worlds made before there was a choice are Normal; a
+  // hardcore world is always Hard).
+  get difficulty() { const d = this.meta?.difficulty; return this.hardcore ? 3 : d >= 0 && d <= 3 ? d : 2; }
+  // A game mode's name, and this world's (as the game menu and the list of worlds show it).
+  modeName() { return this.hardcore && !this.spectator ? 'Hardcore' : MODE_NAMES[this.meta?.mode] ?? 'Survival'; }
+  // Changes this player's game mode (/gamemode, or a hardcore death: see respawn).
+  setMode(mode) {
+    const p = this.player, was = this.meta.mode;
+    this.meta.mode = mode;
+    p.noclip = mode === 'spectator';
+    if (mode === 'survival' || mode === 'adventure') p.flying = false;
+    // (Coming out of Spectator inside the ground, you come up out of it.)
+    if (was === 'spectator' && !p.noclip && this.world) {
+      for (let y = Math.floor(p.y); y < HEIGHT && this.world.collides(p.x - p.hw, y, p.z - p.hw, p.x + p.hw, y + p.h, p.z + p.hw); y++) p.y = y + 1;
+    }
+    if (mode === 'spectator') {
+      p.flying = true;
+      if (this.riding) this.dismount();
+      if (this.menu) this.closeMenu();
+      this.fishing.retract();
+      this.mining = null; this.eating = null; this.drawing = null; this.guarding = null;
+    }
+    this.invChanged();
+  }
+
+  // Whether dying keeps what you carry (/gamerule keepInventory). A guest's is the host's.
+  setKeepInventory(on) {
+    if (!this.meta || this.meta.remote) return;
+    this.meta.keepInventory = !!on;
+    this.net?.setKeepInventory?.(!!on);
+  }
 
   // Changes the world's difficulty (Options → Difficulty, or /difficulty). A guest's is the host's.
   setDifficulty(d) {
-    if (!this.meta || this.meta.remote || !(d >= 0 && d <= 3)) return false;
+    if (!this.meta || this.meta.remote || this.hardcore || !(d >= 0 && d <= 3)) return false;
     this.meta.difficulty = d;
     if (d === 0) this.entities.clearHostiles();
     this.net?.setDifficulty?.(d);
-    this.ui.showDifficulty(d, true);
+    this.ui.showDifficulty(d);
     return true;
   }
 
@@ -445,7 +488,10 @@ export class Game {
       const worlds = await storage.listWorlds();
       if (worlds.length) this.openWorlds(); else this.openCreate();
     });
-    ui.on('settings', (from) => { ui.showDifficulty(this.meta ? this.difficulty : null, !this.meta?.remote); this.pushScreen('screen-settings', from); });
+    ui.on('settings', (from) => {
+      ui.showDifficulty(this.meta ? this.difficulty : null, this.meta?.remote ? 'The host sets the difficulty' : this.hardcore ? 'A hardcore world is always played on Hard' : null);
+      this.pushScreen('screen-settings', from);
+    });
     ui.on('cycle-difficulty', () => this.setDifficulty((this.difficulty + 1) % 4));
     ui.on('controls', (from) => this.pushScreen('screen-controls', from));
     ui.on('advancements', () => this.openAdvancements(true));
@@ -523,8 +569,7 @@ export class Game {
     while (worlds.some((w) => w.name === name)) name = `New World ${n++}`;
     $('cw-name').value = name;
     $('cw-seed').value = '';
-    this.ui.setCreate('mode', 'survival');
-    this.ui.setCreate('type', 'default');
+    this.ui.resetCreate();
     this.ui.show('screen-create');
   }
 
@@ -533,11 +578,13 @@ export class Game {
     const name = $('cw-name').value.trim() || 'New World';
     const seedText = $('cw-seed').value.trim();
     const seed = seedFromText(seedText);
-    const { mode, type, difficulty } = this.ui.createState;
+    const { mode, type, difficulty, keepInventory } = this.ui.createState;
+    // (Hardcore is Survival on Hard, with one life.)
+    const hardcore = mode === 'hardcore';
     const meta = {
       id: `w${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`,
-      name, seed, seedText, mode, type, difficulty, gen: LATEST_GEN, created: Date.now(), lastPlayed: Date.now(), time: 1000,
-      spawn: null, player: null, inventory: null, version: SAVE_VERSION,
+      name, seed, seedText, mode: hardcore ? 'survival' : mode, hardcore, keepInventory: !!keepInventory, type, difficulty: hardcore ? 3 : difficulty,
+      gen: LATEST_GEN, created: Date.now(), lastPlayed: Date.now(), time: 1000, spawn: null, player: null, inventory: null, version: SAVE_VERSION,
     };
     await storage.saveWorld(meta);
     this.enterWorld(meta);
@@ -617,7 +664,10 @@ export class Game {
       this.resetHunger();
       this.needsPlacement = true;
     }
-    if (!this.creative) p.flying = false;
+    // (A spectator flies through everything: see Player.ghostStep.)
+    p.noclip = this.spectator;
+    if (this.spectator) p.flying = true;
+    else if (!this.creative) p.flying = false;
     // (A guest's entities come from the host and are already in place.)
     if (!remote) this.entities.reset(meta.entities);
     this.weather.load(meta.weather);
@@ -668,7 +718,9 @@ export class Game {
     const meta = {
       id: `mp-${session.gid}`, name: String(world.name ?? 'World').slice(0, 32), seed: world.seed >>> 0,
       type: world.type === 'flat' ? 'flat' : 'default', gen: Number.isInteger(world.gen) && world.gen >= 2 && world.gen <= LATEST_GEN ? world.gen : 1,
-      mode: you?.mode === 'creative' || (!you?.mode && world.mode === 'creative') ? 'creative' : 'survival',
+      // (Someone new plays as the host does, but for Spectator: they start in Survival.)
+      mode: MODE_NAMES[you?.mode] ? you.mode : world.mode === 'creative' || world.mode === 'adventure' ? world.mode : 'survival',
+      hardcore: !!world.hard, keepInventory: !!world.keep,
       spawn: world.spawn && Number.isFinite(world.spawn.x) && Number.isFinite(world.spawn.z) ? { x: world.spawn.x, y: world.spawn.y ?? null, z: world.spawn.z } : { x: 0.5, y: null, z: 0.5 },
       time: Number.isFinite(world.time) ? world.time : 1000, weather: { raining: !!world.rain, thunder: !!world.thunder },
       bed: you?.bed ?? null, player: you?.player ?? null, inventory: you?.inventory ?? null, waypoints: you?.wp ?? null, advancements: you?.adv ?? null, remote: true,
@@ -804,8 +856,9 @@ export class Game {
   players() {
     const p = this.player;
     const me = (this.me ??= { addr: null, uid: this.uid });
-    Object.assign(me, { x: p.x, y: p.y, z: p.z, creative: this.creative, dead: this.state === 'dead', held: this.inv.heldId,
-      look: p.lookDir(), sneaking: p.sneaking, sprinting: p.sprinting, invisible: this.effects.has('invisibility') });
+    // (A spectator is nothing to anything: see Entities.tick.)
+    Object.assign(me, { x: p.x, y: p.y, z: p.z, creative: this.invulnerable, spectator: this.spectator, dead: this.state === 'dead', held: this.inv.heldId,
+      look: p.lookDir(), sneaking: p.sneaking, sprinting: p.sprinting, invisible: this.spectator || this.effects.has('invisibility') });
     return this.net ? [me, ...this.net.others()] : [me];
   }
 
@@ -816,7 +869,7 @@ export class Game {
     if (amount <= 0) return;
     if (!t.addr) {
       this.damage(amount, cause, false, knock, armored);
-      if (burn && !this.creative && !this.effects.has('fire_resistance')) this.fire = Math.max(this.fire, burn * 20);
+      if (burn && !this.invulnerable && !this.effects.has('fire_resistance')) this.fire = Math.max(this.fire, burn * 20);
     } else this.net?.hurt?.(t.addr, amount, cause, knock, armored, burn);
   }
 
@@ -1037,7 +1090,7 @@ export class Game {
     const online = !net ? '' : net.host
       ? ` · ${net.count} player${net.count === 1 ? '' : 's'}${net.code ? ` · Code ${spacedCode(net.code)}` : ''}`
       : ` · ${net.count} players online`;
-    $('pause-info').textContent = `${this.meta.name} · ${this.creative ? 'Creative' : 'Survival'} · Day ${day}, ${clockText(this.time)}${online}`;
+    $('pause-info').textContent = `${this.meta.name} · ${this.modeName()} · Day ${day}, ${clockText(this.time)}${online}`;
     this.ui.setPauseMenu(net ? (net.host ? 'host' : 'guest') : 'single');
     this.screenStack = [];
     this.ui.show('screen-pause');
@@ -1056,6 +1109,7 @@ export class Game {
 
   // ---------------------------------------------------------------- container screens
   openInventory() {
+    if (this.spectator) return;
     // (Sitting in a boat with a chest, it's the chest that opens, as in the original.)
     if (this.riding?.kind === 'boat' && this.riding.chest) { this.openBoatChest(this.riding); return; }
     this.openMenu(this.creative && this.gui.tab !== 'inventory' ? new CreativeMenu(this) : new InventoryMenu(this));
@@ -1491,7 +1545,7 @@ export class Game {
     this.ui.message('Respawn point set', '#f3b73f');
     // With friends, the night only passes once everyone is in bed.
     if (this.net) {
-      const n = this.net.count;
+      const n = 1 + [...this.net.players.values()].filter((rp) => !rp.spectator).length;
       if (n > 1) this.ui.message(`Sleeping… the night passes when all ${n} players are in bed.`, COLORS.s);
       return;
     }
@@ -1640,12 +1694,47 @@ export class Game {
     // (Where you fell is marked, as the Xaero's Minimap mod does.)
     this.waypoints.died(this.player.x, this.player.y, this.player.z);
     this.state = 'dead';
+    // (What was in a crafting grid or on the cursor goes back into the inventory first.)
     this.closeMenu();
+    const dropped = !this.keepInventory && this.dropEverything();
+    // Hardcore: one life. From now on the world can only be watched, even if you leave it and come
+    // back (as in the original).
+    if (this.hardcore) this.setMode('spectator');
     this.health = 0;
     this.releasePointer();
     this.mining = null;
-    $('death-cause').textContent = `${cause}. Your items are safe in your inventory.`;
+    this.eating = this.drawing = this.guarding = null;
+    $('death-title').textContent = this.hardcore ? 'Game Over!' : 'You Died!';
+    $('death-respawn').textContent = this.hardcore ? 'Spectate World' : 'Respawn';
+    const note = this.hardcore ? 'This world is over for you, but you can still look around it.'
+      : this.keepInventory ? 'Your items are safe in your inventory.'
+        : dropped ? 'What you had lies where you fell, for ten minutes of play.' : '';
+    $('death-cause').textContent = `${cause}. ${note}`.trim();
     this.ui.show('screen-death');
+  }
+
+  // Keep Inventory off (as a new world has it): dying, everything carried and worn scatters where
+  // you fell, to stay there for ten minutes of play (not while the game's closed, nor while no one's
+  // near: see Entities.updateOne), and experience goes too, seven points a level (at most a
+  // hundred) as orbs and the rest lost, as in the original. True if anything was dropped.
+  dropEverything() {
+    const p = this.player, inv = this.inv;
+    let any = false;
+    const drop = (st) => {
+      if (!st?.id || !st.count) return;
+      any = true;
+      const a = Math.random() * Math.PI * 2, v = Math.random() * 2.5;
+      this.entities.spawnItem(p.x, p.y + 1.1, p.z, st.id, st.count, st.dmg ?? 0, 2,
+        [Math.cos(a) * v, 1.5 + Math.random() * 2.5, Math.sin(a) * v], extras(st), DEATH_DROP_LIFE);
+    };
+    inv.slots.forEach((st, i) => { drop(st); inv.slots[i] = null; });
+    inv.armor.forEach((st, i) => { drop(st); inv.armor[i] = null; });
+    const orbs = Math.min(7 * this.xp.level, 100);
+    if (orbs > 0) this.entities.spawnXp(p.x, p.y + 0.5, p.z, orbs);
+    if (this.xp.level || this.xp.points) any = true;
+    this.xp = { level: 0, points: 0 };
+    this.invChanged();
+    return any;
   }
 
   resetHunger() {
@@ -1710,6 +1799,8 @@ export class Game {
   }
 
   respawn() {
+    // (After a hardcore death: back at the spawn point, watching.)
+    if (this.hardcore && this.spectator) this.ui.message('You are a spectator now: fly anywhere, through anything (the mouse wheel sets how fast).', '#aaaaaa');
     this.goToSpawn();
     this.health = 20;
     this.resetHunger();
@@ -1788,7 +1879,7 @@ export class Game {
       this.lastW = now;
     }
     if (forward <= 0) this.sprintLatch = false;
-    let sprint = (held('sprint') || this.sprintLatch || t.sprint) && (this.creative || this.food > 6);
+    let sprint = (held('sprint') || this.sprintLatch || t.sprint) && (this.invulnerable || this.food > 6);
     if (this.eating || this.drawing) { forward *= 0.3; right *= 0.3; sprint = false; }
     if (this.keyHit('jump') && this.creative) {
       if (now - this.lastSpace < 300) { this.player.flying = !this.player.flying; this.lastSpace = 0; } else this.lastSpace = now;
@@ -1991,7 +2082,7 @@ export class Game {
     if (p.landed !== null) {
       const d = p.landed;
       p.landed = null;
-      if (d > 3.2 && !p.inWater && !this.creative) this.audio.fall(d > 7);
+      if (d > 3.2 && !p.inWater && !this.invulnerable) this.audio.fall(d > 7);
       // (Honey breaks a fall: a fifth of the hurt.)
       const soft = p.onHoney ? 0.2 : 1;
       if (d > 3.2 + this.effectLevel('jump_boost') && !p.inWater) this.damage(Math.floor((d - 3 - this.effectLevel('jump_boost')) * soft), 'You fell from a high place');
@@ -2009,6 +2100,8 @@ export class Game {
       if (!p.flying && this.state !== 'dead') this.advancements.event('fall', { from, to: p.y });
     }
     if (this.creative && p.y < -64) { p.y = 120; p.vy = 0; p.flying = true; }
+    // (A spectator can look at the world from underneath, but no further down than this.)
+    if (this.spectator && p.y < -64) { p.y = -64; p.vy = Math.max(0, p.vy); }
   }
 
   // ---------------------------------------------------------------- experience (see enchanting.js)
@@ -2205,7 +2298,7 @@ export class Game {
   // effects and eating (not in Creative, nor dead).
   playerTick() {
     const p = this.player;
-    if (this.creative || this.state === 'dead') return;
+    if (this.invulnerable || this.state === 'dead') return;
     this.invuln = Math.max(0, this.invuln - 1);
     this.sinceDamage++;
     if (p.headInWater && !this.effects.has('water_breathing')) {
@@ -2231,7 +2324,7 @@ export class Game {
     if (this.eating) this.eatTick();
   }
 
-  exhaust(amount) { if (!this.creative) this.exhaustion = Math.min(40, this.exhaustion + amount); }
+  exhaust(amount) { if (!this.invulnerable) this.exhaustion = Math.min(40, this.exhaustion + amount); }
 
   hungerTick() {
     const diff = this.difficulty;
@@ -2355,7 +2448,7 @@ export class Game {
   // `armored`: the hit is one that armor protects against (mobs, explosions, lava, cactus).
   // `opts.axe`: the hit was with an axe (which knocks a shield down).
   damage(amount, cause, ignoreInvuln = false, knock = null, armored = false, opts = null) {
-    if (this.creative || this.state === 'dead' || amount <= 0) return false;
+    if (this.invulnerable || this.state === 'dead' || amount <= 0) return false;
     // A shield held up takes hits from in front: blows, arrows, blasts.
     if (knock && this.shieldUp && this.fromFront(knock)) {
       this.blockHit(amount, !!opts?.axe);
@@ -2393,6 +2486,7 @@ export class Game {
 
   // ---------------------------------------------------------------- targeting & actions
   pickTarget() {
+    if (this.spectator) return null;
     const p = this.player, d = p.lookDir();
     const reach = REACH[this.mode];
     const hit = this.world.raycast(p.x, p.eyeY, p.z, d[0], d[1], d[2], reach);
@@ -2406,6 +2500,17 @@ export class Game {
 
   handleActions(dt) {
     const k = this.input, t = this.touch;
+    // A spectator touches nothing; the mouse wheel sets how fast they fly, as in the original.
+    if (this.spectator) {
+      t.breakStart = t.tap = false;
+      this.mining = this.eating = this.drawing = this.guarding = null;
+      if (k.wheel) {
+        const p = this.player;
+        p.flySpeed = clamp(Math.round((p.flySpeed ?? 1) * (k.wheel > 0 ? 0.8 : 1.25) * 100) / 100, 0.25, 4);
+        this.ui.showItemName(`Flying speed: ${Math.round(p.flySpeed * 100)}%`, 1000);
+      }
+      return;
+    }
     for (let i = 0; i < 9; i++) if (this.keyHit(HOTBAR_KEYS[i])) this.select(i);
     if (k.wheel) this.select(this.inv.selected + (k.wheel > 0 ? 1 : -1));
     if (this.keyHit('drop')) this.dropHeld(k.isDown('ControlLeft') || k.isDown('ControlRight'));
@@ -2427,6 +2532,10 @@ export class Game {
       if (attackClick && target && !target.entity && !target.player) { this.breakTarget(); this.breakCooldown = 0.3; }
       else if (attack && target && !target.entity && !target.player && this.breakCooldown <= 0) { this.breakTarget(); this.breakCooldown = 0.22; }
       else if (attackClick) this.swingAtAir();
+    } else if (!this.mayBuild) {
+      // (Adventure: nothing is broken.)
+      this.mining = null;
+      if (attackClick) this.swingAtAir();
     } else {
       this.updateMining(dt, attack && target && !target.entity && !target.player ? target : null);
       if (attackClick && !target) this.swingAtAir();
@@ -2701,7 +2810,9 @@ export class Game {
 
   attackEntity(e) {
     // (A punch knocks down what's hung up, whatever it's done with.)
-    if (isHanging(e)) { this.swingArm(); this.entities.hitHanging(e, this.creative); return; }
+    // (In Adventure, what's hung up and armor stands stay as they are.)
+    if (isHanging(e)) { this.swingArm(); if (this.mayBuild) this.entities.hitHanging(e, this.creative); return; }
+    if (e.kind === 'stand' && !this.mayBuild) { this.swingArm(); return; }
     const p = this.player, held = this.inv.heldId, def = itemDef(held), ench = this.inv.held?.ench ?? null;
     const f = this.attackStrength(this.tickAcc);
     const strong = f > 0.9;
@@ -2873,6 +2984,7 @@ export class Game {
   }
 
   useItem(repeat = false) {
+    if (this.spectator) return;
     const held = this.inv.held, t = this.target, p = this.player, w = this.world;
     const def = held ? itemDef(held.id) : null;
     // An item frame takes what you're holding, whatever it is (or turns what's in it); an armor stand
@@ -2920,8 +3032,9 @@ export class Game {
       else if (t.id === B.enchanting_table) this.openEnchanting(t.x, t.y, t.z);
       else if (SIGN[t.id]) {
         // (Glow ink makes its writing glow; ink takes the glow off again.)
-        const inked = (held?.id === I.glow_ink_sac && this.glowSign(t.x, t.y, t.z, true)) || (held?.id === I.ink_sac && this.glowSign(t.x, t.y, t.z, false));
-        if (!inked) this.editSign(t.x, t.y, t.z);
+        // (Not in Adventure: its writing stays as it is.)
+        const inked = this.mayBuild && ((held?.id === I.glow_ink_sac && this.glowSign(t.x, t.y, t.z, true)) || (held?.id === I.ink_sac && this.glowSign(t.x, t.y, t.z, false)));
+        if (!inked && this.mayBuild) this.editSign(t.x, t.y, t.z);
       }
       else if (CAKE[t.id] !== undefined) this.eatCake(t.x, t.y, t.z);
       // A note block goes up a semitone (and plays it; see blockChanged). A jukebox gives its disc back.
@@ -2939,20 +3052,21 @@ export class Game {
     }
     // Glow berries go up under a ceiling (or onto the end of a cave vine) as a new vine; sweet berries
     // go into the ground as a bush, cocoa beans onto a jungle log.
-    if (held?.id === I.glow_berries && t && !t.entity && !t.player && !repeat && plantGlowBerries(this, t)) return;
-    if (held?.id === I.sweet_berries && t && !t.entity && !t.player && !repeat && plantBerries(this, t)) return;
-    if (held?.id === I.cocoa_beans && t && !t.entity && !t.player && !repeat && plantCocoa(this, t)) return;
+    const planting = t && !t.entity && !t.player && !repeat && this.mayBuild;
+    if (held?.id === I.glow_berries && planting && plantGlowBerries(this, t)) return;
+    if (held?.id === I.sweet_berries && planting && plantBerries(this, t)) return;
+    if (held?.id === I.cocoa_beans && planting && plantCocoa(this, t)) return;
     if ((def?.food || def?.drink || def?.potion) && (!this.creative || def.potion)) return; // eaten by holding right click (see handleActions)
     if (def?.splash) { if (!repeat) this.throwItem({ potion: def.splash }); return; }
     if (def?.throws === 'snowball') { if (!repeat) this.throwItem({ snowball: true }); return; }
     // Buckets and lily pads look for water along the line of sight themselves. (A bucket of water
     // used on a fish scoops it up; a bucket of fish feeds an axolotl.)
     if (held && (held.id === I.bucket || held.id === I.water_bucket || held.id === I.lava_bucket || def?.holds)) {
-      if (!repeat && !(t?.entity?.kind === 'mob' && this.entities.interact(t.entity, held))) useBucket(this, held);
+      if (!repeat && !(t?.entity?.kind === 'mob' && this.entities.interact(t.entity, held)) && this.mayBuild) useBucket(this, held);
       return;
     }
-    if (held?.id === B.lily_pad || held?.id === B.frogspawn) { if (!repeat) placeLilyPad(this, held.id); return; }
-    if (def?.spawns) { if (!repeat) this.useSpawnEgg(def); return; }
+    if (held?.id === B.lily_pad || held?.id === B.frogspawn) { if (!repeat && this.mayBuild) placeLilyPad(this, held.id); return; }
+    if (def?.spawns) { if (!repeat && this.mayBuild) this.useSpawnEgg(def); return; }
     if (def?.book) { if (!repeat) this.openBook(); return; }
     if (held?.id === I.map) { if (!repeat) this.useEmptyMap(); return; }
     if (def?.boat && !t?.entity && !t?.player) { if (!repeat) placeBoat(this, held); return; }
@@ -2972,6 +3086,8 @@ export class Game {
       if (t?.entity && !repeat) this.entities.interact(t.entity, held);
       return;
     }
+    // Adventure: nothing is built, nor anything done to a block.
+    if (!this.mayBuild) return;
     // A minecart goes on the rail pointed at.
     if (def?.cart) {
       if (repeat || !RAIL[t.id]) return;
@@ -3515,8 +3631,8 @@ export class Game {
   // and dropped items if `items`. True as soon as it returns true.
   bodiesOn(on, items = false) {
     const at = (b) => on(Math.floor(b.x), Math.floor(b.y + 0.05), Math.floor(b.z));
-    if (this.state !== 'dead' && this.player && at(this.player)) return true;
-    for (const rp of this.net?.players?.values?.() ?? []) if (rp.ready && !rp.dead && at(rp)) return true;
+    if (this.state !== 'dead' && !this.spectator && this.player && at(this.player)) return true;
+    for (const rp of this.net?.players?.values?.() ?? []) if (rp.ready && !rp.dead && !rp.spectator && at(rp)) return true;
     for (const e of this.entities.list) {
       if (e.dead || (e.kind !== 'mob' && !(items && e.kind === 'item'))) continue;
       if (at(e)) return true;
@@ -3598,9 +3714,9 @@ export class Game {
     switch (lower) {
       case 'help':
         say('/time set day|noon|night|midnight|<ticks>, /time add <n>');
-        say('/gamemode creative|survival, /tp <x> <y> <z>, /give <item> [count], /summon <creature> [x y z], /weather clear|rain');
+        say('/gamemode survival|creative|adventure|spectator, /tp <x> <y> <z>, /give <item> [count], /summon <creature> [x y z], /weather clear|rain');
         say('/spawn, /setspawn, /seed, /locate village|camp|hamlet|town|kingdom|pyramid|temple|igloo|shipwreck|monument|mineshaft|stronghold, /fly, /kill, /clear, /difficulty peaceful|easy|normal|hard');
-        say('/advancement grant|revoke everything|<name>');
+        say('/advancement grant|revoke everything|<name>, /gamerule keepInventory true|false');
         if (this.net) say(`/list${this.net.host ? ', /pvp on|off' : ''}`);
         break;
       case 'advancement': case 'advancements': {
@@ -3644,19 +3760,29 @@ export class Game {
         const d = /^[0-3]$/.test(a) ? Number(a) : DIFFICULTIES.findIndex((n) => n.toLowerCase().startsWith(a));
         if (d < 0) { say('Usage: /difficulty peaceful|easy|normal|hard', '#e88a78'); break; }
         if (this.meta.remote) { say('Only the host can change that', '#e88a78'); break; }
+        if (this.hardcore) { say('A hardcore world is always played on Hard', '#e88a78'); break; }
         this.setDifficulty(d);
         say(`The difficulty has been set to ${DIFFICULTIES[d]}`);
         break;
       }
       case 'gamemode': case 'gm': {
         const m = (args[0] ?? '').toLowerCase();
-        const mode = ['c', 'creative', '1'].includes(m) ? 'creative' : ['s', 'survival', '0'].includes(m) ? 'survival' : null;
-        if (!mode) { say('Usage: /gamemode creative|survival', '#e88a78'); break; }
-        this.meta.mode = mode;
-        if (mode === 'survival') p.flying = false;
+        const mode = Object.keys(MODE_NAMES).find((k, i) => m === k || m === String(i) || (m.length > 0 && m.length < 3 && k.startsWith(m))) ?? null;
+        if (!mode) { say('Usage: /gamemode survival|creative|adventure|spectator', '#e88a78'); break; }
+        this.setMode(mode);
         this.health = 20;
-        say(`Game mode set to ${mode === 'creative' ? 'Creative' : 'Survival'}`);
-        this.invChanged();
+        say(`Game mode set to ${MODE_NAMES[mode]}`);
+        break;
+      }
+      case 'gamerule': {
+        // (Just the one: whether dying keeps what you carry. The host's, in multiplayer.)
+        const rule = (args[0] ?? '').toLowerCase(), v = (args[1] ?? '').toLowerCase();
+        if (rule !== 'keepinventory') { say('Usage: /gamerule keepInventory true|false', '#e88a78'); break; }
+        if (!v) { say(`keepInventory is ${this.keepInventory}`); break; }
+        if (v !== 'true' && v !== 'false') { say('Usage: /gamerule keepInventory true|false', '#e88a78'); break; }
+        if (this.meta.remote) { say('Only the host can change that', '#e88a78'); break; }
+        this.setKeepInventory(v === 'true');
+        say(`keepInventory is now ${v}`);
         break;
       }
       case 'tp': case 'teleport': {
@@ -3722,7 +3848,10 @@ export class Game {
       }
       case 'spawn': p.x = this.meta.spawn.x; p.z = this.meta.spawn.z; this.respawnAtBed = false; this.needsRespawnY = true; say('Teleported to spawn'); break;
       case 'setspawn': this.meta.spawn = { x: p.x, y: p.y, z: p.z }; say('Spawn point set here'); break;
-      case 'fly': if (this.creative) { p.flying = !p.flying; say(p.flying ? 'Flying' : 'Not flying'); } else say('Flying needs Creative mode', '#e88a78'); break;
+      case 'fly':
+        if (this.creative) { p.flying = !p.flying; say(p.flying ? 'Flying' : 'Not flying'); }
+        else say(this.spectator ? 'A spectator is always flying' : 'Flying needs Creative mode', '#e88a78');
+        break;
       case 'weather': {
         const kind = (args[0] ?? '').toLowerCase(), secs = Number(args[1]);
         if (kind !== 'clear' && kind !== 'rain' && kind !== 'thunder') { say('Usage: /weather clear|rain|thunder [seconds]', '#e88a78'); break; }
@@ -3875,7 +4004,7 @@ export class Game {
       lines: this.fishingLines(),
       beams: this.lightning.bolts.length ? this.lightning.beams(this.guardianBeams() ?? []) : this.guardianBeams(),
       rod: this.rodLine(),
-      hand: loading || this.hideHud || this.state === 'dead' || third || scope || isMap(this.handItem) ? null : {
+      hand: loading || this.hideHud || this.state === 'dead' || third || scope || this.spectator || isMap(this.handItem) ? null : {
         item: this.lookOf(this.handItem), swing: this.swinging ? this.swing : 0,
         use: this.handItem === this.inv.heldId ? this.handUse() : null, aim: this.handItem === I.crossbow && !!this.inv.held?.load,
         equip: 1 - this.handHeight,
@@ -3896,7 +4025,8 @@ export class Game {
     let dist = 4;
     for (let t = 0.1; t <= 4; t += 0.1) {
       const x = cam.x + d[0] * t * sign, y = cam.y + d[1] * t * sign, z = cam.z + d[2] * t * sign;
-      if (w.collides(x - 0.12, y - 0.12, z - 0.12, x + 0.12, y + 0.12, z + 0.12)) { dist = Math.max(0, t - 0.1); break; }
+      // (A spectator's camera goes through blocks as they do.)
+      if (!this.spectator && w.collides(x - 0.12, y - 0.12, z - 0.12, x + 0.12, y + 0.12, z + 0.12)) { dist = Math.max(0, t - 0.1); break; }
     }
     cam.x += d[0] * dist * sign; cam.y += d[1] * dist * sign; cam.z += d[2] * dist * sign;
     if (this.view === 2) { cam.yaw += Math.PI; cam.pitch = -cam.pitch; }
@@ -3916,7 +4046,7 @@ export class Game {
     if (!a.ready) Object.assign(a, { ready: true, bodyYaw: p.yaw, lastX: p.x, lastZ: p.z });
     Object.assign(a, {
       x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, name: this.settings.name, look: this.settings.look,
-      flags: (p.sneaking ? 1 : 0) | (this.guarding ? 256 : 0) | (p.swimming ? 512 : 0) | (this.effects?.has('invisibility') ? 128 : 0) |
+      flags: (p.sneaking ? 1 : 0) | (this.guarding ? 256 : 0) | (p.swimming ? 512 : 0) | (this.effects?.has('invisibility') || this.spectator ? 128 : 0) |
         (this.eating ? 1024 : 0) | (this.using ? 2048 : 0) | (this.spin ? 4096 : 0),
       held: this.handLook, heldShiny: shiny(this.inv.held), armor: this.inv.armor.map((s) => s?.id ?? 0),
       mountId: this.riding ? 1 : null,
@@ -4057,15 +4187,15 @@ export class Game {
       if (this.menu) this.gui.render();
     }
     if (this.menu) this.gui.frame();
-    ui.renderStats(!this.creative, Math.ceil(this.health), this.air, p.headInWater, this.food, this.inv.armorPoints, this.effects.has('poison'), this.effects.has('hunger'));
+    ui.renderStats(!this.invulnerable, Math.ceil(this.health), this.air, p.headInWater, this.food, this.inv.armorPoints, this.effects.has('poison'), this.effects.has('hunger'), this.hardcore);
     ui.renderEffects(this.state === 'dead' ? [] : [...this.effects].map(([name, e]) => ({ name, ...e })).sort((a, b) => (EFFECTS[a.name].bad ? 1 : 0) - (EFFECTS[b.name].bad ? 1 : 0)));
-    ui.renderXp(!this.creative, this.xp.level, this.xp.points / xpToNext(this.xp.level));
+    ui.renderXp(!this.invulnerable, this.xp.level, this.xp.points / xpToNext(this.xp.level));
     const wind = this.attackStrength(this.tickAcc);
     ui.setAttackMeter(this.state === 'play' && wind < 1 ? wind : -1);
     // (A map in hand is held up in front, drawn over the view.)
     this.heldMap.update(isMap(this.inv.heldId) && isMap(this.handItem) ? this.inv.held : null);
     this.touch.update();
-    const burning = this.fire > 0 && !this.creative && (this.state === 'play' || this.state === 'chat');
+    const burning = this.fire > 0 && !this.invulnerable && (this.state === 'play' || this.state === 'chat');
     if (burning && !this._fireSet) { this._fireSet = true; $('overlay-fire').style.setProperty('--fire', `url(${this.fireStrip()})`); }
     // (Under water the screen takes on the colour of the water there.)
     if (p.headInWater) {
@@ -4078,6 +4208,7 @@ export class Game {
       hurt: Math.round(this.hurtFlash * 0.9 * 20) / 20,
       crosshair: (this.state === 'play' || this.state === 'chat') && !(this.drawing?.scope && this.view === 0),
       'overlay-scope': !!this.drawing?.scope && this.view === 0 && this.state === 'play',
+      hotbar: !this.spectator,
     });
     if (this.lastCam) this.renderTags();
     this.minimap.update();
@@ -4134,7 +4265,7 @@ export class Game {
       `Block: ${bx} ${by} ${bz} · Chunk: ${bx >> 4} ${bz >> 4}`,
       `Facing: ${facing} (${deg.toFixed(1)}° / ${((p.pitch * 180) / Math.PI).toFixed(1)}°)`,
       `Biome: ${BIOME_NAMES[biome] ?? '?'} · Light: ${light >> 4} sky, ${light & 15} block`,
-      `Day ${Math.floor(this.time / TICKS_PER_DAY) + 1}, ${clockText(this.time)} · ${this.creative ? 'Creative' : 'Survival'}${p.flying ? ' · flying' : ''}`,
+      `Day ${Math.floor(this.time / TICKS_PER_DAY) + 1}, ${clockText(this.time)} · ${this.modeName()}${p.flying && !this.spectator ? ' · flying' : ''}`,
       `Chunks: ${w.chunks.size} · Sections drawn: ${r.sections} · Triangles: ${(r.triangles / 1000).toFixed(0)}k · ${this.canvas.width}x${this.canvas.height}`,
       `Food: ${this.food} (saturation ${this.saturation.toFixed(1)}) · Weather: ${this.weather.raining ? 'rain' : 'clear'} ${Math.round(this.weather.rain * 100)}%`,
       `Entities: ${this.entities.list.length} · Particles: ${this.particles.list.length}`,

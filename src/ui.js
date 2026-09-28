@@ -28,6 +28,9 @@ function sprite(rows, colors) {
 }
 const HEART = ['.kk...kk.', 'khrk.krrk', 'krrrkrrrk', 'krrrrrrrk', '.krrrrrk.', '..krrrk..', '...krk...', '....k....', '.........'];
 const HALF = ['.kk...kk.', 'khrk.keek', 'krrrkeeek', 'krrrreeek', '.krrreek.', '..krrek..', '...kek...', '....k....', '.........'];
+// Hardcore's hearts, as in the original: pointed on top, with a gleam in each lobe.
+const HARD = ['.k.....k.', 'krk...krk', 'krrk.krrk', 'kwrrkwrrk', 'krrrrrrrk', '.krrrrrk.', '..krrrk..', '...krk...', '....k....'];
+const HARD_HALF = ['.k.....k.', 'krk...kek', 'krrk.keek', 'kwrrkeeek', 'krrrreeek', '.krrreek.', '..krrek..', '...kek...', '....k....'];
 const DRUMSTICK = ['....kkk..', '...kmmmk.', '..kmhmmmk', '..kmmmmmk', '.kkmmmmk.', 'kbk.kkk..', 'kbbk.....', '.kk......', '.........'];
 const HALF_DRUM = ['....kkk..', '...keemk.', '..keemmmk', '..keemmmk', '.kkeemmk.', 'kbk.kkk..', 'kbbk.....', '.kk......', '.........'];
 const BUBBLE = ['..kkkkk..', '.kbbbbbk.', 'kbwbbbbbk', 'kbwbbbbbk', 'kbbbbbbbk', 'kbbbbbbbk', 'kbbbbbbbk', '.kbbbbbk.', '..kkkkk..'];
@@ -47,6 +50,11 @@ const SPRITES = {
   // Poisoned, the hearts go sickly green; with the Hunger effect, so does the food.
   heartPoison: sprite(HEART, { k: '#161a06', r: '#839f1e', h: '#c8dc5a' }),
   halfPoison: sprite(HALF, { k: '#161a06', r: '#839f1e', h: '#c8dc5a', e: '#3a1512' }),
+  hard: sprite(HARD, { k: '#1a0606', r: '#c81e16', w: '#ffc8bc' }),
+  hardHalf: sprite(HARD_HALF, { k: '#1a0606', r: '#c81e16', w: '#ffc8bc', e: '#3a1512' }),
+  hardEmpty: sprite(HARD.map((r) => r.replace(/[rw]/g, 'e')), { k: '#1a0606', e: '#3a1512' }),
+  hardPoison: sprite(HARD, { k: '#161a06', r: '#839f1e', w: '#dcecaa' }),
+  hardHalfPoison: sprite(HARD_HALF, { k: '#161a06', r: '#839f1e', w: '#dcecaa', e: '#3a1512' }),
   foodHunger: sprite(DRUMSTICK, { k: '#1a2a0a', m: '#6e8a3a', h: '#9ab86a', b: '#d8e0c8' }),
   foodHalfHunger: sprite(HALF_DRUM, { k: '#1a2a0a', m: '#6e8a3a', e: '#3a2014', b: '#d8e0c8' }),
 };
@@ -306,8 +314,18 @@ const DIFFICULTY_NOTES = [
 
 const MODES = {
   survival: ['Survival', 'Gather resources, craft tools and stay alive.'],
+  hardcore: ['Hardcore', 'Survival, locked on Hard, and you only have one life.'],
   creative: ['Creative', 'Every block, unlimited. Fly and build freely.'],
 };
+// (The game mode button goes round these, as in the original; Adventure and Spectator are for
+// /gamemode.)
+const MODE_CYCLE = ['survival', 'hardcore', 'creative'];
+const KEEP_NOTES = [
+  'Dying drops what you carry, to be picked up where you fell within ten minutes of play.',
+  'Everything you carry, and your experience, stays with you when you die.',
+];
+// What each game mode is called in the list of worlds and of games to join.
+const MODE_LABELS = { survival: 'Survival', creative: 'Creative', adventure: 'Adventure', spectator: 'Spectator' };
 const TYPES = {
   default: ['Default', 'Mountains, forests, oceans and caves.'],
   flat: ['Flat', 'An endless plain for building.'],
@@ -329,7 +347,7 @@ export class UI {
     this.u = 3;
     this.selectedWorld = null;
     this.selectedGame = null;
-    this.createState = { mode: 'survival', type: 'default', difficulty: 2 };
+    this.createState = { mode: 'survival', type: 'default', difficulty: 2, keepInventory: false };
 
     document.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-action]');
@@ -362,12 +380,11 @@ export class UI {
     $('armor').innerHTML = '<i></i>'.repeat(10);
 
     $('create-form').addEventListener('submit', (e) => { e.preventDefault(); this.emit('create-world'); });
-    this.on('cycle-mode', () => this.setCreate('mode', this.createState.mode === 'survival' ? 'creative' : 'survival'));
+    this.on('cycle-mode', () => this.setCreate('mode', MODE_CYCLE[(MODE_CYCLE.indexOf(this.createState.mode) + 1) % MODE_CYCLE.length]));
     this.on('cycle-type', () => this.setCreate('type', this.createState.type === 'default' ? 'flat' : 'default'));
     this.on('cycle-create-difficulty', () => this.setCreate('difficulty', (this.createState.difficulty + 1) % 4));
-    this.setCreate('mode', 'survival');
-    this.setCreate('type', 'default');
-    this.setCreate('difficulty', 2);
+    this.on('cycle-keep', () => this.setCreate('keepInventory', !this.createState.keepInventory));
+    this.resetCreate();
     $('chat-input').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); this.emit('chat-send', $('chat-input').value); }
       else if (e.key === 'Escape') { e.preventDefault(); this.emit('chat-close'); }
@@ -571,7 +588,7 @@ export class UI {
     }));
   }
 
-  renderStats(survival, health, air, underwater, food = 20, armor = 0, poisoned = false, hungry = false) {
+  renderStats(survival, health, air, underwater, food = 20, armor = 0, poisoned = false, hungry = false, hardcore = false) {
     $('stats').style.visibility = survival ? 'visible' : 'hidden';
     if (!survival) return;
     if (armor !== this.lastArmor) {
@@ -590,11 +607,13 @@ export class UI {
         el.style.backgroundImage = `url(${v >= 2 ? (hungry ? SPRITES.foodHunger : SPRITES.food) : v === 1 ? (hungry ? SPRITES.foodHalfHunger : SPRITES.foodHalf) : SPRITES.foodEmpty})`;
       });
     }
-    if (health + (poisoned ? 100 : 0) !== this.lastHealth) {
-      this.lastHealth = health + (poisoned ? 100 : 0);
+    if (health + (poisoned ? 100 : 0) + (hardcore ? 1000 : 0) !== this.lastHealth) {
+      this.lastHealth = health + (poisoned ? 100 : 0) + (hardcore ? 1000 : 0);
+      const [full, half, fullPoison, halfPoison, empty] = hardcore ? [SPRITES.hard, SPRITES.hardHalf, SPRITES.hardPoison, SPRITES.hardHalfPoison, SPRITES.hardEmpty]
+        : [SPRITES.heart, SPRITES.half, SPRITES.heartPoison, SPRITES.halfPoison, SPRITES.empty];
       [...$('hearts').children].forEach((el, i) => {
         const v = health - i * 2;
-        el.style.backgroundImage = `url(${v >= 2 ? (poisoned ? SPRITES.heartPoison : SPRITES.heart) : v === 1 ? (poisoned ? SPRITES.halfPoison : SPRITES.half) : SPRITES.empty})`;
+        el.style.backgroundImage = `url(${v >= 2 ? (poisoned ? fullPoison : full) : v === 1 ? (poisoned ? halfPoison : half) : empty})`;
       });
     }
     // With two hearts or less left, the hearts tremble.
@@ -688,7 +707,11 @@ export class UI {
       const played = document.createElement('span');
       played.textContent = `Played ${timeAgo(w.lastPlayed)}`;
       const mode = document.createElement('span');
-      mode.textContent = `${w.mode === 'creative' ? 'Creative' : 'Survival'} Mode, ${w.type === 'flat' ? 'Flat' : 'Default'} world, seed ${w.seed}`;
+      // (A hardcore world says so in red, as in the original, whatever became of its player.)
+      const how = document.createElement('em');
+      how.textContent = w.hardcore ? 'Hardcore Mode!' : `${MODE_LABELS[w.mode] ?? 'Survival'} Mode`;
+      how.classList.toggle('hardcore', !!w.hardcore);
+      mode.append(how, `, ${w.type === 'flat' ? 'Flat' : 'Default'} world, seed ${w.seed}`);
       li.append(icon, name, played, mode);
       return li;
     }));
@@ -706,11 +729,28 @@ export class UI {
     $('w-delete').disabled = !id;
   }
 
+  // A new world's choices, as they start (the difficulty stays as last chosen).
+  resetCreate() {
+    this.setCreate('mode', 'survival');
+    this.setCreate('type', 'default');
+    this.setCreate('difficulty', this.createState.difficulty ?? 2);
+    this.setCreate('keepInventory', false);
+  }
+
   setCreate(kind, value) {
     this.createState[kind] = value;
-    if (kind === 'difficulty') {
-      $('cw-diff').textContent = `Difficulty: ${DIFFICULTIES[value]}`;
-      $('cw-diff-desc').textContent = DIFFICULTY_NOTES[value];
+    const hardcore = this.createState.mode === 'hardcore';
+    if (kind === 'difficulty' || kind === 'mode') {
+      // (Hardcore is always Hard.)
+      const d = hardcore ? 3 : this.createState.difficulty;
+      $('cw-diff').textContent = `Difficulty: ${DIFFICULTIES[d]}`;
+      $('cw-diff').disabled = hardcore;
+      $('cw-diff-desc').textContent = hardcore ? 'A hardcore world is always played on Hard.' : DIFFICULTY_NOTES[d];
+      if (kind === 'difficulty') return;
+    }
+    if (kind === 'keepInventory') {
+      $('cw-keep').textContent = `Keep Inventory: ${value ? 'ON' : 'OFF'}`;
+      $('cw-keep-desc').textContent = KEEP_NOTES[value ? 1 : 0];
       return;
     }
     const [name, desc] = (kind === 'mode' ? MODES : TYPES)[value];
@@ -889,14 +929,15 @@ export class UI {
     this.savingTimer = setTimeout(() => { el.hidden = true; }, 1800);
   }
 
-  showDifficulty(d, canChange) {
+  // `locked`: why it can't be changed here (a guest's is the host's; hardcore is always Hard).
+  showDifficulty(d, locked = null) {
     const b = $('opt-difficulty');
     if (!b) return;
     b.hidden = b.previousElementSibling.hidden = d === null;
     if (d === null) return;
     b.textContent = `Difficulty: ${DIFFICULTIES[d]}`;
-    b.disabled = !canChange;
-    b.title = canChange ? DIFFICULTY_NOTES[d] : 'The host sets the difficulty';
+    b.disabled = !!locked;
+    b.title = locked ?? DIFFICULTY_NOTES[d];
   }
 
   // Builds the options screen: sliders with their value written across them, and ON/OFF buttons.

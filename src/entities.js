@@ -79,6 +79,9 @@ const isWild = (e) => !e.def.hostile && e.def.kind !== 'civilian' && e.def.kind 
 
 // The monsters that no longer come on their own: only from spawn eggs (see reset).
 const NOT_WILD = new Set(['phantom', 'drowned']);
+// How long a dropped item lies about before it's gone, in seconds of play where it is (as in the
+// original, five minutes; what someone had when they died stays longer: see spawnItem).
+const ITEM_LIFE = 300;
 // A boat's chest's id (its contents are kept under `boat:<id>`), and a boat as saved.
 const chestId = (c) => (typeof c === 'string' && /^[a-z0-9]{1,16}$/.test(c) ? c : null);
 const saveBoat = (e) => ({ k: 'boat', x: e.x, y: e.y, z: e.z, yaw: e.yaw, w: e.wood, c: e.chest ? e.cid : undefined });
@@ -126,6 +129,7 @@ export class Entities {
     this.list = [];
     this.byNid = new Map(); // guests: the host's entity id -> our copy
     this.players = [];
+    this.watchers = [];
     this.mats = [];
     this.matIndex = 0;
     this.spawnTimer = 0;
@@ -149,7 +153,12 @@ export class Entities {
     this.elders.clear();
     if (!saved) return;
     for (const s of saved) {
-      if (s.k === 'item' && itemDef(s.id)) this.spawnItem(s.x, s.y, s.z, s.id, s.count, s.dmg, 0, null, cleanExtras(s.ex));
+      if (s.k === 'item' && itemDef(s.id)) {
+        // (Its time so far lying there counts: it goes when it would have.)
+        const life = Number.isFinite(s.lf) ? Math.min(s.lf, 600) : undefined;
+        const e = this.spawnItem(s.x, s.y, s.z, s.id, s.count, s.dmg, 0, null, cleanExtras(s.ex), life);
+        if (Number.isFinite(s.a)) e.age = Math.max(0, Math.min(s.a, e.life ?? ITEM_LIFE));
+      }
       // (Phantoms no longer come at night, nor the drowned out of the water; any a world was saved
       // with are gone, but for those hatched from spawn eggs or given names.)
       else if (s.k === 'mob' && MOBS[s.t] && (MOBS[s.t].kind !== 'civilian' || MOBS[s.t].wanderer) && (!NOT_WILD.has(s.t) || s.ht || s.nm)) {
@@ -184,10 +193,15 @@ export class Entities {
     const chests = this.list.filter((e) => !e.dead && e.kind === 'boat' && e.chest).map(saveBoat);
     // (Armor stands too, and what they wear.)
     const stands = this.list.filter((e) => !e.dead && e.kind === 'stand').map((e) => ({ k: 'stand', x: e.x, y: e.y, z: e.z, yaw: e.yaw, a: saveArmor(e.armor) }));
-    return hung.concat(tridents, chests, stands, this.list.filter((e) => !e.dead && ((e.kind === 'boat' && !e.chest) || e.kind === 'item' || e.kind === 'cart' || e.kind === 'xp' ||
+    // (And what someone had on them when they died, however much: see Game.dropEverything.)
+    const lost = (e) => e.kind === 'item' && e.life > ITEM_LIFE;
+    const saveItem = (e) => ({ k: 'item', x: e.x, y: e.y, z: e.z, id: e.id, count: e.count, dmg: e.dmg, ex: e.extra ?? undefined,
+      a: Math.round(e.age) || undefined, lf: e.life ?? undefined });
+    return hung.concat(tridents, chests, stands, this.list.filter((e) => !e.dead && lost(e)).map(saveItem),
+      this.list.filter((e) => !e.dead && !lost(e) && ((e.kind === 'boat' && !e.chest) || e.kind === 'item' || e.kind === 'cart' || e.kind === 'xp' ||
       (e.kind === 'mob' && (e.def.kind !== 'civilian' || e.def.wanderer) && !e.pinned && !e.dying)))
       .slice(0, 300)
-      .map((e) => (e.kind === 'item' ? { k: 'item', x: e.x, y: e.y, z: e.z, id: e.id, count: e.count, dmg: e.dmg, ex: e.extra ?? undefined }
+      .map((e) => (e.kind === 'item' ? saveItem(e)
         : e.kind === 'boat' ? saveBoat(e)
           : e.kind === 'cart' ? { k: 'cart', x: e.x, y: e.y, z: e.z, yaw: e.yaw }
           : e.kind === 'xp' ? { k: 'xp', x: e.x, y: e.y, z: e.z, v: e.value }
@@ -245,11 +259,13 @@ export class Entities {
 
   // ---------------------------------------------------------------- spawning
   // `vel`: [vx, vy, vz], or null for a little random hop.
-  // (`extra`: the stack's enchantments and so on; see inventory.js.)
-  spawnItem(x, y, z, id, count, dmg = 0, delay = 0.6, vel = null, extra = null) {
-    if (this.guest) { this.game.net.dropItem(x, y, z, id, count, dmg, delay, vel, extra); return null; }
+  // (`extra`: the stack's enchantments and so on; see inventory.js. `life`: the seconds it lies
+  // there before it's gone, five minutes unless it's what someone had when they died.)
+  spawnItem(x, y, z, id, count, dmg = 0, delay = 0.6, vel = null, extra = null, life = undefined) {
+    if (this.guest) { this.game.net.dropItem(x, y, z, id, count, dmg, delay, vel, extra, life); return null; }
     const e = new Entity('item', 0.125, 0.25, x, y, z);
     Object.assign(e, { id, count, dmg, pickupDelay: delay, spin: Math.random() * 6.28, extra });
+    if (life > ITEM_LIFE) e.life = life;
     if (vel) [e.vx, e.vy, e.vz] = vel;
     else {
       e.vx = (Math.random() - 0.5) * 2;
@@ -583,7 +599,7 @@ export class Entities {
   // sees), the rest waiting their turn as others wander out of reach. A chunk whose herd is still
   // about (it went out of reach and came back) keeps that one.
   spawnHerds() {
-    if (!this.herdsDue.size || !this.players.length) return;
+    if (!this.herdsDue.size || !this.watchers.length) return;
     const game = this.game, w = this.world;
     const wild = this.list.filter((e) => e.kind === 'mob' && !e.dead && isWild(e));
     let room = Math.min(96, 16 + 8 * game.settings.renderDistance) - wild.length;
@@ -593,7 +609,7 @@ export class Entities {
     for (const [key, [cx, cz]] of this.herdsDue) {
       if (!w.readyChunk(cx, cz)) { this.herdsDue.delete(key); continue; }
       const x = cx * 16 + 8, z = cz * 16 + 8;
-      due.push([key, cx, cz, Math.min(...this.players.map((p) => (p.x - x) ** 2 + (p.z - z) ** 2))]);
+      due.push([key, cx, cz, Math.min(...this.watchers.map((p) => (p.x - x) ** 2 + (p.z - z) ** 2))]);
     }
     if (room <= 0) return;
     const about = new Set(this.list.filter((e) => e.herd && !e.dead).map((e) => e.herd));
@@ -790,8 +806,10 @@ export class Entities {
   tick() {
     const game = this.game;
     if (this.guest) { this.remoteTick(); return; }
-    // Everyone creatures can see: this player and, in multiplayer, the others.
-    this.players = game.players();
+    // Everyone creatures can see: this player and, in multiplayer, the others; but not spectators,
+    // whom nothing notices (though the world goes on about them as it would: see `watchers`).
+    this.watchers = game.players();
+    this.players = this.watchers.some((p) => p.spectator) ? this.watchers.filter((p) => !p.spectator) : this.watchers;
     const herds = this.spawnTimer % 10 === 0, more = ++this.spawnTimer >= 40;
     if (more) this.spawnTimer = 0;
     if (herds) this.guard('spawning', () => this.spawnHerds());
@@ -830,7 +848,7 @@ export class Entities {
       // Out of sight, out of mind: creatures far from everyone go (village folk and penned
       // animals come back when the village does). Horses someone has tamed or saddled stay,
       // waiting where they were left.
-      const near = this.players.some((p) => Math.hypot(p.x - e.x, p.z - e.z) < (game.settings.renderDistance + 2) * 16);
+      const near = this.watchers.some((p) => Math.hypot(p.x - e.x, p.z - e.z) < (game.settings.renderDistance + 2) * 16);
       // (A trader's llama stays with the trader: see Wanderers.leave.)
       const kept = e.tame || e.saddled || e.rider || e.made || e.named || (e.leash && e.leash.uid?.[0] !== '@') || e.trusting ||
         (e.hatched && !e.def.hostile);
@@ -867,16 +885,20 @@ export class Entities {
   }
 
   // Nearby identical items merge into one stack.
+  // Items lying together that would stack become one (not enchanted or named things, nor more than
+  // a stack), which lasts as long as the longer-lived of the two would have.
   mergeItems() {
     const items = this.list.filter((e) => e.kind === 'item' && !e.dead);
     for (let i = 0; i < items.length; i++) {
-      const a = items[i];
-      if (a.dead || a.count >= 64) continue;
+      const a = items[i], most = itemDef(a.id)?.stack ?? 64;
+      if (a.dead || a.dmg || a.extra || a.count >= most) continue;
       for (let j = i + 1; j < items.length; j++) {
         const b = items[j];
-        if (b.dead || b.id !== a.id || b.dmg || a.dmg || Math.abs(a.x - b.x) > 0.6 || Math.abs(a.y - b.y) > 0.6 || Math.abs(a.z - b.z) > 0.6) continue;
-        const n = Math.min(64 - a.count, b.count);
+        if (b.dead || b.id !== a.id || b.dmg || b.extra || Math.abs(a.x - b.x) > 0.6 || Math.abs(a.y - b.y) > 0.6 || Math.abs(a.z - b.z) > 0.6) continue;
+        const n = Math.min(most - a.count, b.count);
+        if (n <= 0) break;
         a.count += n; b.count -= n;
+        if ((b.life ?? ITEM_LIFE) - b.age > (a.life ?? ITEM_LIFE) - a.age) { a.life = b.life; a.age = b.age; }
         if (!b.count) b.dead = true;
       }
     }
@@ -911,11 +933,12 @@ export class Entities {
       e.vx *= f; e.vz *= f;
       e.move(w, e.vx * dt, e.vy * dt, e.vz * dt);
       const d = Math.hypot(p.x - e.x, p.y + 0.9 - e.y, p.z - e.z);
-      if (e.pickupDelay <= 0 && d < 1.6 && game.state !== 'dead') {
+      if (e.pickupDelay <= 0 && d < 1.6 && game.state !== 'dead' && !game.spectator) {
         const left = game.pickup(e.id, e.count, e.dmg, e.extra);
         if (left === 0) e.dead = true; else e.count = left;
       }
-      if (e.age > 300) e.dead = true;
+      // (It only gets older where the land about it is loaded: see above.)
+      if (e.age > (e.life ?? ITEM_LIFE)) e.dead = true;
     } else if (e.kind === 'tnt') {
       e.vy -= 20 * dt;
       const f = e.onGround ? Math.exp(-6 * dt) : 1;
@@ -957,7 +980,7 @@ export class Entities {
     if (e.stuck) {
       e.life += dt;
       if (e.life > 60 || !SOLID[w.getBlock(e.bx, e.by, e.bz)]) e.dead = true;
-      else if (e.pickup && game.state !== 'dead') {
+      else if (e.pickup && game.state !== 'dead' && !game.spectator) {
         const p = game.player;
         if (Math.hypot(p.x - e.x, p.y + 0.9 - e.y, p.z - e.z) < 1.4 && game.pickup(I.arrow, 1, 0) === 0) { e.dead = true; game.audio.pop(); }
       }
@@ -1138,7 +1161,7 @@ export class Entities {
       e.vx = e.vx / 2 + (dx / d) * k; e.vz = e.vz / 2 + (dz / d) * k;
       if (e.onGround) e.vy = 7 + bonus * 1.5;
     }
-    provoked(this, e, from && (from.addr !== undefined || from.kind === 'mob') ? from : from === this.game.player ? this.players[0] : null);
+    provoked(this, e, from && (from.addr !== undefined || from.kind === 'mob') ? from : from === this.game.player ? this.players.find((q) => !q.addr) ?? null : null);
     if (t.wanderer) this.wanderers.hurt(e, from);
     else if (t.kind === 'civilian') this.civilians.hurt(e, from);
     else if (e.pinned && !e.penned && (t.type === 'iron_golem' || t.type === 'cat')) this.civilians.keeperHurt(e, from);
@@ -1502,7 +1525,7 @@ export class Entities {
         if (e.kind === 'item') {
           e.spin += dt * 1.8;
           e.pickupDelay -= dt;
-          if (e.pickupDelay <= 0 && game.state !== 'dead' && Math.hypot(p.x - e.x, p.y + 0.9 - e.y, p.z - e.z) < 1.6) game.net.wantItem(e);
+          if (e.pickupDelay <= 0 && game.state !== 'dead' && !game.spectator && Math.hypot(p.x - e.x, p.y + 0.9 - e.y, p.z - e.z) < 1.6) game.net.wantItem(e);
         } else if (e.kind === 'mob') {
           let dy = e.tyaw - e.yaw;
           dy -= Math.round(dy / (Math.PI * 2)) * Math.PI * 2;

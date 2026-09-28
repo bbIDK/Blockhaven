@@ -128,6 +128,8 @@
       <p class="desc" id="cw-mode-desc"></p>
       <button type="button" class="btn wide" id="cw-diff" data-action="cycle-create-difficulty">Difficulty: Normal</button>
       <p class="desc" id="cw-diff-desc"></p>
+      <button type="button" class="btn wide" id="cw-keep" data-action="cycle-keep">Keep Inventory: OFF</button>
+      <p class="desc" id="cw-keep-desc"></p>
       <button type="button" class="btn wide" id="cw-type" data-action="cycle-type">World Type: Default</button>
       <p class="desc" id="cw-type-desc"></p>
       <label class="field">Seed for the World Generator
@@ -230,6 +232,7 @@
       <p class="hint-text">Furnaces smelt ores and cook meat: the item goes on top, fuel below. Weapons need a moment between swings (the bar under the crosshair), so time your hits. You heal while your food bar is nearly full.</p>
       <p class="hint-text">Settlements come in every size, from camps in the woods to walled towns and kingdoms with a castle and a king. Go in through a gate and right-click the people there to talk and trade: they buy and sell for gold coins. <kbd>/locate kingdom</kbd> (or camp, hamlet, village, town) points the way. Sleep in a bed to make it your spawn point.</p>
       <p class="hint-text">Advancements (<kbd data-bind="advancements">L</kbd>) are goals to reach, from your first crafting table to seeing every biome, breeding every animal and eating everything there is to eat. The trees open up as you go; point at one to see what it asks and how far along you are. Challenges give experience too.</p>
+      <p class="hint-text">Dying drops everything you have where you fell, for ten minutes of play, unless Keep Inventory is on (Create World, or <kbd>/gamerule keepInventory true</kbd>). Hardcore gives you one life on Hard, and after it you can only watch. <kbd>/gamemode adventure</kbd> lets you use things but not break or build; <kbd>/gamemode spectator</kbd> flies through everything, touching nothing (the mouse wheel sets the speed).</p>
       <p class="hint-text">Now and then a rain is a thunderstorm: lightning strikes the highest ground about you (and creatures out in the open), and monsters come out even by day. Find a roof, or sleep through it in a bed.</p>
       <p class="hint-text">Bees fill their nests and hives with honey. When one's full, a glass bottle takes the honey and shears the comb, but light a campfire under it first or the bees come after you. Dye banners at a loom, dress an armor stand in your spare armour, and climb scaffolding by jumping inside it (sneak to go down).</p>
       <p class="hint-text">Each animal lives where it belongs: deer, bears and boar in the woods, zebras, giraffes and elephants on the savanna, pandas and tigers in the jungle, polar bears and penguins in the snow. In Creative, the Spawn Eggs tab (or <kbd>/summon tiger</kbd>) brings out any creature you like.</p>
@@ -250,10 +253,10 @@
   </section>
 
   <section class="screen death" id="screen-death" hidden>
-    <h2 class="death-title">You Died!</h2>
+    <h2 class="death-title" id="death-title">You Died!</h2>
     <p id="death-cause" class="death-cause"></p>
     <div class="button-rows">
-      <button class="btn wide" data-action="respawn">Respawn</button>
+      <button class="btn wide" id="death-respawn" data-action="respawn">Respawn</button>
       <button class="btn wide" data-action="quit">Title Screen</button>
     </div>
   </section>

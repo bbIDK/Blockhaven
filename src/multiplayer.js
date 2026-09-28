@@ -80,7 +80,7 @@ export function openGames(room) {
     addr,
     host: cleanName(p.n),
     world: String(p.hw ?? 'World').replace(/\p{C}/gu, '').slice(0, 32) || 'World',
-    mode: p.hm === 'creative' ? 'Creative' : 'Survival',
+    mode: p.hk === 1 ? 'Hardcore' : p.hm === 'creative' ? 'Creative' : p.hm === 'adventure' ? 'Adventure' : 'Survival',
     players: int(p.hp) ? clamp(p.hp, 1, 99) : 1,
     ok: p.v === PROTOCOL,
   }));
@@ -194,8 +194,8 @@ class Session {
     if (g.world && g.meta && g.state !== 'loading') {
       pres.p = [r2(p.x), r2(p.y), r2(p.z), r2(p.yaw), r2(p.pitch)];
       pres.f = (p.sneaking ? 1 : 0) | (p.sprinting ? 2 : 0) | (p.flying ? 4 : 0) | (p.onGround ? 8 : 0) |
-        (g.state === 'dead' ? 16 : 0) | (g.state === 'sleeping' ? 32 : 0) | (g.creative ? 64 : 0) | (g.effects?.has('invisibility') ? 128 : 0) |
-        (g.guarding ? 256 : 0) | (p.swimming ? 512 : 0) | (g.eating ? 1024 : 0) | (g.using ? 2048 : 0) | (g.spin ? 4096 : 0);
+        (g.state === 'dead' ? 16 : 0) | (g.state === 'sleeping' ? 32 : 0) | (g.invulnerable ? 64 : 0) | (g.effects?.has('invisibility') || g.spectator ? 128 : 0) |
+        (g.guarding ? 256 : 0) | (p.swimming ? 512 : 0) | (g.eating ? 1024 : 0) | (g.using ? 2048 : 0) | (g.spin ? 4096 : 0) | (g.spectator ? 8192 : 0);
       pres.i = g.handLook;
       if (shiny(g.inv.held)) pres.ih = 1;
       pres.a = g.inv.armor.map((s) => s?.id ?? 0);
@@ -352,7 +352,7 @@ export class HostSession extends Session {
   myPresence() {
     const game = this.game, pres = super.myPresence();
     Object.assign(pres, {
-      h: 1, hw: game.meta?.name ?? '', hm: game.meta?.mode ?? 'survival', hp: this.count,
+      h: 1, hw: game.meta?.name ?? '', hm: game.meta?.mode ?? 'survival', hk: game.hardcore ? 1 : undefined, hp: this.count,
       tm: Math.floor(game.time / 20) * 20, wr: game.weather.raining ? 1 : 0, wt: game.weather.thundering ? 1 : 0,
     });
     if (this.code) pres.hc = this.code;
@@ -383,6 +383,7 @@ export class HostSession extends Session {
     g.sleeping = !!(f & 32);
     g.creative = !!(f & 64);
     g.invisible = !!(f & 128);
+    g.spectator = !!(f & 8192);
     if (Array.isArray(pres.r)) this.rideMove(g, pres.r);
     this.seePlayer(addr, pres);
   }
@@ -585,7 +586,7 @@ export class HostSession extends Session {
     this.send(g.addr, {
       t: 'welcome', g: this.gid, be: this.link.epoch, bs: this.link.stream('*').seq, pvp: this.pvp ? 1 : 0,
       w: { name: meta.name, seed: meta.seed, type: meta.type, gen: meta.gen ?? 1, mode: meta.mode, diff: game.difficulty, spawn: meta.spawn, time: Math.floor(game.time),
-        rain: game.weather.raining ? 1 : 0, thunder: game.weather.thundering ? 1 : 0 },
+        rain: game.weather.raining ? 1 : 0, thunder: game.weather.thundering ? 1 : 0, hard: game.hardcore ? 1 : 0, keep: game.keepInventory ? 1 : 0 },
       you: meta.players?.[g.uid] ?? null, mk: playerKey(g.uid),
       keys: [...w.store.keys],
       ents: game.entities.list.filter((e) => !e.dead).map((e) => { if (!e.nid) e.nid = this.nextNid++; return entityState(e); }),
@@ -653,10 +654,12 @@ export class HostSession extends Session {
     const s = cleanStack({ id: m.id, count: m.n, dmg: m.d, ...cleanExtras(m.ex) });
     if (!s || ![m.x, m.y, m.z].every(num) || m.y < -64 || m.y > HEIGHT + 64) return;
     const v = Array.isArray(m.v) && m.v.length === 3 && m.v.every(num) ? m.v.map((a) => clamp(a, -20, 20)) : null;
-    this.game.entities.spawnItem(m.x, m.y, m.z, s.id, s.count, s.dmg, num(m.pd) ? clamp(m.pd, 0, 5) : 0.6, v, extras(s));
+    // (`lf`: what someone had on them when they died, lying there longer: see Game.dropEverything.)
+    this.game.entities.spawnItem(m.x, m.y, m.z, s.id, s.count, s.dmg, num(m.pd) ? clamp(m.pd, 0, 5) : 0.6, v, extras(s), num(m.lf) ? clamp(m.lf, 1, 600) : undefined);
   }
 
   take(g, m) {
+    if (g.spectator) return;
     const e = this.game.entities.list.find((x) => x.nid === m.e && x.kind === 'item' && !x.dead);
     if (!e || e.pickupDelay > 0.25 || !int(m.n) || m.n < 1) return;
     if (g.x !== null && Math.hypot(e.x - g.x, e.y - g.y - 0.9, e.z - g.z) > 4) return;
@@ -849,7 +852,8 @@ export class HostSession extends Session {
   // Everyone asleep (the dead aside): skip to morning.
   checkSleep(dt) {
     const game = this.game;
-    const all = game.state === 'sleeping' && [...this.guests.values()].every((g) => g.sleeping || g.dead);
+    // (Spectators don't sleep, and nobody waits for them to.)
+    const all = this.sleepers() > 0 && (game.state === 'sleeping' || game.spectator) && [...this.guests.values()].every((g) => g.sleeping || g.dead || g.spectator);
     this.sleepTime = all ? this.sleepTime + dt : 0;
     if (this.sleepTime > 1.5) {
       this.sleepTime = 0;
@@ -866,7 +870,7 @@ export class HostSession extends Session {
     for (const g of this.guests.values()) {
       // (One object per guest, kept up to date, so creatures chasing them follow where they go.)
       if (g.x === null) continue;
-      out.push(Object.assign(g.ref ??= { addr: g.addr, uid: g.uid }, { x: g.x, y: g.y, z: g.z, creative: g.creative, dead: g.dead, name: g.name, look: g.look,
+      out.push(Object.assign(g.ref ??= { addr: g.addr, uid: g.uid }, { x: g.x, y: g.y, z: g.z, creative: g.creative, spectator: !!g.spectator, dead: g.dead, name: g.name, look: g.look,
         held: g.held, sneaking: g.sneaking, sprinting: g.sprinting, invisible: g.invisible }));
     }
     return out;
@@ -928,6 +932,7 @@ export class HostSession extends Session {
     this.say(`The difficulty has been set to ${DIFFICULTIES[d]}`, 'y');
     this.link.broadcast({ t: 'diff', d });
   }
+  setKeepInventory(on) { this.link.broadcast({ t: 'rule', ki: on ? 1 : 0 }); }
 
   setPvp(on) {
     this.pvp = on;
@@ -1155,6 +1160,7 @@ export class GuestSession extends Session {
       case 'pot': if (POTIONS[msg.n] && num(msg.k)) game.applyPotion(msg.n, clamp(msg.k, 0, 1), true); break;
       case 'pvp': this.pvp = !!msg.on; break;
       case 'diff': if ([0, 1, 2, 3].includes(msg.d) && game.meta) game.meta.difficulty = msg.d; break;
+      case 'rule': if ((msg.ki === 0 || msg.ki === 1) && game.meta) game.meta.keepInventory = msg.ki === 1; break;
       case 'fx': this.effect(msg); break;
       case 'sign':
         if (typeof msg.k === 'string' && /^-?\d+,-?\d+,-?\d+$/.test(msg.k) && Array.isArray(msg.l)) {
@@ -1304,12 +1310,12 @@ export class GuestSession extends Session {
 
   others() {
     const out = [];
-    for (const rp of this.players.values()) if (rp.ready) out.push({ x: rp.x, y: rp.y, z: rp.z, addr: rp.addr, creative: rp.creative, dead: rp.dead, name: rp.name });
+    for (const rp of this.players.values()) if (rp.ready) out.push({ x: rp.x, y: rp.y, z: rp.z, addr: rp.addr, creative: rp.creative, spectator: rp.spectator, dead: rp.dead, name: rp.name });
     return out;
   }
 
-  dropItem(x, y, z, id, count, dmg, delay, vel, extra) {
-    this.toHost({ t: 'drop', x: r2(x), y: r2(y), z: r2(z), id, n: count, d: dmg ?? 0, pd: delay, v: vel ? vel.map(r2) : null, ex: extra ?? undefined });
+  dropItem(x, y, z, id, count, dmg, delay, vel, extra, life) {
+    this.toHost({ t: 'drop', x: r2(x), y: r2(y), z: r2(z), id, n: count, d: dmg ?? 0, pd: delay, v: vel ? vel.map(r2) : null, ex: extra ?? undefined, lf: life ?? undefined });
   }
 
   primeTNT(x, y, z, fuse) { this.toHost({ t: 'tnt', x, y, z, f: fuse }); }

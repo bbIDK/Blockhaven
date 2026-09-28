@@ -226,6 +226,8 @@ input::placeholder { color: #6a6a6a; text-shadow: none; }
 .world img { grid-row: 1 / 4; width: calc(var(--u) * 32); height: calc(var(--u) * 32); image-rendering: pixelated; }
 .world b { font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .world span { color: #808080; text-shadow: var(--u) var(--u) 0 #202020; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(var(--u) * 9); }
+.world em { font-style: normal; }
+.world em.hardcore { color: #d42a2a; text-shadow: var(--u) var(--u) 0 #2a0808; }
 .empty { padding: calc(var(--u) * 20) calc(var(--u) * 8); }
 
 /* ------------------------------------------------------------------ create world */

@@ -65,6 +65,7 @@ export class RemotePlayer {
   get eating() { return !!(this.flags & 1024); }
   get using() { return !!(this.flags & 2048); } // (a trident raised to throw, a spyglass up)
   get spinning() { return !!(this.flags & 4096); } // (carried off by a Riptide trident)
+  get spectator() { return !!(this.flags & 8192); } // (unseen, touching nothing: see Game.spectator)
 
   // Presence: { n: name, p: [x, y, z, yaw, pitch], f: flags, i: held item, a: armour, k: look,
   // s: swings, u: hurts }.

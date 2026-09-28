@@ -169,7 +169,7 @@ export class WaypointScreen {
         this.button(w.on ? 'Hide' : 'Show', () => { w.on = !w.on; this.showList(); }),
         this.button('Edit', () => this.showForm(w)),
         this.button('Delete', () => { wps.remove(w); this.showList(); }));
-      if (g.creative) row.append(this.button('Go', () => { g.closeWaypoints(); g.command(`tp ${w.x} ${w.y} ${w.z}`); }));
+      if (g.creative || g.spectator) row.append(this.button('Go', () => { g.closeWaypoints(); g.command(`tp ${w.x} ${w.y} ${w.z}`); }));
       this.body.append(row);
     }
     this.buttons.replaceChildren(this.button('New Waypoint', () => this.showForm('new')), this.button('Done', () => g.closeWaypoints()));

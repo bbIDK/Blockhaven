@@ -343,7 +343,7 @@ export class HeldMap {
     g.maps.rgba(m, this.img.data);
     c.putImageData(this.img, 8, 8);
     // Players: yourself as a white arrow, others blue; at the edge as a dot if off the map.
-    const others = g.net?.others?.() ?? [];
+    const others = (g.net?.others?.() ?? []).filter((o) => !o.spectator);
     for (const q of [...others.map((o) => ({ x: o.x, z: o.z, yaw: g.net.players?.get?.(o.addr)?.yaw ?? 0, me: false })), { x: p.x, z: p.z, yaw: p.yaw, me: true }]) {
       if (!Number.isFinite(q.x)) continue;
       const [mx, mz] = g.maps.where(m, q.x, q.z);

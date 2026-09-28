@@ -43,12 +43,13 @@ export class DynamicLights {
       add(x, y, z, level);
     };
     const p = game.player;
-    if (game.state !== 'dead') {
+    // (A spectator is only a pair of eyes: no light of their own.)
+    if (game.state !== 'dead' && !game.spectator) {
       glowing(p.x, p.eyeY - 0.35, p.z, game.handItem);
       if (game.fire > 0 && !game.creative) add(p.x, p.y + 0.9, p.z, 15);
     }
     if (game.net) {
-      for (const rp of game.net.players.values()) if (rp.ready && !rp.dead) glowing(rp.x, rp.y + (rp.sneaking ? 1.05 : 1.3), rp.z, rp.held);
+      for (const rp of game.net.players.values()) if (rp.ready && !rp.dead && !rp.spectator) glowing(rp.x, rp.y + (rp.sneaking ? 1.05 : 1.3), rp.z, rp.held);
     }
     for (const e of game.entities.list) {
       if (e.dead) continue;

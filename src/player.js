@@ -80,6 +80,7 @@ export class Player extends Body {
   }
 
   step(dt, input, world) {
+    if (this.noclip) { this.ghostStep(dt, input, world); return; }
     this.sampleFluids(world);
     const fluid = this.inWater || this.inLava;
     this.sneaking = input.sneak && !this.flying;
@@ -226,6 +227,30 @@ export class Player extends Body {
     const bobTarget = this.onGround && moved > 0.001 && !this.flying ? Math.min(1, moved / dt / 4.3) : 0;
     this.bob += (bobTarget - this.bob) * Math.min(1, dt * 10);
     this.bobPhase += moved * 1.7;
+  }
+
+  // A spectator's flight: through blocks and water alike, never touching down (`flySpeed`, set with
+  // the mouse wheel, scales it). The water is only seen, from inside.
+  ghostStep(dt, input, world) {
+    this.sampleFluids(world);
+    this.inWater = this.inLava = false;
+    this.flying = true;
+    this.onGround = this.onLadder = this.inScaffold = this.inBush = this.inWeb = this.onHoney = false;
+    this.sneaking = this.swimming = this.hitWall = false;
+    this.h = HEIGHT;
+    this.sprinting = input.forward > 0 && (this.sprinting || !!input.sprint);
+    const s = Math.sin(this.yaw), c = Math.cos(this.yaw);
+    let mx = -s * input.forward + c * input.right, mz = -c * input.forward - s * input.right;
+    const len = Math.hypot(mx, mz);
+    if (len > 1) { mx /= len; mz /= len; }
+    const fast = this.flySpeed ?? 1, speed = (this.sprinting ? 21.6 : 10.9) * fast, k = 1 - Math.exp(-5 * dt);
+    this.vx += (mx * speed - this.vx) * k;
+    this.vz += (mz * speed - this.vz) * k;
+    const up = (input.jump ? 1 : 0) - (input.sneak ? 1 : 0);
+    this.vy += (up * 8.5 * fast - this.vy) * (1 - Math.exp(-8 * dt));
+    this.x += this.vx * dt; this.y += this.vy * dt; this.z += this.vz * dt;
+    this.fallDistance = 0;
+    this.bob += (0 - this.bob) * Math.min(1, dt * 10);
   }
 
   // Block the player is standing on (for footstep sounds).
