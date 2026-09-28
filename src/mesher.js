@@ -5,7 +5,7 @@
 import {
   R, RENDER, OPAQUE, AO, TEXL, FFLAGS, TINT, TINT_RGB, CULL_SELF, TRANSLUCENT, B, ANIM, WET,
   F_TINT, F_OVERLAY, F_UVROT, F_ANIM, liquidHeight, liquidLevel, sameCullGroup, TORCH_LEAN, shapeBoxes, boxFaceUV, boxLayer, RAIL, NOMESH,
-  LEAFY, FAST_LEAF_LAYER,
+  LEAFY, FAST_LEAF_LAYER, CROP, STEM, FACE_DIRS,
 } from './blocks.js';
 import { columnColors, fromByte } from './biomes.js';
 import { TEX } from './textures.js';
@@ -212,11 +212,45 @@ function fire(buf, light, x, y, z, p, id) {
   crossQuad(buf, [[X + b, Y, Z], [X + b, Y, Z + U], [X + b, Y + h, Z + U], [X + b, Y + h, Z]], layer, flags, sky, blk);
 }
 
-function crossQuad(buf, pts, layer, flags, sky, blk) {
+function crossQuad(buf, pts, layer, flags, sky, blk, uv = UV) {
   buf.reserve(8);
-  for (let k = 0; k < 4; k++) buf.vertex(pts[k][0], pts[k][1], pts[k][2], UV[k][0], UV[k][1], layer, 6, flags, sky, blk, 255, tint[0], tint[1], tint[2]);
-  for (let k = 3; k >= 0; k--) buf.vertex(pts[k][0], pts[k][1], pts[k][2], UV[k][0], UV[k][1], layer, 6, flags, sky, blk, 255, tint[0], tint[1], tint[2]);
+  for (let k = 0; k < 4; k++) buf.vertex(pts[k][0], pts[k][1], pts[k][2], uv[k][0], uv[k][1], layer, 6, flags, sky, blk, 255, tint[0], tint[1], tint[2]);
+  for (let k = 3; k >= 0; k--) buf.vertex(pts[k][0], pts[k][1], pts[k][2], uv[k][0], uv[k][1], layer, 6, flags, sky, blk, 255, tint[0], tint[1], tint[2]);
 }
+
+// Crops stand in Minecraft's # of four sheets, and like its crops, and stems, a pixel down: sunk into
+// the farmland, whose top is a pixel below the block's.
+const SINK = U / 16, CROP_AT = [U / 4, (U * 3) / 4];
+function crop(buf, light, x, y, z, p, id) {
+  const l = light[p], sky = (l >> 4) * 17, blk = (l & 15) * 17;
+  const layer = TEXL[id * 6], flags = FFLAGS[id * 6] & FLAG_MASK;
+  tint[0] = tint[1] = tint[2] = 255;
+  const X = x * U, Y = y * U - SINK, Z = z * U, T = Y + U;
+  for (const o of CROP_AT) {
+    crossQuad(buf, [[X + o, Y, Z], [X + o, Y, Z + U], [X + o, T, Z + U], [X + o, T, Z]], layer, flags, sky, blk);
+    crossQuad(buf, [[X, Y, Z + o], [X + U, Y, Z + o], [X + U, T, Z + o], [X, T, Z + o]], layer, flags, sky, blk);
+  }
+}
+// A melon or pumpkin stem: crossed sheets two pixels tall for each stage it's grown, showing that much of
+// the foot of its picture (so it grows up out of the ground), in its colour. One that bears is a single
+// sheet from the middle of the block over to the fruit's side, with the picture's bowed end at the fruit.
+function stem(buf, light, x, y, z, p, id) {
+  const s = STEM[id], l = light[p], sky = (l >> 4) * 17, blk = (l & 15) * 17;
+  const layer = TEXL[id * 6], flags = FFLAGS[id * 6] & FLAG_MASK;
+  tint[0] = TINT_RGB[id * 3]; tint[1] = TINT_RGB[id * 3 + 1]; tint[2] = TINT_RGB[id * 3 + 2];
+  const X = x * U, Y = y * U - SINK, Z = z * U;
+  if (s.attached) {
+    const d = FACE_DIRS[s.face], mx = X + U / 2, mz = Z + U / 2;
+    const cx = mx - d[0] * SINK, cz = mz - d[2] * SINK, ex = mx + (d[0] * U) / 2, ez = mz + (d[2] * U) / 2;
+    crossQuad(buf, [[ex, Y, ez], [cx, Y, cz], [cx, Y + U, cz], [ex, Y + U, ez]], layer, flags, sky, blk, STEM_UV);
+    return;
+  }
+  const v = (s.age + 1) * 2, h = v * SINK, a = Math.round(0.08 * U), b = Math.round(0.92 * U), uv = STEM_GROWN[s.age];
+  crossQuad(buf, [[X + a, Y, Z + a], [X + b, Y, Z + b], [X + b, Y + h, Z + b], [X + a, Y + h, Z + a]], layer, flags, sky, blk, uv);
+  crossQuad(buf, [[X + a, Y, Z + b], [X + b, Y, Z + a], [X + b, Y + h, Z + a], [X + a, Y + h, Z + b]], layer, flags, sky, blk, uv);
+}
+const STEM_UV = [[0, 16], [9, 16], [9, 0], [0, 0]];
+const STEM_GROWN = [...Array(8)].map((_, a) => [[0, 16], [16, 16], [16, 14 - a * 2], [0, 14 - a * 2]]);
 
 // Rails: the track's picture lying just above the ground, turned the way it runs, or tilted up a
 // slope. (The pictures run north-south; corners join south and east.) For each shape: how many
@@ -244,6 +278,8 @@ const JITTER = new Set(['tall_grass', 'fern', 'dandelion', 'poppy', 'cornflower'
   'azure_bluet', 'blue_orchid', 'oxeye_daisy', 'red_tulip', 'orange_tulip', 'white_tulip', 'pink_tulip', 'lily_of_the_valley'].map((n) => B[n]));
 
 function cross(buf, blocks, light, x, y, z, p, id, wx, wz) {
+  if (CROP[id]) { crop(buf, light, x, y, z, p, id); return; }
+  if (STEM[id]) { stem(buf, light, x, y, z, p, id); return; }
   const l = light[p];
   const sky = (l >> 4) * 17, blk = (l & 15) * 17;
   let ox = 0, oz = 0;

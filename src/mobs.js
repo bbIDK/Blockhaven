@@ -2,7 +2,8 @@
 // moves its limbs, and where it turns up. Entities (entities.js) keeps them in its list and runs
 // their physics; everything particular to a kind of creature lives here.
 import { RIGS, rigMeshes, boneMatrix, GUARDIAN_SPIKES } from './rigs.js';
-import { B, SOLID, WATERLIKE, CLIMB, LEAVES_WOOD, SHAPE_KIND, CROP, BERRY_BUSH } from './blocks.js';
+import { B, SOLID, WATERLIKE, CLIMB, LEAVES_WOOD, SHAPE_KIND, CROP, STEM, BERRY_BUSH } from './blocks.js';
+import { trample } from './growth.js';
 import { I, ITEMS } from './items.js';
 import { BIOME } from './biomes.js';
 import { DYES } from './colors.js';
@@ -33,7 +34,7 @@ export const MOBS = {
   sheep: { label: 'Sheep', rig: 'sheep', skins: ['sheep'], wool: 'sheep_wool', hw: 0.45, h: 1.3, health: 8, speed: 1.0, kind: 'animal',
     anim: 'quad', food: ['wheat'], drops: [d('raw_mutton', 1, 2)], sound: 'sheep', grazes: true },
   chicken: { label: 'Chicken', rig: 'chicken', skins: ['chicken'], hw: 0.2, h: 0.7, health: 4, speed: 1.0, kind: 'animal', anim: 'chicken',
-    food: ['wheat_seeds', 'beetroot_seeds'], drops: [d('raw_chicken', 1, 1), d('feather', 0, 2)], sound: 'chicken', flutter: true, eggs: true },
+    food: ['wheat_seeds', 'beetroot_seeds', 'melon_seeds', 'pumpkin_seeds'], drops: [d('raw_chicken', 1, 1), d('feather', 0, 2)], sound: 'chicken', flutter: true, eggs: true },
   rabbit: { label: 'Rabbit', rig: 'rabbit', skins: ['rabbit_brown', 'rabbit_white', 'rabbit_black', 'rabbit_gold'], hw: 0.2, h: 0.5, health: 3,
     speed: 2.2, kind: 'animal', anim: 'rabbit', food: ['carrot', 'golden_carrot'], drops: [d('raw_rabbit', 0, 1), d('rabbit_hide', 0, 1)],
     sound: 'rabbit', shy: 6, hops: true },
@@ -1579,14 +1580,15 @@ function beeTick(ents, e) {
   }
   steer(e, e.flyTarget, t.speed);
 }
-// A bee with nectar helps what grows under it: now and then a crop (or a berry bush) it's flying
-// over grows a stage, up to ten on one trip.
+// A bee with nectar helps what grows under it: now and then a crop (or a berry bush, or a melon or
+// pumpkin stem) it's flying over grows a stage, up to ten on one trip.
 function pollinate(ents, e) {
   if (!e.nectar || e.grew >= 10 || Math.random() > 0.03) return;
   const w = ents.world, x = Math.floor(e.x), z = Math.floor(e.z);
   for (let y = Math.floor(e.y); y >= Math.floor(e.y) - 2; y--) {
-    const id = w.getBlock(x, y, z), crop = CROP[id];
+    const id = w.getBlock(x, y, z), crop = CROP[id], stem = STEM[id];
     if (crop && crop.stage < crop.max) { w.setBlock(x, y, z, crop.first + crop.stage + 1); e.grew++; return; }
+    if (stem && !stem.attached && stem.age < 7) { w.setBlock(x, y, z, id + 1); e.grew++; return; }
     if (BERRY_BUSH[id] !== undefined && BERRY_BUSH[id] < 3) { w.setBlock(x, y, z, id + 1); e.grew++; return; }
     if (id) return;
   }
@@ -2022,6 +2024,12 @@ export function mobPhysics(ents, e, dt, fluid) {
   // Rabbits move in hops (a jump up a block goes higher); frogs walk, and now and then leap.
   if (t.hops && speed && e.onGround) e.vy = Math.max(e.vy, 5.5);
   if (t.leapsAbout && speed && e.onGround && !fluid && Math.random() < dt * 0.8) { e.vy = Math.max(e.vy, 6.5); e.vx += fx * 3.5; e.vz += fz * 3.5; }
+  // Coming down on farmland from a jump or a fall, a creature as big as a sheep or a pig (not a
+  // chicken or a rabbit) may trample it, as the player may (see trample). (Villagers step round
+  // their fields.)
+  if (e.onGround && !wasGround && vyBefore < -5.6 && !fluid && t.kind !== 'civilian' && 4 * e.hw * e.hw * e.h > 0.512) {
+    trample(w, e.x, e.y, e.z, (vyBefore * vyBefore) / 64);
+  }
   if (t.sized && e.onGround && !wasGround && vyBefore < -2) {
     e.squish = -0.6;
     e.vx *= 0.3; e.vz *= 0.3;

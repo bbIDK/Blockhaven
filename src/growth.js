@@ -2,8 +2,8 @@
 // sugar cane and cactus getting taller (on random ticks, see World.randomTicks), and leaves
 // withering once the tree they belong to has been cut down.
 import {
-  B, BLOCKS, CROP, SAPLING, NATURAL_LEAVES, LEAVES_WOOD, LOG, OPAQUE, SOLID, WATERLIKE, REPLACEABLE, WOOD, FACE_DIRS, BERRY_BUSH, COCOA,
-  cocoaId, hiveId, RENDER, R,
+  B, BLOCKS, CROP, STEM, SAPLING, NATURAL_LEAVES, LEAVES_WOOD, LOG, OPAQUE, SOLID, WATERLIKE, REPLACEABLE, WOOD, FACE_DIRS, BERRY_BUSH, COCOA,
+  FACING_VARIANTS, cocoaId, hiveId, attachedStem, RENDER, R,
 } from './blocks.js';
 import { TREES, WIDE_TREES, saplingTree } from './trees.js';
 import { MIN_Y } from './config.js';
@@ -14,7 +14,8 @@ const light = (w, x, y, z) => { const l = w.getLight(x, y, z); return Math.max(l
 
 export function randomTick(w, x, y, z, id) {
   const crop = CROP[id];
-  if (crop) growCrop(w, x, y, z, crop, 1);
+  if (crop) growCrop(w, x, y, z, crop, 1, true);
+  else if (STEM[id] && !STEM[id].attached) growStem(w, x, y, z, id, 1, true);
   else if (SAPLING[id]) { if (Math.random() < 1 / 7 && light(w, x, y + 1, z) >= 9) growSapling(w, x, y, z, id); }
   else if (id === B.farmland || id === B.farmland_moist) hydrate(w, x, y, z, id);
   else if (id === B.sugar_cane || id === B.cactus) growTall(w, x, y, z, id);
@@ -50,14 +51,57 @@ function growKelp(w, x, y, z) {
 }
 
 // ---------------------------------------------------------------- crops
-// Crops on wet farmland grow about twice as fast as on dry.
-export function growCrop(w, x, y, z, crop, steps) {
-  if (crop.stage >= crop.max) return false;
-  if (steps === 1) {
-    const wet = w.getBlock(x, y - 1, z) === B.farmland_moist;
-    if (light(w, x, y, z) < 9 || Math.random() > (wet ? 0.45 : 0.22)) return false;
+// How likely a crop (or a stem) is to grow a stage on a random tick, by Minecraft's rules: it scores
+// points for the farmland under it (3 moist, 1 dry) and a quarter as many for each piece round
+// about, halved if the same crop crowds it on both sides, or corner to corner (so crops in rows, with
+// something else between, grow faster than a solid field of one); its chance is one in (25 / points)
+// + 1. That's made GROWTH_PACE times as quick here, which keeps a solid field growing as fast as crops
+// always have here, watered or dry (and rows twice as fast). (They grow by night too, with the light
+// that's there by day.)
+const GROWTH_PACE = 2.7;
+export function growthChance(w, x, y, z, same) {
+  let points = 1;
+  for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+    const b = w.getBlock(x + dx, y - 1, z + dz);
+    const p = b === B.farmland_moist ? 3 : b === B.farmland ? 1 : 0;
+    points += dx || dz ? p / 4 : p;
   }
+  const at = (dx, dz) => same(w.getBlock(x + dx, y, z + dz));
+  if (((at(1, 0) || at(-1, 0)) && (at(0, 1) || at(0, -1))) || at(1, 1) || at(-1, 1) || at(1, -1) || at(-1, -1)) points /= 2;
+  return Math.min(1, GROWTH_PACE / (Math.floor(25 / points) + 1));
+}
+// The light a plant grows by: its sky light whatever the time of day, or lamplight.
+const rawLight = (w, x, y, z) => { const l = w.getLight(x, y, z); return Math.max(l & 15, l >> 4); };
+// A crop some stages on (bone meal), or on a random tick (`natural`), a stage on if there's light
+// enough and its chance comes up.
+export function growCrop(w, x, y, z, crop, steps, natural = false) {
+  if (crop.stage >= crop.max) return false;
+  if (natural && (rawLight(w, x, y, z) < 9 || Math.random() >= growthChance(w, x, y, z, (id) => CROP[id]?.name === crop.name))) return false;
   return w.setBlock(x, y, z, crop.first + Math.min(crop.max, crop.stage + steps));
+}
+// A melon or pumpkin stem grows as a crop does, and once grown, bears (on a random tick; bone meal
+// only grows it): its fruit comes up on a side picked at random, if the ground there will take it
+// (soil, not stone) and nothing's in the way, and the stem bows over towards it.
+const FRUIT_GROUND = new Set([B.farmland, B.farmland_moist, B.dirt, B.grass_block, B.snowy_grass, B.podzol, B.coarse_dirt, B.moss_block,
+  B.rooted_dirt]);
+export function growStem(w, x, y, z, id, steps = 1, natural = false) {
+  const s = STEM[id];
+  if (natural && (rawLight(w, x, y, z) < 9 ||
+    Math.random() >= growthChance(w, x, y, z, (b) => STEM[b] && !STEM[b].attached && STEM[b].fruit === s.fruit))) return false;
+  if (s.age < 7) return w.setBlock(x, y, z, s.first + Math.min(7, s.age + steps));
+  if (!natural) return false;
+  const face = [0, 1, 4, 5][Math.floor(Math.random() * 4)], d = FACE_DIRS[face], fx = x + d[0], fz = z + d[2];
+  if (w.getBlock(fx, y, fz) !== 0 || !FRUIT_GROUND.has(w.getBlock(fx, y - 1, fz))) return false;
+  const v = FACING_VARIANTS[B.pumpkin];
+  w.setBlock(fx, y, fz, s.fruit === 'melon' ? B.melon : v[[0, 1, 4, 5][Math.floor(Math.random() * 4)]]);
+  return w.setBlock(x, y, z, attachedStem(s.fruit, face));
+}
+// Coming down on farmland from a fall of more than half a block may trample it back to dirt (the
+// likelier the further the fall; Minecraft's odds), and what grew on it comes up with it.
+export function trample(w, x, y, z, fall) {
+  const bx = Math.floor(x), by = Math.floor(y - 0.07), bz = Math.floor(z), id = w.getBlock(bx, by, bz);
+  if ((id !== B.farmland && id !== B.farmland_moist) || fall <= 0.5 || Math.random() >= fall - 0.5) return false;
+  return w.setBlock(bx, by, bz, B.dirt);
 }
 // Farmland stays moist within four blocks of water, dries out without it, and goes back to
 // dirt if it's left dry and bare.
@@ -68,7 +112,7 @@ function hydrate(w, x, y, z, id) {
   }
   if (wet || w.listener?.rainingOn?.(x, y + 1, z)) { if (id !== B.farmland_moist) w.setBlock(x, y, z, B.farmland_moist); return; }
   if (id === B.farmland_moist) w.setBlock(x, y, z, B.farmland);
-  else if (!CROP[w.getBlock(x, y + 1, z)] && Math.random() < 0.15) w.setBlock(x, y, z, B.dirt);
+  else if (!CROP[w.getBlock(x, y + 1, z)] && !STEM[w.getBlock(x, y + 1, z)] && Math.random() < 0.15) w.setBlock(x, y, z, B.dirt);
 }
 function growTall(w, x, y, z, id, most = 3) {
   if (w.getBlock(x, y + 1, z) !== 0 || Math.random() > 0.3) return;

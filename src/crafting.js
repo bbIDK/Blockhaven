@@ -215,6 +215,10 @@ shaped('fishing_rod', 1, ['  #', ' #S', '# S'], { '#': 'stick', S: 'string' }, '
 shaped('bread', 1, ['WWW'], { W: 'wheat' }, 'misc');
 shaped('cookie', 8, ['WCW'], { W: 'wheat', C: 'cocoa_beans' }, 'misc');
 shapeless('pumpkin_pie', 1, ['pumpkin', 'sugar', 'egg'], 'misc');
+// (Update 32's: seeds out of a melon slice or a pumpkin, and a melon from nine slices.)
+shapeless('melon_seeds', 1, ['melon_slice'], 'misc');
+shapeless('pumpkin_seeds', 4, ['pumpkin'], 'misc');
+shaped('melon', 1, ['MMM', 'MMM', 'MMM'], { M: 'melon_slice' }, 'building');
 shaped('cake', 1, ['MMM', 'SES', 'WWW'], { M: 'milk_bucket', S: 'sugar', E: 'egg', W: 'wheat' }, 'misc');
 shaped('golden_apple', 1, ['GGG', 'GAG', 'GGG'], { G: 'gold_ingot', A: 'apple' }, 'misc');
 shaped('golden_carrot', 1, ['NNN', 'NCN', 'NNN'], { N: 'gold_nugget', C: 'carrot' }, 'misc');

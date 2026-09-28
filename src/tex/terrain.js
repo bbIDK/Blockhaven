@@ -680,6 +680,25 @@ function rootCrop(t, stage, root) {
     if (stage === 3 && root) { t.set(x0, 15, root[1]); t.set(x0 + 1, 15, root[0]); t.set(x0, 14, root[2]); }
   }
 }
+// Melon and pumpkin stems, in greys for their colour (see STEM in blocks.js): a thin stalk with a
+// leaf or two off it; once it bears, bowed over to one side, towards its fruit.
+const STEM_GREY = [0x6c6c6c, 0x8a8a8a, 0xa6a6a6, 0xc2c2c2];
+function stemTex(t, bent) {
+  t.clear();
+  for (let y = bent ? 8 : 2; y < 16; y++) {
+    const x = 7 + (y % 5 === 0 ? -1 : 0) + (y > 11 ? -1 : 0);
+    t.set(x, y, pick(STEM_GREY, 0.3 + (y % 3) * 0.2));
+    t.set(x + 1, y, STEM_GREY[y % 2 ? 0 : 1]);
+    if (!bent && y % 4 === 1) { t.set(x + 2, y, STEM_GREY[2]); t.set(x + 3, y - 1, STEM_GREY[3]); }
+    if (!bent && y % 4 === 3) { t.set(x - 1, y, STEM_GREY[2]); t.set(x - 2, y - 1, STEM_GREY[3]); }
+  }
+  // (Bowed: over to the left, which is the fruit's side.)
+  if (bent) for (let x = 0; x <= 8; x++) { const y = 7 - (x > 5 ? 1 : 0) + (x < 2 ? 1 : 0); t.set(x, y, STEM_GREY[1 + (x % 2)]); t.set(x, y + 1, STEM_GREY[0]); }
+}
+for (const fruit of ['melon', 'pumpkin']) {
+  def(`${fruit}_stem`, (t) => stemTex(t, false));
+  def(`attached_${fruit}_stem`, (t) => stemTex(t, true));
+}
 for (let s = 0; s < 4; s++) {
   def(`carrots_${s}`, (t) => rootCrop(t, s, [0xb0500c, 0xe07018, 0xf89a3c]));
   def(`potatoes_${s}`, (t) => rootCrop(t, s, [0x8a6a2c, 0xb89448, 0xd8b868]));

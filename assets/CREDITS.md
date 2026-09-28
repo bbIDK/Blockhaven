@@ -160,6 +160,10 @@ doubled in size (the particles). Anything not listed is drawn by the game's own 
 | `textures/wheat_5.png` | Pixel Perfection CE block/wheat_stage5.png |  |
 | `textures/wheat_6.png` | Pixel Perfection CE block/wheat_stage6.png |  |
 | `textures/wheat_7.png` | Pixel Perfection CE block/wheat_stage7.png |  |
+| `textures/melon_stem.png` | Pixel Perfection CE block/melon_stem.png | changed |
+| `textures/attached_melon_stem.png` | Pixel Perfection CE block/attached_melon_stem.png | changed |
+| `textures/pumpkin_stem.png` | Pixel Perfection CE block/pumpkin_stem.png | changed |
+| `textures/attached_pumpkin_stem.png` | Pixel Perfection CE block/attached_pumpkin_stem.png | changed |
 | `textures/carrots_0.png` | Pixel Perfection CE block/carrots_stage0.png |  |
 | `textures/potatoes_0.png` | Pixel Perfection CE block/potatoes_stage0.png |  |
 | `textures/beetroots_0.png` | Pixel Perfection CE block/beetroots_stage0.png |  |
@@ -947,39 +951,39 @@ doubled in size (the particles). Anything not listed is drawn by the game's own 
 | `skins/armor_chainmail.png` | Pixel Perfection CE models/armor/chainmail_layer_1.png | changed |
 | `skins/armor_chainmail_legs.png` | Pixel Perfection CE models/armor/chainmail_layer_2.png | changed |
 | `banners/base.png` | Pixel Perfection CE entity/banner_base.png |  |
-| `banners/stripe_bottom.png` | Pixel Perfection CE entity/banner/stripe_bottom.png |  |
-| `banners/stripe_top.png` | Pixel Perfection CE entity/banner/stripe_top.png |  |
-| `banners/stripe_left.png` | Pixel Perfection CE entity/banner/stripe_left.png |  |
-| `banners/stripe_right.png` | Pixel Perfection CE entity/banner/stripe_right.png |  |
-| `banners/stripe_center.png` | Pixel Perfection CE entity/banner/stripe_center.png |  |
-| `banners/stripe_middle.png` | Pixel Perfection CE entity/banner/stripe_middle.png |  |
-| `banners/stripe_downright.png` | Pixel Perfection CE entity/banner/stripe_downright.png |  |
-| `banners/stripe_downleft.png` | Pixel Perfection CE entity/banner/stripe_downleft.png |  |
-| `banners/small_stripes.png` | Pixel Perfection CE entity/banner/small_stripes.png |  |
-| `banners/cross.png` | Pixel Perfection CE entity/banner/cross.png |  |
-| `banners/straight_cross.png` | Pixel Perfection CE entity/banner/straight_cross.png |  |
-| `banners/triangle_bottom.png` | Pixel Perfection CE entity/banner/triangle_bottom.png |  |
-| `banners/triangle_top.png` | Pixel Perfection CE entity/banner/triangle_top.png |  |
-| `banners/triangles_bottom.png` | Pixel Perfection CE entity/banner/triangles_bottom.png |  |
-| `banners/triangles_top.png` | Pixel Perfection CE entity/banner/triangles_top.png |  |
-| `banners/diagonal_left.png` | Pixel Perfection CE entity/banner/diagonal_left.png |  |
-| `banners/diagonal_right.png` | Pixel Perfection CE entity/banner/diagonal_right.png |  |
-| `banners/diagonal_up_left.png` | Pixel Perfection CE entity/banner/diagonal_up_left.png |  |
-| `banners/diagonal_up_right.png` | Pixel Perfection CE entity/banner/diagonal_up_right.png |  |
-| `banners/circle.png` | Pixel Perfection CE entity/banner/circle.png |  |
-| `banners/rhombus.png` | Pixel Perfection CE entity/banner/rhombus.png |  |
-| `banners/half_vertical.png` | Pixel Perfection CE entity/banner/half_vertical.png |  |
-| `banners/half_horizontal.png` | Pixel Perfection CE entity/banner/half_horizontal.png |  |
-| `banners/half_vertical_right.png` | Pixel Perfection CE entity/banner/half_vertical_right.png |  |
-| `banners/half_horizontal_bottom.png` | Pixel Perfection CE entity/banner/half_horizontal_bottom.png |  |
-| `banners/border.png` | Pixel Perfection CE entity/banner/border.png |  |
-| `banners/curly_border.png` | Pixel Perfection CE entity/banner/curly_border.png |  |
-| `banners/gradient.png` | Pixel Perfection CE entity/banner/gradient.png |  |
-| `banners/gradient_up.png` | Pixel Perfection CE entity/banner/gradient_up.png |  |
-| `banners/bricks.png` | Pixel Perfection CE entity/banner/bricks.png |  |
-| `banners/square_bottom_left.png` | Pixel Perfection CE entity/banner/square_bottom_left.png |  |
-| `banners/square_bottom_right.png` | Pixel Perfection CE entity/banner/square_bottom_right.png |  |
-| `banners/square_top_left.png` | Pixel Perfection CE entity/banner/square_top_left.png |  |
-| `banners/square_top_right.png` | Pixel Perfection CE entity/banner/square_top_right.png |  |
-| `banners/flower.png` | Pixel Perfection CE entity/banner/flower.png |  |
-| `banners/globe.png` | Pixel Perfection CE entity/banner/globe.png |  |
+| `banners/stripe_bottom.png` | Pixel Perfection CE entity/banner/stripe_bottom.png | changed |
+| `banners/stripe_top.png` | Pixel Perfection CE entity/banner/stripe_top.png | changed |
+| `banners/stripe_left.png` | Pixel Perfection CE entity/banner/stripe_left.png | changed |
+| `banners/stripe_right.png` | Pixel Perfection CE entity/banner/stripe_right.png | changed |
+| `banners/stripe_center.png` | Pixel Perfection CE entity/banner/stripe_center.png | changed |
+| `banners/stripe_middle.png` | Pixel Perfection CE entity/banner/stripe_middle.png | changed |
+| `banners/stripe_downright.png` | Pixel Perfection CE entity/banner/stripe_downright.png | changed |
+| `banners/stripe_downleft.png` | Pixel Perfection CE entity/banner/stripe_downleft.png | changed |
+| `banners/small_stripes.png` | Pixel Perfection CE entity/banner/small_stripes.png | changed |
+| `banners/cross.png` | Pixel Perfection CE entity/banner/cross.png | changed |
+| `banners/straight_cross.png` | Pixel Perfection CE entity/banner/straight_cross.png | changed |
+| `banners/triangle_bottom.png` | Pixel Perfection CE entity/banner/triangle_bottom.png | changed |
+| `banners/triangle_top.png` | Pixel Perfection CE entity/banner/triangle_top.png | changed |
+| `banners/triangles_bottom.png` | Pixel Perfection CE entity/banner/triangles_bottom.png | changed |
+| `banners/triangles_top.png` | Pixel Perfection CE entity/banner/triangles_top.png | changed |
+| `banners/diagonal_left.png` | Pixel Perfection CE entity/banner/diagonal_left.png | changed |
+| `banners/diagonal_right.png` | Pixel Perfection CE entity/banner/diagonal_right.png | changed |
+| `banners/diagonal_up_left.png` | Pixel Perfection CE entity/banner/diagonal_up_left.png | changed |
+| `banners/diagonal_up_right.png` | Pixel Perfection CE entity/banner/diagonal_up_right.png | changed |
+| `banners/circle.png` | Pixel Perfection CE entity/banner/circle.png | changed |
+| `banners/rhombus.png` | Pixel Perfection CE entity/banner/rhombus.png | changed |
+| `banners/half_vertical.png` | Pixel Perfection CE entity/banner/half_vertical.png | changed |
+| `banners/half_horizontal.png` | Pixel Perfection CE entity/banner/half_horizontal.png | changed |
+| `banners/half_vertical_right.png` | Pixel Perfection CE entity/banner/half_vertical_right.png | changed |
+| `banners/half_horizontal_bottom.png` | Pixel Perfection CE entity/banner/half_horizontal_bottom.png | changed |
+| `banners/border.png` | Pixel Perfection CE entity/banner/border.png | changed |
+| `banners/curly_border.png` | Pixel Perfection CE entity/banner/curly_border.png | changed |
+| `banners/gradient.png` | Pixel Perfection CE entity/banner/gradient.png | changed |
+| `banners/gradient_up.png` | Pixel Perfection CE entity/banner/gradient_up.png | changed |
+| `banners/bricks.png` | Pixel Perfection CE entity/banner/bricks.png | changed |
+| `banners/square_bottom_left.png` | Pixel Perfection CE entity/banner/square_bottom_left.png | changed |
+| `banners/square_bottom_right.png` | Pixel Perfection CE entity/banner/square_bottom_right.png | changed |
+| `banners/square_top_left.png` | Pixel Perfection CE entity/banner/square_top_left.png | changed |
+| `banners/square_top_right.png` | Pixel Perfection CE entity/banner/square_top_right.png | changed |
+| `banners/flower.png` | Pixel Perfection CE entity/banner/flower.png | changed |
+| `banners/globe.png` | Pixel Perfection CE entity/banner/globe.png | changed |

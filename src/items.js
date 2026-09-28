@@ -1,6 +1,6 @@
 // Item registry: every placeable block is also an item (same id); tools and materials use ids 256+.
 // Recipes live in crafting.js.
-import { BLOCKS, B, BASE, CROP, LEAVES_WOOD, DOUBLE, POTTED, CAVE_VINES, BERRY_BUSH, COCOA } from './blocks.js';
+import { BLOCKS, B, BASE, CROP, STEM, LEAVES_WOOD, DOUBLE, POTTED, CAVE_VINES, BERRY_BUSH, COCOA } from './blocks.js';
 import { TEX } from './textures.js';
 import { DYES, rgb } from './colors.js';
 import { leafDrops } from './growth.js';
@@ -194,6 +194,10 @@ DYES.forEach((d, i) => item(634 + i, `${d.name}_banner`, { stack: 16, banner: i,
   label: `${d.name === 'light_gray' ? 'Light Gray' : d.name === 'light_blue' ? 'Light Blue' : d.name[0].toUpperCase() + d.name.slice(1)} Banner` }));
 item(650, 'flower_banner_pattern', { label: 'Flower Charge Banner Pattern', stack: 1, pattern: 'flower' });
 item(651, 'globe_banner_pattern', { label: 'Globe Banner Pattern', stack: 1, pattern: 'globe' });
+// (Update 32's) seeds of the melon and the pumpkin, from a slice of the one or the whole of the
+// other, planted on farmland as a stem (see STEM in blocks.js).
+item(652, 'melon_seeds', { label: 'Melon Seeds', plant: 'melon_stem' });
+item(653, 'pumpkin_seeds', { label: 'Pumpkin Seeds', plant: 'pumpkin_stem' });
 for (const [i, [type, label]] of [['cod', 'Bucket of Cod'], ['salmon', 'Bucket of Salmon'], ['tropical_fish', 'Bucket of Tropical Fish'],
   ['pufferfish', 'Bucket of Pufferfish'], ['axolotl', 'Bucket of Axolotl'], ['tadpole', 'Bucket of Tadpole']].entries()) {
   item(604 + i, `${type}_bucket`, { label, stack: 1, leftover: 'bucket', holds: type });
@@ -281,6 +285,9 @@ export const itemLabel = (id) => ITEMS.get(id)?.label ?? 'Unknown';
 export const maxStack = (id) => ITEMS.get(id)?.stack ?? 64;
 export const blockOfItem = (id) => ITEMS.get(id)?.block ?? null;
 export const itemOfBlock = (blockId) => BASE[blockId];
+// What was planted to grow a crop or a stem (for picking one: middle click), by the block's first stage.
+export const PLANTED_BY = {};
+for (const d of ITEMS.values()) if (d.plant) PLANTED_BY[B[d.plant]] = d.id;
 export const attackDamage = (id) => ITEMS.get(id)?.damage ?? HAND_DAMAGE;
 export const attackSpeed = (id) => ITEMS.get(id)?.attackSpeed ?? HAND_SPEED;
 
@@ -325,6 +332,13 @@ export function dropsFor(blockId, tool, rand = Math.random) {
       case 'potatoes': return [...one('potato', ripe ? n(2, 5) : 1), ...(ripe && rand() < 0.02 ? one('poisonous_potato') : [])];
       default: return ripe ? [...one('beetroot'), ...one('beetroot_seeds', n(1, 3))] : one('beetroot_seeds');
     }
+  }
+  // A stem's seeds: up to three, more likely the older it is (Minecraft's odds).
+  const stem = STEM[blockId];
+  if (stem) {
+    let k = 0;
+    for (let i = 0; i < 3; i++) if (rand() < (stem.age + 1) / 15) k++;
+    return one(`${stem.fruit}_seeds`, k);
   }
   if (POTTED[blockId] !== undefined) return [{ id: B.flower_pot, count: 1 }, { id: POTTED[blockId], count: 1 }];
   switch (base.name) {

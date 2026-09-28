@@ -31,11 +31,12 @@ import {
   FURNACE_IDS, furnaceVariant, isLitFurnace, FURNACE_KIND, FURNACE_FRONT, LOG_AXES, GATE, gateId, VINE, DOUBLE, LEAVES_WOOD,
   TRAPDOOR, trapdoorId, SWITCH, SIGN, WALL_SIGN, CAKE, NOTE, JUKEBOX, RAIL,
   NATURAL_LEAVES, WOOD, LOOT_KIND, LOOT_FRONT, liquidHeight, AMETHYST, GLOW_LICHEN, WET, PICKLES, DISPENSER, dispenserId, TRIPWIRE,
-  SCAFFOLD, SCAFFOLD_REACH, scaffoldId, BERRY_BUSH, COCOA, HIVE, HONEY_FULL, hiveId, BANNER, bannerId, wallBannerId,
+  SCAFFOLD, SCAFFOLD_REACH, scaffoldId, BERRY_BUSH, COCOA, HIVE, HONEY_FULL, hiveId, BANNER, bannerId, wallBannerId, CROP, STEM,
 } from './blocks.js';
 import { dripId } from './caves.js';
 import { rollLoot } from './loot.js';
-import { useItemOnBlock, useBucket, placeLilyPad, placeBoat, useWorkstation, plantGlowBerries, plantBerries, plantCocoa } from './behaviors.js';
+import { useItemOnBlock, useBucket, placeLilyPad, placeBoat, useWorkstation, plantGlowBerries, plantBerries, plantCocoa, plantSeed, plantsAt } from './behaviors.js';
+import { trample } from './growth.js';
 import { nearestVillage, KINDS } from './villages.js';
 import { TalkScreen } from './tradeui.js';
 import { seatY, seatXZ, startRide, driveFrom, dismountSpot } from './riding.js';
@@ -61,7 +62,7 @@ import { drawLeads, isFence, LEAD_SNAP } from './leads.js';
 import { Jukeboxes, instrumentFor, noteColour, noteClear, nextNote } from './jukebox.js';
 import { isHanging } from './hangings.js';
 import { layRail } from './rails.js';
-import { ITEMS, I, itemDef, itemLabel, breakTime, dropsFor, attackDamage, attackSpeed, canHarvest } from './items.js';
+import { ITEMS, I, itemDef, itemLabel, breakTime, dropsFor, attackDamage, attackSpeed, canHarvest, PLANTED_BY } from './items.js';
 import { BIOME_NAMES, BIOME } from './biomes.js';
 import { MOBS } from './mobs.js';
 import { EGG_TYPES, eggLabel } from './eggs.js';
@@ -2087,6 +2088,8 @@ export class Game {
       const soft = p.onHoney ? 0.2 : 1;
       if (d > 3.2 + this.effectLevel('jump_boost') && !p.inWater) this.damage(Math.floor((d - 3 - this.effectLevel('jump_boost')) * soft), 'You fell from a high place');
       if (p.onHoney && d > 3.2 && this.state !== 'dead') this.advancements.event('honey_land');
+      // (Coming down on farmland may trample it: see trample.)
+      if (!this.spectator && !p.inWater) trample(this.world, p.x, p.y, p.z, d);
       if (d > 1.2) { const g = p.groundBlock(this.world); if (g) this.audio.land(BLOCKS[g]?.sound ?? 'stone'); }
     }
     // Where a fall began (the top of a jump, or where you stepped off), for Caves & Cliffs: told
@@ -2366,7 +2369,8 @@ export class Game {
     }
     if (e.left > 0) return;
     const def = itemDef(e.id);
-    this.eating = null;
+    // (With the button still held the next is begun at once: see handleActions.)
+    this.eating = null; this.useCooldown = 0;
     if (this.inv.heldId !== e.id) return;
     if (def.food) {
       this.food = Math.min(20, this.food + def.food);
@@ -2547,7 +2551,7 @@ export class Game {
 
     // Holding right click with food eats it (when hungry), unless you're using a door, chest or bed.
     const held = this.inv.held, hdef = held && itemDef(held.id);
-    const usable = target && !target.entity && !target.player && !this.player.sneaking && this.interactive(target.id);
+    const usable = target && !target.entity && !target.player && ((!this.player.sneaking && this.interactive(target.id)) || (this.mayBuild && plantsAt(this, hdef, target)));
     // (On touch screens a tap starts eating and it carries on by itself.)
     const eatInput = use || useClick || (this.eating?.touch && !useClick);
     // (What was being drawn, wound up, raised or looked through is let go when the hand changes.)
@@ -2624,7 +2628,10 @@ export class Game {
       return;
     }
     this.guarding = null;
-    if ((hdef?.food || hdef?.drink || hdef?.potion) && (!this.creative || hdef.potion) && (this.food < 20 || hdef.always || hdef.drink || hdef.potion) && eatInput && !usable) {
+    // (Just after a click that did something else, a carrot planted say, eating waits for the use to
+    // come round again - see below - as in Minecraft, so a click doesn't start the eating too.)
+    if ((hdef?.food || hdef?.drink || hdef?.potion) && (!this.creative || hdef.potion) && (this.food < 20 || hdef.always || hdef.drink || hdef.potion) && eatInput && !usable &&
+      (this.eating || useClick || this.useCooldown - dt <= 0)) {
       if (!this.eating || this.eating.id !== held.id || this.eating.slot !== this.inv.selected) {
         const time = hdef.quick ? 16 : 32;
         this.eating = { id: held.id, slot: this.inv.selected, left: time, time, touch: touchTap };
@@ -3060,6 +3067,9 @@ export class Game {
     if (held?.id === I.glow_berries && planting && plantGlowBerries(this, t)) return;
     if (held?.id === I.sweet_berries && planting && plantBerries(this, t)) return;
     if (held?.id === I.cocoa_beans && planting && plantCocoa(this, t)) return;
+    // (Carrots and potatoes go into farmland, like seeds, before there's any thought of eating them;
+    // and all of them one after another as you sweep along a row holding the button down.)
+    if (t && this.mayBuild && plantSeed(this, held, def, t)) return;
     if ((def?.food || def?.drink || def?.potion) && (!this.creative || def.potion)) return; // eaten by holding right click (see handleActions)
     if (def?.splash) { if (!repeat) this.throwItem({ potion: def.splash }); return; }
     if (def?.throws === 'snowball') { if (!repeat) this.throwItem({ snowball: true }); return; }
@@ -3535,7 +3545,8 @@ export class Game {
     if (!t || t.entity || t.player) return;
     // (Plants that grow from an item give that item; a banner, one of its colour.)
     const id = BERRY_BUSH[t.id] !== undefined ? I.sweet_berries : COCOA[t.id] ? I.cocoa_beans
-      : BANNER[t.id] ? I[`${DYES[this.banners.get(t.x, t.y, t.z).c].name}_banner`] : BASE[t.id];
+      : CROP[t.id] || STEM[t.id] ? PLANTED_BY[CROP[t.id]?.first ?? STEM[t.id].first]
+        : BANNER[t.id] ? I[`${DYES[this.banners.get(t.x, t.y, t.z).c].name}_banner`] : BASE[t.id];
     if (!ITEMS.has(id)) return;
     const hot = this.inv.slots.findIndex((s, i) => i < 9 && s?.id === id);
     if (hot >= 0) { this.select(hot); return; }

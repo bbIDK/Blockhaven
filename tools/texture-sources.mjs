@@ -223,6 +223,9 @@ export const SOURCES = {
   // Crops, a picture per stage.
   ...Object.fromEntries([...Array(8)].map((_, k) => [`wheat_${k}`, `block/wheat_stage${k}`])),
   ...Object.fromEntries(['carrots', 'potatoes', 'beetroots'].flatMap((c) => [0, 1, 2, 3].map((k) => [`${c}_${k}`, `block/${c}_stage${k}`]))),
+  // (Stems are drawn grey and coloured by how far they've grown, as Minecraft's are.)
+  ...Object.fromEntries(['melon', 'pumpkin'].flatMap((f) => [[`${f}_stem`, grayOf(`block/${f}_stem`, 0.62)],
+    [`attached_${f}_stem`, grayOf(`block/attached_${f}_stem`, 0.62)]])),
   // Fire: eight frames of its animation.
   ...Object.fromEntries([...Array(8)].map((_, k) => [`fire_${k}`, (H) => H.frame(H.load('block/fire_0'), k)])),
   ...Object.fromEntries([...Array(10)].map((_, k) => [`destroy_${k}`, `block/destroy_stage_${k}`])),

@@ -4,7 +4,7 @@ import { CHUNK, MIN_Y, MAX_Y, CHUNK_HEIGHT, SECTIONS, NO_Y, UNKNOWN_Y, chunkKey 
 import {
   B, BLOCKS, OPAQUE, SOLID, FILTER, EMIT, RENDER, R, SELECTABLE, REPLACEABLE, TORCH_LEAN, FACE_DIRS,
   WATERLIKE, isWater, waterLevel, lavaLevel, WATER_FLOW_BASE, LAVA_FLOW_BASE, SHAPE, shapeBoxes, DOOR, doorId, LADDER_SIDE, BED,
-  SPREAD, BURN, CLIMB, VINE_SIDE, DOUBLE, GATE, gateId, TICKS, LOG, NATURAL_LEAVES, SWITCH, SIGN, RAIL, CAVE_VINES, DRIPSTONE,
+  SPREAD, BURN, CLIMB, VINE_SIDE, DOUBLE, GATE, gateId, TICKS, LOG, NATURAL_LEAVES, SWITCH, SIGN, RAIL, CAVE_VINES, DRIPSTONE, STEM, BASE,
   LICHEN_SIDE, WET, COCOA, BANNER, SCAFFOLD, SCAFFOLD_REACH, scaffoldId, WOOD, LOG_AXES,
 } from './blocks.js';
 import { powerChanged, powerMatters } from './power.js';
@@ -772,10 +772,13 @@ export class World {
 
   neighborsChanged(x, y, z) {
     if (this.remote) return;
-    // Grass smothered by a solid block turns to dirt.
-    if (OPAQUE[this.getBlock(x, y, z)] && y > MIN_Y) {
+    // Grass smothered by a solid block turns to dirt; so does farmland under anything solid but a
+    // fence gate (as Minecraft's does: a melon or pumpkin grown on it too).
+    const id = this.getBlock(x, y, z);
+    if (SOLID[id] && y > MIN_Y) {
       const below = this.getBlock(x, y - 1, z);
-      if (below === B.grass_block || below === B.snowy_grass) this.setBlock(x, y - 1, z, B.dirt);
+      if (OPAQUE[id] && (below === B.grass_block || below === B.snowy_grass)) this.setBlock(x, y - 1, z, B.dirt);
+      else if ((below === B.farmland || below === B.farmland_moist) && !GATE[id]) this.setBlock(x, y - 1, z, B.dirt);
     }
     this.checkBlock(x, y, z);
     for (const d of FACE_DIRS) this.checkBlock(x + d[0], y + d[1], z + d[2]);
@@ -798,6 +801,12 @@ export class World {
       this.setBlock(x, y, z, WET[id] ? B.water : 0, { remesh: true });
       this.listener?.blockDropped?.(x, y, z, id);
       return;
+    }
+    // A stem whose fruit has gone straightens up again (fully grown, to bear another).
+    const stem = STEM[id];
+    if (stem?.attached) {
+      const d = FACE_DIRS[stem.face];
+      if (BASE[this.getBlock(x + d[0], y, z + d[2])] !== (stem.fruit === 'melon' ? B.melon : B.pumpkin)) this.setBlock(x, y, z, stem.first + 7);
     }
     if (DRIPSTONE[id]) reshapeDripstone(this, x, y, z);
     else if (CAVE_VINES[id]) reshapeVine(this, x, y, z);

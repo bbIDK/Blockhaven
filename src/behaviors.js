@@ -2,13 +2,13 @@
 // seeds and root crops are planted, bone meal makes things grow, buckets scoop up and pour out
 // water and lava, and workstations do their jobs. Each returns true when it handled the click
 // (see Game.useItem).
-import { B, CROP, SAPLING, FACE_DIRS, WATERLIKE, REPLACEABLE, waterLevel, lavaLevel, DOUBLE, COMPOSTER, POTTED, POT_FOR,
+import { B, CROP, STEM, SAPLING, FACE_DIRS, WATERLIKE, REPLACEABLE, waterLevel, lavaLevel, DOUBLE, COMPOSTER, POTTED, POT_FOR,
   WOOD_NAMES, liquidHeight, SOLID, CAVE_VINES, caveVineId, WET, CORALS, BERRY_BUSH, COCOA, cocoaId, oppositeFace, WOOD, LOG_AXES, HIVE, HONEY_FULL,
   hiveId } from './blocks.js';
 import { BIOME } from './biomes.js';
 import { I, itemDef } from './items.js';
 import { TEX } from './textures.js';
-import { growCrop, growSapling, growCocoa } from './growth.js';
+import { growCrop, growStem, growSapling, growCocoa } from './growth.js';
 import { MIN_Y, MAX_Y } from './config.js';
 import { SOIL } from './world.js';
 import { smoked } from './bees.js';
@@ -34,13 +34,7 @@ export function useItemOnBlock(game, held, def, t) {
     game.audio.place('grass', at);
     return used(game, 1);
   }
-  // Seeds and root crops go into farmland.
-  if (def.plant && (t.id === B.farmland || t.id === B.farmland_moist) && t.face === 2 && above === 0) {
-    w.setBlock(t.x, t.y + 1, t.z, B[def.plant]);
-    game.advancements?.event('plant', { id: held.id });
-    game.audio.place('grass', at);
-    return consumed(game);
-  }
+  if (plantSeed(game, held, def, t)) return true;
   // String laid along the top of a block is a tripwire, strung the way you face (see Game.tripwires).
   if (held.id === I.string && t.face === 2 && SOLID[t.id] && above === 0) {
     const yaw = game.player.yaw;
@@ -52,13 +46,26 @@ export function useItemOnBlock(game, held, def, t) {
   return false;
 }
 
-// Bone meal: crops jump ahead a few stages, saplings may grow at once, and grass sprouts tufts
-// and flowers around.
+// Whether what's held would be planted where it's pointed: seeds, and roots to grow from (carrots and
+// potatoes), go into the top of farmland with room above.
+export const plantsAt = (game, def, t) => !!def?.plant && !t?.entity && !t?.player && (t.id === B.farmland || t.id === B.farmland_moist) &&
+  t.face === 2 && game.world.getBlock(t.x, t.y + 1, t.z) === 0;
+export function plantSeed(game, held, def, t) {
+  if (!plantsAt(game, def, t)) return false;
+  game.world.setBlock(t.x, t.y + 1, t.z, B[def.plant]);
+  game.advancements?.event('plant', { id: held.id });
+  game.audio.place('grass', { x: t.x + 0.5, y: t.y + 1, z: t.z + 0.5 });
+  return consumed(game);
+}
+
+// Bone meal: crops jump ahead a few stages (beetroots one, as in Minecraft), as do stems still
+// growing, saplings may grow at once, and grass sprouts tufts and flowers around.
 function boneMeal(game, t) {
   const w = game.world;
-  const crop = CROP[t.id];
+  const crop = CROP[t.id], stem = STEM[t.id];
   let did = false;
-  if (crop && crop.stage < crop.max) did = growCrop(w, t.x, t.y, t.z, crop, 2 + Math.floor(Math.random() * 3));
+  if (crop && crop.stage < crop.max) did = growCrop(w, t.x, t.y, t.z, crop, crop.name === 'beetroots' ? 1 : 2 + Math.floor(Math.random() * 4));
+  else if (stem && !stem.attached && stem.age < 7) did = growStem(w, t.x, t.y, t.z, t.id, 2 + Math.floor(Math.random() * 4));
   else if (SAPLING[t.id]) { did = true; if (Math.random() < 0.45) growSapling(w, t.x, t.y, t.z, t.id); }
   else if (t.id === B.grass_block && w.getBlock(t.x, t.y + 1, t.z) === 0) {
     did = true;
@@ -141,7 +148,7 @@ export function plantGlowBerries(game, t) {
 // Plant matter a composter takes, and the chance each item adds a layer (Minecraft's numbers).
 const COMPOST = new Map();
 const compost = (names, chance) => { for (const n of names) { const id = I[n] ?? B[n]; if (id !== undefined) COMPOST.set(id, chance); } };
-compost(['wheat_seeds', 'beetroot_seeds', 'tall_grass', 'glow_berries', 'hanging_roots', 'moss_carpet', 'sweet_berries',
+compost(['wheat_seeds', 'beetroot_seeds', 'melon_seeds', 'pumpkin_seeds', 'tall_grass', 'glow_berries', 'hanging_roots', 'moss_carpet', 'sweet_berries',
   ...WOOD_NAMES.flatMap((w) => [`${w}_leaves`, `${w}_sapling`])], 0.3);
 compost(['azalea_leaves', 'big_dripleaf', 'glow_lichen'], 0.5);
 compost(['azalea', 'moss_block', 'spore_blossom'], 0.65);

@@ -9,7 +9,7 @@
 // splits big ones, numbers everything, and asks again for whatever a transport dropped.
 // The game protocol on top lives in multiplayer.js.
 
-export const PROTOCOL = 4;
+export const PROTOCOL = 5;
 const TOPIC = 'bh';
 // PeerJS (MIT licence) comes with the game, in src/vendor (the single-file build has it inline),
 // with a CDN to fall back on.

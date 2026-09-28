@@ -46,6 +46,7 @@ export const ROLES = {
   baker: { title: 'Baker', held: 'bread', trades: [['buy', 'bread', 4, 2], ['buy', 'cookie', 10, 1], ['buy', 'pumpkin_pie', 2, 2], ['buy', 'golden_carrot', 3, 3],
     ['buy', 'cake', 1, 4], ['sell', 'wheat', 20, 1], ['sell', 'pumpkin', 6, 1], ['sell', 'egg', 12, 1], ['sell', 'sugar', 10, 1]] },
   farmer: { title: 'Farmer', held: 'iron_hoe', trades: [['buy', 'bread', 6, 2], ['buy', 'apple', 4, 1], ['buy', 'golden_carrot', 3, 3], ['buy', 'wheat_seeds', 16, 1],
+    ['buy', 'melon_seeds', 8, 1], ['buy', 'pumpkin_seeds', 8, 1],
     ['buy', 'oak_sapling', 4, 1], ['buy', 'bone_meal', 8, 1], ['sell', 'wheat', 20, 1], ['sell', 'carrot', 22, 1], ['sell', 'potato', 26, 1],
     ['sell', 'beetroot', 15, 1], ['sell', 'melon_slice', 16, 1], ['sell', 'pumpkin', 6, 1]] },
   shepherd: { title: 'Shepherd', held: 'shears', trades: [['buy', 'white_wool', 2, 1], ['buy', 'bed', 1, 3], ['buy', 'shears', 1, 2], ['buy', 'white_carpet', 4, 1],

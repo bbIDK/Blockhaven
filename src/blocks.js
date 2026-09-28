@@ -132,6 +132,8 @@ function log(idY, idX, idZ, wood) {
 
 // Blocks with a front face: the base id faces south; variants face north, east and west.
 export const FACING_VARIANTS = {};
+// The four sideways faces (east, west, south, north), as FACE_DIRS numbers them.
+const STEM_FACES = [0, 1, 4, 5];
 function facing(ids, name, o) {
   const [s, n, e, w] = ids;
   const tex = (frontFace) => {
@@ -818,6 +820,24 @@ export const CROP = {}; // id -> { name, stage, max, first }
     CROP[first + s] = { name, stage: s, max: n - 1, first };
   }
 });
+// (Update 32's) melon and pumpkin stems: planted on farmland from their seeds, they grow in eight
+// stages (drawn rising out of the ground, turning from green to yellow as they go), then bear their
+// fruit on the ground beside them, and bow over towards it (the attached stem, one for each side the
+// fruit may be on). Their colours are Minecraft's.
+export const STEM = {}; // id -> { fruit, age, attached, face (towards the fruit), first (its first stage) }
+[['melon', 1852, 1868], ['pumpkin', 1860, 1872]].forEach(([fruit, first, joined]) => {
+  const common = { label: `${fruit === 'melon' ? 'Melon' : 'Pumpkin'} Stem`, support: 'farmland', base: first, item: false, drop: null, hardness: 0 };
+  for (let a = 0; a < 8; a++) {
+    block(first + a, a ? `${fruit}_stem_${a}` : `${fruit}_stem`, plant({ ...common, tex: `${fruit}_stem`, ticks: true, tint: [a * 32, 255 - a * 8, a * 4] }));
+    STEM[first + a] = { fruit, age: a, attached: false, face: -1, first };
+  }
+  STEM_FACES.forEach((face, k) => {
+    block(joined + k, k ? `attached_${fruit}_stem_${k}` : `attached_${fruit}_stem`, plant({ ...common, tex: `attached_${fruit}_stem`, tint: [224, 199, 28] }));
+    STEM[joined + k] = { fruit, age: 7, attached: true, face, first };
+  });
+});
+// The stem bowed over towards a `fruit` on side `face`.
+export const attachedStem = (fruit, face) => (fruit === 'melon' ? 1868 : 1872) + STEM_FACES.indexOf(face);
 for (const id of [B.sugar_cane, B.cactus, B.dirt]) TICKS[id] = 1;
 // Flower pots, and the plants that can go in them (id -> the plant).
 export const POTTED = {};
@@ -1077,8 +1097,8 @@ block(2428, 'flowering_azalea_leaves', { tex: 'flowering_azalea_leaves', ...leaf
     { tex: `${tex}_top`, cutout: true, hardness: 0, sound: 'grass', support: 'soil', ...natural });
 });
 // Big dripleaf: a broad leaf to stand on, held up on a stem (more stem below makes it taller).
-const STEM = [tb([8, 0, 2, 8, 15, 14], 'big_dripleaf_stem'), tb([2, 0, 8, 14, 15, 8], 'big_dripleaf_stem')];
-shaped(2431, 'big_dripleaf', [tb([0, 15, 0, 16, 16, 16], { side: 'big_dripleaf_side', top: 'big_dripleaf_top' }), ...STEM],
+const LEAF_STALK = [tb([8, 0, 2, 8, 15, 14], 'big_dripleaf_stem'), tb([2, 0, 8, 14, 15, 8], 'big_dripleaf_stem')];
+shaped(2431, 'big_dripleaf', [tb([0, 15, 0, 16, 16, 16], { side: 'big_dripleaf_side', top: 'big_dripleaf_top' }), ...LEAF_STALK],
   { tex: 'big_dripleaf_top', cutout: true, hardness: 0.1, tool: 'axe', sound: 'grass', support: 'dripleaf', ...natural });
 COLLISION[2431] = [[0, 15, 0, 16, 16, 16]];
 block(2432, 'big_dripleaf_stem', plant({ label: 'Big Dripleaf', tex: 'big_dripleaf_stem', support: 'dripleaf_stem', base: 2431, item: false,
