@@ -54,9 +54,14 @@ export function tridentHit(ents, e, victim, dx, dz) {
   game.audio.trident?.('hit', at);
   e.vx *= -0.01; e.vy *= -0.1; e.vz *= -0.01;
   e.dealt = true;
+  const player = e.owner && e.owner.kind !== 'mob' && (e.owner === game.player || 'addr' in e.owner) ? e.owner : null;
+  game.advance?.(player, 'trident_hit');
   // Channeling, in a thunderstorm: a bolt of lightning comes down on what it hit, if that's out in
-  // the open.
-  if (enchLevel(e.trident, 'channeling') && game.lightning?.canStrike(victim)) game.lightning.strike(victim.x, victim.y, victim.z);
+  // the open. (A villager struck by it: Very Very Frightening.)
+  if (enchLevel(e.trident, 'channeling') && game.lightning?.canStrike(victim)) {
+    const struck = game.lightning.strike(victim.x, victim.y, victim.z);
+    if (struck.some((m) => m.type === 'civilian')) game.advance?.(player, 'lightning_villager');
+  }
 }
 
 // A trident's own movement, before (or instead of) an arrow's: returns true when it's dealt with

@@ -27,6 +27,7 @@ import { POTIONS, EFFECTS } from './potions.js';
 import { EGG_TYPES } from './eggs.js';
 import { saveArmor } from './stands.js';
 import { hiveDrop } from './bees.js';
+import { BY_ID as ADVANCEMENT } from './advancements.js';
 
 const MAX_GUESTS = 7;
 const KEEP_RADIUS = 4;   // chunks the host keeps loaded (and mobs going) around each guest
@@ -549,6 +550,7 @@ export class HostSession extends Session {
           players[g.uid] = { ...msg.d, name: g.name };
         }
         break;
+      case 'got': this.madeBy(g, msg); break;
       case 'bye': this.remove(g, 'left the game'); break;
       default: break;
     }
@@ -700,7 +702,8 @@ export class HostSession extends Session {
   takeHiveFor(g, m) {
     const h = HIVE[this.game.world?.getBlock(m.x, m.y, m.z)];
     if (!h || ![m.x, m.y, m.z].every(int) || g.x === null || Math.hypot(m.x + 0.5 - g.x, m.y - g.y, m.z + 0.5 - g.z) > 8) return;
-    const d = hiveDrop(h, this.game.hives.take(m.x, m.y, m.z));
+    const bees = this.game.hives.take(m.x, m.y, m.z), d = hiveDrop(h, bees);
+    if (h.kind === 'bee_nest' && bees >= 3) this.advanceFor(g.addr, 'silk_nest');
     this.game.entities.spawnItem(m.x + 0.5, m.y + 0.3, m.z + 0.5, d.id, 1, 0, 0.6, null, d.extra);
   }
   settleHiveFor(g, m) {
@@ -722,7 +725,7 @@ export class HostSession extends Session {
     }
     this.game.entities.spawnArrow(m.x, m.y, m.z, clamp(m.vx, -80, 80), clamp(m.vy, -80, 80), clamp(m.vz, -80, 80), owner,
       clamp(num(m.d) ? m.d : 2, 0, 30), !!m.p, { punch: int(m.pu) ? clamp(m.pu, 0, 2) : 0, flame: !!m.fl, potion: POTIONS[m.po] ? m.po : null,
-      snowball: !!m.sb, pierce: int(m.pc) ? clamp(m.pc, 0, 4) : 0 });
+      snowball: !!m.sb, pierce: int(m.pc) ? clamp(m.pc, 0, 4) : 0, crossbow: !!m.cb });
   }
 
   // One player hits another.
@@ -871,6 +874,16 @@ export class HostSession extends Session {
 
   hurt(addr, amount, why, knock, armored, burn = 0) {
     this.send(addr, { t: 'hurt', a: r2(amount), why, k: knock ? knock.map(r2) : null, arm: armored ? 1 : 0, fi: burn || undefined });
+  }
+  // Advancements (see advancements.js). Something a guest did on this side of things (a kill, a
+  // birth, a taming), sent for them to see to; one the host made, told to everyone; one a guest
+  // made, told here and to everyone else.
+  advanceFor(addr, type, d = {}) { this.send(addr, { t: 'ach', k: type, d }); }
+  madeAdvancement(id) { this.link.broadcast({ t: 'gotn', n: this.game.settings.name, a: id }); }
+  madeBy(g, m) {
+    if (!ADVANCEMENT.has(m.a)) return;
+    this.game.showAdvancement(g.name, m.a);
+    for (const o of this.guests.values()) if (o !== g) this.send(o.addr, { t: 'gotn', n: g.name, a: m.a });
   }
   // What the host explored of a map, to everyone.
   hasMap(id, addr) {
@@ -1129,6 +1142,8 @@ export class GuestSession extends Session {
         }
         break;
       case 'msg': if (typeof msg.s === 'string') game.ui.message(msg.s.replace(/\p{C}/gu, '').slice(0, 200), COLORS[msg.c] ?? null); break;
+      case 'ach': if (typeof msg.k === 'string' && msg.d && typeof msg.d === 'object' && game.world) game.advancements.event(msg.k, msg.d); break;
+      case 'gotn': if (ADVANCEMENT.has(msg.a)) game.showAdvancement(cleanName(msg.n), msg.a); break;
       case 'inv': this.chestData(msg); break;
       case 'fur': this.furnaceData(msg); break;
       case 'slots': this.slotData(msg); break;
@@ -1317,6 +1332,7 @@ export class GuestSession extends Session {
   shootArrow(x, y, z, vx, vy, vz, damage, pickup, fx) {
     this.toHost({ t: 'arw', x: r2(x), y: r2(y), z: r2(z), vx: r2(vx), vy: r2(vy), vz: r2(vz), d: damage, p: pickup ? 1 : 0,
       pu: fx?.punch || undefined, fl: fx?.flame ? 1 : undefined, po: fx?.potion || undefined, sb: fx?.snowball ? 1 : undefined, pc: fx?.pierce || undefined,
+      cb: fx?.crossbow ? 1 : undefined,
       tr: fx?.trident ? { id: fx.trident.id, d: fx.trident.dmg ?? 0, ex: extras(fx.trident) ?? undefined } : undefined });
   }
 
@@ -1355,6 +1371,7 @@ export class GuestSession extends Session {
   chat(text) { this.toHost({ t: 'chat', s: text }); }
   command(line) { this.toHost({ t: 'cmd', s: line }); }
   saveMe(data) { this.toHost({ t: 'save', d: data }); }
+  madeAdvancement(id) { this.toHost({ t: 'got', a: id }); }
   entityGone() {}
 
   async leave() {

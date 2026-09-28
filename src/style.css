@@ -1118,3 +1118,78 @@ kbd {
 .mc-loom canvas { position: absolute; left: calc(var(--u) * 3); top: calc(var(--u) * 2); width: calc(var(--u) * 8); height: calc(var(--u) * 16); image-rendering: pixelated; pointer-events: none; }
 .mc-loom-preview canvas { width: 100%; height: 100%; image-rendering: pixelated; }
 .mc-slot.hint.faint::before { opacity: 0.35; }
+
+/* Advancements (see advscreen.js): the window with its tabs, the tree over its tab's texture (to be
+   dragged about), and the tooltip over an advancement: its title in a bar, gold as far as it's
+   made and blue for the rest, and what it asks for below. */
+.adv-screen { background: rgba(16, 16, 16, 0.6); justify-content: center; }
+.adv-frame { position: relative; flex: none; width: calc(var(--u) * 252); height: calc(var(--u) * 198); }
+.adv-frame > *, .adv-win > *, .adv-view > *, .adv-tree > *, .adv-tip > *, .adv-bar > * { position: absolute; }
+.adv-tabs .mc-tab.on { height: calc(var(--u) * 32) !important; }
+.adv-well { background: #1c1c1c; box-shadow: inset var(--u) var(--u) 0 #373737, inset calc(var(--u) * -1) calc(var(--u) * -1) 0 #fff; }
+.adv-view {
+  overflow: hidden;
+  background-repeat: no-repeat, repeat;
+  background-size: 100% 100%, calc(var(--u) * 16) calc(var(--u) * 16);
+  image-rendering: pixelated;
+  touch-action: none;
+  cursor: grab;
+}
+.adv-view:active { cursor: grabbing; }
+.adv-tree { left: 0; top: 0; }
+.adv-lines { overflow: visible; pointer-events: none; }
+.adv-node { background-size: 100% 100%; image-rendering: pixelated; }
+.adv-node > img, .adv-tipframe > img {
+  left: calc(var(--u) * 5); top: calc(var(--u) * 5); width: calc(var(--u) * 16); height: calc(var(--u) * 16);
+  image-rendering: pixelated; pointer-events: none;
+}
+.adv-fade { background: #000; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+.adv-fade.on { opacity: 0.3; }
+.adv-tip { z-index: 5; height: calc(var(--u) * 26); pointer-events: none; }
+.adv-bar {
+  left: 0; right: 0; top: calc(var(--u) * 3); height: calc(var(--u) * 20);
+  background: linear-gradient(to right, #c79c1d var(--made, 0%), #1f5aa6 var(--made, 0%));
+  box-shadow: inset 0 var(--u) 0 rgba(255, 255, 255, 0.35), inset 0 calc(var(--u) * -1) 0 rgba(0, 0, 0, 0.35), 0 0 0 var(--u) #000;
+}
+.adv-tipframe { left: 0; top: calc(var(--u) * -3); width: calc(var(--u) * 26); height: calc(var(--u) * 26); background-size: 100% 100%; image-rendering: pixelated; }
+.adv-title, .adv-count { top: calc(var(--u) * 6); font: 400 calc(var(--u) * 9)/1 var(--font-ui); color: #fff; white-space: nowrap; }
+.adv-title { left: calc(var(--u) * 32); }
+.adv-count { right: calc(var(--u) * 5); }
+.adv-tip.flip .adv-tipframe { left: auto; right: 0; }
+.adv-tip.flip .adv-title { left: calc(var(--u) * 6); }
+.adv-tip.flip .adv-count { right: calc(var(--u) * 32); }
+.adv-desc {
+  left: 0; right: 0; top: calc(var(--u) * 24);
+  padding: calc(var(--u) * 4) calc(var(--u) * 5) calc(var(--u) * 4);
+  background: #212121; box-shadow: inset 0 0 0 var(--u) #555, 0 0 0 var(--u) #000;
+  font: 400 calc(var(--u) * 9)/1.25 var(--font-ui); white-space: normal;
+}
+.adv-tip.up .adv-desc { top: auto; bottom: calc(var(--u) * 24); }
+.adv-left { position: static !important; margin-top: calc(var(--u) * 3); color: #a8a8a8; }
+.adv-tabtip {
+  top: calc(var(--u) * -13); translate: -50% 0; z-index: 6; pointer-events: none;
+  padding: calc(var(--u) * 2) calc(var(--u) * 4); background: rgba(16, 0, 16, 0.94);
+  box-shadow: inset 0 0 0 var(--u) #2b0f5e, 0 0 0 var(--u) rgba(16, 0, 16, 0.94);
+  font: 400 calc(var(--u) * 9)/1.2 var(--font-ui); white-space: nowrap;
+}
+.adv-done { left: 50%; top: calc(var(--u) * 176); translate: -50% 0; width: calc(var(--u) * 100); }
+
+/* An advancement made: a box that slides in at the top right for a few seconds, like Minecraft's
+   toasts ("Advancement Made!" and its name, beside its icon). */
+#toasts {
+  position: absolute; top: env(safe-area-inset-top); right: env(safe-area-inset-right); z-index: 60;
+  display: flex; flex-direction: column; align-items: flex-end; pointer-events: none;
+}
+.toast {
+  position: relative; box-sizing: border-box; min-width: calc(var(--u) * 160); height: calc(var(--u) * 32);
+  padding: 0 calc(var(--u) * 8) 0 calc(var(--u) * 30);
+  background: #202020; border-radius: calc(var(--u) * 2);
+  box-shadow: inset 0 0 0 var(--u) #5f5f5f, 0 0 0 var(--u) #000;
+  transform: translateX(110%); transition: transform 0.45s ease;
+}
+.toast.in { transform: none; }
+.toast img { position: absolute; left: calc(var(--u) * 8); top: calc(var(--u) * 8); width: calc(var(--u) * 16); height: calc(var(--u) * 16); image-rendering: pixelated; }
+.toast b, .toast span { display: block; font: 400 calc(var(--u) * 9)/1 var(--font-ui); white-space: nowrap; }
+.toast b { margin-top: calc(var(--u) * 7); }
+.toast span { margin-top: calc(var(--u) * 3); color: #fff; }
+@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }

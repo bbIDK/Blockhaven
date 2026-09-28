@@ -153,10 +153,13 @@
     <div class="button-rows">
       <button class="btn wide" data-action="resume">Back to Game</button>
       <div class="row">
-        <button class="btn half" data-action="settings">Options...</button>
+        <button class="btn half" data-action="advancements">Advancements</button>
         <button class="btn half" data-action="controls">How to Play</button>
       </div>
-      <button class="btn wide" data-action="share" id="p-share">Open to Friends</button>
+      <div class="row">
+        <button class="btn half" data-action="settings" id="p-options">Options...</button>
+        <button class="btn half" data-action="share" id="p-share">Open to Friends</button>
+      </div>
       <button class="btn wide" data-action="quit" id="p-quit">Save and Quit to Title</button>
     </div>
     <p class="pause-info" id="pause-info"></p>
@@ -220,11 +223,13 @@
         <dt><kbd data-bind="perspective">F5</kbd></dt><dd>See yourself from behind or in front</dd>
         <dt><kbd data-bind="mapZoomIn">=</kbd> <kbd data-bind="mapZoomOut">-</kbd></dt><dd>Zoom the minimap in and out</dd>
         <dt><kbd data-bind="waypointAdd">B</kbd> <kbd data-bind="waypointList">U</kbd></dt><dd>Mark a waypoint where you stand; list the waypoints (or click the minimap)</dd>
+        <dt><kbd data-bind="advancements">L</kbd></dt><dd>Advancements (also in the game menu)</dd>
       </dl>
       <p class="hint-text">Change any of these keys in Options, under Key Binds.</p>
       <p class="hint-text">Punch a tree for logs and turn them into planks in your inventory's crafting grid. Four planks make a crafting table: right-click it for the full 3×3 grid, where a wooden pickaxe gets you mining. The green book lists every recipe and lays it out for you.</p>
       <p class="hint-text">Furnaces smelt ores and cook meat: the item goes on top, fuel below. Weapons need a moment between swings (the bar under the crosshair), so time your hits. You heal while your food bar is nearly full.</p>
       <p class="hint-text">Settlements come in every size, from camps in the woods to walled towns and kingdoms with a castle and a king. Go in through a gate and right-click the people there to talk and trade: they buy and sell for gold coins. <kbd>/locate kingdom</kbd> (or camp, hamlet, village, town) points the way. Sleep in a bed to make it your spawn point.</p>
+      <p class="hint-text">Advancements (<kbd data-bind="advancements">L</kbd>) are goals to reach, from your first crafting table to seeing every biome, breeding every animal and eating everything there is to eat. The trees open up as you go; point at one to see what it asks and how far along you are. Challenges give experience too.</p>
       <p class="hint-text">Now and then a rain is a thunderstorm: lightning strikes the highest ground about you (and creatures out in the open), and monsters come out even by day. Find a roof, or sleep through it in a bed.</p>
       <p class="hint-text">Bees fill their nests and hives with honey. When one's full, a glass bottle takes the honey and shears the comb, but light a campfire under it first or the bees come after you. Dye banners at a loom, dress an armor stand in your spare armour, and climb scaffolding by jumping inside it (sneak to go down).</p>
       <p class="hint-text">Each animal lives where it belongs: deer, bears and boar in the woods, zebras, giraffes and elephants on the savanna, pandas and tigers in the jungle, polar bears and penguins in the snow. In Creative, the Spawn Eggs tab (or <kbd>/summon tiger</kbd>) brings out any creature you like.</p>

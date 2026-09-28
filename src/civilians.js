@@ -430,7 +430,10 @@ export class Civilians {
     const v = villageAt(this.world.gen, p.x, p.z, -1);
     if (v !== this.currentVillage) {
       this.currentVillage = v;
-      if (v) game.ui.showTitle?.(...villageTitle(v, this.living(v)));
+      if (v) {
+        game.ui.showTitle?.(...villageTitle(v, this.living(v)));
+        game.advancements?.event('visit', { tier: v.tier ?? 'village' });
+      }
     }
   }
 
@@ -838,6 +841,7 @@ export class Civilians {
     if (!e.remote) e.talking = { x: p.x, y: p.y, z: p.z };
     this.voice(e);
     game.openTalk?.(e);
+    game.advancements?.event('talk', { role: e.role });
   }
   // Their greeting: by the hour, the weather and how they feel about you.
   greeting(e) {
@@ -940,6 +944,7 @@ export class Civilians {
     } else if (e.stock) e.stock.used[offer.key] = (e.stock.used[offer.key] ?? 0) + 1;
     game.particles.icons(TEX.happy, e.x, e.y + 1.8, e.z, 6, 0.4);
     game.audio.trade?.();
+    game.advancements?.event('trade');
     game.dropXp(e.x, e.y + 1, e.z, 3 + Math.floor(Math.random() * 4));
     game.invChanged();
     return true;

@@ -449,6 +449,8 @@ function riddenTick(ents, e) {
   if (verdict === 'tame') {
     loveHearts(game, e, 7);
     game.audio.mob('horse', 'say', at, 1.1);
+    // (Tamed by whoever's riding it.)
+    game.advance?.(e.rider === 'me' ? game.player : game.players().find((q) => q.addr && q.addr === e.rider), 'tame', { m: e.type, v: e.variant ?? 0 });
   } else if (verdict === 'buck') {
     game.audio.mob('horse', 'angry', at);
     game.particles.icons(TEX.angry, e.x, e.y + e.h + 0.1, e.z, 3, 0.4, 0.3, 0.12);
@@ -815,6 +817,9 @@ function haveYoung(ents, e, mate) {
   const game = ents.game;
   e.love = mate.love = 0; e.breedCd = mate.breedCd = 6000;
   ents.spawnXp((e.x + mate.x) / 2, e.y + 0.5, (e.z + mate.z) / 2, 1 + Math.floor(Math.random() * 7));
+  // (Advancements: the one who fed them bred them - a horse and a donkey, a mule.)
+  const by = game.playerByUid?.(e.loveBy ?? mate.loveBy);
+  if (by) game.advance(by, 'breed', { m: mate.type === e.type ? e.type : 'mule' });
   // (Frogs have no young of their own: one of them is soon to lay frogspawn.)
   if (e.def.leapsAbout) { (Math.random() < 0.5 ? e : mate).pregnant = 6000; loveHearts(game, e, 5); return null; }
   // (A foal of two tame horses is born tame; puppies and kittens belong to their parents' owner.
@@ -1820,6 +1825,7 @@ export function applyMobUse(ents, e, id, effect, uid = null, name = null) {
         loveHearts(game, e, 7);
         game.audio.mob(e.def.sound, 'say', at);
         game.net?.resend?.(e);
+        game.advance?.(game.playerByUid?.(uid), 'tame', { m: e.type, v: e.variant ?? 0 });
       } else game.particles.smoke(e.x, e.y + e.h + 0.2, e.z, 5, 0.3);
       break;
     case 'sit': e.sitting = !e.sitting; e.target = null; e.moving = false; e.vx = e.vz = 0; break;
@@ -1836,7 +1842,7 @@ export function applyMobUse(ents, e, id, effect, uid = null, name = null) {
       game.audio.shear?.(at);
       break;
     }
-    case 'breed': e.love = 600; loveHearts(game, e, 7); break;
+    case 'breed': e.love = 600; e.loveBy = uid; loveHearts(game, e, 7); break;
     case 'grow':
       if (e.def.growsInto) e.growUp = Math.max(1, e.growUp - 2400); else e.grow = Math.max(0, e.grow - 2400);
       game.particles.icons(TEX.happy, e.x, e.y + e.h * 0.5, e.z, 5, e.hw + 0.1);

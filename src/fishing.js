@@ -85,6 +85,7 @@ export class Fishing {
       const dmg = c.worn ? Math.floor(Math.random() * 30) + 10 : 0;
       const extra = c.book ? { ench: randomBook(true) } : null;
       g.entities.spawnItem(b.x, b.y + 0.2, b.z, c.id, c.count, dmg, 0, [dx * 1.8, dy * 1.25 + 8, dz * 1.8], extra);
+      g.advancements?.event('fish', { id: c.id });
       g.dropXp(p.x, p.y + 0.5, p.z, 1 + Math.floor(Math.random() * 6));
       g.audio.splash(0.3, { x: b.x, y: b.y, z: b.z });
       wear = 1;

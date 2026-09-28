@@ -67,6 +67,16 @@ function layerImage(layer, tint, overlayTint, shade) {
   return c;
 }
 
+// A texture as it is, 16 by 16 (the advancements' tabs are tiled with one).
+export function textureURL(name) {
+  const key = `tex:${name}`;
+  if (cache.has(key)) return cache.get(key);
+  if (!pixels || TEX[name] === undefined) return '';
+  const url = layerImage(TEX[name], null, null, 1).toDataURL();
+  cache.set(key, url);
+  return url;
+}
+
 function tintOf(block) {
   const t = TINT[block];
   if (t === 1) return DEFAULT_GRASS;

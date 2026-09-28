@@ -11,6 +11,7 @@ import { TEX } from './textures.js';
 import { growCrop, growSapling, growCocoa } from './growth.js';
 import { HEIGHT } from './config.js';
 import { SOIL } from './world.js';
+import { smoked } from './bees.js';
 
 const TILLABLE = new Set([B.grass_block, B.dirt, B.dirt_path, B.coarse_dirt, B.snowy_grass]);
 const SEA_BED = new Set([B.sand, B.red_sand, B.gravel, B.dirt, B.clay]);
@@ -36,6 +37,7 @@ export function useItemOnBlock(game, held, def, t) {
   // Seeds and root crops go into farmland.
   if (def.plant && (t.id === B.farmland || t.id === B.farmland_moist) && t.face === 2 && above === 0) {
     w.setBlock(t.x, t.y + 1, t.z, B[def.plant]);
+    game.advancements?.event('plant', { id: held.id });
     game.audio.place('grass', at);
     return consumed(game);
   }
@@ -208,6 +210,8 @@ export function useWorkstation(game, held, t) {
   // the bees mind, unless smoke calms them: see bees.js).
   const hive = HIVE[id];
   if (hive?.level === HONEY_FULL && (held?.id === I.glass_bottle || itemDef(held?.id)?.shears)) {
+    // (Bee Our Guest: a bottle of honey taken over a campfire's smoke, the bees none the wiser.)
+    if (held.id === I.glass_bottle && smoked(w, t.x, t.y, t.z)) game.advancements?.event('honey_safe');
     w.setBlock(t.x, t.y, t.z, hiveId(hive.first, 0, hive.front));
     if (held.id === I.glass_bottle) { game.audio.bucket('fill', at); return swapHeld(game, I.honey_bottle); }
     game.entities.spawnItem(t.x + 0.5, t.y + 0.5, t.z + 0.5, I.honeycomb, 3);

@@ -109,6 +109,17 @@ export function mobFlags(e) {
     (e.croak > 0 ? 131072 : 0) | (e.charged ? 262144 : 0);
 }
 
+// What an advancement needs to know of a kill (see advancements.js): what it was, whether it was a
+// monster, whether it was a skeleton shot from fifty blocks off (Sniper Duel), and whether the
+// crossbow bolt that did it has now killed five kinds of creature (Arbalistic).
+function killInfo(e, from, opts) {
+  const arrow = opts?.arrow;
+  let five = false;
+  if (arrow?.crossbow) { (arrow.kills ??= new Set()).add(e.type); five = arrow.kills.size >= 5; }
+  const far = arrow ? Math.hypot(e.x - from.x, e.z - from.z) : 0;
+  return { m: e.type, h: e.def.hostile || e.type === 'enderman' ? 1 : 0, s: e.type === 'skeleton' && far >= 50 ? 1 : 0, a: five ? 1 : 0 };
+}
+
 export class Entities {
   constructor(game) {
     this.game = game;
@@ -496,7 +507,7 @@ export class Entities {
     if (this.guest) { this.game.net.shootArrow?.(x, y, z, vx, vy, vz, damage, pickup, fx); return null; }
     const e = new Entity('arrow', 0.05, 0.1, x, y, z);
     Object.assign(e, { vx, vy, vz, owner, damage, pickup, stuck: false, life: 0, punch: fx?.punch ?? 0, flame: !!fx?.flame,
-      potion: POTIONS[fx?.potion] ? fx.potion : null, snowball: !!fx?.snowball, pierce: fx?.pierce ?? 0, pierced: null });
+      potion: POTIONS[fx?.potion] ? fx.potion : null, snowball: !!fx?.snowball, pierce: fx?.pierce ?? 0, pierced: null, crossbow: !!fx?.crossbow });
     this.list.push(e);
     return e;
   }
@@ -977,13 +988,14 @@ export class Entities {
       if (victim) {
         const dmg = Math.max(1, Math.round(e.damage * Math.min(1.5, sp / 25)));
         const at = { x: e.x, y: e.y, z: e.z };
-        if (victim.kind === 'mob') this.hurtMob(victim, dmg, e.owner ?? at, e.punch, e.flame ? { fire: 5 } : null);
+        if (victim.kind === 'mob') this.hurtMob(victim, dmg, e.owner ?? at, e.punch, { fire: e.flame ? 5 : 0, arrow: e });
         else {
           game.hurtPlayer(victim, dmg, e.owner?.label ? `You were shot by a ${e.owner.label.toLowerCase()}` : 'You were shot', [dx * 3, 2, dz * 3], true,
             e.owner?.kind === 'mob');
           if (e.owner?.kind === 'mob') rallyPets(this, victim.uid, e.owner);
         }
         game.audio.arrowHit?.(true, at);
+        if (e.owner && e.owner.kind !== 'mob' && (e.owner === game.player || 'addr' in e.owner)) game.advance?.(e.owner, 'arrow_hit');
         // (A piercing arrow goes on through, for as many as its level.)
         if (e.pierce > 0) {
           e.pierce--;
@@ -1137,6 +1149,8 @@ export class Entities {
       if (e.rider) this.throwRider(e);
       this.dropLoot(e);
       this.civilians.died(e);
+      // (Advancements: who killed it, and how.)
+      if (byPlayer) this.game.advance?.(from, 'kill', killInfo(e, from, opts));
       // (An elder guardian killed is gone for good.)
       if (e.elder && this.game.meta) ((this.game.meta.elders ??= {})[e.elder.key] ??= [])[e.elder.i] = true;
     }
@@ -1204,6 +1218,8 @@ export class Entities {
       return false;
     }
     applyHeldUse(this.game, effect, e);
+    if (effect === 'scoop') this.game.advancements?.event('scoop', { m: e.type });
+    else if (effect === 'leash') this.game.advancements?.event('leash', { m: e.type, v: e.variant ?? 0 });
     if (e.remote) net.useMob(e, held?.id ?? 0, effect, who.name);
     else applyMobUse(this, e, held?.id ?? 0, effect, this.game.uid, who.name);
     return true;

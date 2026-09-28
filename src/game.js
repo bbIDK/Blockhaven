@@ -55,6 +55,8 @@ import { AQUATIC } from './tridents.js';
 import { Maps, HeldMap, initMapColours, isMap } from './maps.js';
 import { Minimap, initMinimapColours, MAP_ZOOMS } from './minimap.js';
 import { Waypoints, WaypointScreen } from './waypoints.js';
+import { Advancements, killedByCreature, BY_ID as ADVANCEMENT, FRAMES as ADV_FRAMES } from './advancements.js';
+import { AdvancementScreen } from './advscreen.js';
 import { drawLeads, isFence, LEAD_SNAP } from './leads.js';
 import { Jukeboxes, instrumentFor, noteColour, noteClear, nextNote } from './jukebox.js';
 import { isHanging } from './hangings.js';
@@ -93,7 +95,7 @@ const DEFAULT_SETTINGS = {
 };
 const HOTBAR_KEYS = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `hotbar${n}`);
 const BOUND = ['forward', 'back', 'left', 'right', 'jump', 'sneak', 'sprint', 'inventory', 'drop', 'chat', 'command', 'perspective',
-  'hideHud', 'debug', 'mapZoomIn', 'mapZoomOut', 'waypointAdd', 'waypointList', ...HOTBAR_KEYS];
+  'hideHud', 'debug', 'mapZoomIn', 'mapZoomOut', 'waypointAdd', 'waypointList', 'advancements', ...HOTBAR_KEYS];
 const FACE_NAMES = ['east (+X)', 'west (-X)', 'up', 'down', 'south (+Z)', 'north (-Z)'];
 const TIPS = [
   'Punch a tree to collect logs, then turn them into planks.',
@@ -273,6 +275,9 @@ export class Game {
     this.minimap = new Minimap(this, $('minimap-canvas'), $('minimap-info'));
     this.waypoints = new Waypoints(this);
     this.waypointScreen = new WaypointScreen(this);
+    this.advancements = new Advancements(this);
+    this.advScreen = new AdvancementScreen(this);
+    this.fallTop = null; // (where the fall under way began: see afterMove)
     // (A tap on the minimap opens the waypoints.)
     $('minimap-canvas').addEventListener('click', () => this.openWaypoints());
     this.jukeboxes = new Jukeboxes(this);
@@ -443,6 +448,7 @@ export class Game {
     ui.on('settings', (from) => { ui.showDifficulty(this.meta ? this.difficulty : null, !this.meta?.remote); this.pushScreen('screen-settings', from); });
     ui.on('cycle-difficulty', () => this.setDifficulty((this.difficulty + 1) % 4));
     ui.on('controls', (from) => this.pushScreen('screen-controls', from));
+    ui.on('advancements', () => this.openAdvancements(true));
     ui.on('keybinds', (from) => this.pushScreen('screen-keys', from));
     ui.on('reset-keys', () => { this.keys.reset(); this.saveSettings(); ui.refreshKeys(); });
     ui.on('done', () => this.popScreen());
@@ -625,6 +631,9 @@ export class Game {
     // (A guest's maps come from the host, as they're needed.)
     this.maps.reset(remote ? null : meta.maps);
     this.waypoints.load(meta.waypoints);
+    this.advancements.load(meta.advancements);
+    this.advancements.toasts.clear();
+    this.fallTop = null;
     this.minimap.reset();
     this.attackTicks = 100;
     this.fire = 0;
@@ -662,7 +671,7 @@ export class Game {
       mode: you?.mode === 'creative' || (!you?.mode && world.mode === 'creative') ? 'creative' : 'survival',
       spawn: world.spawn && Number.isFinite(world.spawn.x) && Number.isFinite(world.spawn.z) ? { x: world.spawn.x, y: world.spawn.y ?? null, z: world.spawn.z } : { x: 0.5, y: null, z: 0.5 },
       time: Number.isFinite(world.time) ? world.time : 1000, weather: { raining: !!world.rain, thunder: !!world.thunder },
-      bed: you?.bed ?? null, player: you?.player ?? null, inventory: you?.inventory ?? null, waypoints: you?.wp ?? null, remote: true,
+      bed: you?.bed ?? null, player: you?.player ?? null, inventory: you?.inventory ?? null, waypoints: you?.wp ?? null, advancements: you?.adv ?? null, remote: true,
       difficulty: [0, 1, 2, 3].includes(world.diff) ? world.diff : 2,
     };
     const container = this.containers, furnaces = this.furnaces, signs = this.signs.serialize(), banners = this.banners.serialize();
@@ -680,6 +689,7 @@ export class Game {
         fx: this.effectsData() },
       inventory: this.inv.serialize(), mode: this.meta?.mode ?? 'survival', bed: this.meta?.bed ?? null,
       wp: this.waypoints.serialize(),
+      adv: this.advancements.serialize(),
     };
   }
 
@@ -747,6 +757,50 @@ export class Game {
   // Everyone in the world (for mobs and explosions): this player and, in multiplayer, the rest.
   // Everyone creatures can see. (The same object stands for this player from one tick to the next,
   // so a creature after them keeps up with where they are.)
+  // ---------------------------------------------------------------- advancements (see advancements.js)
+  // Something towards an advancement, done by player `t` (one of players(), or this player): this
+  // player's own advancements see to it; a guest's are told, on the host.
+  advance(t, type, d = {}) {
+    if (!t) return;
+    if (!t.addr) this.advancements.event(type, d);
+    else if (this.net?.host) this.net.advanceFor?.(t.addr, type, d);
+  }
+  // The player (one of players()) with key `uid`, if they're about.
+  playerByUid(uid) { return uid ? this.players().find((q) => q.uid === uid) ?? null : null; }
+  // An advancement made here: told in the chat, and to everyone else playing.
+  announceAdvancement(a) {
+    this.showAdvancement(this.settings.name, a.id);
+    this.net?.madeAdvancement?.(a.id);
+  }
+  // "Name has made the advancement [Title]", in the chat (the title in its frame's colour).
+  showAdvancement(name, id) {
+    const a = ADVANCEMENT.get(id), f = a && ADV_FRAMES[a.frame];
+    if (!f) return;
+    const who = String(name ?? '').trim();
+    this.ui.message([[who ? `${who} ${f.verb} ` : `You ${f.verb.replace(/^has/, 'have')} `, null], [`[${a.title}]`, f.colour]]);
+  }
+  // Looking through a spyglass: the creature in the middle of the view, a few times a second (Is
+  // It a Bird?, Thar She Blows!).
+  spyglassLook(dt) {
+    if (!this.drawing?.scope || this.view !== 0 || this.state !== 'play') return;
+    if ((this.scopeLook = (this.scopeLook ?? 0) - dt) > 0) return;
+    this.scopeLook = 0.25;
+    const p = this.player, d = p.lookDir(), far = 100;
+    const wall = this.world.raycast(p.x, p.eyeY, p.z, d[0], d[1], d[2], far);
+    const seen = this.entities.raycast(p.x, p.eyeY, p.z, d[0], d[1], d[2], wall ? wall.t : far);
+    if (seen?.entity.kind === 'mob') this.advancements.event('spy', { m: seen.entity.type });
+  }
+  // Whether this player is in a stronghold: inside its bounds, down on its level, standing on its
+  // bricks (Deep Secrets).
+  inStronghold() {
+    const gen = this.world?.gen, p = this.player;
+    if (!gen || gen.version < 10 || gen.type === 'flat') return false;
+    const s = nearestStructure(gen, 'stronghold', p.x, p.z);
+    if (!s || p.x < s.box[0] || p.x > s.box[2] + 1 || p.z < s.box[1] || p.z > s.box[3] + 1 || p.y < s.y - 1 || p.y > s.y + 14) return false;
+    const under = BLOCKS[this.world.getBlock(Math.floor(p.x), Math.floor(p.y - 0.2), Math.floor(p.z))]?.name ?? '';
+    return /stone_brick|oak_planks|end_portal_frame|cobblestone/.test(under);
+  }
+
   players() {
     const p = this.player;
     const me = (this.me ??= { addr: null, uid: this.uid });
@@ -926,6 +980,8 @@ export class Game {
     this.avatars.clearTags();
     this.waypoints.clearMarks();
     this.closeWaypoints();
+    this.closeAdvancements();
+    this.advancements.toasts.clear();
     this.jukeboxes.clear();
     this.releasePointer();
     this.touch.setActive(false);
@@ -963,6 +1019,7 @@ export class Game {
       hives: this.hives.serialize(),
       maps: this.maps.serialize(),
       waypoints: this.waypoints.serialize(),
+      advancements: this.advancements.serialize(),
       furnaces: [...this.furnaces].filter(([, f]) => !f.empty).map(([k, f]) => ({ k, ...f.serialize() })),
       weather: this.weather.serialize(),
     });
@@ -1159,6 +1216,7 @@ export class Game {
     if (type === 'craft') this.audio.craft();
     else if (type === 'equip') this.audio.equip(itemDef(stack.id).armor.material);
     else if (type === 'enchant') {
+      this.advancements.event('enchant');
       this.audio.enchant(at);
       this.particles.bits(at.x, at.y + 0.4, at.z, TEX.glyph, 14, 1.2, 0.9);
     } else if (type === 'anvil') this.audio.anvil(at);
@@ -1425,6 +1483,7 @@ export class Game {
     const near = this.entities.list.some((e) => e.kind === 'mob' && e.def.hostile && !e.dead && Math.hypot(e.x - p.x, e.y - p.y, e.z - p.z) < 10);
     if (near) { this.ui.message('You may not rest now, there are monsters nearby', '#e88a78'); return; }
     this.meta.bed = { x, y, z };
+    this.advancements.event('sleep');
     // The mouse stays captured while the screen fades out and back in, so play just carries on.
     this.state = 'sleeping';
     this.mining = null;
@@ -1548,6 +1607,10 @@ export class Game {
       this.particles.burst(x + dx, y + dy, z + dz, id);
     }
     const golem = this.entities.spawnMob(type, x + 0.5, y - 2, z + 0.5, { made: true });
+    // (Hired Help, for everyone who saw an iron golem made: within five blocks of it.)
+    if (type === 'iron_golem') {
+      for (const q of this.players()) if (!q.dead && Math.abs(q.x - golem.x) < 6.5 && Math.abs(q.z - golem.z) < 6.5 && Math.abs(q.y - golem.y) < 8) this.advance(q, 'golem');
+    }
     const p = this.player;
     golem.yaw = Math.atan2(-(p.x - golem.x), -(p.z - golem.z));
     this.audio.mob(type === 'iron_golem' ? 'golem' : 'snow_golem', 'hurt', { x: x + 0.5, y: y - 1, z: z + 0.5 }, 0.8);
@@ -1571,6 +1634,8 @@ export class Game {
   die(cause) {
     this.closeTalk();
     this.closeWaypoints();
+    this.closeAdvancements();
+    this.advancements.event('died', { mob: killedByCreature(cause) });
     this.dismount();
     // (Where you fell is marked, as the Xaero's Minimap mod does.)
     this.waypoints.died(this.player.x, this.player.y, this.player.z);
@@ -1676,9 +1741,12 @@ export class Game {
         else if (k.is(c, 'mapZoomOut')) this.zoomMap(-1);
         else if (k.is(c, 'waypointAdd')) { e.preventDefault(); this.openWaypoints(true); }
         else if (k.is(c, 'waypointList')) { e.preventDefault(); this.openWaypoints(); }
+        else if (k.is(c, 'advancements')) { e.preventDefault(); this.openAdvancements(); }
         else if (c === 'Escape' && !this.input.locked) this.pause();
       } else if (s === 'waypoints') {
         if (c === 'Escape' || (k.is(c, 'waypointList') && !this.waypointScreen.editing)) this.waypointScreen.back();
+      } else if (s === 'advancements') {
+        if (c === 'Escape' || k.is(c, 'advancements')) { e.preventDefault(); this.closeAdvancements(); }
       } else if (s === 'talk') {
         if (k.is(c, 'inventory') || c === 'Escape') this.closeTalk();
       } else if (s === 'book') {
@@ -1828,6 +1896,7 @@ export class Game {
       this.safely('creatures', () => this.entities.update(dt));
       this.safely('fishing', () => this.fishing.update(dt));
       this.safely('weather', () => { this.weather.update(dt); this.lightning.update(dt); });
+      this.safely('advancements', () => { this.advancements.update(dt); this.spyglassLook(dt); });
       if (this.spin) this.safely('riptide', () => this.spinTick(dt));
     }
     if (this.riding) this.sitOnMount();
@@ -1926,7 +1995,18 @@ export class Game {
       // (Honey breaks a fall: a fifth of the hurt.)
       const soft = p.onHoney ? 0.2 : 1;
       if (d > 3.2 + this.effectLevel('jump_boost') && !p.inWater) this.damage(Math.floor((d - 3 - this.effectLevel('jump_boost')) * soft), 'You fell from a high place');
+      if (p.onHoney && d > 3.2 && this.state !== 'dead') this.advancements.event('honey_land');
       if (d > 1.2) { const g = p.groundBlock(this.world); if (g) this.audio.land(BLOCKS[g]?.sound ?? 'stone'); }
+    }
+    // Where a fall began (the top of a jump, or where you stepped off), for Caves & Cliffs: told
+    // once you land or come down in water, if you're still alive.
+    if (this.riding) this.fallTop = null;
+    else if (!p.onGround && !p.inWater && !p.flying && !p.onLadder && !p.inScaffold) {
+      if (p.vy < 0 && this.fallTop === null) this.fallTop = p.y;
+    } else if (this.fallTop !== null) {
+      const from = this.fallTop;
+      this.fallTop = null;
+      if (!p.flying && this.state !== 'dead') this.advancements.event('fall', { from, to: p.y });
     }
     if (this.creative && p.y < -64) { p.y = 120; p.vy = 0; p.flying = true; }
   }
@@ -2200,6 +2280,7 @@ export class Game {
     if (def.cures) this.effects.delete(def.cures);
     for (const [name, seconds, level, chance = 1] of def.effects ?? []) if (Math.random() < chance) this.addEffect(name, seconds, level);
     if (def.potion) this.applyPotion(def.potion);
+    this.advancements.event('eat', { id: e.id });
     if (this.creative) return;
     this.inv.consumeHeld();
     // Stew leaves its bowl behind.
@@ -2278,6 +2359,7 @@ export class Game {
     // A shield held up takes hits from in front: blows, arrows, blasts.
     if (knock && this.shieldUp && this.fromFront(knock)) {
       this.blockHit(amount, !!opts?.axe);
+      if (/^You were shot/.test(cause)) this.advancements.event('deflect');
       this.player.vx += knock[0] * 0.2; this.player.vz += knock[2] * 0.2;
       return false;
     }
@@ -2520,11 +2602,12 @@ export class Game {
       const x = p.x + dx * 0.4, y = p.eyeY - 0.1 + d[1] * 0.4, z = p.z + dz * 0.4;
       if (load === 'arrow') {
         this.entities.spawnArrow(x, y, z, dx * v + p.vx, d[1] * v, dz * v + p.vz, me, 6 + Math.random() * 1.4, i === 0 && !this.creative,
-          { pierce: enchLevel(st, 'piercing') });
+          { pierce: enchLevel(st, 'piercing'), crossbow: true });
       } else this.entities.spawnFirework(x, y, z, load.fw, { dir: [dx, d[1], dz], owner: me });
     }
     delete st.load;
     this.audio.crossbow('shoot', this.earPos());
+    this.advancements.event('crossbow');
     if (!this.creative && this.inv.damageHeld(spread.length)) this.audio.toolBreak();
     this.invChanged();
   }
@@ -2694,6 +2777,8 @@ export class Game {
     const wholeHive = byPlayer && !this.creative && !!HIVE[id] && enchLevel(this.inv.held, 'silk_touch') > 0;
     let bees = 0;
     if (wholeHive) { if (this.net?.guest) this.net.takeHive(x, y, z); else bees = this.hives.take(x, y, z); }
+    // (Total Beelocation: a bees' nest, three bees and all. A guest hears from the host.)
+    if (wholeHive && !this.net?.guest && HIVE[id].kind === 'bee_nest' && bees >= 3) this.advancements.event('silk_nest');
     // (A sea plant leaves the water it stood in.)
     this.world.setBlock(x, y, z, WET[id] ? B.water : 0);
     if (byPlayer) this.exhaust(0.005);
@@ -2800,6 +2885,7 @@ export class Game {
     if (t && !t.entity && !t.player && !p.sneaking && !repeat && JUKEBOX[t.id] === -1 && def?.disc !== undefined) {
       this.swingArm();
       w.setBlock(t.x, t.y, t.z, B.jukebox + 1 + def.disc);
+      this.advancements.event('jukebox', { b: w.biomeAt(t.x, t.z) });
       if (!this.creative) { this.inv.consumeHeld(); this.invChanged(); }
       return;
     }
@@ -3218,6 +3304,33 @@ export class Game {
       if (!this.touch.enabled) this.input.lock();
     }
   }
+  // The advancements (see advscreen.js), from the game or from the game menu (`fromMenu`, which it
+  // goes back to). The world carries on meanwhile.
+  openAdvancements(fromMenu = false) {
+    if (!this.world || (this.state !== 'play' && !(fromMenu && this.state === 'pause'))) return;
+    this.advFromMenu = fromMenu;
+    this.state = 'advancements';
+    this.releasePointer();
+    this.mining = null;
+    this.eating = null;
+    this.ui.show(null);
+    this.advScreen.show();
+  }
+  closeAdvancements() {
+    if (!this.advScreen.open && this.state !== 'advancements') return;
+    this.advScreen.hide();
+    if (this.state !== 'advancements') return;
+    // (Back to the game menu it was opened from.)
+    if (this.advFromMenu) {
+      this.state = 'pause';
+      this.screenStack = [];
+      this.ui.show('screen-pause');
+      return;
+    }
+    this.state = 'play';
+    this.input.capture = true;
+    if (!this.touch.enabled) this.input.lock();
+  }
   // The minimap zoomed in (1) or out (-1).
   zoomMap(d) {
     const s = this.settings, z = Math.max(0, Math.min(MAP_ZOOMS.length - 1, (s.minimapZoom ?? 2) + d));
@@ -3280,6 +3393,7 @@ export class Game {
     this.audio.place('water', { x: x + 0.5, y: y + 0.5, z: z + 0.5 });
     this.particles.icons(TEX.happy, x + 0.5, y + 0.7, z + 0.5, 5, 0.3);
     this.swingArm();
+    if (on) this.advancements.event('glow_sign');
     if (!this.creative) { this.inv.consumeHeld(); this.invChanged(); }
     return true;
   }
@@ -3385,6 +3499,7 @@ export class Game {
   // An axolotl finished off something player `t` was fighting: regeneration for them, and the
   // mining fatigue on them lifted (as in the original).
   axolotlHelped(t) {
+    this.advance(t, 'axolotl_help');
     if (t?.addr) { this.net?.giveEffect?.(t.addr, 'regeneration', 6, 1); return; }
     this.effects.delete('mining_fatigue');
     const cur = this.effects.get('regeneration');
@@ -3459,7 +3574,7 @@ export class Game {
   }
 
   // ---------------------------------------------------------------- inventory
-  invChanged() { this.invVersion++; }
+  invChanged() { this.invVersion++; if (this.advancements) this.advancements.dirty = true; }
 
   // ---------------------------------------------------------------- chat & commands
   sendChat(text) {
@@ -3485,8 +3600,26 @@ export class Game {
         say('/time set day|noon|night|midnight|<ticks>, /time add <n>');
         say('/gamemode creative|survival, /tp <x> <y> <z>, /give <item> [count], /summon <creature> [x y z], /weather clear|rain');
         say('/spawn, /setspawn, /seed, /locate village|camp|hamlet|town|kingdom|pyramid|temple|igloo|shipwreck|monument|mineshaft|stronghold, /fly, /kill, /clear, /difficulty peaceful|easy|normal|hard');
+        say('/advancement grant|revoke everything|<name>');
         if (this.net) say(`/list${this.net.host ? ', /pvp on|off' : ''}`);
         break;
+      case 'advancement': case 'advancements': {
+        // (Everything at once goes quietly; one by name pops up as if made.)
+        const act = (args[0] ?? '').toLowerCase(), what = (args[1] ?? '').toLowerCase();
+        if (!['grant', 'revoke'].includes(act) || !what) { say('Usage: /advancement grant|revoke everything|<name>', '#e88a78'); break; }
+        const all = [...ADVANCEMENT.values()];
+        const list = what === 'everything' ? all : all.filter((a) => a.id === what || a.id.endsWith(`/${what}`) || a.title.toLowerCase() === what);
+        if (!list.length) { say(`There is no advancement called ${what}`, '#e88a78'); break; }
+        const adv = this.advancements;
+        let n = 0;
+        for (const a of list) {
+          if (act === 'grant') n += adv.grant(a, list.length > 1) ? 1 : 0;
+          else if (adv.got.has(a.id)) { adv.revoke(a); n++; }
+        }
+        this.advScreen.refresh();
+        say(`${act === 'grant' ? 'Granted' : 'Revoked'} ${n} advancement${n === 1 ? '' : 's'}`);
+        break;
+      }
       case 'list': case 'players':
         if (!this.net) { say('You are playing alone'); break; }
         say(`Players online (${this.net.count}): ${this.net.names().join(', ')}`);

@@ -22,6 +22,7 @@ export const BINDINGS = [
   { id: 'waypointAdd', label: 'New Waypoint', key: 'KeyB' },
   { id: 'waypointList', label: 'Waypoints', key: 'KeyU' },
   { section: 'Miscellaneous' },
+  { id: 'advancements', label: 'Advancements', key: 'KeyL' },
   { id: 'perspective', label: 'Toggle Perspective', key: 'F5' },
   { id: 'hideHud', label: 'Hide HUD', key: 'F1' },
   { id: 'debug', label: 'Debug Screen', key: 'F3' },

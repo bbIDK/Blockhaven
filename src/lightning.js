@@ -63,7 +63,8 @@ export class Lightning {
     return !!world && w.thundering && w.thunder > 0.5 && world.rainTop(x, z) < e.y + 0.01 && w.kind(world, x, z, Math.floor(e.y)) === 1;
   }
 
-  // (The host.) A bolt at (x, y, z): everyone sees it, and it does what it does.
+  // (The host.) A bolt at (x, y, z): everyone sees it, and it does what it does. Returns the
+  // creatures it struck.
   strike(x, y, z) {
     const g = this.game, world = g.world, seed = Math.floor(Math.random() * 2147483647);
     this.show(x, y, z, seed);
@@ -75,14 +76,17 @@ export class Lightning {
       for (let i = 0; i < 4; i++) world.ignite(bx + r(), by + r(), bz + r());
     }
     // What's near it is struck: hurt, and set alight. A creeper becomes a charged creeper.
+    const hit = [];
     for (const e of g.entities.list) {
       if (e.kind !== 'mob' || e.dead || e.dying || !struck(e.x, e.y, e.z, x, y, z)) continue;
+      hit.push(e);
       g.entities.hurtMob(e, HURT, null, 0, { fire: BURN });
       if (e.def.explodes && !e.charged) { e.charged = true; g.net?.resend?.(e); }
     }
     for (const q of g.players()) {
       if (!q.dead && !q.creative && struck(q.x, q.y, q.z, x, y, z)) g.hurtPlayer(q, HURT, 'You were struck by lightning', null, false, false, BURN);
     }
+    return hit;
   }
 
   // A bolt comes down at (x, y, z) (everyone): seen, and heard.

@@ -827,6 +827,18 @@ export class Audio {
   levelUp() {
     [523, 659, 784, 1047, 1319].forEach((f, i) => this.tone(null, { type: 'triangle', f0: f, time: 0.5 - i * 0.05, volume: 0.1, delay: i * 0.07 }));
   }
+  // An advancement's box sliding in (or away again) at the top right: a soft swish.
+  toast(on) {
+    this.hiss(null, { f: on ? 1500 : 1100, q: 0.8, time: 0.25, volume: 0.045, sweep: on ? 3400 : 600 });
+  }
+  // A challenge completed: a short rising fanfare ending on a held chord.
+  challenge() {
+    [[392, 0], [523, 0.11], [659, 0.22], [784, 0.33]].forEach(([f, t]) =>
+      this.tone(null, { type: 'square', f0: f, time: 0.24, volume: 0.035, delay: t, filter: { type: 'lowpass', f: 2400, q: 0.7 } }));
+    for (const f of [523, 659, 784, 1047]) {
+      this.tone(null, { type: 'triangle', f0: f, time: 1.3, volume: 0.05, attack: 0.03, delay: 0.46, vibrato: 3, vibratoRate: 5.5 });
+    }
+  }
   // Enchanting: a shimmer of high notes.
   enchant(at) {
     for (let i = 0; i < 6; i++) this.tone(at, { type: 'sine', f0: 1200 + Math.random() * 1600, time: 0.4, volume: 0.05, delay: i * 0.05, vibrato: 12, vibratoRate: 9 });

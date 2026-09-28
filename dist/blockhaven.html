@@ -1126,6 +1126,81 @@ kbd {
 .mc-loom canvas { position: absolute; left: calc(var(--u) * 3); top: calc(var(--u) * 2); width: calc(var(--u) * 8); height: calc(var(--u) * 16); image-rendering: pixelated; pointer-events: none; }
 .mc-loom-preview canvas { width: 100%; height: 100%; image-rendering: pixelated; }
 .mc-slot.hint.faint::before { opacity: 0.35; }
+
+/* Advancements (see advscreen.js): the window with its tabs, the tree over its tab's texture (to be
+   dragged about), and the tooltip over an advancement: its title in a bar, gold as far as it's
+   made and blue for the rest, and what it asks for below. */
+.adv-screen { background: rgba(16, 16, 16, 0.6); justify-content: center; }
+.adv-frame { position: relative; flex: none; width: calc(var(--u) * 252); height: calc(var(--u) * 198); }
+.adv-frame > *, .adv-win > *, .adv-view > *, .adv-tree > *, .adv-tip > *, .adv-bar > * { position: absolute; }
+.adv-tabs .mc-tab.on { height: calc(var(--u) * 32) !important; }
+.adv-well { background: #1c1c1c; box-shadow: inset var(--u) var(--u) 0 #373737, inset calc(var(--u) * -1) calc(var(--u) * -1) 0 #fff; }
+.adv-view {
+  overflow: hidden;
+  background-repeat: no-repeat, repeat;
+  background-size: 100% 100%, calc(var(--u) * 16) calc(var(--u) * 16);
+  image-rendering: pixelated;
+  touch-action: none;
+  cursor: grab;
+}
+.adv-view:active { cursor: grabbing; }
+.adv-tree { left: 0; top: 0; }
+.adv-lines { overflow: visible; pointer-events: none; }
+.adv-node { background-size: 100% 100%; image-rendering: pixelated; }
+.adv-node > img, .adv-tipframe > img {
+  left: calc(var(--u) * 5); top: calc(var(--u) * 5); width: calc(var(--u) * 16); height: calc(var(--u) * 16);
+  image-rendering: pixelated; pointer-events: none;
+}
+.adv-fade { background: #000; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+.adv-fade.on { opacity: 0.3; }
+.adv-tip { z-index: 5; height: calc(var(--u) * 26); pointer-events: none; }
+.adv-bar {
+  left: 0; right: 0; top: calc(var(--u) * 3); height: calc(var(--u) * 20);
+  background: linear-gradient(to right, #c79c1d var(--made, 0%), #1f5aa6 var(--made, 0%));
+  box-shadow: inset 0 var(--u) 0 rgba(255, 255, 255, 0.35), inset 0 calc(var(--u) * -1) 0 rgba(0, 0, 0, 0.35), 0 0 0 var(--u) #000;
+}
+.adv-tipframe { left: 0; top: calc(var(--u) * -3); width: calc(var(--u) * 26); height: calc(var(--u) * 26); background-size: 100% 100%; image-rendering: pixelated; }
+.adv-title, .adv-count { top: calc(var(--u) * 6); font: 400 calc(var(--u) * 9)/1 var(--font-ui); color: #fff; white-space: nowrap; }
+.adv-title { left: calc(var(--u) * 32); }
+.adv-count { right: calc(var(--u) * 5); }
+.adv-tip.flip .adv-tipframe { left: auto; right: 0; }
+.adv-tip.flip .adv-title { left: calc(var(--u) * 6); }
+.adv-tip.flip .adv-count { right: calc(var(--u) * 32); }
+.adv-desc {
+  left: 0; right: 0; top: calc(var(--u) * 24);
+  padding: calc(var(--u) * 4) calc(var(--u) * 5) calc(var(--u) * 4);
+  background: #212121; box-shadow: inset 0 0 0 var(--u) #555, 0 0 0 var(--u) #000;
+  font: 400 calc(var(--u) * 9)/1.25 var(--font-ui); white-space: normal;
+}
+.adv-tip.up .adv-desc { top: auto; bottom: calc(var(--u) * 24); }
+.adv-left { position: static !important; margin-top: calc(var(--u) * 3); color: #a8a8a8; }
+.adv-tabtip {
+  top: calc(var(--u) * -13); translate: -50% 0; z-index: 6; pointer-events: none;
+  padding: calc(var(--u) * 2) calc(var(--u) * 4); background: rgba(16, 0, 16, 0.94);
+  box-shadow: inset 0 0 0 var(--u) #2b0f5e, 0 0 0 var(--u) rgba(16, 0, 16, 0.94);
+  font: 400 calc(var(--u) * 9)/1.2 var(--font-ui); white-space: nowrap;
+}
+.adv-done { left: 50%; top: calc(var(--u) * 176); translate: -50% 0; width: calc(var(--u) * 100); }
+
+/* An advancement made: a box that slides in at the top right for a few seconds, like Minecraft's
+   toasts ("Advancement Made!" and its name, beside its icon). */
+#toasts {
+  position: absolute; top: env(safe-area-inset-top); right: env(safe-area-inset-right); z-index: 60;
+  display: flex; flex-direction: column; align-items: flex-end; pointer-events: none;
+}
+.toast {
+  position: relative; box-sizing: border-box; min-width: calc(var(--u) * 160); height: calc(var(--u) * 32);
+  padding: 0 calc(var(--u) * 8) 0 calc(var(--u) * 30);
+  background: #202020; border-radius: calc(var(--u) * 2);
+  box-shadow: inset 0 0 0 var(--u) #5f5f5f, 0 0 0 var(--u) #000;
+  transform: translateX(110%); transition: transform 0.45s ease;
+}
+.toast.in { transform: none; }
+.toast img { position: absolute; left: calc(var(--u) * 8); top: calc(var(--u) * 8); width: calc(var(--u) * 16); height: calc(var(--u) * 16); image-rendering: pixelated; }
+.toast b, .toast span { display: block; font: 400 calc(var(--u) * 9)/1 var(--font-ui); white-space: nowrap; }
+.toast b { margin-top: calc(var(--u) * 7); }
+.toast span { margin-top: calc(var(--u) * 3); color: #fff; }
+@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
 </style>
 </head>
 <body>
@@ -1274,10 +1349,13 @@ kbd {
     <div class="button-rows">
       <button class="btn wide" data-action="resume">Back to Game</button>
       <div class="row">
-        <button class="btn half" data-action="settings">Options...</button>
+        <button class="btn half" data-action="advancements">Advancements</button>
         <button class="btn half" data-action="controls">How to Play</button>
       </div>
-      <button class="btn wide" data-action="share" id="p-share">Open to Friends</button>
+      <div class="row">
+        <button class="btn half" data-action="settings" id="p-options">Options...</button>
+        <button class="btn half" data-action="share" id="p-share">Open to Friends</button>
+      </div>
       <button class="btn wide" data-action="quit" id="p-quit">Save and Quit to Title</button>
     </div>
     <p class="pause-info" id="pause-info"></p>
@@ -1341,11 +1419,13 @@ kbd {
         <dt><kbd data-bind="perspective">F5</kbd></dt><dd>See yourself from behind or in front</dd>
         <dt><kbd data-bind="mapZoomIn">=</kbd> <kbd data-bind="mapZoomOut">-</kbd></dt><dd>Zoom the minimap in and out</dd>
         <dt><kbd data-bind="waypointAdd">B</kbd> <kbd data-bind="waypointList">U</kbd></dt><dd>Mark a waypoint where you stand; list the waypoints (or click the minimap)</dd>
+        <dt><kbd data-bind="advancements">L</kbd></dt><dd>Advancements (also in the game menu)</dd>
       </dl>
       <p class="hint-text">Change any of these keys in Options, under Key Binds.</p>
       <p class="hint-text">Punch a tree for logs and turn them into planks in your inventory's crafting grid. Four planks make a crafting table: right-click it for the full 3×3 grid, where a wooden pickaxe gets you mining. The green book lists every recipe and lays it out for you.</p>
       <p class="hint-text">Furnaces smelt ores and cook meat: the item goes on top, fuel below. Weapons need a moment between swings (the bar under the crosshair), so time your hits. You heal while your food bar is nearly full.</p>
       <p class="hint-text">Settlements come in every size, from camps in the woods to walled towns and kingdoms with a castle and a king. Go in through a gate and right-click the people there to talk and trade: they buy and sell for gold coins. <kbd>/locate kingdom</kbd> (or camp, hamlet, village, town) points the way. Sleep in a bed to make it your spawn point.</p>
+      <p class="hint-text">Advancements (<kbd data-bind="advancements">L</kbd>) are goals to reach, from your first crafting table to seeing every biome, breeding every animal and eating everything there is to eat. The trees open up as you go; point at one to see what it asks and how far along you are. Challenges give experience too.</p>
       <p class="hint-text">Now and then a rain is a thunderstorm: lightning strikes the highest ground about you (and creatures out in the open), and monsters come out even by day. Find a roof, or sleep through it in a bed.</p>
       <p class="hint-text">Bees fill their nests and hives with honey. When one's full, a glass bottle takes the honey and shears the comb, but light a campfire under it first or the bees come after you. Dye banners at a loom, dress an armor stand in your spare armour, and climb scaffolding by jumping inside it (sneak to go down).</p>
       <p class="hint-text">Each animal lives where it belongs: deer, bears and boar in the woods, zebras, giraffes and elephants on the savanna, pandas and tigers in the jungle, polar bears and penguins in the snow. In Creative, the Spawn Eggs tab (or <kbd>/summon tiger</kbd>) brings out any creature you like.</p>
@@ -16797,6 +16877,7 @@ class Fishing {
       const dmg = c.worn ? Math.floor(Math.random() * 30) + 10 : 0;
       const extra = c.book ? { ench: randomBook(true) } : null;
       g.entities.spawnItem(b.x, b.y + 0.2, b.z, c.id, c.count, dmg, 0, [dx * 1.8, dy * 1.25 + 8, dz * 1.8], extra);
+      g.advancements?.event('fish', { id: c.id });
       g.dropXp(p.x, p.y + 0.5, p.z, 1 + Math.floor(Math.random() * 6));
       g.audio.splash(0.3, { x: b.x, y: b.y, z: b.z });
       wear = 1;
@@ -26351,6 +26432,16 @@ function layerImage(layer, tint, overlayTint, shade) {
   return c;
 }
 
+// A texture as it is, 16 by 16 (the advancements' tabs are tiled with one).
+function textureURL(name) {
+  const key = `tex:${name}`;
+  if (cache.has(key)) return cache.get(key);
+  if (!pixels || TEX[name] === undefined) return '';
+  const url = layerImage(TEX[name], null, null, 1).toDataURL();
+  cache.set(key, url);
+  return url;
+}
+
 function tintOf(block) {
   const t = TINT[block];
   if (t === 1) return DEFAULT_GRASS;
@@ -26480,6 +26571,7 @@ function bannerIcon(design) {
 __exports.initIcons = initIcons;
 __exports.setGlint = setGlint;
 __exports.warmIcons = warmIcons;
+__exports.textureURL = textureURL;
 __exports.iconFor = iconFor;
 __exports.iconOf = iconOf;
 __exports.clothCanvas = clothCanvas;
@@ -27270,7 +27362,7 @@ __exports.Link = Link;
 __define("src/version.js", function (__exports) {
 // Which update of the game this is: shown on the title screen, and compared with the site's
 // version.json (which tools/build.mjs writes) to tell when this copy is out of date (see updates.js).
-const BUILD = 28;
+const BUILD = 29;
 
 __exports.BUILD = BUILD;
 });
@@ -27300,6 +27392,7 @@ const BINDINGS = [
   { id: 'waypointAdd', label: 'New Waypoint', key: 'KeyB' },
   { id: 'waypointList', label: 'Waypoints', key: 'KeyU' },
   { section: 'Miscellaneous' },
+  { id: 'advancements', label: 'Advancements', key: 'KeyL' },
   { id: 'perspective', label: 'Toggle Perspective', key: 'F5' },
   { id: 'hideHud', label: 'Hide HUD', key: 'F1' },
   { id: 'debug', label: 'Debug Screen', key: 'F3' },
@@ -28028,9 +28121,17 @@ class UI {
     if (html !== this.debugHTML) { this.debugHTML = html; el.innerHTML = html; }
   }
 
+  // A line in the chat: `text` in `color`, or a list of [text, colour] pieces.
   message(text, color = null) {
     const li = document.createElement('li');
-    li.textContent = text;
+    if (Array.isArray(text)) {
+      for (const [t, c] of text) {
+        const s = document.createElement('span');
+        s.textContent = t;
+        if (c) s.style.color = c;
+        li.appendChild(s);
+      }
+    } else li.textContent = text;
     if (color) li.style.color = color;
     const log = $('chat-log');
     log.appendChild(li);
@@ -28186,6 +28287,9 @@ class UI {
   // single: Open to Friends; host: the same screen shows the code; guest: nothing to open.
   setPauseMenu(mode) {
     $('p-share').hidden = mode === 'guest';
+    // (A guest has nothing to open to friends: Options takes the whole row.)
+    $('p-options').classList.toggle('wide', mode === 'guest');
+    $('p-options').classList.toggle('half', mode !== 'guest');
     $('p-share').textContent = mode === 'host' ? 'Friends…' : 'Open to Friends';
     $('p-quit').textContent = mode === 'guest' ? 'Disconnect' : 'Save and Quit to Title';
   }
@@ -30342,6 +30446,18 @@ class Audio {
   // Every fifth level: a rising fanfare.
   levelUp() {
     [523, 659, 784, 1047, 1319].forEach((f, i) => this.tone(null, { type: 'triangle', f0: f, time: 0.5 - i * 0.05, volume: 0.1, delay: i * 0.07 }));
+  }
+  // An advancement's box sliding in (or away again) at the top right: a soft swish.
+  toast(on) {
+    this.hiss(null, { f: on ? 1500 : 1100, q: 0.8, time: 0.25, volume: 0.045, sweep: on ? 3400 : 600 });
+  }
+  // A challenge completed: a short rising fanfare ending on a held chord.
+  challenge() {
+    [[392, 0], [523, 0.11], [659, 0.22], [784, 0.33]].forEach(([f, t]) =>
+      this.tone(null, { type: 'square', f0: f, time: 0.24, volume: 0.035, delay: t, filter: { type: 'lowpass', f: 2400, q: 0.7 } }));
+    for (const f of [523, 659, 784, 1047]) {
+      this.tone(null, { type: 'triangle', f0: f, time: 1.3, volume: 0.05, attack: 0.03, delay: 0.46, vibrato: 3, vibratoRate: 5.5 });
+    }
   }
   // Enchanting: a shimmer of high notes.
   enchant(at) {
@@ -32898,6 +33014,8 @@ function riddenTick(ents, e) {
   if (verdict === 'tame') {
     loveHearts(game, e, 7);
     game.audio.mob('horse', 'say', at, 1.1);
+    // (Tamed by whoever's riding it.)
+    game.advance?.(e.rider === 'me' ? game.player : game.players().find((q) => q.addr && q.addr === e.rider), 'tame', { m: e.type, v: e.variant ?? 0 });
   } else if (verdict === 'buck') {
     game.audio.mob('horse', 'angry', at);
     game.particles.icons(TEX.angry, e.x, e.y + e.h + 0.1, e.z, 3, 0.4, 0.3, 0.12);
@@ -33264,6 +33382,9 @@ function haveYoung(ents, e, mate) {
   const game = ents.game;
   e.love = mate.love = 0; e.breedCd = mate.breedCd = 6000;
   ents.spawnXp((e.x + mate.x) / 2, e.y + 0.5, (e.z + mate.z) / 2, 1 + Math.floor(Math.random() * 7));
+  // (Advancements: the one who fed them bred them - a horse and a donkey, a mule.)
+  const by = game.playerByUid?.(e.loveBy ?? mate.loveBy);
+  if (by) game.advance(by, 'breed', { m: mate.type === e.type ? e.type : 'mule' });
   // (Frogs have no young of their own: one of them is soon to lay frogspawn.)
   if (e.def.leapsAbout) { (Math.random() < 0.5 ? e : mate).pregnant = 6000; loveHearts(game, e, 5); return null; }
   // (A foal of two tame horses is born tame; puppies and kittens belong to their parents' owner.
@@ -34269,6 +34390,7 @@ function applyMobUse(ents, e, id, effect, uid = null, name = null) {
         loveHearts(game, e, 7);
         game.audio.mob(e.def.sound, 'say', at);
         game.net?.resend?.(e);
+        game.advance?.(game.playerByUid?.(uid), 'tame', { m: e.type, v: e.variant ?? 0 });
       } else game.particles.smoke(e.x, e.y + e.h + 0.2, e.z, 5, 0.3);
       break;
     case 'sit': e.sitting = !e.sitting; e.target = null; e.moving = false; e.vx = e.vz = 0; break;
@@ -34285,7 +34407,7 @@ function applyMobUse(ents, e, id, effect, uid = null, name = null) {
       game.audio.shear?.(at);
       break;
     }
-    case 'breed': e.love = 600; loveHearts(game, e, 7); break;
+    case 'breed': e.love = 600; e.loveBy = uid; loveHearts(game, e, 7); break;
     case 'grow':
       if (e.def.growsInto) e.growUp = Math.max(1, e.growUp - 2400); else e.grow = Math.max(0, e.grow - 2400);
       game.particles.icons(TEX.happy, e.x, e.y + e.h * 0.5, e.z, 5, e.hw + 0.1);
@@ -37630,7 +37752,8 @@ class Lightning {
     return !!world && w.thundering && w.thunder > 0.5 && world.rainTop(x, z) < e.y + 0.01 && w.kind(world, x, z, Math.floor(e.y)) === 1;
   }
 
-  // (The host.) A bolt at (x, y, z): everyone sees it, and it does what it does.
+  // (The host.) A bolt at (x, y, z): everyone sees it, and it does what it does. Returns the
+  // creatures it struck.
   strike(x, y, z) {
     const g = this.game, world = g.world, seed = Math.floor(Math.random() * 2147483647);
     this.show(x, y, z, seed);
@@ -37642,14 +37765,17 @@ class Lightning {
       for (let i = 0; i < 4; i++) world.ignite(bx + r(), by + r(), bz + r());
     }
     // What's near it is struck: hurt, and set alight. A creeper becomes a charged creeper.
+    const hit = [];
     for (const e of g.entities.list) {
       if (e.kind !== 'mob' || e.dead || e.dying || !struck(e.x, e.y, e.z, x, y, z)) continue;
+      hit.push(e);
       g.entities.hurtMob(e, HURT, null, 0, { fire: BURN });
       if (e.def.explodes && !e.charged) { e.charged = true; g.net?.resend?.(e); }
     }
     for (const q of g.players()) {
       if (!q.dead && !q.creative && struck(q.x, q.y, q.z, x, y, z)) g.hurtPlayer(q, HURT, 'You were struck by lightning', null, false, false, BURN);
     }
+    return hit;
   }
 
   // A bolt comes down at (x, y, z) (everyone): seen, and heard.
@@ -38515,7 +38641,10 @@ class Civilians {
     const v = villageAt(this.world.gen, p.x, p.z, -1);
     if (v !== this.currentVillage) {
       this.currentVillage = v;
-      if (v) game.ui.showTitle?.(...villageTitle(v, this.living(v)));
+      if (v) {
+        game.ui.showTitle?.(...villageTitle(v, this.living(v)));
+        game.advancements?.event('visit', { tier: v.tier ?? 'village' });
+      }
     }
   }
 
@@ -38923,6 +39052,7 @@ class Civilians {
     if (!e.remote) e.talking = { x: p.x, y: p.y, z: p.z };
     this.voice(e);
     game.openTalk?.(e);
+    game.advancements?.event('talk', { role: e.role });
   }
   // Their greeting: by the hour, the weather and how they feel about you.
   greeting(e) {
@@ -39025,6 +39155,7 @@ class Civilians {
     } else if (e.stock) e.stock.used[offer.key] = (e.stock.used[offer.key] ?? 0) + 1;
     game.particles.icons(TEX.happy, e.x, e.y + 1.8, e.z, 6, 0.4);
     game.audio.trade?.();
+    game.advancements?.event('trade');
     game.dropXp(e.x, e.y + 1, e.z, 3 + Math.floor(Math.random() * 4));
     game.invChanged();
     return true;
@@ -39720,9 +39851,14 @@ function tridentHit(ents, e, victim, dx, dz) {
   game.audio.trident?.('hit', at);
   e.vx *= -0.01; e.vy *= -0.1; e.vz *= -0.01;
   e.dealt = true;
+  const player = e.owner && e.owner.kind !== 'mob' && (e.owner === game.player || 'addr' in e.owner) ? e.owner : null;
+  game.advance?.(player, 'trident_hit');
   // Channeling, in a thunderstorm: a bolt of lightning comes down on what it hit, if that's out in
-  // the open.
-  if (enchLevel(e.trident, 'channeling') && game.lightning?.canStrike(victim)) game.lightning.strike(victim.x, victim.y, victim.z);
+  // the open. (A villager struck by it: Very Very Frightening.)
+  if (enchLevel(e.trident, 'channeling') && game.lightning?.canStrike(victim)) {
+    const struck = game.lightning.strike(victim.x, victim.y, victim.z);
+    if (struck.some((m) => m.type === 'civilian')) game.advance?.(player, 'lightning_villager');
+  }
 }
 
 // A trident's own movement, before (or instead of) an arrow's: returns true when it's dealt with
@@ -39988,6 +40124,17 @@ function mobFlags(e) {
     (e.fuse > 0 ? 64 : 0) | (e.aim > 0 ? 128 : 0) | (e.pose === 'sleep' ? 256 : 0) | (e.saddled ? 512 : 0) | (e.tame ? 1024 : 0) | (e.rider ? 2048 : 0) |
     (e.roost ? 4096 : 0) | (e.drinking > 0 ? 8192 : 0) | (e.sitting ? 16384 : 0) | (e.love > 0 ? 32768 : 0) | (e.playDead > 0 ? 65536 : 0) |
     (e.croak > 0 ? 131072 : 0) | (e.charged ? 262144 : 0);
+}
+
+// What an advancement needs to know of a kill (see advancements.js): what it was, whether it was a
+// monster, whether it was a skeleton shot from fifty blocks off (Sniper Duel), and whether the
+// crossbow bolt that did it has now killed five kinds of creature (Arbalistic).
+function killInfo(e, from, opts) {
+  const arrow = opts?.arrow;
+  let five = false;
+  if (arrow?.crossbow) { (arrow.kills ??= new Set()).add(e.type); five = arrow.kills.size >= 5; }
+  const far = arrow ? Math.hypot(e.x - from.x, e.z - from.z) : 0;
+  return { m: e.type, h: e.def.hostile || e.type === 'enderman' ? 1 : 0, s: e.type === 'skeleton' && far >= 50 ? 1 : 0, a: five ? 1 : 0 };
 }
 
 class Entities {
@@ -40377,7 +40524,7 @@ class Entities {
     if (this.guest) { this.game.net.shootArrow?.(x, y, z, vx, vy, vz, damage, pickup, fx); return null; }
     const e = new Entity('arrow', 0.05, 0.1, x, y, z);
     Object.assign(e, { vx, vy, vz, owner, damage, pickup, stuck: false, life: 0, punch: fx?.punch ?? 0, flame: !!fx?.flame,
-      potion: POTIONS[fx?.potion] ? fx.potion : null, snowball: !!fx?.snowball, pierce: fx?.pierce ?? 0, pierced: null });
+      potion: POTIONS[fx?.potion] ? fx.potion : null, snowball: !!fx?.snowball, pierce: fx?.pierce ?? 0, pierced: null, crossbow: !!fx?.crossbow });
     this.list.push(e);
     return e;
   }
@@ -40858,13 +41005,14 @@ class Entities {
       if (victim) {
         const dmg = Math.max(1, Math.round(e.damage * Math.min(1.5, sp / 25)));
         const at = { x: e.x, y: e.y, z: e.z };
-        if (victim.kind === 'mob') this.hurtMob(victim, dmg, e.owner ?? at, e.punch, e.flame ? { fire: 5 } : null);
+        if (victim.kind === 'mob') this.hurtMob(victim, dmg, e.owner ?? at, e.punch, { fire: e.flame ? 5 : 0, arrow: e });
         else {
           game.hurtPlayer(victim, dmg, e.owner?.label ? `You were shot by a ${e.owner.label.toLowerCase()}` : 'You were shot', [dx * 3, 2, dz * 3], true,
             e.owner?.kind === 'mob');
           if (e.owner?.kind === 'mob') rallyPets(this, victim.uid, e.owner);
         }
         game.audio.arrowHit?.(true, at);
+        if (e.owner && e.owner.kind !== 'mob' && (e.owner === game.player || 'addr' in e.owner)) game.advance?.(e.owner, 'arrow_hit');
         // (A piercing arrow goes on through, for as many as its level.)
         if (e.pierce > 0) {
           e.pierce--;
@@ -41018,6 +41166,8 @@ class Entities {
       if (e.rider) this.throwRider(e);
       this.dropLoot(e);
       this.civilians.died(e);
+      // (Advancements: who killed it, and how.)
+      if (byPlayer) this.game.advance?.(from, 'kill', killInfo(e, from, opts));
       // (An elder guardian killed is gone for good.)
       if (e.elder && this.game.meta) ((this.game.meta.elders ??= {})[e.elder.key] ??= [])[e.elder.i] = true;
     }
@@ -41085,6 +41235,8 @@ class Entities {
       return false;
     }
     applyHeldUse(this.game, effect, e);
+    if (effect === 'scoop') this.game.advancements?.event('scoop', { m: e.type });
+    else if (effect === 'leash') this.game.advancements?.event('leash', { m: e.type, v: e.variant ?? 0 });
     if (e.remote) net.useMob(e, held?.id ?? 0, effect, who.name);
     else applyMobUse(this, e, held?.id ?? 0, effect, this.game.uid, who.name);
     return true;
@@ -42348,6 +42500,17 @@ for (const [id, h] of Object.entries(HIVE)) if (h.kind === 'bee_nest') NEST[id] 
 const cleanBee = (b) => ({ nectar: !!b?.nectar, t: Number.isInteger(b?.t) ? Math.max(0, b.t) : 0,
   stay: Number.isInteger(b?.stay) ? Math.max(0, Math.min(24000, b.stay)) : STAY, hp: Number.isFinite(b?.hp) ? Math.max(1, Math.min(10, b.hp)) : 10 });
 
+// Whether a campfire's smoke rises under the home at (x, y, z) - within five blocks, with nothing
+// solid between - which calms its bees.
+function smoked(w, x, y, z) {
+  for (let dy = 1; dy <= 5; dy++) {
+    const id = w.getBlock(x, y - dy, z);
+    if (id === B.campfire) return true;
+    if (SOLID[id]) break;
+  }
+  return false;
+}
+
 class Hives {
   constructor(game) {
     this.game = game;
@@ -42464,14 +42627,9 @@ class Hives {
   }
 
   // Honey (or comb) taken from a full home: its bees come out angry, unless a campfire's smoke rises
-  // under it (within five blocks) to calm them.
+  // under it to calm them.
   harvested(x, y, z) {
-    const w = this.game.world;
-    for (let dy = 1; dy <= 5; dy++) {
-      const id = w.getBlock(x, y - dy, z);
-      if (id === B.campfire) return;
-      if (SOLID[id]) break;
-    }
+    if (smoked(this.game.world, x, y, z)) return;
     const k = Hives.key(x, y, z), bees = this.homes.get(k);
     if (bees) this.angerAround(x, y, z, bees, k);
   }
@@ -42495,7 +42653,363 @@ class Hives {
 
 __exports.HIVE_ROOM = HIVE_ROOM;
 __exports.hiveDrop = hiveDrop;
+__exports.smoked = smoked;
 __exports.Hives = Hives;
+});
+
+__define("src/advancements.js", function (__exports) {
+// Advancements, as in Minecraft: goals to reach in three tabs - Blockhaven (the story of the game),
+// Adventure and Husbandry - each a tree that opens up as you go (L, or Advancements in the game
+// menu: see advscreen.js). Each is made by something you do: the game tells this module what
+// happens (`event`), and a guest hears from the host what happened on the host's side of things
+// (what they killed, bred and tamed: see Game.advance). One made pops up in the corner and is told
+// in the chat; a challenge gives experience too. They're kept with the world (a guest's by the
+// host, with the rest of theirs).
+const { I, ITEMS, itemDef } = __require("src/items.js");
+const { BIOME, BIOME_NAMES } = __require("src/biomes.js");
+const { MOBS } = __require("src/mobs.js");
+const { HEIGHT } = __require("src/config.js");
+const { iconFor } = __require("src/icons.js");
+const { addXp } = __require("src/enchanting.js");
+
+// The tabs: their roots' titles, and the texture tiled behind each tree.
+const TABS = [
+  { id: 'story', title: 'Blockhaven', bg: 'stone' },
+  { id: 'adventure', title: 'Adventure', bg: 'red_sandstone_bottom' },
+  { id: 'husbandry', title: 'Husbandry', bg: 'hay_block_side' },
+];
+// What each kind is called when it's made (in the corner, and in the chat), and the colour its
+// name and description are shown in.
+const FRAMES = {
+  task: { toast: 'Advancement Made!', verb: 'has made the advancement', colour: '#55ff55', head: '#ffff55' },
+  goal: { toast: 'Goal Reached!', verb: 'has reached the goal', colour: '#55ff55', head: '#ffff55' },
+  challenge: { toast: 'Challenge Complete!', verb: 'has completed the challenge', colour: '#d75fd7', head: '#ff88ff' },
+};
+
+// ---------------------------------------------------------------- what each asks for
+const cap = (s) => s.split('_').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
+const has = (...names) => (held) => names.some((n) => held.has(I[n]));
+const IRON_ARMOR = ['iron_helmet', 'iron_chestplate', 'iron_leggings', 'iron_boots'];
+const DIAMOND_ARMOR = ['diamond_helmet', 'diamond_chestplate', 'diamond_leggings', 'diamond_boots'];
+const FISH = new Set(['cod', 'salmon', 'tropical_fish', 'pufferfish']);
+const WHALES = new Set(['humpback_whale', 'blue_whale']);
+// Monsters Hunted: every monster there is out in the world.
+const HUNTED = ['zombie', 'husk', 'skeleton', 'stray', 'creeper', 'spider', 'cave_spider', 'slime', 'witch', 'enderman', 'guardian',
+  'elder_guardian'];
+// Two by Two: every creature that has young (a mule comes of a horse and a donkey).
+const BRED = ['pig', 'cow', 'sheep', 'chicken', 'rabbit', 'goat', 'wolf', 'cat', 'ocelot', 'horse', 'donkey', 'mule', 'llama', 'camel',
+  'panda', 'bee', 'axolotl', 'frog', 'zebra', 'elephant', 'hippo', 'giraffe', 'deer', 'boar', 'penguin'];
+// A Balanced Diet: everything there is to eat or drink that fills you up.
+const FOODS = [...ITEMS.values()].filter((d) => d.food && !d.hidden).map((d) => d.name);
+const TIERS = ['camp', 'hamlet', 'village', 'town', 'kingdom'];
+const CATS = MOBS.cat.skins, FROGS = MOBS.frog.skins;
+const mobLabel = (p) => MOBS[p]?.label ?? cap(p);
+const kindLabel = (p) => cap(p.replace(/^[a-z]+_/, ''));
+
+// Adventuring Time: every biome the world's land is made of. (Not the stony and frozen peaks, which
+// hardly ever come up, nor biomes the generator that made this world doesn't know.)
+const NEVER = new Set([BIOME.FLAT, BIOME.SNOWY_PEAKS, BIOME.STONY_SHORE, BIOME.STONY_PEAKS, BIOME.FROZEN_PEAKS]);
+const SEAS6 = new Set([BIOME.LUKEWARM_OCEAN, BIOME.COLD_OCEAN, BIOME.DEEP_LUKEWARM_OCEAN, BIOME.DEEP_COLD_OCEAN, BIOME.DEEP_FROZEN_OCEAN]);
+const GEN1 = [BIOME.OCEAN, BIOME.FROZEN_OCEAN, BIOME.RIVER, BIOME.BEACH, BIOME.PLAINS, BIOME.FOREST, BIOME.BIRCH_FOREST, BIOME.TAIGA,
+  BIOME.SNOWY_TAIGA, BIOME.DESERT, BIOME.MOUNTAINS];
+function biomesToFind(gen) {
+  const ids = gen <= 1 ? GEN1 : BIOME_NAMES.map((n, i) => i).filter((b) => !NEVER.has(b) && (gen >= 6 || !SEAS6.has(b)));
+  return ids.map((b) => BIOME_NAMES[b]);
+}
+
+// Caves & Cliffs: a fall from the top of the world (off its highest blocks) that ends this near the
+// bottom.
+const BOTTOM = 10;
+
+// Whether a death (its message) came of a creature: the Adventure tab opens with killing or being
+// killed.
+const BY_A_CREATURE = /slain by|shot by a|impaled by a|killed trying to hurt|blown up|struck by lightning|killed by magic/;
+const killedByCreature = (cause) => BY_A_CREATURE.test(String(cause ?? ''));
+
+// Each advancement: where it hangs (its parent), its frame (task, goal or challenge), its icon,
+// title and description, and what makes it - `on`: event -> test. A test gives true when the
+// event makes it, or (for one with many parts, `parts`) the name of the part it makes, which
+// `label` names on the screen. `xp`: the experience a challenge gives; `hidden`: not shown till
+// it's made.
+const LIST = [];
+function A(id, parent, frame, icon, title, desc, on, extra = {}) {
+  LIST.push({ id, tab: id.split('/')[0], parent: parent && `${id.split('/')[0]}/${parent}`, frame, icon, title, desc, on, ...extra });
+}
+
+// ---- Blockhaven: the story of the game
+A('story/root', null, 'task', 'grass_block', 'Blockhaven', 'The heart and story of the game', { have: has('crafting_table') });
+A('story/mine_stone', 'root', 'task', 'wooden_pickaxe', 'Stone Age', 'Mine Stone with your new Pickaxe', { have: has('cobblestone', 'cobbled_deepslate') });
+A('story/upgrade_tools', 'mine_stone', 'task', 'stone_pickaxe', 'Getting an Upgrade', 'Construct a better Pickaxe', { have: has('stone_pickaxe') });
+A('story/smelt_iron', 'upgrade_tools', 'task', 'iron_ingot', 'Acquire Hardware', 'Smelt an Iron Ingot', { have: has('iron_ingot') });
+A('story/obtain_armor', 'smelt_iron', 'task', 'iron_chestplate', 'Suit Up', 'Protect yourself with a piece of iron armor', { have: has(...IRON_ARMOR) });
+A('story/lava_bucket', 'smelt_iron', 'task', 'lava_bucket', 'Hot Stuff', 'Fill a Bucket with lava', { have: has('lava_bucket') });
+A('story/iron_tools', 'smelt_iron', 'task', 'iron_pickaxe', "Isn't It Iron Pick", 'Upgrade your Pickaxe', { have: has('iron_pickaxe') });
+A('story/deflect_arrow', 'obtain_armor', 'task', 'shield', 'Not Today, Thank You', 'Deflect a projectile with a Shield', { deflect: () => true });
+A('story/form_obsidian', 'lava_bucket', 'task', 'obsidian', 'Ice Bucket Challenge', 'Obtain a block of Obsidian', { have: has('obsidian') });
+A('story/mine_diamond', 'iron_tools', 'task', 'diamond', 'Diamonds!', 'Acquire diamonds', { have: has('diamond') });
+A('story/enchant_item', 'mine_diamond', 'task', 'enchanted_book', 'Enchanter', 'Enchant an item at an Enchanting Table', { enchant: () => true });
+A('story/shiny_gear', 'mine_diamond', 'task', 'diamond_chestplate', 'Cover Me with Diamonds', 'Diamond armor saves lives', { have: has(...DIAMOND_ARMOR) });
+A('story/find_stronghold', 'mine_diamond', 'task', 'end_portal_frame', 'Deep Secrets', 'Find your way into a Stronghold', { stronghold: () => true });
+
+// ---- Adventure
+A('adventure/root', null, 'task', 'map', 'Adventure', 'Adventure, exploration and combat', { kill: () => true, died: (d) => !!d.mob });
+A('adventure/kill_a_mob', 'root', 'task', 'iron_sword', 'Monster Hunter', 'Kill any hostile monster', { kill: (d) => !!d.h });
+A('adventure/shoot_arrow', 'kill_a_mob', 'task', 'bow', 'Take Aim', 'Shoot something with an Arrow', { arrow_hit: () => true });
+A('adventure/sniper_duel', 'shoot_arrow', 'challenge', 'arrow', 'Sniper Duel', 'Kill a Skeleton from at least 50 meters away', { kill: (d) => !!d.s }, { xp: 50 });
+A('adventure/kill_all_mobs', 'kill_a_mob', 'challenge', 'diamond_sword', 'Monsters Hunted', 'Kill one of every hostile monster', { kill: (d) => d.m },
+  { parts: () => HUNTED, label: mobLabel, xp: 100 });
+A('adventure/ol_betsy', 'kill_a_mob', 'task', 'crossbow', "Ol' Betsy", 'Shoot a Crossbow', { crossbow: () => true });
+A('adventure/arbalistic', 'ol_betsy', 'challenge', 'crossbow', 'Arbalistic', 'Kill five unique mobs with one crossbow shot', { kill: (d) => !!d.a },
+  { xp: 85, hidden: true });
+A('adventure/throw_trident', 'kill_a_mob', 'task', 'trident', 'A Throwaway Joke',
+  'Throw a Trident at something. Note: Throwing away your only weapon is not a good idea.', { trident_hit: () => true });
+A('adventure/very_very_frightening', 'throw_trident', 'task', 'trident', 'Very Very Frightening', 'Strike a Villager with lightning',
+  { lightning_villager: () => true });
+A('adventure/trade', 'root', 'task', 'gold_coin', 'What a Deal!', 'Successfully trade with a Villager', { trade: () => true });
+A('adventure/summon_iron_golem', 'trade', 'goal', 'pumpkin', 'Hired Help', 'Summon an Iron Golem to help defend a village', { golem: () => true });
+A('adventure/royal_audience', 'trade', 'task', 'golden_helmet', 'Your Majesty', 'Have an audience with a king or queen',
+  { talk: (d) => d.role === 'king' || d.role === 'queen' });
+A('adventure/sleep_in_bed', 'root', 'task', 'bed', 'Sweet Dreams', 'Sleep in a Bed to change your respawn point', { sleep: () => true });
+A('adventure/adventuring_time', 'sleep_in_bed', 'challenge', 'diamond_boots', 'Adventuring Time', 'Discover every biome', { biome: (d) => d.b },
+  { parts: (g) => biomesToFind(g.meta?.gen ?? 11), label: (p) => p, xp: 500 });
+A('adventure/grand_tour', 'sleep_in_bed', 'goal', 'bell', 'Grand Tour', 'Visit a camp, a hamlet, a village, a town and a kingdom',
+  { visit: (d) => d.tier }, { parts: () => TIERS, label: cap });
+A('adventure/honey_block_slide', 'sleep_in_bed', 'task', 'honey_block', 'Sticky Situation', 'Jump into a Honey Block to break your fall',
+  { honey_land: () => true });
+A('adventure/play_jukebox_in_meadows', 'sleep_in_bed', 'task', 'jukebox', 'Sound of Music',
+  'Make the Meadows come alive with the sound of music from a Jukebox', { jukebox: (d) => d.b === BIOME.MEADOW });
+A('adventure/spyglass_at_parrot', 'root', 'task', 'spyglass', 'Is It a Bird?', 'Look at a Parrot through a Spyglass', { spy: (d) => d.m === 'parrot' });
+A('adventure/spyglass_at_whale', 'spyglass_at_parrot', 'task', 'spyglass', 'Thar She Blows!', 'Look at a Whale through a Spyglass',
+  { spy: (d) => WHALES.has(d.m) });
+A('adventure/fall_from_world_height', 'root', 'task', 'water_bucket', 'Caves & Cliffs',
+  'Free fall from the top of the world (build limit) to the bottom of the world and survive',
+  { fall: (d) => d.from >= HEIGHT - 1 && d.to <= BOTTOM });
+
+// ---- Husbandry
+A('husbandry/root', null, 'task', 'hay_block', 'Husbandry', 'The world is full of friends and food', { eat: () => true });
+A('husbandry/safely_harvest_honey', 'root', 'task', 'honey_bottle', 'Bee Our Guest',
+  'Use a Campfire to collect Honey from a Beehive using a Glass Bottle without aggravating the Bees', { honey_safe: () => true });
+A('husbandry/silk_touch_nest', 'safely_harvest_honey', 'task', 'bee_nest', 'Total Beelocation', 'Move a Bee Nest, with 3 Bees inside, using Silk Touch',
+  { silk_nest: () => true });
+A('husbandry/breed_an_animal', 'root', 'task', 'wheat', 'The Parrots and the Bats', 'Breed two animals together', { breed: () => true });
+A('husbandry/bred_all_animals', 'breed_an_animal', 'challenge', 'golden_carrot', 'Two by Two', 'Breed all the animals!', { breed: (d) => d.m },
+  { parts: () => BRED, label: mobLabel, xp: 100 });
+A('husbandry/tame_an_animal', 'root', 'task', 'lead', 'Best Friends Forever', 'Tame an animal', { tame: () => true });
+A('husbandry/complete_catalogue', 'tame_an_animal', 'challenge', 'cod', 'A Complete Catalogue', 'Tame all Cat variants!',
+  { tame: (d) => (d.m === 'cat' ? CATS[d.v] : null) }, { parts: () => CATS, label: kindLabel, xp: 50 });
+A('husbandry/ride_elephant', 'tame_an_animal', 'task', 'saddle', 'Pack Your Trunk', 'Ride a tame Elephant', { ride: (d) => d.m === 'elephant' && !!d.tame });
+A('husbandry/make_a_sign_glow', 'root', 'task', 'glow_ink_sac', 'Glow and Behold!', 'Make the text of any kind of Sign glow', { glow_sign: () => true });
+A('husbandry/fishy_business', 'root', 'task', 'fishing_rod', 'Fishy Business', 'Catch a fish', { fish: (d) => FISH.has(itemDef(d.id)?.name) });
+A('husbandry/tactical_fishing', 'fishy_business', 'task', 'pufferfish_bucket', 'Tactical Fishing', 'Catch a Fish... without a Fishing Rod!',
+  { scoop: (d) => FISH.has(d.m) });
+A('husbandry/axolotl_in_a_bucket', 'tactical_fishing', 'task', 'axolotl_bucket', 'The Cutest Predator', 'Catch an Axolotl in a Bucket',
+  { scoop: (d) => d.m === 'axolotl' });
+A('husbandry/kill_axolotl_target', 'axolotl_in_a_bucket', 'goal', 'tropical_fish_bucket', 'The Healing Power of Friendship!',
+  'Team up with an axolotl and win a fight', { axolotl_help: () => true });
+A('husbandry/tadpole_in_a_bucket', 'tactical_fishing', 'task', 'tadpole_bucket', 'Bukkit Bukkit', 'Catch a Tadpole in a Bucket',
+  { scoop: (d) => d.m === 'tadpole' });
+A('husbandry/leash_all_frog_variants', 'tadpole_in_a_bucket', 'task', 'lead', 'When the Squad Hops into Town', 'Get each Frog variant on a Lead',
+  { leash: (d) => (d.m === 'frog' ? FROGS[d.v] : null) }, { parts: () => FROGS, label: kindLabel });
+A('husbandry/plant_seed', 'root', 'task', 'wheat_seeds', 'A Seedy Place', 'Plant a seed and watch it grow',
+  { plant: (d) => /_seeds$/.test(itemDef(d.id)?.name ?? '') });
+A('husbandry/balanced_diet', 'plant_seed', 'challenge', 'apple', 'A Balanced Diet', "Eat everything that is edible, even if it's not good for you",
+  { eat: (d) => itemDef(d.id)?.name }, { parts: () => FOODS, label: (p) => itemDef(I[p])?.label ?? cap(p), xp: 100 });
+
+const ADVANCEMENTS = LIST;
+const BY_ID = new Map(LIST.map((a) => [a.id, a]));
+for (const a of LIST) a.children = LIST.filter((c) => c.parent === a.id);
+
+// A part's name as the screen lists it: a creature's, a food's, a biome's, a cat's or frog's kind,
+// a kind of settlement.
+const partName = (a, p) => (a.label ?? cap)(p);
+
+// The icon of an advancement.
+const iconOfAdvancement = (a) => iconFor(I[a.icon]);
+
+// ---------------------------------------------------------------- the player's progress
+class Advancements {
+  constructor(game) {
+    this.game = game;
+    this.got = new Map(); // id -> true (made), or the Set of its parts made so far
+    this.dirty = true;    // the inventory changed since it was last looked through
+    this.lookAt = 0;
+    this.clock = 0;
+    this.toasts = new Toasts(game);
+  }
+
+  // (A world from before advancements, or a new one: what the player has already is made quietly the
+  // first time it's looked through, not all popping up at once.)
+  load(saved) {
+    this.got.clear();
+    this.catchUp = !saved;
+    if (saved && typeof saved === 'object') {
+      for (const [id, v] of Object.entries(saved)) {
+        if (!BY_ID.has(id)) continue;
+        if (v === true) this.got.set(id, true);
+        else if (Array.isArray(v)) this.got.set(id, new Set(v.filter((p) => typeof p === 'string').slice(0, 200)));
+      }
+    }
+    this.dirty = true;
+  }
+  serialize() {
+    const out = {};
+    for (const [id, v] of this.got) out[id] = v === true ? true : [...v];
+    return out;
+  }
+
+  isDone(a) { return this.got.get(typeof a === 'string' ? a : a.id) === true; }
+  // The parts an advancement asks for (null: just the one thing), and how far along it is.
+  parts(a) { return a.parts ? a.parts(this.game) : null; }
+  progress(a) {
+    const parts = this.parts(a);
+    if (!parts) return [this.isDone(a) ? 1 : 0, 1];
+    if (this.isDone(a)) return [parts.length, parts.length];
+    const got = this.got.get(a.id);
+    return [got ? parts.filter((p) => got.has(p)).length : 0, parts.length];
+  }
+  // The parts still to do (for the screen).
+  left(a) {
+    const parts = this.parts(a), got = this.got.get(a.id);
+    if (!parts || this.isDone(a)) return [];
+    return parts.filter((p) => !(got instanceof Set && got.has(p)));
+  }
+
+  // Shown on the screen: made, or next to one made (a step or two on), or on the way to one that
+  // is; a hidden one only once it's made.
+  visible(a) {
+    if (this.isDone(a)) return true;
+    if (a.hidden) return false;
+    const up = a.parent && BY_ID.get(a.parent);
+    if (!up || this.isDone(up) || (up.parent && this.isDone(up.parent))) return true;
+    const below = (x) => x.children.some((c) => this.isDone(c) || below(c));
+    return below(a);
+  }
+
+  // Something happened: whatever it makes is made (or a part of it). `quiet`: without the toast and
+  // the chat.
+  event(type, d = {}, quiet = false) {
+    if (!this.game.world) return;
+    for (const a of LIST) {
+      const test = a.on[type];
+      if (!test || this.isDone(a)) continue;
+      const r = test(d, this.game);
+      if (!r) continue;
+      if (a.parts) {
+        if (typeof r !== 'string' || !this.parts(a).includes(r)) continue;
+        let got = this.got.get(a.id);
+        if (!(got instanceof Set)) this.got.set(a.id, got = new Set());
+        if (got.has(r)) continue;
+        got.add(r);
+        if (this.parts(a).every((p) => got.has(p))) this.grant(a, quiet);
+      } else this.grant(a, quiet);
+    }
+  }
+
+  // Made: shown in the corner, told in the chat (to everyone, playing with friends), and for a
+  // challenge, experience.
+  grant(a, quiet = false) {
+    if (this.isDone(a)) return false;
+    this.got.set(a.id, true);
+    if (quiet) return true;
+    const g = this.game;
+    if (a.parent) {
+      this.toasts.show(a);
+      g.announceAdvancement?.(a);
+    }
+    if (a.xp) {
+      const before = g.xp.level;
+      addXp(g.xp, a.xp);
+      g.audio.orb?.();
+      if (g.xp.level > before) g.audio.levelUp?.();
+    }
+    g.advScreen?.refresh();
+    return true;
+  }
+  revoke(a) { this.got.delete(a.id); this.game.advScreen?.refresh(); }
+
+  // Each frame: the inventory looked through when it has changed (ten times a second at most),
+  // and once a second, where you are (biomes, strongholds) and what you ride.
+  update(dt) {
+    const g = this.game;
+    if (!g.world || !g.player || g.state === 'loading') return;
+    this.lookAt -= dt;
+    if (this.dirty && this.lookAt <= 0) {
+      this.dirty = false;
+      this.lookAt = 0.1;
+      const held = new Set();
+      for (const s of [...g.inv.slots, ...g.inv.armor]) if (s) held.add(s.id);
+      this.event('have', held, this.catchUp);
+      this.catchUp = false;
+    }
+    if ((this.clock += dt) < 1) return;
+    this.clock = 0;
+    const p = g.player, x = Math.floor(p.x), z = Math.floor(p.z);
+    if (g.state === 'dead') return;
+    if (g.world.isLoaded?.(x, z) !== false) {
+      const b = g.world.biomeAt(x, z);
+      if (BIOME_NAMES[b]) this.event('biome', { b: BIOME_NAMES[b] });
+    }
+    if (g.inStronghold?.()) this.event('stronghold');
+    if (g.riding?.kind === 'mob') this.event('ride', { m: g.riding.type, tame: !!g.riding.tame });
+  }
+}
+
+// ---------------------------------------------------------------- toasts
+// "Advancement Made!" and the advancement, in a box that slides in at the top right for a few
+// seconds (as Minecraft's toasts do), a few at a time; more wait their turn.
+const SHOWN = 5, STAY = 5000, SLIDE = 450;
+class Toasts {
+  constructor(game) {
+    this.game = game;
+    this.el = null;
+    this.queue = [];
+  }
+  show(a) {
+    this.queue.push(a);
+    this.next();
+  }
+  next() {
+    if (typeof document === 'undefined') return;
+    if (!this.el) {
+      this.el = document.createElement('div');
+      this.el.id = 'toasts';
+      (document.getElementById('app') ?? document.body).appendChild(this.el);
+    }
+    while (this.queue.length && this.el.children.length < SHOWN) this.pop(this.queue.shift());
+  }
+  pop(a) {
+    const g = this.game, f = FRAMES[a.frame], t = document.createElement('div');
+    t.className = `toast ${a.frame}`;
+    const icon = document.createElement('img');
+    icon.alt = '';
+    icon.src = iconOfAdvancement(a);
+    const head = document.createElement('b'), name = document.createElement('span');
+    head.textContent = f.toast;
+    head.style.color = f.head;
+    name.textContent = a.title;
+    t.append(icon, head, name);
+    this.el.appendChild(t);
+    requestAnimationFrame(() => requestAnimationFrame(() => t.classList.add('in')));
+    g.audio.toast?.(true);
+    if (a.frame === 'challenge') g.audio.challenge?.();
+    setTimeout(() => {
+      t.classList.remove('in');
+      g.audio.toast?.(false);
+      setTimeout(() => { t.remove(); this.next(); }, SLIDE);
+    }, STAY);
+  }
+  clear() { this.queue = []; this.el?.replaceChildren(); }
+}
+
+__exports.TABS = TABS;
+__exports.FRAMES = FRAMES;
+__exports.killedByCreature = killedByCreature;
+__exports.ADVANCEMENTS = ADVANCEMENTS;
+__exports.BY_ID = BY_ID;
+__exports.partName = partName;
+__exports.iconOfAdvancement = iconOfAdvancement;
+__exports.biomesToFind = biomesToFind;
+__exports.Advancements = Advancements;
 });
 
 __define("src/multiplayer.js", function (__exports) {
@@ -42528,6 +43042,7 @@ const { POTIONS, EFFECTS } = __require("src/potions.js");
 const { EGG_TYPES } = __require("src/eggs.js");
 const { saveArmor } = __require("src/stands.js");
 const { hiveDrop } = __require("src/bees.js");
+const { BY_ID: ADVANCEMENT } = __require("src/advancements.js");
 
 const MAX_GUESTS = 7;
 const KEEP_RADIUS = 4;   // chunks the host keeps loaded (and mobs going) around each guest
@@ -43050,6 +43565,7 @@ class HostSession extends Session {
           players[g.uid] = { ...msg.d, name: g.name };
         }
         break;
+      case 'got': this.madeBy(g, msg); break;
       case 'bye': this.remove(g, 'left the game'); break;
       default: break;
     }
@@ -43201,7 +43717,8 @@ class HostSession extends Session {
   takeHiveFor(g, m) {
     const h = HIVE[this.game.world?.getBlock(m.x, m.y, m.z)];
     if (!h || ![m.x, m.y, m.z].every(int) || g.x === null || Math.hypot(m.x + 0.5 - g.x, m.y - g.y, m.z + 0.5 - g.z) > 8) return;
-    const d = hiveDrop(h, this.game.hives.take(m.x, m.y, m.z));
+    const bees = this.game.hives.take(m.x, m.y, m.z), d = hiveDrop(h, bees);
+    if (h.kind === 'bee_nest' && bees >= 3) this.advanceFor(g.addr, 'silk_nest');
     this.game.entities.spawnItem(m.x + 0.5, m.y + 0.3, m.z + 0.5, d.id, 1, 0, 0.6, null, d.extra);
   }
   settleHiveFor(g, m) {
@@ -43223,7 +43740,7 @@ class HostSession extends Session {
     }
     this.game.entities.spawnArrow(m.x, m.y, m.z, clamp(m.vx, -80, 80), clamp(m.vy, -80, 80), clamp(m.vz, -80, 80), owner,
       clamp(num(m.d) ? m.d : 2, 0, 30), !!m.p, { punch: int(m.pu) ? clamp(m.pu, 0, 2) : 0, flame: !!m.fl, potion: POTIONS[m.po] ? m.po : null,
-      snowball: !!m.sb, pierce: int(m.pc) ? clamp(m.pc, 0, 4) : 0 });
+      snowball: !!m.sb, pierce: int(m.pc) ? clamp(m.pc, 0, 4) : 0, crossbow: !!m.cb });
   }
 
   // One player hits another.
@@ -43372,6 +43889,16 @@ class HostSession extends Session {
 
   hurt(addr, amount, why, knock, armored, burn = 0) {
     this.send(addr, { t: 'hurt', a: r2(amount), why, k: knock ? knock.map(r2) : null, arm: armored ? 1 : 0, fi: burn || undefined });
+  }
+  // Advancements (see advancements.js). Something a guest did on this side of things (a kill, a
+  // birth, a taming), sent for them to see to; one the host made, told to everyone; one a guest
+  // made, told here and to everyone else.
+  advanceFor(addr, type, d = {}) { this.send(addr, { t: 'ach', k: type, d }); }
+  madeAdvancement(id) { this.link.broadcast({ t: 'gotn', n: this.game.settings.name, a: id }); }
+  madeBy(g, m) {
+    if (!ADVANCEMENT.has(m.a)) return;
+    this.game.showAdvancement(g.name, m.a);
+    for (const o of this.guests.values()) if (o !== g) this.send(o.addr, { t: 'gotn', n: g.name, a: m.a });
   }
   // What the host explored of a map, to everyone.
   hasMap(id, addr) {
@@ -43630,6 +44157,8 @@ class GuestSession extends Session {
         }
         break;
       case 'msg': if (typeof msg.s === 'string') game.ui.message(msg.s.replace(/\p{C}/gu, '').slice(0, 200), COLORS[msg.c] ?? null); break;
+      case 'ach': if (typeof msg.k === 'string' && msg.d && typeof msg.d === 'object' && game.world) game.advancements.event(msg.k, msg.d); break;
+      case 'gotn': if (ADVANCEMENT.has(msg.a)) game.showAdvancement(cleanName(msg.n), msg.a); break;
       case 'inv': this.chestData(msg); break;
       case 'fur': this.furnaceData(msg); break;
       case 'slots': this.slotData(msg); break;
@@ -43818,6 +44347,7 @@ class GuestSession extends Session {
   shootArrow(x, y, z, vx, vy, vz, damage, pickup, fx) {
     this.toHost({ t: 'arw', x: r2(x), y: r2(y), z: r2(z), vx: r2(vx), vy: r2(vy), vz: r2(vz), d: damage, p: pickup ? 1 : 0,
       pu: fx?.punch || undefined, fl: fx?.flame ? 1 : undefined, po: fx?.potion || undefined, sb: fx?.snowball ? 1 : undefined, pc: fx?.pierce || undefined,
+      cb: fx?.crossbow ? 1 : undefined,
       tr: fx?.trident ? { id: fx.trident.id, d: fx.trident.dmg ?? 0, ex: extras(fx.trident) ?? undefined } : undefined });
   }
 
@@ -43856,6 +44386,7 @@ class GuestSession extends Session {
   chat(text) { this.toHost({ t: 'chat', s: text }); }
   command(line) { this.toHost({ t: 'cmd', s: line }); }
   saveMe(data) { this.toHost({ t: 'save', d: data }); }
+  madeAdvancement(id) { this.toHost({ t: 'got', a: id }); }
   entityGone() {}
 
   async leave() {
@@ -44094,6 +44625,7 @@ const { TEX } = __require("src/textures.js");
 const { growCrop, growSapling, growCocoa } = __require("src/growth.js");
 const { HEIGHT } = __require("src/config.js");
 const { SOIL } = __require("src/world.js");
+const { smoked } = __require("src/bees.js");
 
 const TILLABLE = new Set([B.grass_block, B.dirt, B.dirt_path, B.coarse_dirt, B.snowy_grass]);
 const SEA_BED = new Set([B.sand, B.red_sand, B.gravel, B.dirt, B.clay]);
@@ -44119,6 +44651,7 @@ function useItemOnBlock(game, held, def, t) {
   // Seeds and root crops go into farmland.
   if (def.plant && (t.id === B.farmland || t.id === B.farmland_moist) && t.face === 2 && above === 0) {
     w.setBlock(t.x, t.y + 1, t.z, B[def.plant]);
+    game.advancements?.event('plant', { id: held.id });
     game.audio.place('grass', at);
     return consumed(game);
   }
@@ -44291,6 +44824,8 @@ function useWorkstation(game, held, t) {
   // the bees mind, unless smoke calms them: see bees.js).
   const hive = HIVE[id];
   if (hive?.level === HONEY_FULL && (held?.id === I.glass_bottle || itemDef(held?.id)?.shears)) {
+    // (Bee Our Guest: a bottle of honey taken over a campfire's smoke, the bees none the wiser.)
+    if (held.id === I.glass_bottle && smoked(w, t.x, t.y, t.z)) game.advancements?.event('honey_safe');
     w.setBlock(t.x, t.y, t.z, hiveId(hive.first, 0, hive.front));
     if (held.id === I.glass_bottle) { game.audio.bucket('fill', at); return swapHeld(game, I.honey_bottle); }
     game.entities.spawnItem(t.x + 0.5, t.y + 0.5, t.z + 0.5, I.honeycomb, 3);
@@ -45278,6 +45813,363 @@ __exports.Waypoints = Waypoints;
 __exports.WaypointScreen = WaypointScreen;
 });
 
+__define("src/advscreen.js", function (__exports) {
+// The advancements screen (L, or Advancements in the game menu), after Minecraft's: a window with a
+// tab for each tree (Blockhaven, Adventure, Husbandry), the tree drawn over its tab's texture, to
+// be dragged about (or scrolled with the wheel) when it's bigger than the window. Each advancement
+// shows in its frame - square for a task, rounded for a goal, spiked for a challenge - gold once
+// made; pointing at one (a tap, on a touch screen) shows what it asks for and how far along you
+// are. The world carries on meanwhile.
+const { ADVANCEMENTS, TABS, FRAMES, BY_ID, iconOfAdvancement, partName } = __require("src/advancements.js");
+const { sprites, div, label } = __require("src/gui.js");
+const { textureURL } = __require("src/icons.js");
+
+const COL = 28, ROW = 27;           // how far apart the advancements are (GUI pixels), as in Minecraft
+const WIN_W = 252, WIN_H = 140;     // the window
+const IN_X = 9, IN_Y = 18, IN_W = 234, IN_H = 113; // the tree's part of it
+
+// ---------------------------------------------------------------- frames
+// A frame is drawn from its shape: a black edge, a bevelled rim (light to the top left, dark to the
+// bottom right) and a darker face for the icon to sit on.
+const N = 26;
+const SHAPES = {
+  task: (x, y) => !((x === 0 || x === N - 1) && (y === 0 || y === N - 1)),
+  goal: (x, y) => {
+    const dx = Math.max(0, Math.abs(x + 0.5 - N / 2) - (N / 2 - 6)), dy = Math.max(0, Math.abs(y + 0.5 - N / 2) - (N / 2 - 6));
+    return dx * dx + dy * dy <= 36;
+  },
+  challenge: (x, y) => {
+    const dx = Math.abs(x + 0.5 - N / 2), dy = Math.abs(y + 0.5 - N / 2);
+    if (dx <= 9 && dy <= 9 && dx + dy <= 16) return true;                  // the body
+    if ((dy >= 8 && dx <= (13 - dy) * 0.8 + 0.5) || (dx >= 8 && dy <= (13 - dx) * 0.8 + 0.5)) return true; // points top, bottom and sides
+    return dx + dy >= 15 && dx <= 12.5 && dy <= 12.5 && Math.abs(dx - dy) <= (26 - dx - dy) * 0.55 + 0.5; // points at the corners
+  },
+};
+const PALETTE = {
+  false: { edge: '#000000', light: '#f4f4f4', rim: '#c2c2c2', dark: '#6c6c6c', face: '#4a4a4a' },
+  true: { edge: '#2a1c00', light: '#fff4a8', rim: '#f0c02a', dark: '#9c6f0a', face: '#6a4a08' },
+};
+const frameCache = new Map();
+function frameImage(kind, done) {
+  const key = `${kind}:${!!done}`;
+  if (frameCache.has(key)) return frameCache.get(key);
+  const inside = SHAPES[kind], pal = PALETTE[!!done];
+  const c = document.createElement('canvas');
+  c.width = c.height = N;
+  const g = c.getContext('2d');
+  // (How far in from the edge each pixel is, up to four.)
+  const depth = (x, y) => {
+    for (let k = 0; k < 4; k++) {
+      for (let oy = -k; oy <= k; oy++) for (let ox = -k; ox <= k; ox++) {
+        const px = x + ox, py = y + oy;
+        if (px < 0 || py < 0 || px >= N || py >= N || !inside(px, py)) return k;
+      }
+    }
+    return 4;
+  };
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    if (!inside(x, y)) continue;
+    const d = depth(x, y);
+    g.fillStyle = d <= 1 ? pal.edge : d === 2 ? (x + y < N - 1 ? pal.light : pal.dark) : d === 3 ? pal.rim : pal.face;
+    g.fillRect(x, y, 1, 1);
+  }
+  const url = c.toDataURL();
+  frameCache.set(key, url);
+  return url;
+}
+
+// ---------------------------------------------------------------- layout
+// Each tree laid out once: the root on the left, each generation a column further right, a node's
+// young stacked in rows and the node beside the middle of them.
+const LAYOUT = new Map();
+function layoutTab(tab) {
+  if (LAYOUT.has(tab)) return LAYOUT.get(tab);
+  const root = ADVANCEMENTS.find((a) => a.tab === tab && !a.parent), pos = new Map();
+  let row = 0;
+  const place = (a, depth) => {
+    if (!a.children.length) { pos.set(a.id, { x: depth * COL, y: row++ * ROW }); return; }
+    for (const c of a.children) place(c, depth + 1);
+    const ys = a.children.map((c) => pos.get(c.id).y);
+    pos.set(a.id, { x: depth * COL, y: Math.floor((Math.min(...ys) + Math.max(...ys)) / 2) });
+  };
+  place(root, 0);
+  const all = [...pos.values()];
+  const box = { x0: 0, y0: Math.min(...all.map((p) => p.y)), x1: Math.max(...all.map((p) => p.x)) + COL, y1: Math.max(...all.map((p) => p.y)) + ROW };
+  const out = { pos, box };
+  LAYOUT.set(tab, out);
+  return out;
+}
+
+// Text measured in GUI pixels (the game's font at 9 to the em).
+let measurer = null;
+function textWidth(s) {
+  measurer ??= document.createElement('canvas').getContext('2d');
+  measurer.font = `9px ${getComputedStyle(document.body).getPropertyValue('--font-ui') || 'monospace'}`;
+  return measurer.measureText(s).width;
+}
+
+// ---------------------------------------------------------------- the screen
+class AdvancementScreen {
+  constructor(game) {
+    this.game = game;
+    this.tab = 'story';
+    this.scroll = {};      // tab -> [x, y]
+    this.tip = null;       // the advancement shown in the tooltip
+    this.pinned = false;   // (tapped, on a touch screen: it stays till the next tap)
+    this.el = document.createElement('section');
+    this.el.className = 'screen adv-screen';
+    this.el.hidden = true;
+    this.frame = div('adv-frame', this.el);
+    this.tabsEl = div('mc-tabs adv-tabs', this.frame, 0, 0, WIN_W, 28);
+    this.win = div('mc-panel adv-win', this.frame, 0, 28, WIN_W, WIN_H);
+    this.title = label('Advancements', this.win, 8, 6);
+    this.well = div('adv-well', this.win, IN_X - 1, IN_Y - 1, IN_W + 2, IN_H + 2);
+    this.view = div('adv-view', this.win, IN_X, IN_Y, IN_W, IN_H);
+    this.tree = div('adv-tree', this.view, 0, 0);
+    this.fade = div('adv-fade', this.view, 0, 0, IN_W, IN_H);
+    this.tipEl = div('adv-tip', this.win);
+    this.tipEl.hidden = true;
+    this.done = document.createElement('button');
+    this.done.type = 'button';
+    this.done.className = 'btn adv-done';
+    this.done.textContent = 'Done';
+    this.done.addEventListener('click', () => this.game.closeAdvancements());
+    this.frame.appendChild(this.done);
+    this.tabTip = div('adv-tabtip', this.frame);
+    this.tabTip.hidden = true;
+    this.bindPointer();
+    window.addEventListener('resize', () => { if (this.open) this.fit(); });
+    (document.getElementById('screen-container')?.parentNode ?? document.body).appendChild(this.el);
+  }
+
+  get open() { return !this.el.hidden; }
+
+  show() {
+    this.el.hidden = false;
+    this.el.style.setProperty('--window', `url(${sprites().window})`);
+    this.hideTip();
+    this.fit();
+    this.build();
+  }
+  hide() { this.el.hidden = true; this.hideTip(); }
+  // (Something was made or taken away while the screen is open.)
+  refresh() { if (this.open) this.build(); }
+
+  // As big as the GUI Scale option says, or smaller if that doesn't fit.
+  fit() {
+    const vw = window.innerWidth - 16, vh = window.innerHeight - 16, dpr = window.devicePixelRatio || 1;
+    let u = Math.min(this.game.ui.u, vw / WIN_W, vh / (28 + WIN_H + 30));
+    u = u >= 1 ? Math.floor(u * dpr + 1e-6) / dpr : Math.max(0.5, Math.floor(u * dpr * 4) / (dpr * 4));
+    this.el.style.setProperty('--u', `${u}px`);
+  }
+
+  // ---- drawing
+  build() {
+    const adv = this.game.advancements;
+    // The tabs along the top, each with its root's icon.
+    this.tabsEl.replaceChildren();
+    TABS.forEach((t, i) => {
+      const root = ADVANCEMENTS.find((a) => a.tab === t.id && !a.parent);
+      const el = div(`mc-tab${t.id === this.tab ? ' on' : ''}`, this.tabsEl, i * 28, 0, 28, 30);
+      const img = document.createElement('img');
+      img.src = iconOfAdvancement(root);
+      img.alt = '';
+      img.draggable = false;
+      Object.assign(img.style, { left: 'calc(var(--u) * 6)', top: 'calc(var(--u) * 7)', width: 'calc(var(--u) * 16)', height: 'calc(var(--u) * 16)' });
+      el.appendChild(img);
+      el.setAttribute('aria-label', t.title);
+      el.addEventListener('click', () => { if (this.tab !== t.id) { this.tab = t.id; this.hideTip(); this.build(); } });
+      el.addEventListener('pointerenter', () => this.showTabTip(t, i));
+      el.addEventListener('pointerleave', () => { this.tabTip.hidden = true; });
+    });
+    // The tree: its lines first, then the advancements over them.
+    const tab = TABS.find((t) => t.id === this.tab), { pos, box } = layoutTab(this.tab);
+    // (Dimmed a little, so the lines and frames stand out on the brighter textures.)
+    this.view.style.backgroundImage = `linear-gradient(rgba(0, 0, 0, 0.28), rgba(0, 0, 0, 0.28)), url(${textureURL(tab.bg)})`;
+    const shown = ADVANCEMENTS.filter((a) => a.tab === this.tab && adv.visible(a));
+    const ns = 'http://www.w3.org/2000/svg', svg = document.createElementNS(ns, 'svg');
+    const w = box.x1 - box.x0 + 8, h = box.y1 - box.y0 + 8;
+    svg.setAttribute('viewBox', `${box.x0 - 4} ${box.y0 - 4} ${w} ${h}`);
+    svg.setAttribute('class', 'adv-lines');
+    svg.setAttribute('shape-rendering', 'crispEdges');
+    Object.assign(svg.style, { left: `calc(var(--u) * ${box.x0 - 4})`, top: `calc(var(--u) * ${box.y0 - 4})`, width: `calc(var(--u) * ${w})`, height: `calc(var(--u) * ${h})` });
+    const paths = [];
+    for (const a of shown) {
+      const up = a.parent && BY_ID.get(a.parent);
+      if (!up || !adv.visible(up)) continue;
+      const p = pos.get(up.id), c = pos.get(a.id);
+      // (From the middle of the one above, out past its edge, along, and into the middle of this one.)
+      const i = p.x + 13, j = p.x + 26 + 4, k = p.y + 13, l = c.x + 13, m = c.y + 13;
+      paths.push(`M${i + 0.5} ${k + 0.5}H${j + 0.5}V${m + 0.5}H${l + 0.5}`);
+    }
+    for (const [stroke, width] of [['#000', 3], ['#fff', 1]]) {
+      for (const d of paths) {
+        const path = document.createElementNS(ns, 'path');
+        path.setAttribute('d', d);
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke', stroke);
+        path.setAttribute('stroke-width', width);
+        path.setAttribute('stroke-linecap', 'square');
+        svg.appendChild(path);
+      }
+    }
+    this.tree.replaceChildren(svg);
+    this.nodes = [];
+    for (const a of shown) {
+      const p = pos.get(a.id), made = adv.isDone(a);
+      const el = div(`adv-node ${a.frame}${made ? ' done' : ''}`, this.tree, p.x + 3, p.y, 26, 26);
+      el.style.backgroundImage = `url(${frameImage(a.frame, made)})`;
+      const img = document.createElement('img');
+      img.src = iconOfAdvancement(a);
+      img.alt = '';
+      img.draggable = false;
+      el.appendChild(img);
+      this.nodes.push({ a, x: p.x + 3, y: p.y, el });
+    }
+    this.scrollTo(...(this.scroll[this.tab] ?? this.centre()));
+    if (this.tip) this.showTip(this.tip);
+  }
+
+  // Where the tree starts: in the middle of the window (Minecraft's own start).
+  centre() {
+    const { box } = layoutTab(this.tab);
+    return [Math.floor(IN_W / 2 - (box.x1 + box.x0) / 2), Math.floor(IN_H / 2 - (box.y1 + box.y0) / 2)];
+  }
+  // Moves the tree (kept from going further than its edges, when it's bigger than the window).
+  scrollTo(x, y) {
+    const { box } = layoutTab(this.tab), [cx, cy] = this.centre();
+    x = box.x1 - box.x0 > IN_W ? Math.max(IN_W - box.x1, Math.min(-box.x0, x)) : cx;
+    y = box.y1 - box.y0 > IN_H ? Math.max(IN_H - box.y1, Math.min(-box.y0, y)) : cy;
+    x = Math.round(x); y = Math.round(y);
+    this.scroll[this.tab] = [x, y];
+    this.tree.style.transform = `translate(calc(var(--u) * ${x}), calc(var(--u) * ${y}))`;
+    this.view.style.backgroundPosition = `0 0, calc(var(--u) * ${x}) calc(var(--u) * ${y})`;
+    if (this.tip) this.placeTip();
+  }
+
+  // ---- the tooltip: the advancement's title in a bar (gold as far as it's made, blue for the
+  // rest), how many parts of it are made, and what it asks for (and, for one of many parts, a few
+  // of those still to do).
+  showTip(a) {
+    const adv = this.game.advancements, made = adv.isDone(a), [got, of] = adv.progress(a), f = FRAMES[a.frame];
+    this.tip = a;
+    const el = this.tipEl;
+    el.replaceChildren();
+    const count = of > 1 ? `${got}/${of}` : '';
+    const titleW = 32 + textWidth(a.title) + (count ? 10 + textWidth(count) : 0) + 6;
+    const descW = textWidth(a.desc);
+    let w = Math.max(120, Math.ceil(titleW));
+    if (descW > w * 2.5) w = Math.min(214, Math.max(w, Math.ceil(descW / 2.5)));
+    this.tipW = w;
+    const bar = div(`adv-bar${made ? ' done' : ''}`, el);
+    bar.style.setProperty('--made', `${made ? 100 : Math.round((got / of) * 100)}%`);
+    const frame = div('adv-tipframe', bar);
+    frame.style.backgroundImage = `url(${frameImage(a.frame, made)})`;
+    const img = document.createElement('img');
+    img.src = iconOfAdvancement(a);
+    img.alt = '';
+    frame.appendChild(img);
+    const t = document.createElement('span');
+    t.className = 'adv-title';
+    t.textContent = a.title;
+    bar.appendChild(t);
+    if (count) {
+      const c = document.createElement('span');
+      c.className = 'adv-count';
+      c.textContent = count;
+      bar.appendChild(c);
+    }
+    const desc = div('adv-desc', el);
+    desc.style.color = f.colour;
+    desc.textContent = a.desc;
+    const left = adv.left(a);
+    if (left.length && left.length <= 12) {
+      const more = div('adv-left', desc);
+      more.textContent = `Still to go: ${left.slice(0, 6).map((p) => partName(a, p)).join(', ')}${left.length > 6 ? ` and ${left.length - 6} more` : ''}`;
+    }
+    el.style.width = `calc(var(--u) * ${w})`;
+    el.hidden = false;
+    this.fade.classList.add('on');
+    for (const n of this.nodes ?? []) n.el.classList.toggle('lit', n.a === a);
+    this.placeTip();
+  }
+  // Over the advancement's own frame, the bar running right (or left, near the window's right
+  // edge), the description below it (or above, low in the window).
+  placeTip() {
+    const n = this.nodes?.find((o) => o.a === this.tip);
+    if (!n) { this.hideTip(); return; }
+    const [sx, sy] = this.scroll[this.tab] ?? [0, 0];
+    const fx = IN_X + sx + n.x, fy = IN_Y + sy + n.y, w = this.tipW;
+    const flip = fx + w > WIN_W + 40, up = fy > IN_Y + IN_H / 2;
+    this.tipEl.classList.toggle('flip', flip);
+    this.tipEl.classList.toggle('up', up);
+    this.tipEl.style.left = `calc(var(--u) * ${flip ? fx + 26 - w : fx})`;
+    this.tipEl.style.top = `calc(var(--u) * ${fy})`;
+  }
+  hideTip() {
+    this.tip = null;
+    this.pinned = false;
+    this.tipEl.hidden = true;
+    this.fade.classList.remove('on');
+    for (const n of this.nodes ?? []) n.el.classList.remove('lit');
+  }
+  showTabTip(t, i) {
+    this.tabTip.textContent = t.title;
+    this.tabTip.style.left = `calc(var(--u) * ${i * 28 + 14})`;
+    this.tabTip.hidden = false;
+  }
+
+  // ---- the pointer: drag the tree about; point at (or tap) an advancement to see what it is.
+  nodeAt(e) {
+    const r = this.view.getBoundingClientRect(), u = r.width / IN_W, [sx, sy] = this.scroll[this.tab] ?? [0, 0];
+    const x = (e.clientX - r.left) / u - sx, y = (e.clientY - r.top) / u - sy;
+    if ((e.clientX - r.left) / u < 0 || (e.clientY - r.top) / u < 0 || (e.clientX - r.left) / u > IN_W || (e.clientY - r.top) / u > IN_H) return null;
+    return this.nodes?.find((n) => x >= n.x && x < n.x + 26 && y >= n.y && y < n.y + 26)?.a ?? null;
+  }
+  bindPointer() {
+    const v = this.view;
+    let drag = null;
+    v.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      drag = { x: e.clientX, y: e.clientY, from: this.scroll[this.tab] ?? this.centre(), moved: false, id: e.pointerId, touch: e.pointerType !== 'mouse' };
+      v.setPointerCapture(e.pointerId);
+    });
+    v.addEventListener('pointermove', (e) => {
+      if (drag && drag.id === e.pointerId) {
+        const u = v.getBoundingClientRect().width / IN_W, dx = (e.clientX - drag.x) / u, dy = (e.clientY - drag.y) / u;
+        if (!drag.moved && Math.hypot(dx, dy) > 2) { drag.moved = true; if (!this.pinned) this.hideTip(); }
+        if (drag.moved) this.scrollTo(drag.from[0] + dx, drag.from[1] + dy);
+        return;
+      }
+      if (e.pointerType !== 'mouse' || this.pinned) return;
+      const a = this.nodeAt(e);
+      if (a && a !== this.tip) this.showTip(a); else if (!a && this.tip) this.hideTip();
+    });
+    const end = (e) => {
+      if (!drag || drag.id !== e.pointerId) return;
+      const tap = !drag.moved, touch = drag.touch;
+      drag = null;
+      if (!tap) return;
+      const a = this.nodeAt(e);
+      if (touch) {
+        if (a && a !== this.tip) { this.showTip(a); this.pinned = true; } else this.hideTip();
+      } else if (a) this.showTip(a);
+    };
+    v.addEventListener('pointerup', end);
+    v.addEventListener('pointercancel', (e) => { if (drag?.id === e.pointerId) drag = null; });
+    v.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse' && !drag && !this.pinned) this.hideTip(); });
+    v.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const [x, y] = this.scroll[this.tab] ?? this.centre(), step = Math.sign(e.deltaY || e.deltaX) * 16;
+      if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) this.scrollTo(x - step, y); else this.scrollTo(x, y - step);
+    }, { passive: false });
+  }
+}
+
+__exports.frameImage = frameImage;
+__exports.AdvancementScreen = AdvancementScreen;
+});
+
 __define("src/game.js", function (__exports) {
 // Game state and the main loop: menus, loading, playing (movement, mining, building, survival),
 // saving, and the rotating title-screen panorama.
@@ -45329,6 +46221,8 @@ const { AQUATIC } = __require("src/tridents.js");
 const { Maps, HeldMap, initMapColours, isMap } = __require("src/maps.js");
 const { Minimap, initMinimapColours, MAP_ZOOMS } = __require("src/minimap.js");
 const { Waypoints, WaypointScreen } = __require("src/waypoints.js");
+const { Advancements, killedByCreature, BY_ID: ADVANCEMENT, FRAMES: ADV_FRAMES } = __require("src/advancements.js");
+const { AdvancementScreen } = __require("src/advscreen.js");
 const { drawLeads, isFence, LEAD_SNAP } = __require("src/leads.js");
 const { Jukeboxes, instrumentFor, noteColour, noteClear, nextNote } = __require("src/jukebox.js");
 const { isHanging } = __require("src/hangings.js");
@@ -45367,7 +46261,7 @@ const DEFAULT_SETTINGS = {
 };
 const HOTBAR_KEYS = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `hotbar${n}`);
 const BOUND = ['forward', 'back', 'left', 'right', 'jump', 'sneak', 'sprint', 'inventory', 'drop', 'chat', 'command', 'perspective',
-  'hideHud', 'debug', 'mapZoomIn', 'mapZoomOut', 'waypointAdd', 'waypointList', ...HOTBAR_KEYS];
+  'hideHud', 'debug', 'mapZoomIn', 'mapZoomOut', 'waypointAdd', 'waypointList', 'advancements', ...HOTBAR_KEYS];
 const FACE_NAMES = ['east (+X)', 'west (-X)', 'up', 'down', 'south (+Z)', 'north (-Z)'];
 const TIPS = [
   'Punch a tree to collect logs, then turn them into planks.',
@@ -45547,6 +46441,9 @@ class Game {
     this.minimap = new Minimap(this, $('minimap-canvas'), $('minimap-info'));
     this.waypoints = new Waypoints(this);
     this.waypointScreen = new WaypointScreen(this);
+    this.advancements = new Advancements(this);
+    this.advScreen = new AdvancementScreen(this);
+    this.fallTop = null; // (where the fall under way began: see afterMove)
     // (A tap on the minimap opens the waypoints.)
     $('minimap-canvas').addEventListener('click', () => this.openWaypoints());
     this.jukeboxes = new Jukeboxes(this);
@@ -45717,6 +46614,7 @@ class Game {
     ui.on('settings', (from) => { ui.showDifficulty(this.meta ? this.difficulty : null, !this.meta?.remote); this.pushScreen('screen-settings', from); });
     ui.on('cycle-difficulty', () => this.setDifficulty((this.difficulty + 1) % 4));
     ui.on('controls', (from) => this.pushScreen('screen-controls', from));
+    ui.on('advancements', () => this.openAdvancements(true));
     ui.on('keybinds', (from) => this.pushScreen('screen-keys', from));
     ui.on('reset-keys', () => { this.keys.reset(); this.saveSettings(); ui.refreshKeys(); });
     ui.on('done', () => this.popScreen());
@@ -45899,6 +46797,9 @@ class Game {
     // (A guest's maps come from the host, as they're needed.)
     this.maps.reset(remote ? null : meta.maps);
     this.waypoints.load(meta.waypoints);
+    this.advancements.load(meta.advancements);
+    this.advancements.toasts.clear();
+    this.fallTop = null;
     this.minimap.reset();
     this.attackTicks = 100;
     this.fire = 0;
@@ -45936,7 +46837,7 @@ class Game {
       mode: you?.mode === 'creative' || (!you?.mode && world.mode === 'creative') ? 'creative' : 'survival',
       spawn: world.spawn && Number.isFinite(world.spawn.x) && Number.isFinite(world.spawn.z) ? { x: world.spawn.x, y: world.spawn.y ?? null, z: world.spawn.z } : { x: 0.5, y: null, z: 0.5 },
       time: Number.isFinite(world.time) ? world.time : 1000, weather: { raining: !!world.rain, thunder: !!world.thunder },
-      bed: you?.bed ?? null, player: you?.player ?? null, inventory: you?.inventory ?? null, waypoints: you?.wp ?? null, remote: true,
+      bed: you?.bed ?? null, player: you?.player ?? null, inventory: you?.inventory ?? null, waypoints: you?.wp ?? null, advancements: you?.adv ?? null, remote: true,
       difficulty: [0, 1, 2, 3].includes(world.diff) ? world.diff : 2,
     };
     const container = this.containers, furnaces = this.furnaces, signs = this.signs.serialize(), banners = this.banners.serialize();
@@ -45954,6 +46855,7 @@ class Game {
         fx: this.effectsData() },
       inventory: this.inv.serialize(), mode: this.meta?.mode ?? 'survival', bed: this.meta?.bed ?? null,
       wp: this.waypoints.serialize(),
+      adv: this.advancements.serialize(),
     };
   }
 
@@ -46021,6 +46923,50 @@ class Game {
   // Everyone in the world (for mobs and explosions): this player and, in multiplayer, the rest.
   // Everyone creatures can see. (The same object stands for this player from one tick to the next,
   // so a creature after them keeps up with where they are.)
+  // ---------------------------------------------------------------- advancements (see advancements.js)
+  // Something towards an advancement, done by player `t` (one of players(), or this player): this
+  // player's own advancements see to it; a guest's are told, on the host.
+  advance(t, type, d = {}) {
+    if (!t) return;
+    if (!t.addr) this.advancements.event(type, d);
+    else if (this.net?.host) this.net.advanceFor?.(t.addr, type, d);
+  }
+  // The player (one of players()) with key `uid`, if they're about.
+  playerByUid(uid) { return uid ? this.players().find((q) => q.uid === uid) ?? null : null; }
+  // An advancement made here: told in the chat, and to everyone else playing.
+  announceAdvancement(a) {
+    this.showAdvancement(this.settings.name, a.id);
+    this.net?.madeAdvancement?.(a.id);
+  }
+  // "Name has made the advancement [Title]", in the chat (the title in its frame's colour).
+  showAdvancement(name, id) {
+    const a = ADVANCEMENT.get(id), f = a && ADV_FRAMES[a.frame];
+    if (!f) return;
+    const who = String(name ?? '').trim();
+    this.ui.message([[who ? `${who} ${f.verb} ` : `You ${f.verb.replace(/^has/, 'have')} `, null], [`[${a.title}]`, f.colour]]);
+  }
+  // Looking through a spyglass: the creature in the middle of the view, a few times a second (Is
+  // It a Bird?, Thar She Blows!).
+  spyglassLook(dt) {
+    if (!this.drawing?.scope || this.view !== 0 || this.state !== 'play') return;
+    if ((this.scopeLook = (this.scopeLook ?? 0) - dt) > 0) return;
+    this.scopeLook = 0.25;
+    const p = this.player, d = p.lookDir(), far = 100;
+    const wall = this.world.raycast(p.x, p.eyeY, p.z, d[0], d[1], d[2], far);
+    const seen = this.entities.raycast(p.x, p.eyeY, p.z, d[0], d[1], d[2], wall ? wall.t : far);
+    if (seen?.entity.kind === 'mob') this.advancements.event('spy', { m: seen.entity.type });
+  }
+  // Whether this player is in a stronghold: inside its bounds, down on its level, standing on its
+  // bricks (Deep Secrets).
+  inStronghold() {
+    const gen = this.world?.gen, p = this.player;
+    if (!gen || gen.version < 10 || gen.type === 'flat') return false;
+    const s = nearestStructure(gen, 'stronghold', p.x, p.z);
+    if (!s || p.x < s.box[0] || p.x > s.box[2] + 1 || p.z < s.box[1] || p.z > s.box[3] + 1 || p.y < s.y - 1 || p.y > s.y + 14) return false;
+    const under = BLOCKS[this.world.getBlock(Math.floor(p.x), Math.floor(p.y - 0.2), Math.floor(p.z))]?.name ?? '';
+    return /stone_brick|oak_planks|end_portal_frame|cobblestone/.test(under);
+  }
+
   players() {
     const p = this.player;
     const me = (this.me ??= { addr: null, uid: this.uid });
@@ -46200,6 +47146,8 @@ class Game {
     this.avatars.clearTags();
     this.waypoints.clearMarks();
     this.closeWaypoints();
+    this.closeAdvancements();
+    this.advancements.toasts.clear();
     this.jukeboxes.clear();
     this.releasePointer();
     this.touch.setActive(false);
@@ -46237,6 +47185,7 @@ class Game {
       hives: this.hives.serialize(),
       maps: this.maps.serialize(),
       waypoints: this.waypoints.serialize(),
+      advancements: this.advancements.serialize(),
       furnaces: [...this.furnaces].filter(([, f]) => !f.empty).map(([k, f]) => ({ k, ...f.serialize() })),
       weather: this.weather.serialize(),
     });
@@ -46433,6 +47382,7 @@ class Game {
     if (type === 'craft') this.audio.craft();
     else if (type === 'equip') this.audio.equip(itemDef(stack.id).armor.material);
     else if (type === 'enchant') {
+      this.advancements.event('enchant');
       this.audio.enchant(at);
       this.particles.bits(at.x, at.y + 0.4, at.z, TEX.glyph, 14, 1.2, 0.9);
     } else if (type === 'anvil') this.audio.anvil(at);
@@ -46699,6 +47649,7 @@ class Game {
     const near = this.entities.list.some((e) => e.kind === 'mob' && e.def.hostile && !e.dead && Math.hypot(e.x - p.x, e.y - p.y, e.z - p.z) < 10);
     if (near) { this.ui.message('You may not rest now, there are monsters nearby', '#e88a78'); return; }
     this.meta.bed = { x, y, z };
+    this.advancements.event('sleep');
     // The mouse stays captured while the screen fades out and back in, so play just carries on.
     this.state = 'sleeping';
     this.mining = null;
@@ -46822,6 +47773,10 @@ class Game {
       this.particles.burst(x + dx, y + dy, z + dz, id);
     }
     const golem = this.entities.spawnMob(type, x + 0.5, y - 2, z + 0.5, { made: true });
+    // (Hired Help, for everyone who saw an iron golem made: within five blocks of it.)
+    if (type === 'iron_golem') {
+      for (const q of this.players()) if (!q.dead && Math.abs(q.x - golem.x) < 6.5 && Math.abs(q.z - golem.z) < 6.5 && Math.abs(q.y - golem.y) < 8) this.advance(q, 'golem');
+    }
     const p = this.player;
     golem.yaw = Math.atan2(-(p.x - golem.x), -(p.z - golem.z));
     this.audio.mob(type === 'iron_golem' ? 'golem' : 'snow_golem', 'hurt', { x: x + 0.5, y: y - 1, z: z + 0.5 }, 0.8);
@@ -46845,6 +47800,8 @@ class Game {
   die(cause) {
     this.closeTalk();
     this.closeWaypoints();
+    this.closeAdvancements();
+    this.advancements.event('died', { mob: killedByCreature(cause) });
     this.dismount();
     // (Where you fell is marked, as the Xaero's Minimap mod does.)
     this.waypoints.died(this.player.x, this.player.y, this.player.z);
@@ -46950,9 +47907,12 @@ class Game {
         else if (k.is(c, 'mapZoomOut')) this.zoomMap(-1);
         else if (k.is(c, 'waypointAdd')) { e.preventDefault(); this.openWaypoints(true); }
         else if (k.is(c, 'waypointList')) { e.preventDefault(); this.openWaypoints(); }
+        else if (k.is(c, 'advancements')) { e.preventDefault(); this.openAdvancements(); }
         else if (c === 'Escape' && !this.input.locked) this.pause();
       } else if (s === 'waypoints') {
         if (c === 'Escape' || (k.is(c, 'waypointList') && !this.waypointScreen.editing)) this.waypointScreen.back();
+      } else if (s === 'advancements') {
+        if (c === 'Escape' || k.is(c, 'advancements')) { e.preventDefault(); this.closeAdvancements(); }
       } else if (s === 'talk') {
         if (k.is(c, 'inventory') || c === 'Escape') this.closeTalk();
       } else if (s === 'book') {
@@ -47102,6 +48062,7 @@ class Game {
       this.safely('creatures', () => this.entities.update(dt));
       this.safely('fishing', () => this.fishing.update(dt));
       this.safely('weather', () => { this.weather.update(dt); this.lightning.update(dt); });
+      this.safely('advancements', () => { this.advancements.update(dt); this.spyglassLook(dt); });
       if (this.spin) this.safely('riptide', () => this.spinTick(dt));
     }
     if (this.riding) this.sitOnMount();
@@ -47200,7 +48161,18 @@ class Game {
       // (Honey breaks a fall: a fifth of the hurt.)
       const soft = p.onHoney ? 0.2 : 1;
       if (d > 3.2 + this.effectLevel('jump_boost') && !p.inWater) this.damage(Math.floor((d - 3 - this.effectLevel('jump_boost')) * soft), 'You fell from a high place');
+      if (p.onHoney && d > 3.2 && this.state !== 'dead') this.advancements.event('honey_land');
       if (d > 1.2) { const g = p.groundBlock(this.world); if (g) this.audio.land(BLOCKS[g]?.sound ?? 'stone'); }
+    }
+    // Where a fall began (the top of a jump, or where you stepped off), for Caves & Cliffs: told
+    // once you land or come down in water, if you're still alive.
+    if (this.riding) this.fallTop = null;
+    else if (!p.onGround && !p.inWater && !p.flying && !p.onLadder && !p.inScaffold) {
+      if (p.vy < 0 && this.fallTop === null) this.fallTop = p.y;
+    } else if (this.fallTop !== null) {
+      const from = this.fallTop;
+      this.fallTop = null;
+      if (!p.flying && this.state !== 'dead') this.advancements.event('fall', { from, to: p.y });
     }
     if (this.creative && p.y < -64) { p.y = 120; p.vy = 0; p.flying = true; }
   }
@@ -47474,6 +48446,7 @@ class Game {
     if (def.cures) this.effects.delete(def.cures);
     for (const [name, seconds, level, chance = 1] of def.effects ?? []) if (Math.random() < chance) this.addEffect(name, seconds, level);
     if (def.potion) this.applyPotion(def.potion);
+    this.advancements.event('eat', { id: e.id });
     if (this.creative) return;
     this.inv.consumeHeld();
     // Stew leaves its bowl behind.
@@ -47552,6 +48525,7 @@ class Game {
     // A shield held up takes hits from in front: blows, arrows, blasts.
     if (knock && this.shieldUp && this.fromFront(knock)) {
       this.blockHit(amount, !!opts?.axe);
+      if (/^You were shot/.test(cause)) this.advancements.event('deflect');
       this.player.vx += knock[0] * 0.2; this.player.vz += knock[2] * 0.2;
       return false;
     }
@@ -47794,11 +48768,12 @@ class Game {
       const x = p.x + dx * 0.4, y = p.eyeY - 0.1 + d[1] * 0.4, z = p.z + dz * 0.4;
       if (load === 'arrow') {
         this.entities.spawnArrow(x, y, z, dx * v + p.vx, d[1] * v, dz * v + p.vz, me, 6 + Math.random() * 1.4, i === 0 && !this.creative,
-          { pierce: enchLevel(st, 'piercing') });
+          { pierce: enchLevel(st, 'piercing'), crossbow: true });
       } else this.entities.spawnFirework(x, y, z, load.fw, { dir: [dx, d[1], dz], owner: me });
     }
     delete st.load;
     this.audio.crossbow('shoot', this.earPos());
+    this.advancements.event('crossbow');
     if (!this.creative && this.inv.damageHeld(spread.length)) this.audio.toolBreak();
     this.invChanged();
   }
@@ -47968,6 +48943,8 @@ class Game {
     const wholeHive = byPlayer && !this.creative && !!HIVE[id] && enchLevel(this.inv.held, 'silk_touch') > 0;
     let bees = 0;
     if (wholeHive) { if (this.net?.guest) this.net.takeHive(x, y, z); else bees = this.hives.take(x, y, z); }
+    // (Total Beelocation: a bees' nest, three bees and all. A guest hears from the host.)
+    if (wholeHive && !this.net?.guest && HIVE[id].kind === 'bee_nest' && bees >= 3) this.advancements.event('silk_nest');
     // (A sea plant leaves the water it stood in.)
     this.world.setBlock(x, y, z, WET[id] ? B.water : 0);
     if (byPlayer) this.exhaust(0.005);
@@ -48074,6 +49051,7 @@ class Game {
     if (t && !t.entity && !t.player && !p.sneaking && !repeat && JUKEBOX[t.id] === -1 && def?.disc !== undefined) {
       this.swingArm();
       w.setBlock(t.x, t.y, t.z, B.jukebox + 1 + def.disc);
+      this.advancements.event('jukebox', { b: w.biomeAt(t.x, t.z) });
       if (!this.creative) { this.inv.consumeHeld(); this.invChanged(); }
       return;
     }
@@ -48492,6 +49470,33 @@ class Game {
       if (!this.touch.enabled) this.input.lock();
     }
   }
+  // The advancements (see advscreen.js), from the game or from the game menu (`fromMenu`, which it
+  // goes back to). The world carries on meanwhile.
+  openAdvancements(fromMenu = false) {
+    if (!this.world || (this.state !== 'play' && !(fromMenu && this.state === 'pause'))) return;
+    this.advFromMenu = fromMenu;
+    this.state = 'advancements';
+    this.releasePointer();
+    this.mining = null;
+    this.eating = null;
+    this.ui.show(null);
+    this.advScreen.show();
+  }
+  closeAdvancements() {
+    if (!this.advScreen.open && this.state !== 'advancements') return;
+    this.advScreen.hide();
+    if (this.state !== 'advancements') return;
+    // (Back to the game menu it was opened from.)
+    if (this.advFromMenu) {
+      this.state = 'pause';
+      this.screenStack = [];
+      this.ui.show('screen-pause');
+      return;
+    }
+    this.state = 'play';
+    this.input.capture = true;
+    if (!this.touch.enabled) this.input.lock();
+  }
   // The minimap zoomed in (1) or out (-1).
   zoomMap(d) {
     const s = this.settings, z = Math.max(0, Math.min(MAP_ZOOMS.length - 1, (s.minimapZoom ?? 2) + d));
@@ -48554,6 +49559,7 @@ class Game {
     this.audio.place('water', { x: x + 0.5, y: y + 0.5, z: z + 0.5 });
     this.particles.icons(TEX.happy, x + 0.5, y + 0.7, z + 0.5, 5, 0.3);
     this.swingArm();
+    if (on) this.advancements.event('glow_sign');
     if (!this.creative) { this.inv.consumeHeld(); this.invChanged(); }
     return true;
   }
@@ -48659,6 +49665,7 @@ class Game {
   // An axolotl finished off something player `t` was fighting: regeneration for them, and the
   // mining fatigue on them lifted (as in the original).
   axolotlHelped(t) {
+    this.advance(t, 'axolotl_help');
     if (t?.addr) { this.net?.giveEffect?.(t.addr, 'regeneration', 6, 1); return; }
     this.effects.delete('mining_fatigue');
     const cur = this.effects.get('regeneration');
@@ -48733,7 +49740,7 @@ class Game {
   }
 
   // ---------------------------------------------------------------- inventory
-  invChanged() { this.invVersion++; }
+  invChanged() { this.invVersion++; if (this.advancements) this.advancements.dirty = true; }
 
   // ---------------------------------------------------------------- chat & commands
   sendChat(text) {
@@ -48759,8 +49766,26 @@ class Game {
         say('/time set day|noon|night|midnight|<ticks>, /time add <n>');
         say('/gamemode creative|survival, /tp <x> <y> <z>, /give <item> [count], /summon <creature> [x y z], /weather clear|rain');
         say('/spawn, /setspawn, /seed, /locate village|camp|hamlet|town|kingdom|pyramid|temple|igloo|shipwreck|monument|mineshaft|stronghold, /fly, /kill, /clear, /difficulty peaceful|easy|normal|hard');
+        say('/advancement grant|revoke everything|<name>');
         if (this.net) say(`/list${this.net.host ? ', /pvp on|off' : ''}`);
         break;
+      case 'advancement': case 'advancements': {
+        // (Everything at once goes quietly; one by name pops up as if made.)
+        const act = (args[0] ?? '').toLowerCase(), what = (args[1] ?? '').toLowerCase();
+        if (!['grant', 'revoke'].includes(act) || !what) { say('Usage: /advancement grant|revoke everything|<name>', '#e88a78'); break; }
+        const all = [...ADVANCEMENT.values()];
+        const list = what === 'everything' ? all : all.filter((a) => a.id === what || a.id.endsWith(`/${what}`) || a.title.toLowerCase() === what);
+        if (!list.length) { say(`There is no advancement called ${what}`, '#e88a78'); break; }
+        const adv = this.advancements;
+        let n = 0;
+        for (const a of list) {
+          if (act === 'grant') n += adv.grant(a, list.length > 1) ? 1 : 0;
+          else if (adv.got.has(a.id)) { adv.revoke(a); n++; }
+        }
+        this.advScreen.refresh();
+        say(`${act === 'grant' ? 'Granted' : 'Revoked'} ${n} advancement${n === 1 ? '' : 's'}`);
+        break;
+      }
       case 'list': case 'players':
         if (!this.net) { say('You are playing alone'); break; }
         say(`Players online (${this.net.count}): ${this.net.names().join(', ')}`);

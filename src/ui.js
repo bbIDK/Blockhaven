@@ -634,9 +634,17 @@ export class UI {
     if (html !== this.debugHTML) { this.debugHTML = html; el.innerHTML = html; }
   }
 
+  // A line in the chat: `text` in `color`, or a list of [text, colour] pieces.
   message(text, color = null) {
     const li = document.createElement('li');
-    li.textContent = text;
+    if (Array.isArray(text)) {
+      for (const [t, c] of text) {
+        const s = document.createElement('span');
+        s.textContent = t;
+        if (c) s.style.color = c;
+        li.appendChild(s);
+      }
+    } else li.textContent = text;
     if (color) li.style.color = color;
     const log = $('chat-log');
     log.appendChild(li);
@@ -792,6 +800,9 @@ export class UI {
   // single: Open to Friends; host: the same screen shows the code; guest: nothing to open.
   setPauseMenu(mode) {
     $('p-share').hidden = mode === 'guest';
+    // (A guest has nothing to open to friends: Options takes the whole row.)
+    $('p-options').classList.toggle('wide', mode === 'guest');
+    $('p-options').classList.toggle('half', mode !== 'guest');
     $('p-share').textContent = mode === 'host' ? 'Friends…' : 'Open to Friends';
     $('p-quit').textContent = mode === 'guest' ? 'Disconnect' : 'Save and Quit to Title';
   }

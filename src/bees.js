@@ -22,6 +22,17 @@ for (const [id, h] of Object.entries(HIVE)) if (h.kind === 'bee_nest') NEST[id] 
 const cleanBee = (b) => ({ nectar: !!b?.nectar, t: Number.isInteger(b?.t) ? Math.max(0, b.t) : 0,
   stay: Number.isInteger(b?.stay) ? Math.max(0, Math.min(24000, b.stay)) : STAY, hp: Number.isFinite(b?.hp) ? Math.max(1, Math.min(10, b.hp)) : 10 });
 
+// Whether a campfire's smoke rises under the home at (x, y, z) - within five blocks, with nothing
+// solid between - which calms its bees.
+export function smoked(w, x, y, z) {
+  for (let dy = 1; dy <= 5; dy++) {
+    const id = w.getBlock(x, y - dy, z);
+    if (id === B.campfire) return true;
+    if (SOLID[id]) break;
+  }
+  return false;
+}
+
 export class Hives {
   constructor(game) {
     this.game = game;
@@ -138,14 +149,9 @@ export class Hives {
   }
 
   // Honey (or comb) taken from a full home: its bees come out angry, unless a campfire's smoke rises
-  // under it (within five blocks) to calm them.
+  // under it to calm them.
   harvested(x, y, z) {
-    const w = this.game.world;
-    for (let dy = 1; dy <= 5; dy++) {
-      const id = w.getBlock(x, y - dy, z);
-      if (id === B.campfire) return;
-      if (SOLID[id]) break;
-    }
+    if (smoked(this.game.world, x, y, z)) return;
     const k = Hives.key(x, y, z), bees = this.homes.get(k);
     if (bees) this.angerAround(x, y, z, bees, k);
   }
