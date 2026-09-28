@@ -29,6 +29,7 @@ import { isHanging, placement, place, holds, drops, frameUse, drawHanging } from
 import { PAINTINGS } from './tex/paintings.js';
 import { tridentPhysics, tridentHit, drawTrident, saveTrident } from './tridents.js';
 import { fireworkPhysics, flightTicks, cleanRocket } from './fireworks.js';
+import { STAND_SIZE, STAND_BREAK, saveArmor, loadArmor, slotAt, drawStand } from './stands.js';
 
 class Entity extends Body {
   constructor(kind, hw, h, x, y, z) {
@@ -61,6 +62,9 @@ export function mobExtra(e) {
   if (e.trusting) o.tr = 1;
   if (e.held === I.trident && e.type === 'drowned') o.td = 1;
   if (e.def.growsInto) o.g = e.growUp;
+  // (A bee's home, and its nectar.)
+  if (e.hive) o.hv = e.hive;
+  if (e.nectar) o.nc = 1;
   if (e.def.kind === 'civilian') { o.r = e.rid; o.sk = e.skin; o.n = e.name; o.ro = e.role; }
   // (A wandering trader's id, how long they'll stay, and where they came.)
   if (e.def.wanderer) { o.tid = e.tid; o.lv = e.leaves; o.hm = [Math.round(e.home?.x ?? e.x), Math.round(e.home?.z ?? e.z)]; }
@@ -88,6 +92,7 @@ const extraOpts = (s) => ({ variant: Number.isInteger(s.v) ? s.v : 0, colour: Nu
   owner: typeof s.ow === 'string' && s.ow ? s.ow.slice(0, 64) : null, sitting: !!s.si, collar: Number.isInteger(s.co) && s.co >= 0 && s.co < 16 ? s.co : undefined,
   made: !!s.md, hatched: !!s.ht, named: typeof s.nm === 'string' ? cleanTagName(s.nm) : null, school: Number.isInteger(s.sc) ? s.sc : 0,
   trusting: !!s.tr, growUp: Number.isInteger(s.g) && s.g > 0 ? Math.min(s.g, 24000) : undefined, trident: s.td === 1,
+  hive: typeof s.hv === 'string' && /^-?\d+,-?\d+,-?\d+$/.test(s.hv) ? s.hv : null, nectar: s.nc === 1,
   leash: typeof s.le === 'string' && s.le ? { uid: s.le.slice(0, 64) }
     : Array.isArray(s.le) && s.le.length === 3 && s.le.every(Number.isInteger) ? { x: s.le[0], y: s.le[1], z: s.le[2] } : null });
 // A name from a name tag: printable, and no longer than the original allows.
@@ -151,7 +156,8 @@ export class Entities {
         const e = this.spawnTrident(s.x, s.y, s.z, 0, 0, 0, null, st, true);
         Object.assign(e, { ayaw: Number.isFinite(s.a) ? s.a : 0, apitch: Number.isFinite(s.p) ? s.p : 0, life: 1, loyalty: 0 });
         if (Array.isArray(s.b) && s.b.length === 3 && s.b.every(Number.isInteger)) Object.assign(e, { stuck: true, bx: s.b[0], by: s.b[1], bz: s.b[2], stuckFor: 1 });
-      } else if ((s.k === 'frame' || s.k === 'painting') && [s.bx, s.by, s.bz, s.f].every(Number.isInteger) && s.f >= 0 && s.f < 6) {
+      } else if (s.k === 'stand' && [s.x, s.y, s.z].every(Number.isFinite)) this.spawnStand(s.x, s.y, s.z, Number.isFinite(s.yaw) ? s.yaw : 0, loadArmor(s.a));
+      else if ((s.k === 'frame' || s.k === 'painting') && [s.bx, s.by, s.bz, s.f].every(Number.isInteger) && s.f >= 0 && s.f < 6) {
         this.spawnHanging(s.k, s.bx, s.by, s.bz, s.f, { art: s.a, item: s.it, rot: s.r, glow: s.g === 1 });
       }
     }
@@ -164,7 +170,9 @@ export class Entities {
     // (And thrown tridents: a player's is never lost. Nor a boat with a chest, and what's in it.)
     const tridents = this.list.filter((e) => !e.dead && e.kind === 'arrow' && e.trident && e.pickup).map(saveTrident);
     const chests = this.list.filter((e) => !e.dead && e.kind === 'boat' && e.chest).map(saveBoat);
-    return hung.concat(tridents, chests, this.list.filter((e) => !e.dead && ((e.kind === 'boat' && !e.chest) || e.kind === 'item' || e.kind === 'cart' || e.kind === 'xp' ||
+    // (Armor stands too, and what they wear.)
+    const stands = this.list.filter((e) => !e.dead && e.kind === 'stand').map((e) => ({ k: 'stand', x: e.x, y: e.y, z: e.z, yaw: e.yaw, a: saveArmor(e.armor) }));
+    return hung.concat(tridents, chests, stands, this.list.filter((e) => !e.dead && ((e.kind === 'boat' && !e.chest) || e.kind === 'item' || e.kind === 'cart' || e.kind === 'xp' ||
       (e.kind === 'mob' && (e.def.kind !== 'civilian' || e.def.wanderer) && !e.pinned && !e.dying)))
       .slice(0, 300)
       .map((e) => (e.kind === 'item' ? { k: 'item', x: e.x, y: e.y, z: e.z, id: e.id, count: e.count, dmg: e.dmg, ex: e.extra ?? undefined }
@@ -301,6 +309,52 @@ export class Entities {
     if (chest) Object.assign(e, { chest: true, cid: chestId(cid) ?? Math.random().toString(36).slice(2, 12) });
     this.list.push(e);
     return e;
+  }
+
+  // An armor stand at (x, y, z), turned `yaw`, wearing `armor` (see stands.js). (A guest asks the
+  // host.)
+  spawnStand(x, y, z, yaw = 0, armor = [null, null, null, null]) {
+    if (this.guest) { this.game.net.placeStand?.(x, y, z, yaw); return null; }
+    const e = new Entity('stand', STAND_SIZE.hw, STAND_SIZE.h, x, y, z);
+    Object.assign(e, { yaw, armor, hitAt: -9, def: { label: 'Armor Stand' } });
+    this.list.push(e);
+    return e;
+  }
+  // Using a stand: armour held goes on (swapped for what was there); with nothing held, the piece
+  // at height `hy` (above its feet) comes off. Returns { what: 'put' | 'take', back: the piece that
+  // came off } or null.
+  useStand(e, held, hy) {
+    const def = held ? itemDef(held.id) : null;
+    let res = null;
+    if (def?.armor) {
+      const i = def.armor.slot, back = e.armor[i];
+      e.armor[i] = { ...held, count: 1 };
+      res = { what: 'put', back };
+    } else if (!held) {
+      const i = slotAt(e.armor, hy);
+      if (i >= 0) { res = { what: 'take', back: e.armor[i] }; e.armor[i] = null; }
+    }
+    if (res) {
+      this.game.audio.place(def?.armor?.material === 'leather' ? 'cloth' : 'metal', { x: e.x, y: e.y + 1, z: e.z });
+      this.game.net?.resend?.(e);
+    }
+    return res;
+  }
+  // A punch: it rocks; a second one straight after (or any, in Creative) knocks it down.
+  hitStand(e, creative) {
+    if (e.remote) { this.game.net.hitMob(e, 1, 0); return; }
+    if (creative || e.age - e.hitAt < STAND_BREAK) { this.breakStand(e, !creative); return; }
+    e.hitAt = e.age;
+    this.game.audio.dig('wood', { x: e.x, y: e.y + 1, z: e.z });
+  }
+  breakStand(e, drop = true) {
+    e.dead = true;
+    this.game.net?.entityGone(e, 'd');
+    this.game.particles.burst(Math.floor(e.x), Math.floor(e.y + 0.5), Math.floor(e.z), B.oak_planks);
+    this.game.audio.breakBlock('wood', { x: e.x, y: e.y + 1, z: e.z });
+    if (!drop) return;
+    this.spawnItem(e.x, e.y + 0.4, e.z, I.armor_stand, 1);
+    for (const st of e.armor) if (st) this.spawnItem(e.x, e.y + 1, e.z, st.id, 1, st.dmg ?? 0, 0.6, null, extras(st));
   }
 
   // A minecart, set down at (x, y, z) (on a rail, as a rule).
@@ -769,6 +823,8 @@ export class Entities {
         (e.hatched && !e.def.hostile);
       // (A settlement's people and animals only go with the land they're on, and come back with it.)
       const settled = e.def.kind === 'civilian' || e.pinned;
+      // (A bee out of sight goes back into its home, if it can.)
+      if (!near && e.hive && game.hives.enter(e)) return;
       if ((!near && !kept && (!settled || !loaded)) || e.y < -40) { e.dead = true; this.civilians.gone(e); return; }
       if (loaded) mobTick(this, e);
     }
@@ -870,6 +926,11 @@ export class Entities {
     } else if (e.kind === 'cart') {
       e.hurt = Math.max(0, e.hurt - dt);
       if (e.guestRider) { this.glideRidden(e, dt); e.rail = null; } else cartPhysics(w, e, dt, this.cartPush(e));
+      if (e.y < -40) e.dead = true;
+    } else if (e.kind === 'stand') {
+      // (A stand stays where it's put, but falls if what's under it goes.)
+      e.vy = Math.max(-40, (e.vy ?? 0) - 20 * dt);
+      e.move(w, 0, e.vy * dt, 0);
       if (e.y < -40) e.dead = true;
     } else if (e.kind === 'mob') {
       if (e.guestRider) this.glideRidden(e, dt); else mobPhysics(this, e, dt, fluid);
@@ -1111,6 +1172,7 @@ export class Entities {
   // `opts`: what the weapon's enchantments add ({ fire: seconds alight, looting: level }).
   attack(e, amount, bonus = 0, opts = null) {
     if (isHanging(e)) { this.hitHanging(e, this.game.creative); return; }
+    if (e.kind === 'stand') { this.hitStand(e, this.game.creative); return; }
     const n = this.game.creative ? 100 : amount;
     if (e.kind === 'boat' || e.kind === 'cart') {
       if (e.remote) this.game.net.hitMob(e, n, bonus);
@@ -1125,6 +1187,7 @@ export class Entities {
   // Right-click on a creature: feeding, shearing, milking; talking to villagers; getting into a
   // boat or onto a horse. True if anything came of it.
   interact(e, held) {
+    if (e.kind === 'stand') return this.useStandHere(e, held);
     if (isHanging(e)) { if (this.useHanging(e, held) === 'put' && !this.game.creative) { this.game.inv.consumeHeld(); this.game.invChanged(); } this.game.swingArm(); return true; }
     // (Sneaking at a boat with a chest opens the chest instead.)
     if (e.kind === 'boat' && e.chest && this.game.player.sneaking) { this.game.openBoatChest(e); return true; }
@@ -1141,6 +1204,29 @@ export class Entities {
     applyHeldUse(this.game, effect, e);
     if (e.remote) net.useMob(e, held?.id ?? 0, effect, who.name);
     else applyMobUse(this, e, held?.id ?? 0, effect, this.game.uid, who.name);
+    return true;
+  }
+  // This player uses a stand, where they point at it: armour held goes on it (used up, but in
+  // Creative), and what comes off it goes to their hand. (A guest asks the host, which gives back
+  // what comes off.)
+  useStandHere(e, held) {
+    const g = this.game, p = g.player, t = g.target, d = p.lookDir();
+    const hy = t?.entity === e ? p.eyeY + d[1] * t.t - e.y : 1;
+    const armor = held && itemDef(held.id)?.armor;
+    if (!armor && held) return false;
+    if (e.remote) {
+      if (!armor && slotAt(e.armor, hy) < 0) return false;
+      g.net.useStand(e, held, hy);
+      if (armor && !g.creative) { g.inv.consumeHeld(); g.invChanged(); }
+      g.swingArm();
+      return true;
+    }
+    const res = this.useStand(e, held, hy);
+    if (!res) return false;
+    if (res.what === 'put' && !g.creative) g.inv.consumeHeld();
+    if (res.back) g.giveToHand(res.back);
+    g.invChanged();
+    g.swingArm();
     return true;
   }
   // A guest (`uid`) used something on a creature (checked again here).
@@ -1199,6 +1285,7 @@ export class Entities {
       const d = Math.hypot(e.x - x, e.y - y, e.z - z);
       // (Frames and paintings close by are blown off the wall.)
       if (isHanging(e)) { if (d < power * 1.5) this.dropHanging(e); continue; }
+      if (e.kind === 'stand') { if (d < power * 1.5) this.breakStand(e, !game.creative); continue; }
       if (d < power * 2) this.hurtMob(e, Math.ceil((1 - d / (power * 2)) * 20), { x, z });
     }
   }
@@ -1238,6 +1325,9 @@ export class Entities {
         const cid = chestId(s.c);
         Object.assign(e, { wood: BOAT_WOODS.includes(s.w) ? s.w : 'oak', yaw: Number.isFinite(s.a) ? s.a : 0, hits: 0, hurt: 0, def: { label: cid ? 'Boat with Chest' : 'Boat' } });
         if (cid) Object.assign(e, { chest: true, cid });
+      } else if (s.k === 's') {
+        e = new Entity('stand', STAND_SIZE.hw, STAND_SIZE.h, s.x, s.y, s.z);
+        Object.assign(e, { yaw: 0, armor: [null, null, null, null], hitAt: -9, def: { label: 'Armor Stand' } });
       } else if (s.k === 'h' && (s.t === 'frame' || s.t === 'painting') && Array.isArray(s.b) && s.b.every(Number.isInteger) && [0, 1, 2, 3, 4, 5].includes(s.f)) {
         e = new Entity(s.t, 0.5, 1, 0, 0, 0);
         Object.assign(e, { bx: s.b[0], by: s.b[1], bz: s.b[2], face: s.f, art: s.t === 'painting' && PAINTINGS[s.a] ? s.a : s.t === 'painting' ? 0 : null, item: null, rot: 0,
@@ -1272,12 +1362,15 @@ export class Entities {
       if (Number.isInteger(s.c)) e.colour = s.c;
       const x = extraOpts(s);
       e.owner = x.owner; if (x.collar !== undefined) e.collar = x.collar;
-      e.named = x.named; e.leash = x.leash;
+      e.named = x.named; e.leash = x.leash; e.nectar = x.nectar;
       this.remoteFlags(e, Number.isInteger(s.f) ? s.f : 0);
       if (e.def.beam) e.beamShown = Number.isInteger(s.bm) ? Math.max(0, Math.min(100, s.bm)) : 0;
     } else if (s.k === 'b' || s.k === 'c') {
       e.tyaw = Number.isFinite(s.a) ? s.a : e.yaw;
       e.ridden = !!((s.f ?? 0) & 2);
+    } else if (s.k === 's') {
+      e.yaw = Number.isFinite(s.a) ? s.a : e.yaw;
+      e.armor = loadArmor(s.ar);
     }
   }
 
@@ -1296,6 +1389,7 @@ export class Entities {
       if (u[5] & 1) e.hurt = 0.35;
       e.ridden = !!(u[5] & 2);
     } else if (e.kind === 'arrow' && Number.isFinite(u[4])) { e.ayaw = u[4]; e.apitch = Number.isFinite(u[5]) ? u[5] / 100 : e.apitch; }
+    else if (e.kind === 'stand' && (u[5] & 1) && e.age - e.hitAt > 0.3) e.hitAt = e.age;
     else if (e.kind === 'item' && Number.isInteger(u[6]) && u[6] > 0) e.count = u[6];
   }
 
@@ -1419,7 +1513,7 @@ export class Entities {
   raycast(ox, oy, oz, dx, dy, dz, maxDist) {
     let best = null;
     for (const e of this.list) {
-      if ((e.kind !== 'mob' && e.kind !== 'boat' && e.kind !== 'cart' && !isHanging(e)) || e.dead || e.dying || e.rider === 'me') continue;
+      if ((e.kind !== 'mob' && e.kind !== 'boat' && e.kind !== 'cart' && e.kind !== 'stand' && !isHanging(e)) || e.dead || e.dying || e.rider === 'me') continue;
       const b = e.hitbox ?? [-e.hw, 0, -e.hw, e.hw, e.h, e.hw];
       const hit = rayBox(ox - e.x, oy - e.y, oz - e.z, dx, dy, dz, b);
       if (hit && hit.t <= maxDist && (!best || hit.t < best.t)) best = { entity: e, t: hit.t };
@@ -1428,7 +1522,7 @@ export class Entities {
   }
 
   blocksPlacement(x, y, z) {
-    return this.list.some((e) => (e.kind === 'mob' || e.kind === 'boat' || e.kind === 'cart') && !e.dead &&
+    return this.list.some((e) => (e.kind === 'mob' || e.kind === 'boat' || e.kind === 'cart' || e.kind === 'stand') && !e.dead &&
       e.x - e.hw < x + 1 && e.x + e.hw > x && e.y < y + 1 && e.y + e.h > y && e.z - e.hw < z + 1 && e.z + e.hw > z);
   }
 
@@ -1550,6 +1644,8 @@ export class Entities {
         out.push({ parts: [{ mesh: boatMesh(r, e.wood, e.chest), model: boatModel(this.mat(), rx, ry, rz, e.yaw) }], light, tint: null, hurt: e.hurt > 0 });
       } else if (e.kind === 'cart') {
         out.push({ parts: [{ mesh: cartMesh(r), model: cartModel(this.mat(), rx, ry, rz, e.yaw, e.pitch) }], light, tint: null, hurt: e.hurt > 0 });
+      } else if (e.kind === 'stand') {
+        drawStand(this, e, rx, ry, rz, light, out);
       } else if (e.kind === 'mob') {
         // (Not those out of sight: tested against last frame's view, with room to spare for
         // turning, for shadows cast into view, and for the whales, much longer than they're wide.)

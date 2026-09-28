@@ -2,7 +2,8 @@
 // sugar cane and cactus getting taller (on random ticks, see World.randomTicks), and leaves
 // withering once the tree they belong to has been cut down.
 import {
-  B, BLOCKS, CROP, SAPLING, NATURAL_LEAVES, LEAVES_WOOD, LOG, OPAQUE, SOLID, WATERLIKE, REPLACEABLE, WOOD, FACE_DIRS,
+  B, BLOCKS, CROP, SAPLING, NATURAL_LEAVES, LEAVES_WOOD, LOG, OPAQUE, SOLID, WATERLIKE, REPLACEABLE, WOOD, FACE_DIRS, BERRY_BUSH, COCOA,
+  cocoaId, hiveId, RENDER, R,
 } from './blocks.js';
 import { TREES, WIDE_TREES, saplingTree } from './trees.js';
 
@@ -20,6 +21,15 @@ export function randomTick(w, x, y, z, id) {
   else if (id === B.dirt) spreadGrass(w, x, y, z);
   else if (id === B.kelp) growKelp(w, x, y, z);
   else if (id === B.frogspawn) { if (Math.random() < 0.2) hatch(w, x, y, z); }
+  // (Update 27's: sweet berry bushes grow in the light, cocoa pods ripen in any; Minecraft's odds.)
+  else if (BERRY_BUSH[id] !== undefined) { if (BERRY_BUSH[id] < 3 && Math.random() < 0.2 && light(w, x, y + 1, z) >= 9) w.setBlock(x, y, z, id + 1); }
+  else if (COCOA[id] && Math.random() < 0.2) growCocoa(w, x, y, z, id);
+}
+
+// A cocoa pod a stage riper (false if it's ripe already).
+export function growCocoa(w, x, y, z, id) {
+  const c = COCOA[id];
+  return c.age < 2 && w.setBlock(x, y, z, cocoaId(c.age + 1, c.face));
 }
 
 // Frogspawn hatches (every five minutes or so) into two to six tadpoles, in the water under it.
@@ -113,7 +123,35 @@ export function growSapling(w, x, y, z, id, rnd = Math.random) {
     for (const [a, b] of [[0, 0], [1, 0], [0, 1], [1, 1]]) if (SAPLING[w.getBlock(rx + a, y, rz + b)]) w.setBlock(rx + a, y, rz + b, 0);
   } else w.setBlock(x, y, z, 0);
   TREES[kind](put, rx, y, rz, rnd);
+  // An oak, birch or cherry grown near flowers now and then has a bees' nest on it.
+  if ((wood === 'oak' || wood === 'birch' || wood === 'cherry') && !wide && rnd() < 0.05 && flowersNear(w, x, y, z, 2)) {
+    const at = nestSpot(w, x, y, z, rnd);
+    if (at) { w.setBlock(at[0], at[1], at[2], hiveId(B.bee_nest, 0, at[3])); w.listener?.nestGrown?.(at[0], at[1], at[2]); }
+  }
   return true;
+}
+const FLOWER = (id) => RENDER[id] === R.CROSS && BLOCKS[id]?.cat === 'nature' && /^(dandelion|poppy|cornflower|allium|azure_bluet|blue_orchid|oxeye_daisy|lily_of_the_valley|.*_tulip|sunflower|lilac|rose_bush|peony)$/.test(BLOCKS[id].name);
+function flowersNear(w, x, y, z, r) {
+  for (let dy = -1; dy <= 1; dy++) for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) if (FLOWER(w.getBlock(x + dx, y + dy, z + dz))) return true;
+  return false;
+}
+// Where a nest goes on a tree just grown from (x, y, z): on the side of the trunk just under its
+// leaves, facing out (south, east or west first, as Minecraft's do). [x, y, z, facing] or null.
+export function nestSpot(w, x, y, z, rnd = Math.random) {
+  let top = y;
+  while (LOG[w.getBlock(x, top + 1, z)] && top < y + 12) top++;
+  let under = y + 1;
+  for (let yy = y + 1; yy <= top; yy++) {
+    if ([0, 1, 4, 5].some((f) => NATURAL_LEAVES[w.getBlock(x + FACE_DIRS[f][0], yy, z + FACE_DIRS[f][2])])) { under = yy - 1; break; }
+    under = yy;
+  }
+  if (under < y + 1) return null;
+  const sides = [4, 0, 1].sort(() => rnd() - 0.5).concat(5);
+  for (const f of sides) {
+    const d = FACE_DIRS[f], nx = x + d[0], nz = z + d[2];
+    if (w.getBlock(nx, under, nz) === 0) return [nx, under, nz, f];
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------- leaves

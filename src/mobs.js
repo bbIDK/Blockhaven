@@ -2,7 +2,7 @@
 // moves its limbs, and where it turns up. Entities (entities.js) keeps them in its list and runs
 // their physics; everything particular to a kind of creature lives here.
 import { RIGS, rigMeshes, boneMatrix, GUARDIAN_SPIKES } from './rigs.js';
-import { B, SOLID, WATERLIKE, CLIMB, LEAVES_WOOD, SHAPE_KIND } from './blocks.js';
+import { B, SOLID, WATERLIKE, CLIMB, LEAVES_WOOD, SHAPE_KIND, CROP, BERRY_BUSH } from './blocks.js';
 import { I, ITEMS } from './items.js';
 import { BIOME } from './biomes.js';
 import { DYES } from './colors.js';
@@ -17,6 +17,10 @@ import { leashTick, leashPull } from './leads.js';
 const TAU = Math.PI * 2;
 const wrap = (a) => a - Math.round(a / TAU) * TAU;
 const d = (name, lo, hi, chance = 1) => [name, lo, hi, chance];
+
+// Flowers (what bees and butterflies go to; a flower in hand draws bees after it, and feeds them).
+const FLOWER_NAMES = ['dandelion', 'poppy', 'cornflower', 'oxeye_daisy', 'azure_bluet', 'allium', 'blue_orchid', 'red_tulip', 'orange_tulip',
+  'white_tulip', 'pink_tulip', 'lily_of_the_valley', 'sunflower', 'lilac', 'rose_bush', 'peony', 'flowering_azalea', 'pink_petals', 'spore_blossom'];
 
 // ---------------------------------------------------------------- kinds
 // kind: 'animal' (wanders, flees when hurt, follows food), 'neutral' (fights back), 'hostile',
@@ -195,7 +199,7 @@ export const MOBS = {
     variants: true, hw: 0.15, h: 0.2, health: 1, speed: 1.4, kind: 'animal', anim: 'butterfly', flies: 'insect', drops: [], sound: null, xp: 0,
     noBlood: true },
   bee: { label: 'Bee', rig: 'bee', skins: ['bee'], hw: 0.25, h: 0.35, health: 10, speed: 2, kind: 'neutral', anim: 'bee', flies: 'bee', damage: 2,
-    poison: [10, 1], pack: true, drops: [], sound: 'bee', scale: 0.8, xp: 1, noBlood: true },
+    poison: [10, 1], pack: true, drops: [], sound: 'bee', scale: 0.8, xp: 1, noBlood: true, food: FLOWER_NAMES },
   drowned: { label: 'Drowned', rig: 'humanoid', skins: ['drowned'], hw: 0.3, h: 1.95, health: 20, speed: 1.9, kind: 'hostile', anim: 'zombie',
     damage: 3, burns: true, swims: true, drops: [d('rotten_flesh', 0, 2), d('copper_ingot', 1, 1, 0.11)], sound: 'zombie', pitch: 0.75, hunts: true },
   witch: { label: 'Witch', rig: 'witch', skins: ['witch'], hw: 0.3, h: 1.95, health: 26, speed: 1.9, kind: 'hostile', anim: 'witch', throws: true,
@@ -302,6 +306,8 @@ export function initMob(e, type, o = {}) {
     // axolotl playing dead, or out of the water; a frog's croak and tongue, and frogspawn to lay.)
     trusting: !!o.trusting, growUp: t.growsInto ? (o.growUp ?? 24000) : 0, playDead: 0, dryness: 0, croak: 0, tongue: 0, pregnant: 0,
     prey: null, huntCd: 0,
+    // (Update 27's: a bee's home - its nest or hive - and whether it's carrying nectar.)
+    hive: o.hive ?? null, nectar: !!o.nectar, grew: 0,
   });
   if ((type === 'horse' || type === 'mule') && o.health === undefined) e.health = 15 + Math.floor(Math.random() * 16);
   // (One drowned in sixteen carries a trident.)
@@ -571,9 +577,7 @@ const dist2 = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 // (Where a kind has males and females that look different, the variant's lowest bit says which.)
 export const isMale = (e) => (e.variant & 1) === 1;
 // What butterflies and bees visit.
-const FLOWERS = new Set(['dandelion', 'poppy', 'cornflower', 'oxeye_daisy', 'azure_bluet', 'allium', 'blue_orchid', 'red_tulip', 'orange_tulip',
-  'white_tulip', 'pink_tulip', 'lily_of_the_valley', 'sunflower', 'lilac', 'rose_bush', 'peony', 'flowering_azalea', 'pink_petals', 'spore_blossom']
-  .map((n) => B[n]).filter((id) => id !== undefined));
+const FLOWERS = new Set(FLOWER_NAMES.map((n) => B[n]).filter((id) => id !== undefined));
 
 function animalTick(ents, e) {
   const t = e.def, game = ents.game, w = ents.world;
@@ -796,27 +800,30 @@ function frogspawnSpot(w, e) {
 // is a mule) and have a baby with them.
 const CROSS = { horse: 'donkey', donkey: 'horse' };
 function seekMate(ents, e) {
-  const game = ents.game;
   const mate = ents.list.find((o) => o !== e && o.kind === 'mob' && (o.type === e.type || o.type === CROSS[e.type]) && o.love > 0 && !o.baby &&
     !o.dead && !o.dying && dist2(o, e) < 8);
   if (!mate) return false;
   faceTowards(e, mate.x, mate.z);
   e.moving = dist2(mate, e) > 1.2;
-  if (!e.moving && e.love > 0 && mate.love > 0) {
-    e.love = mate.love = 0; e.breedCd = mate.breedCd = 6000;
-    ents.spawnXp((e.x + mate.x) / 2, e.y + 0.5, (e.z + mate.z) / 2, 1 + Math.floor(Math.random() * 7));
-    // (Frogs have no young of their own: one of them is soon to lay frogspawn.)
-    if (e.def.leapsAbout) { (Math.random() < 0.5 ? e : mate).pregnant = 6000; loveHearts(game, e, 5); return true; }
-    // (A foal of two tame horses is born tame; puppies and kittens belong to their parents' owner.
-    // An axolotl's young is now and then the rare blue.)
-    const same = mate.type === e.type;
-    const variant = !same ? 0 : e.def.driesOut && Math.random() < 1 / 1200 ? 4 : Math.random() < 0.5 ? e.variant : mate.variant;
-    const baby = ents.spawnMob(same ? e.type : 'mule', (e.x + mate.x) / 2, e.y, (e.z + mate.z) / 2, { baby: true, variant,
-      colour: Math.random() < 0.5 ? e.colour : mate.colour, tame: e.tame && mate.tame, owner: e.owner && e.owner === mate.owner ? e.owner : null,
-      trusting: e.trusting && mate.trusting });
-    loveHearts(game, baby, 7);
-  }
+  if (!e.moving && e.love > 0 && mate.love > 0) haveYoung(ents, e, mate);
   return true;
+}
+// Two in love together have a young one (and some experience comes of it): the young one, or null.
+function haveYoung(ents, e, mate) {
+  const game = ents.game;
+  e.love = mate.love = 0; e.breedCd = mate.breedCd = 6000;
+  ents.spawnXp((e.x + mate.x) / 2, e.y + 0.5, (e.z + mate.z) / 2, 1 + Math.floor(Math.random() * 7));
+  // (Frogs have no young of their own: one of them is soon to lay frogspawn.)
+  if (e.def.leapsAbout) { (Math.random() < 0.5 ? e : mate).pregnant = 6000; loveHearts(game, e, 5); return null; }
+  // (A foal of two tame horses is born tame; puppies and kittens belong to their parents' owner.
+  // An axolotl's young is now and then the rare blue.)
+  const same = mate.type === e.type;
+  const variant = !same ? 0 : e.def.driesOut && Math.random() < 1 / 1200 ? 4 : Math.random() < 0.5 ? e.variant : mate.variant;
+  const baby = ents.spawnMob(same ? e.type : 'mule', (e.x + mate.x) / 2, e.y, (e.z + mate.z) / 2, { baby: true, variant,
+    colour: Math.random() < 0.5 ? e.colour : mate.colour, tame: e.tame && mate.tame, owner: e.owner && e.owner === mate.owner ? e.owner : null,
+    trusting: e.trusting && mate.trusting });
+  loveHearts(game, baby, 7);
+  return baby;
 }
 
 // ---------------------------------------------------------------- pets
@@ -1478,18 +1485,18 @@ function insectTick(ents, e) {
   e.flyVel[0] += Math.sin(e.age * 1.7) * 0.6; e.flyVel[1] += Math.sin(e.age * 2.9) * 0.8; e.flyVel[2] += Math.cos(e.age * 1.3) * 0.6;
 }
 
-// Bees drift from flower to flower, hovering at each; one that's swatted, and every bee near it,
-// goes for whoever did it, and stings (poisoning them); a bee that has stung dies soon after.
+// Bees drift from flower to flower, hovering at each, and a bee that has been at the flowers
+// carries nectar: it goes home with it (to its nest or hive: see bees.js), helping the crops it flies
+// over to grow on the way. At night, and in the rain, bees go home too (those with none settle where
+// they are); a bee without a home looks for one with room. A flower in hand draws bees after it,
+// and two fed flowers have a young one. One that's swatted, and every bee near it, goes for whoever
+// did it, and stings (poisoning them); a bee that has stung dies soon after.
 function beeTick(ents, e) {
-  const w = ents.world, t = e.def;
+  const w = ents.world, t = e.def, game = ents.game, hives = game.hives;
   if (e.stung > 0 && --e.stung === 0) { ents.hurtMob(e, 99, null); return; }
-  // (At night, and in the rain, they settle and wait.)
-  if (!(e.angry > 0) && (ents.game.env.daylight < 0.25 || ents.game.weather.rain > 0.5)) {
-    if (e.onGround || e.roost) { e.roost = true; e.flyVel = null; return; }
-    e.flyVel = [0, -0.8, 0];
-    return;
-  }
-  e.roost = false;
+  if (e.hive && !hives.homes.has(e.hive)) e.hive = null;
+  if (!e.hive && (e.seekHome = (e.seekHome ?? 0) - 1) <= 0) { e.seekHome = 100 + Math.floor(Math.random() * 100); e.hive = hives.nearFree(e.x, e.y, e.z, 20); }
+  const shut = game.env.daylight < 0.25 || game.weather.rain > 0.5;
   if (e.angry > 0 && !e.stung) {
     e.angry--;
     const tg = e.target;
@@ -1502,10 +1509,55 @@ function beeTick(ents, e) {
       return;
     }
   }
-  if (e.hover > 0) { e.hover--; e.flyVel = [Math.sin(e.age * 3) * 0.3, Math.sin(e.age * 5) * 0.2, Math.cos(e.age * 3) * 0.3]; return; }
+  // In love (fed a flower): to another bee in love nearby, for a young one (of their home).
+  if (e.love > 0 && !e.baby && !e.stung) {
+    const mate = ents.list.find((o) => o !== e && o.kind === 'mob' && o.type === 'bee' && o.love > 0 && !o.baby && !o.dead && !o.dying &&
+      Math.hypot(o.x - e.x, o.y - e.y, o.z - e.z) < 8);
+    if (mate) {
+      steer(e, mate, t.speed);
+      if (Math.hypot(mate.x - e.x, mate.y - e.y, mate.z - e.z) < 1) { const young = haveYoung(ents, e, mate); if (young) young.hive = e.hive; }
+      return;
+    }
+  }
+  // Someone holding a flower draws it after them (to hover about them).
+  const tempter = !shut && !e.stung && ents.players.find((p) => !p.dead && p.held && t.foodIds.has(p.held) &&
+    Math.hypot(p.x - e.x, p.y + 1.5 - e.y, p.z - e.z) < 10);
+  if (tempter) {
+    const y = tempter.y + 1.6;
+    if (Math.hypot(tempter.x - e.x, tempter.z - e.z) > 2) steer(e, { x: tempter.x, y, z: tempter.z }, t.speed);
+    else e.flyVel = [Math.sin(e.age * 3) * 0.3, (y - e.y) * 0.8 + Math.sin(e.age * 5) * 0.2, Math.cos(e.age * 3) * 0.3];
+    e.hover = 0; e.flyTarget = null;
+    return;
+  }
+  // Home: with nectar, or at night or in the rain (in at the door, if there's room).
+  if (e.hive && !e.stung && (shut || e.nectar)) {
+    const door = hives.door(e.hive);
+    if (door) {
+      pollinate(ents, e);
+      steer(e, door, t.speed * 1.2);
+      if (Math.hypot(door.x - e.x, door.y - e.y, door.z - e.z) < 0.8 && !hives.enter(e)) e.hive = null;
+      return;
+    }
+  }
+  // (Homeless at night, and in the rain, they settle and wait.)
+  if (!(e.angry > 0) && shut) {
+    if (e.onGround || e.roost) { e.roost = true; e.flyVel = null; return; }
+    e.flyVel = [0, -0.8, 0];
+    return;
+  }
+  e.roost = false;
+  if (e.nectar) pollinate(ents, e);
+  if (e.hover > 0) {
+    e.hover--;
+    e.flyVel = [Math.sin(e.age * 3) * 0.3, Math.sin(e.age * 5) * 0.2, Math.cos(e.age * 3) * 0.3];
+    // (A good long visit to a flower, and it has its nectar.)
+    if (e.hover === 0 && e.atFlower && !e.nectar) { e.nectar = true; e.grew = 0; game.net?.resend?.(e); }
+    return;
+  }
   const f = e.flyTarget;
   if (!f || Math.hypot(f.x - e.x, f.y - e.y, f.z - e.z) < 0.6 || e.hitWall) {
-    if (f && f.flower && !e.hitWall) { e.hover = 40 + Math.floor(Math.random() * 100); e.flyTarget = null; return; }
+    e.atFlower = !!(f && f.flower && !e.hitWall);
+    if (e.atFlower) { e.hover = 40 + Math.floor(Math.random() * 100); e.flyTarget = null; return; }
     e.flyTarget = null;
     for (let k = 0; k < 10 && !e.flyTarget; k++) {
       const x = Math.floor(e.x + (Math.random() - 0.5) * 16), z = Math.floor(e.z + (Math.random() - 0.5) * 16);
@@ -1519,6 +1571,18 @@ function beeTick(ents, e) {
     if (!e.flyTarget) e.flyTarget = { x: e.x + (Math.random() - 0.5) * 8, y: e.y + (Math.random() - 0.4) * 2, z: e.z + (Math.random() - 0.5) * 8 };
   }
   steer(e, e.flyTarget, t.speed);
+}
+// A bee with nectar helps what grows under it: now and then a crop (or a berry bush) it's flying
+// over grows a stage, up to ten on one trip.
+function pollinate(ents, e) {
+  if (!e.nectar || e.grew >= 10 || Math.random() > 0.03) return;
+  const w = ents.world, x = Math.floor(e.x), z = Math.floor(e.z);
+  for (let y = Math.floor(e.y); y >= Math.floor(e.y) - 2; y--) {
+    const id = w.getBlock(x, y, z), crop = CROP[id];
+    if (crop && crop.stage < crop.max) { w.setBlock(x, y, z, crop.first + crop.stage + 1); e.grew++; return; }
+    if (BERRY_BUSH[id] !== undefined && BERRY_BUSH[id] < 3) { w.setBlock(x, y, z, id + 1); e.grew++; return; }
+    if (id) return;
+  }
 }
 
 function steer(e, f, sp) {
@@ -2410,6 +2474,7 @@ export function renderMob(ents, e, rx, ry, rz, light, out) {
   if (marks) skins.markings = marks;
   if (t.wool) skins.wool = t.wool;
   if ((t.type === 'wolf' || t.type === 'bee') && e.angry > 0) skins.main = `${skins.main}_angry`;
+  if (t.type === 'bee' && e.nectar) skins.main = `${skins.main}_nectar`;
   if (t.kind === 'civilian') skins.main = e.skin;
   const pet = !!e.owner || (e.tame && t.tameIds.size > 0);
   const tint = t.wool ? woolTint(e.colour) : pet && t.rigDef.bones.collar ? woolTint(e.collar ?? RED) : null;

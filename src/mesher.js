@@ -4,7 +4,7 @@
 // 0 still, 1..254 the direction the surface flows, 255 falling down the sides.
 import {
   R, RENDER, OPAQUE, AO, TEXL, FFLAGS, TINT, TINT_RGB, CULL_SELF, TRANSLUCENT, B, ANIM, WET,
-  F_TINT, F_OVERLAY, F_UVROT, F_ANIM, liquidHeight, liquidLevel, sameCullGroup, TORCH_LEAN, shapeBoxes, boxFaceUV, boxLayer, RAIL,
+  F_TINT, F_OVERLAY, F_UVROT, F_ANIM, liquidHeight, liquidLevel, sameCullGroup, TORCH_LEAN, shapeBoxes, boxFaceUV, boxLayer, RAIL, NOMESH,
   LEAFY, FAST_LEAF_LAYER,
 } from './blocks.js';
 import { columnColors, fromByte } from './biomes.js';
@@ -318,6 +318,8 @@ function cactus(bufs, blocks, light, x, y, z, p, id) {
 // cell edge are skipped against opaque neighbours and take the neighbour's light.
 const boundary = (b, f) => (f === 0 ? b[3] === 16 : f === 1 ? b[0] === 0 : f === 2 ? b[4] === 16 : f === 3 ? b[1] === 0 : f === 4 ? b[5] === 16 : b[2] === 0);
 function model(bufs, blocks, light, x, y, z, p, id) {
+  // (Banners are drawn apart, from their colours and patterns: see banners.js.)
+  if (NOMESH[id]) return;
   const boxes = shapeBoxes(id, (f) => blocks[p + NOFF[f]]);
   if (!boxes) return;
   const own = light[p];
@@ -333,7 +335,10 @@ function model(bufs, blocks, light, x, y, z, p, id) {
       if (edge && (OPAQUE[nid] || (nid === id && CULL_SELF[id]))) continue;
       const l = edge ? light[p + NOFF[f]] : own;
       const sky = Math.max(l >> 4, own >> 4) * 17, blk = Math.max(l & 15, own & 15) * 17;
-      const uv = boxFaceUV(b, f);
+      // (A box can pick each face's part of its picture itself, as Minecraft's models do; 0 leaves
+      // the face out.)
+      const uv = b.length > 7 ? b[7][f] || null : boxFaceUV(b, f);
+      if (!uv) continue;
       const layer = boxLayer(id, b, f);
       const buf = bufs[f];
       buf.reserve(4);

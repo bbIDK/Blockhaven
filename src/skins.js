@@ -105,7 +105,7 @@ export function generateSkins() {
 }
 
 // A packed skin (see tools/pack-textures.mjs): its palette, then an index per pixel.
-function unpackSkin(b64, d) {
+export function unpackSkin(b64, d) {
   const bin = atob(b64), n = bin.charCodeAt(0) + 1, at = 1 + n * 4, px = SKIN_SIZE * SKIN_SIZE;
   for (let i = 0; i < px; i++) {
     const k = n <= 16 ? (bin.charCodeAt(at + (i >> 1)) >> (i & 1 ? 0 : 4)) & 15 : bin.charCodeAt(at + i);

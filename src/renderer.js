@@ -11,6 +11,7 @@ import { boxMesh, spriteMesh, skinMesh, MODEL_OFFSET } from './models.js';
 import { generateSkins, SKINS, SKIN_SIZE, SKIN_LAYER, skinLayer } from './skins.js';
 import { SIGN_SLOTS } from './signs.js';
 import { MAP_SLOTS } from './maps.js';
+import { BANNER_SLOTS } from './banners.js';
 import { RIGS } from './rigs.js';
 import './tex/mobskins.js';
 import './tex/wildskins.js';
@@ -88,13 +89,14 @@ export class Renderer {
       this.textures.push(tex);
     }
 
-    // Creature skins (and after them, spare layers for the writing on signs: see signs.js).
-    const skins = generateSkins(), layerBytes = SKIN_SIZE * SKIN_SIZE * 4;
-    this.skinPixels = new Uint8Array(layerBytes * (SKINS.length + SIGN_SLOTS + MAP_SLOTS));
+    // Creature skins (and after them, spare layers for the writing on signs, pictures on maps and
+    // banners: see signs.js, maps.js and banners.js).
+    const skins = generateSkins(), layerBytes = SKIN_SIZE * SKIN_SIZE * 4, spare = SIGN_SLOTS + MAP_SLOTS + BANNER_SLOTS;
+    this.skinPixels = new Uint8Array(layerBytes * (SKINS.length + spare));
     this.skinPixels.set(skins);
     this.skinTex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.skinTex);
-    gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA8, SKIN_SIZE, SKIN_SIZE, SKINS.length + SIGN_SLOTS + MAP_SLOTS, 0, gl.RGBA, gl.UNSIGNED_BYTE, this.skinPixels);
+    gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA8, SKIN_SIZE, SKIN_SIZE, SKINS.length + spare, 0, gl.RGBA, gl.UNSIGNED_BYTE, this.skinPixels);
     gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST_MIPMAP_LINEAR);
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
@@ -281,7 +283,7 @@ export class Renderer {
       const parts = (ICON_SHAPE[id] ?? SHAPE[id]).map((b) => ({
         from: [b[0] / 16, b[1] / 16, b[2] / 16], to: [b[3] / 16, b[4] / 16, b[5] / 16], tint: b.length > 6 ? null : tint,
         flags: tint && b.length <= 6 ? 1 : 0,
-        faces: [0, 1, 2, 3, 4, 5].map((f) => ({ layer: boxLayer(id, b, f), uv: boxFaceUV(b, f) })),
+        faces: [0, 1, 2, 3, 4, 5].map((f) => (b.length > 7 && !b[7][f] ? null : { layer: boxLayer(id, b, f), uv: b.length > 7 ? b[7][f] : boxFaceUV(b, f) })),
       }));
       mesh = { ...this.createMesh(boxMesh(parts)), kind: 'block' };
     } else if (flat >= 0) {
@@ -320,6 +322,9 @@ export class Renderer {
 
   // A map's picture into its spare skin layer (`slot`; see maps.js), and the layer number.
   mapLayer(slot, pixels) { return this.signLayer(SIGN_SLOTS + slot, pixels); }
+  // A banner's picture likewise (see banners.js), and the layer number any slot draws with.
+  bannerLayer(slot, pixels) { return this.signLayer(SIGN_SLOTS + MAP_SLOTS + slot, pixels); }
+  bannerLayerIndex(slot) { return SKIN_LAYER + SKINS.length + SIGN_SLOTS + MAP_SLOTS + slot; }
 
   setCommon(f) {
     const gl = this.gl, u = this.terrain.u;

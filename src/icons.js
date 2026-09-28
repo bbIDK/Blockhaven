@@ -4,6 +4,9 @@ import { ITEMS, I } from './items.js';
 import { TEX } from './textures.js';
 import { SPARK_COLOURS } from './fireworks.js';
 import { RENDER, R, TEXL, FFLAGS, TINT, TINT_RGB, F_TINT, F_OVERLAY, SHAPE, ICON_SHAPE, spriteOf, boxLayer } from './blocks.js';
+import { DYES } from './colors.js';
+import { clothPixels, designKey, W as CLOTH_W, H as CLOTH_H } from './banners.js';
+import { BANNER_CLOTH } from './tex/homestead.js';
 
 const S = 64;
 const DEFAULT_GRASS = [124, 189, 84];
@@ -125,6 +128,7 @@ export function iconFor(id) {
   if (cache.has(id)) return cache.get(id);
   const def = ITEMS.get(id);
   if (!def || !pixels) return '';
+  if (def.banner !== undefined) return bannerIcon({ c: def.banner, p: [] });
   const c = document.createElement('canvas');
   c.width = c.height = S;
   const ctx = c.getContext('2d', CPU);
@@ -148,6 +152,8 @@ export function iconFor(id) {
 // A stack's icon: as its item's, but for a firework star, whose colours show over it (the mix of
 // them, as in Minecraft).
 export function iconOf(stack) {
+  const b = ITEMS.get(stack.id)?.banner;
+  if (b !== undefined && pixels) return bannerIcon({ c: b, p: stack.bp ?? [] });
   if (stack.id !== I.firework_star || !stack.star?.c?.length || !pixels) return iconFor(stack.id);
   const cols = stack.star.c.map((i) => SPARK_COLOURS[i] ?? 0xffffff);
   const rgb = [16, 8, 0].map((sh) => Math.round(cols.reduce((a, c) => a + ((c >> sh) & 255), 0) / cols.length));
@@ -159,6 +165,29 @@ export function iconOf(stack) {
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(layerImage(TEX.firework_star, null, null, 1), 4, 4, S - 8, S - 8);
   ctx.drawImage(layerImage(TEX.firework_star_overlay, rgb, null, 1), 4, 4, S - 8, S - 8);
+  const url = c.toDataURL();
+  cache.set(key, url);
+  return url;
+}
+
+// A banner's icon: its cloth, patterns and all, hanging from its bar (the held banner's picture,
+// with the cloth's own in place of the plain one). (Also drawn small, for the loom's patterns.)
+export function clothCanvas(design) {
+  const c = document.createElement('canvas');
+  c.width = CLOTH_W; c.height = CLOTH_H;
+  c.getContext('2d', CPU).putImageData(new ImageData(clothPixels(design), CLOTH_W, CLOTH_H), 0, 0);
+  return c;
+}
+export function bannerIcon(design) {
+  const key = `banner:${designKey(design)}`;
+  if (cache.has(key)) return cache.get(key);
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const ctx = c.getContext('2d', CPU);
+  ctx.imageSmoothingEnabled = false;
+  const k = (S - 8) / 16, [x0, y0, x1, y1] = BANNER_CLOTH;
+  ctx.drawImage(layerImage(TEX[`${DYES[design.c].name}_banner`], null, null, 1), 4, 4, S - 8, S - 8);
+  ctx.drawImage(clothCanvas(design), 4 + x0 * k, 4 + y0 * k, (x1 - x0) * k, (y1 - y0) * k);
   const url = c.toDataURL();
   cache.set(key, url);
   return url;

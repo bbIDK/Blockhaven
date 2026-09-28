@@ -27,6 +27,7 @@ import './tex/eggs.js';
 import './tex/structures.js';
 import './tex/critters.js';
 import './tex/gadgets.js';
+import './tex/homestead.js';
 
 export const ARRAY_LAYERS = 256;
 

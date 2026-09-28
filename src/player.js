@@ -1,6 +1,6 @@
 // Player movement: walking, sprinting, sneaking (with edge protection), swimming and flying,
 // with axis-separated AABB collision against the voxel world.
-import { B, WATERLIKE, liquidHeight } from './blocks.js';
+import { B, WATERLIKE, liquidHeight, BERRY_BUSH, SCAFFOLD } from './blocks.js';
 import { Body } from './body.js';
 
 export const HALF_W = 0.3;
@@ -83,6 +83,8 @@ export class Player extends Body {
     this.sampleFluids(world);
     const fluid = this.inWater || this.inLava;
     this.sneaking = input.sneak && !this.flying;
+    // (Sneaking, you go down through scaffolding rather than standing on it.)
+    this.sinking = !!input.sneak;
     // Sprinting, and in water swimming: as in the original, sprinting with your head under water
     // starts a swim, which carries on for as long as you keep going forward in water.
     if (!(input.forward > 0) || this.sneaking || this.inLava) this.sprinting = false;
@@ -108,6 +110,8 @@ export class Player extends Body {
     else if (this.inWater) { speed = 2.2 + (4.32 - 2.2) * Math.min(3, this.depthStrider ?? 0) / 3; accel = 5; }
     else if (this.sneaking || low) { speed = 1.31; accel = 14; }
     else { speed = this.sprinting ? 5.61 : 4.32; accel = this.onGround ? 14 : 2.8; }
+    // Honey sticks to your feet.
+    if (this.onHoney && this.onGround && !this.flying) speed *= 0.4;
     // (Swiftness and Slowness.)
     if (!this.flying) speed *= this.speedMul ?? 1;
     const k = 1 - Math.exp(-accel * dt);
@@ -132,7 +136,7 @@ export class Player extends Body {
       this.vy = Math.max(this.vy, -3.5);
     } else {
       if (input.jump && this.onGround) {
-        this.vy = JUMP_V + 1.7 * (this.jumpBoost ?? 0);
+        this.vy = (JUMP_V + 1.7 * (this.jumpBoost ?? 0)) * (this.onHoney ? 0.5 : 1);
         this.jumped = true;
         if (this.sprinting) { this.vx -= s * 1.6; this.vz -= c * 1.6; }
       }
@@ -149,7 +153,19 @@ export class Player extends Body {
       else this.vy = Math.max(this.vy, -2.9);
     }
 
+    // Scaffolding: inside it, jump climbs and sneak goes down; otherwise you sink slowly onto the top
+    // of the scaffolding below (which holds up whatever comes down onto it: see World.collides).
+    this.inScaffold = !this.flying && !fluid && !!world.touchesAny(b0[0], b0[1], b0[2], b0[3], b0[4], b0[5], SCAFFOLD);
+    if (this.inScaffold) {
+      if (input.jump) this.vy = 3.2;
+      else this.vy = Math.max(this.vy, -3);
+      this.fallDistance = 0;
+    }
+
     let dx = this.vx * dt, dy = this.vy * dt, dz = this.vz * dt;
+    // Sweet berry bushes catch at you as you push through them (and prick: see Game.berryBushes).
+    this.inBush = !this.flying && BERRY_BUSH[world.touchesAny(b0[0], b0[1], b0[2], b0[3], b0[4], b0[5], BERRY_BUSH)] > 0;
+    if (this.inBush) { dx *= 0.45; dz *= 0.45; dy *= 0.75; }
     // Cobwebs hold you fast: you wade through at a crawl and sink through them slowly.
     this.inWeb = !this.flying && world.touchesBlock(b0[0], b0[1], b0[2], b0[3], b0[4], b0[5], B.cobweb);
     if (this.inWeb) {
@@ -170,6 +186,7 @@ export class Player extends Body {
     const wasGround = this.onGround;
     const hitY = this.moveAxis(world, 1, dy);
     this.onGround = hitY && dy < 0;
+    this.onHoney = this.onGround && world.getBlock(Math.floor(this.x), Math.floor(this.y - 0.01), Math.floor(this.z)) === B.honey_block;
     if (hitY) this.vy = 0;
     const px = this.x, py = this.y, pz = this.z;
     let hitX = this.moveAxis(world, 0, dx);

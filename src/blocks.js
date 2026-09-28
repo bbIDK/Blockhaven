@@ -1254,6 +1254,108 @@ TRIPWIRE[2496] = 'x'; TRIPWIRE[2497] = 'z';
 shaped(2504, 'frogspawn', [[0, 0, 0, 16, 0.1, 16]], { tex: 'frogspawn', cutout: true, solid: false, hardness: 0, sound: 'water',
   support: 'water', drop: null, ticks: true, ao: false, ...natural });
 
+// ================================================================ Update 27's blocks
+// A box drawn for something facing south (+z), turned to face `face`, with its faces' own pictures
+// (an eighth entry: [u0, v0, u1, v1] per face, 0 for a face not drawn) turned with it.
+function turnFromSouth([x0, y0, z0, x1, y1, z1, layer, uv], face) {
+  const at = face === 5 ? [16 - x1, y0, 16 - z1, 16 - x0, y1, 16 - z0] : face === 0 ? [z0, y0, 16 - x1, z1, y1, 16 - x0]
+    : face === 1 ? [16 - z1, y0, x0, 16 - z0, y1, x1] : [x0, y0, z0, x1, y1, z1];
+  if (layer === undefined) return at;
+  if (!uv) return [...at, layer];
+  // (Which old face each new face is: east, west, top, bottom, south, north.)
+  const from = face === 5 ? [1, 0, 2, 3, 5, 4] : face === 0 ? [4, 5, 2, 3, 1, 0] : face === 1 ? [5, 4, 2, 3, 0, 1] : [0, 1, 2, 3, 4, 5];
+  return [...at, layer, from.map((f) => uv[f])];
+}
+
+// ---------------------------------------------------------------- sweet berry bushes
+// A bush grows in four stages (random ticks, in the light: see growth.js) and bears berries from
+// the third, picked by using it (or dropped when it's broken). Anyone walking through one is slowed,
+// and once it's past a sprout it pricks them (see Player.update and Game.berryBushes).
+export const BERRY_BUSH = {}; // id -> age
+for (let age = 0; age < 4; age++) {
+  const id = 2505 + age;
+  block(id, age ? `sweet_berry_bush_${age}` : 'sweet_berry_bush', plant({ label: 'Sweet Berry Bush', tex: `sweet_berry_bush_${age}`, base: 2505,
+    item: false, drop: null, ticks: true, ...natural }));
+  BERRY_BUSH[id] = age;
+}
+
+// ---------------------------------------------------------------- cocoa pods
+// A pod hangs by its stem from the side of a jungle log (`face`: the side the log is on) and ripens
+// in three stages, growing as it does (see growth.js): Minecraft's model and its pictures.
+export const COCOA = {}; // id -> { age, face }
+const COCOA_POD = [{ box: [6, 7, 11, 10, 12, 15], top: [0, 0, 4, 4], side: [11, 4, 15, 9] },
+  { box: [5, 5, 9, 11, 12, 15], top: [0, 0, 6, 6], side: [9, 4, 15, 11] },
+  { box: [4, 3, 7, 12, 12, 15], top: [0, 0, 7, 7], side: [7, 4, 15, 13] }];
+[4, 5, 0, 1].forEach((face, k) => [0, 1, 2].forEach((age) => {
+  const id = 2509 + age * 4 + k, layer = TEX[`cocoa_${age}`], { box, top, side } = COCOA_POD[age];
+  const boxes = [[...box, layer, [side, side, top, top, side, side]], [8, 12, 12, 8, 16, 16, layer, [[12, 0, 16, 4], [16, 0, 12, 4], 0, 0, 0, 0]]];
+  shaped(id, id === 2509 ? 'cocoa' : `cocoa_${age}_${face}`, boxes.map((b) => turnFromSouth(b, face)), { label: 'Cocoa', tex: `cocoa_${age}`,
+    solid: false, cutout: true, ao: false, hardness: 0.2, tool: 'axe', sound: 'wood', base: 2509, item: false, drop: null, support: 'cocoa', ticks: true });
+  COCOA[id] = { age, face };
+}));
+export const cocoaId = (age, face) => 2509 + age * 4 + [4, 5, 0, 1].indexOf(face);
+
+// ---------------------------------------------------------------- bees' homes and honey
+// Bee nests (in trees) and beehives (built) keep bees, which bring home nectar: each fills the
+// home a level nearer full honey (level 5, when honey shows at its door). A bottle takes the honey,
+// shears the comb (see bees.js). The level is part of the block: HIVE[id] = { kind, level, front }.
+export const HIVE = {};
+export const HONEY_FULL = 5;
+[['bee_nest', 2521, { label: 'Bee Nest', side: 'bee_nest_side', top: 'bee_nest_top', bottom: 'bee_nest_bottom', hardness: 0.3, drop: null, cat: 'nature' }],
+  ['beehive', 2545, { label: 'Beehive', side: 'beehive_side', top: 'beehive_end', bottom: 'beehive_end', hardness: 0.6, cat: 'functional' }]]
+  .forEach(([kind, first, o]) => {
+    for (let level = 0; level <= HONEY_FULL; level++) {
+      const ids = [0, 1, 2, 3].map((k) => first + level * 4 + k);
+      facing(ids, level ? `${kind}_${level}` : kind, { ...o, front: level === HONEY_FULL ? `${o.side.replace('_side', '')}_front_honey` : `${o.side.replace('_side', '')}_front`,
+        tool: 'axe', sound: 'wood', ...(level ? { base: first, item: false, drop: o.drop === null ? null : kind } : {}) });
+      [4, 5, 0, 1].forEach((front, k) => { HIVE[ids[k]] = { kind, level, front, first }; });
+    }
+  });
+export const hiveId = (first, level, front) => first + level * 4 + [4, 5, 0, 1].indexOf(front);
+// Honey as a block: sticky (slow to walk on, hard to jump off, and soft to land on: see Player).
+block(2569, 'honey_block', { tex: { side: 'honey_block_side', top: 'honey_block_top', bottom: 'honey_block_bottom' }, translucent: true,
+  cullSelf: true, filter: 1, hardness: 0, sound: 'cloth', cat: 'functional' });
+block(2570, 'honeycomb_block', { label: 'Honeycomb Block', tex: 'honeycomb_block', hardness: 0.6, sound: 'cloth' });
+
+// ---------------------------------------------------------------- scaffolding
+// Scaffolding stands on the ground, or reaches out from scaffolding that holds it up, up to six
+// blocks from a column that stands on something (SCAFFOLD[id]: that distance); any further and it
+// comes down (see World.scaffoldTick). Climb it from inside (jump to go up, sneak to go down), stand
+// on top of it, and knock it down at a touch.
+export const SCAFFOLD = {}; // id -> distance
+export const SCAFFOLD_REACH = 7;
+for (let d = 0; d < SCAFFOLD_REACH; d++) {
+  const id = 2571 + d;
+  block(id, d ? `scaffolding_${d}` : 'scaffolding', { label: 'Scaffolding', tex: { side: 'scaffolding_side', top: 'scaffolding_top',
+    bottom: 'scaffolding_bottom' }, cutout: true, solid: false, hardness: 0, sound: 'wood', base: 2571, item: d === 0, drop: 'scaffolding',
+    cat: 'functional' });
+  SCAFFOLD[id] = d;
+}
+export const scaffoldId = (d) => 2571 + d;
+
+// ---------------------------------------------------------------- banners
+// A banner stands on its pole, turned any of sixteen ways (to face whoever puts it up), or hangs
+// from a wall, facing out (`face`). Its colour and patterns are kept for its place, and it's drawn
+// from them (banners.js): the blocks show nothing in the world's mesh (NOMESH), only an outline
+// when pointed at.
+export const BANNER = {}; // id -> { wall, rot (standing: 0-15, south first, turning west) , face (on a wall) }
+export const NOMESH = new Uint8Array(N);
+const bannerBlock = { label: 'Banner', tex: 'oak_planks', solid: false, hardness: 1, tool: 'axe', sound: 'wood', base: 2578, item: false, drop: null };
+for (let rot = 0; rot < 16; rot++) {
+  const id = 2578 + rot;
+  shaped(id, rot ? `banner_${rot}` : 'banner', [[4, 0, 4, 12, 16, 12]], { ...bannerBlock, support: 'solid' });
+  BANNER[id] = { wall: false, rot };
+  NOMESH[id] = 1;
+}
+[4, 5, 0, 1].forEach((face, k) => {
+  const id = 2594 + k;
+  shaped(id, `wall_banner_${face}`, [turnFromSouth([0, 0, 0, 16, 12.5, 2], face)], { ...bannerBlock, support: 'banner_wall' });
+  BANNER[id] = { wall: true, face };
+  NOMESH[id] = 1;
+});
+export const bannerId = (rot) => 2578 + (rot & 15);
+export const wallBannerId = (face) => 2594 + [4, 5, 0, 1].indexOf(face);
+
 // A ladder's panel against the wall on `side` (shared with vines).
 function LADDER_PANEL_FOR(side) {
   return { 5: [0, 0, 0, 16, 16, 1], 4: [0, 0, 15, 16, 16, 16], 0: [15, 0, 0, 16, 16, 16], 1: [0, 0, 0, 1, 16, 16] }[side];
@@ -1349,6 +1451,8 @@ flammable(['hay_block'], 60, 20);
 flammable(['azalea_leaves', 'flowering_azalea_leaves', 'azalea', 'flowering_azalea', 'glow_lichen', 'hanging_roots', 'spore_blossom',
   'cave_vines', 'big_dripleaf', 'moss_carpet'], 30, 60);
 flammable(['moss_block'], 5, 20);
+flammable(['scaffolding', 'bee_nest', 'beehive'], 5, 20);
+flammable(['sweet_berry_bush'], 60, 100);
 
 // Blocks worth listing in the creative inventory, in display order (anything not named here
 // follows in id order).

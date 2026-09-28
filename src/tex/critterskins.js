@@ -1,8 +1,8 @@
 // The wild update's creature skins, painted over their models (rigs.js) in the style of the rest
 // (see mobskins.js): the ocelot, the axolotls in their five colours, the frogs in their three, the
 // tadpole, a trader's llama's blanket, and the glow squid (whose skin comes from Mineclonia; this is
-// the fallback).
-import { skin } from '../skins.js';
+// the fallback); and Update 27's armor stand and pollen-dusted bees.
+import { skin, SKINS, SKIN_INDEX } from '../skins.js';
 import { ramp, mix } from './core.js';
 import { reg, cubesOf, each, fur, at, row, feet } from './mobskins.js';
 
@@ -185,3 +185,17 @@ skin('trident', (sk) => {
     for (const f of Object.values(r)) for (let y = 0; y < f[3]; y++) for (let x = 0; x < f[2]; x++) at(sk, f, x, y, i === 1 ? 0x3a5a58 : y === 0 ? 0xe8fff8 : 0x9ad8cc);
   }
 });
+
+// Armor stands (their model is Minecraft's: rigs.js): smooth oak sticks and a stone plate.
+skin('armor_stand', (sk) => {
+  each(sk, 'armor_stand', ['head', 'body', 'rightArm', 'leftArm', 'rightLeg', 'leftLeg'], (face, r) => sk.fill(r, [0x7a5a36, 0x8e6a42, 0xa27a4e], { cell: 2, cy: 4 }));
+  each(sk, 'armor_stand', ['base'], (face, r) => sk.fill(r, [0x8a8a8a, 0x9c9c9c, 0xb0b0b0], { cell: 2 }));
+});
+// A bee that has been at the flowers carries pollen on its back.
+for (const [name, from] of [['bee_nectar', 'bee'], ['bee_angry_nectar', 'bee_angry']]) {
+  skin(name, (sk) => {
+    SKINS[SKIN_INDEX[from]].draw(sk);
+    const [body] = cubesOf('bee', 'body');
+    sk.box(body, (face, r) => { if (face === 'top') for (let k = 0; k < 9; k++) sk.set(r[0] + 1 + ((k * 5) % (r[2] - 2)), r[1] + 1 + ((k * 3) % (r[3] - 2)), 0xf8e070); });
+  });
+}

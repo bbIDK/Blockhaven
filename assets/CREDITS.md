@@ -1,6 +1,6 @@
 # Texture credits
 
-The game's block, item and creature textures (`textures/` and `skins/` here) come from two openly licensed
+The game's block, item, creature and banner textures (`textures/`, `skins/` and `banners/` here) come from two openly licensed
 Minecraft-style resource packs, and are shared under the same licence as them: Creative Commons
 Attribution-ShareAlike 4.0 ([CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)).
 
@@ -828,6 +828,36 @@ doubled in size (the particles). Anything not listed is drawn by the game's own 
 | `textures/firework_star_overlay.png` | Pixel Perfection CE item/firework_star_overlay.png |  |
 | `textures/fire_charge.png` | Pixel Perfection CE item/fire_charge.png |  |
 | `textures/glowstone_dust.png` | Pixel Perfection CE item/glowstone_dust.png |  |
+| `textures/sweet_berry_bush_0.png` | Pixel Perfection CE block/sweet_berry_bush_stage0.png |  |
+| `textures/sweet_berry_bush_1.png` | Pixel Perfection CE block/sweet_berry_bush_stage1.png |  |
+| `textures/sweet_berry_bush_2.png` | Pixel Perfection CE block/sweet_berry_bush_stage2.png |  |
+| `textures/sweet_berry_bush_3.png` | Pixel Perfection CE block/sweet_berry_bush_stage3.png |  |
+| `textures/cocoa_0.png` | Pixel Perfection CE block/cocoa_stage0.png |  |
+| `textures/cocoa_1.png` | Pixel Perfection CE block/cocoa_stage1.png |  |
+| `textures/cocoa_2.png` | Pixel Perfection CE block/cocoa_stage2.png |  |
+| `textures/cocoa_beans.png` | Pixel Perfection CE item/cocoa_beans.png |  |
+| `textures/sweet_berries.png` | Pixel Perfection CE item/sweet_berries.png |  |
+| `textures/bee_nest_side.png` | Pixel Perfection CE block/bee_nest_side.png |  |
+| `textures/bee_nest_front.png` | Pixel Perfection CE block/bee_nest_front.png |  |
+| `textures/bee_nest_front_honey.png` | Pixel Perfection CE block/bee_nest_front_honey.png |  |
+| `textures/bee_nest_top.png` | Pixel Perfection CE block/bee_nest_top.png |  |
+| `textures/bee_nest_bottom.png` | Pixel Perfection CE block/bee_nest_bottom.png |  |
+| `textures/beehive_side.png` | Pixel Perfection CE block/beehive_side.png |  |
+| `textures/beehive_front.png` | Pixel Perfection CE block/beehive_front.png |  |
+| `textures/beehive_front_honey.png` | Pixel Perfection CE block/beehive_front_honey.png |  |
+| `textures/beehive_end.png` | Pixel Perfection CE block/beehive_end.png |  |
+| `textures/honey_block_side.png` | Pixel Perfection CE block/honey_block_side.png |  |
+| `textures/honey_block_top.png` | Pixel Perfection CE block/honey_block_top.png |  |
+| `textures/honey_block_bottom.png` | Pixel Perfection CE block/honey_block_bottom.png |  |
+| `textures/honeycomb_block.png` | Pixel Perfection CE block/honeycomb_block.png |  |
+| `textures/honeycomb.png` | Pixel Perfection CE item/honeycomb.png |  |
+| `textures/honey_bottle.png` | Pixel Perfection CE item/honey_bottle.png |  |
+| `textures/scaffolding_side.png` | Pixel Perfection CE block/scaffolding_side.png |  |
+| `textures/scaffolding_bottom.png` | Pixel Perfection CE block/scaffolding_bottom.png |  |
+| `textures/scaffolding_top.png` | Pixel Perfection CE block/scaffolding_top.png |  |
+| `textures/armor_stand.png` | Pixel Perfection CE item/armor_stand.png |  |
+| `textures/flower_banner_pattern.png` | Pixel Perfection CE item/flower_banner_pattern.png |  |
+| `textures/globe_banner_pattern.png` | Pixel Perfection CE item/globe_banner_pattern.png |  |
 | `skins/zombie.png` | Pixel Perfection CE entity/zombie/zombie.png | changed |
 | `skins/husk.png` | Pixel Perfection CE entity/zombie/husk.png | changed |
 | `skins/drowned.png` | Pixel Perfection CE entity/zombie/drowned.png; Pixel Perfection CE entity/zombie/drowned_outer_layer.png | changed |
@@ -887,6 +917,9 @@ doubled in size (the particles). Anything not listed is drawn by the game's own 
 | `skins/panda_brown.png` | Pixel Perfection CE entity/panda/brown_panda.png | changed |
 | `skins/bee.png` | Pixel Perfection CE entity/bee/bee.png | changed |
 | `skins/bee_angry.png` | Pixel Perfection CE entity/bee/bee_angry.png | changed |
+| `skins/bee_nectar.png` | Pixel Perfection CE entity/bee/bee_nectar.png | changed |
+| `skins/bee_angry_nectar.png` | Pixel Perfection CE entity/bee/bee_angry_nectar.png | changed |
+| `skins/armor_stand.png` | Pixel Perfection CE entity/armorstand/wood.png | changed |
 | `skins/turtle.png` | Pixel Perfection CE entity/turtle/big_sea_turtle.png | changed |
 | `skins/zebra.png` | Pixel Perfection CE entity/horse/horse_white.png | changed |
 | `skins/horse_white.png` | Pixel Perfection CE entity/horse/horse_white.png | changed |
@@ -913,3 +946,40 @@ doubled in size (the particles). Anything not listed is drawn by the game's own 
 | `skins/armor_diamond_legs.png` | Pixel Perfection CE models/armor/diamond_layer_2.png | changed |
 | `skins/armor_chainmail.png` | Pixel Perfection CE models/armor/chainmail_layer_1.png | changed |
 | `skins/armor_chainmail_legs.png` | Pixel Perfection CE models/armor/chainmail_layer_2.png | changed |
+| `banners/base.png` | Pixel Perfection CE entity/banner_base.png |  |
+| `banners/stripe_bottom.png` | Pixel Perfection CE entity/banner/stripe_bottom.png |  |
+| `banners/stripe_top.png` | Pixel Perfection CE entity/banner/stripe_top.png |  |
+| `banners/stripe_left.png` | Pixel Perfection CE entity/banner/stripe_left.png |  |
+| `banners/stripe_right.png` | Pixel Perfection CE entity/banner/stripe_right.png |  |
+| `banners/stripe_center.png` | Pixel Perfection CE entity/banner/stripe_center.png |  |
+| `banners/stripe_middle.png` | Pixel Perfection CE entity/banner/stripe_middle.png |  |
+| `banners/stripe_downright.png` | Pixel Perfection CE entity/banner/stripe_downright.png |  |
+| `banners/stripe_downleft.png` | Pixel Perfection CE entity/banner/stripe_downleft.png |  |
+| `banners/small_stripes.png` | Pixel Perfection CE entity/banner/small_stripes.png |  |
+| `banners/cross.png` | Pixel Perfection CE entity/banner/cross.png |  |
+| `banners/straight_cross.png` | Pixel Perfection CE entity/banner/straight_cross.png |  |
+| `banners/triangle_bottom.png` | Pixel Perfection CE entity/banner/triangle_bottom.png |  |
+| `banners/triangle_top.png` | Pixel Perfection CE entity/banner/triangle_top.png |  |
+| `banners/triangles_bottom.png` | Pixel Perfection CE entity/banner/triangles_bottom.png |  |
+| `banners/triangles_top.png` | Pixel Perfection CE entity/banner/triangles_top.png |  |
+| `banners/diagonal_left.png` | Pixel Perfection CE entity/banner/diagonal_left.png |  |
+| `banners/diagonal_right.png` | Pixel Perfection CE entity/banner/diagonal_right.png |  |
+| `banners/diagonal_up_left.png` | Pixel Perfection CE entity/banner/diagonal_up_left.png |  |
+| `banners/diagonal_up_right.png` | Pixel Perfection CE entity/banner/diagonal_up_right.png |  |
+| `banners/circle.png` | Pixel Perfection CE entity/banner/circle.png |  |
+| `banners/rhombus.png` | Pixel Perfection CE entity/banner/rhombus.png |  |
+| `banners/half_vertical.png` | Pixel Perfection CE entity/banner/half_vertical.png |  |
+| `banners/half_horizontal.png` | Pixel Perfection CE entity/banner/half_horizontal.png |  |
+| `banners/half_vertical_right.png` | Pixel Perfection CE entity/banner/half_vertical_right.png |  |
+| `banners/half_horizontal_bottom.png` | Pixel Perfection CE entity/banner/half_horizontal_bottom.png |  |
+| `banners/border.png` | Pixel Perfection CE entity/banner/border.png |  |
+| `banners/curly_border.png` | Pixel Perfection CE entity/banner/curly_border.png |  |
+| `banners/gradient.png` | Pixel Perfection CE entity/banner/gradient.png |  |
+| `banners/gradient_up.png` | Pixel Perfection CE entity/banner/gradient_up.png |  |
+| `banners/bricks.png` | Pixel Perfection CE entity/banner/bricks.png |  |
+| `banners/square_bottom_left.png` | Pixel Perfection CE entity/banner/square_bottom_left.png |  |
+| `banners/square_bottom_right.png` | Pixel Perfection CE entity/banner/square_bottom_right.png |  |
+| `banners/square_top_left.png` | Pixel Perfection CE entity/banner/square_top_left.png |  |
+| `banners/square_top_right.png` | Pixel Perfection CE entity/banner/square_top_right.png |  |
+| `banners/flower.png` | Pixel Perfection CE entity/banner/flower.png |  |
+| `banners/globe.png` | Pixel Perfection CE entity/banner/globe.png |  |

@@ -194,6 +194,11 @@ export const SKIN_SOURCES = {
     ['panda_weak', 'weak_panda'], ['panda_aggressive', 'aggressive_panda'], ['panda_brown', 'brown_panda']].map(([n, f]) => [n, whole(E(`panda/${f}`))])),
   bee: whole(E('bee/bee')),
   bee_angry: whole(E('bee/bee_angry')),
+  // (Update 27's: bees back from the flowers with their pollen, and the armor stand, whose model is
+  // Minecraft's too.)
+  bee_nectar: whole(E('bee/bee_nectar')),
+  bee_angry_nectar: whole(E('bee/bee_angry_nectar')),
+  armor_stand: whole(E('armorstand/wood')),
   // Turtles are Minecraft's model too (rigs.js); the right half of the sheet (the belly of a turtle
   // carrying eggs) isn't used.
   turtle: whole(E('turtle/big_sea_turtle')),
@@ -213,4 +218,16 @@ export const SKIN_SOURCES = {
   },
   ...Object.fromEntries([['leather', 'leather'], ['iron', 'iron'], ['golden', 'gold'], ['diamond', 'diamond'], ['chainmail', 'chainmail']]
     .flatMap(([ours, mc]) => [[`armor_${ours}`, armour(mc, 1)], [`armor_${ours}_legs`, armour(mc, 2)]])),
+};
+
+// Banners (see src/banners.js): the pack's banner (pole, bar and a plain cloth) and the masks of the
+// patterns laid over it, all in the layout of Minecraft's banner model. They're put together into a
+// banner's picture as it's needed, so they're kept apart from the skins.
+export const BANNER_SOURCES = {
+  base: E('banner_base'),
+  ...Object.fromEntries(['stripe_bottom', 'stripe_top', 'stripe_left', 'stripe_right', 'stripe_center', 'stripe_middle', 'stripe_downright',
+    'stripe_downleft', 'small_stripes', 'cross', 'straight_cross', 'triangle_bottom', 'triangle_top', 'triangles_bottom', 'triangles_top',
+    'diagonal_left', 'diagonal_right', 'diagonal_up_left', 'diagonal_up_right', 'circle', 'rhombus', 'half_vertical', 'half_horizontal',
+    'half_vertical_right', 'half_horizontal_bottom', 'border', 'curly_border', 'gradient', 'gradient_up', 'bricks', 'square_bottom_left',
+    'square_bottom_right', 'square_top_left', 'square_top_right', 'flower', 'globe'].map((n) => [n, E(`banner/${n}`)])),
 };

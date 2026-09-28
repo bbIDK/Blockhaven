@@ -216,6 +216,10 @@ export const SOURCES = {
   ...Object.fromEntries([['amethyst_cluster', 'amethyst_cluster'], ['large_amethyst_bud', 'amethyst_bud_large'],
     ['medium_amethyst_bud', 'amethyst_bud_medium'], ['small_amethyst_bud', 'amethyst_bud_small']].flatMap(([name, file]) => [
     [name, mcl(`${MCL.amethyst}_${file}`)], [`${name}_down`, (H) => H.flipY(H.load(mcl(`${MCL.amethyst}_${file}`)))]])),
+  // Update 27's: sweet berry bushes and cocoa pods, a picture per stage (the pods' laid out as
+  // Minecraft's model is: see blocks.js).
+  ...Object.fromEntries([0, 1, 2, 3].map((k) => [`sweet_berry_bush_${k}`, `block/sweet_berry_bush_stage${k}`])),
+  ...Object.fromEntries([0, 1, 2].map((k) => [`cocoa_${k}`, `block/cocoa_stage${k}`])),
   // Crops, a picture per stage.
   ...Object.fromEntries([...Array(8)].map((_, k) => [`wheat_${k}`, `block/wheat_stage${k}`])),
   ...Object.fromEntries(['carrots', 'potatoes', 'beetroots'].flatMap((c) => [0, 1, 2, 3].map((k) => [`${c}_${k}`, `block/${c}_stage${k}`]))),

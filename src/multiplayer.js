@@ -13,7 +13,7 @@ import { RemotePlayer } from './avatars.js';
 import { mobFlags, mobExtra, cleanTagName } from './entities.js';
 import { isHanging } from './hangings.js';
 import { encodeRLE16, decodeRLE16 } from './storage.js';
-import { B, BLOCKS, REPLACEABLE, CHEST, FURNACE_IDS, SIGN, RAIL, DISPENSER, LOOT_KIND, dispenserId } from './blocks.js';
+import { B, BLOCKS, REPLACEABLE, CHEST, FURNACE_IDS, SIGN, RAIL, DISPENSER, LOOT_KIND, HIVE, dispenserId } from './blocks.js';
 import { itemDef, maxStack, I } from './items.js';
 import { MAX_SCALE } from './maps.js';
 import { cleanRocket } from './fireworks.js';
@@ -25,6 +25,8 @@ import { clamp, hashString } from './math.js';
 import { startRide, seatY, seatXZ, BOAT_WOODS } from './riding.js';
 import { POTIONS, EFFECTS } from './potions.js';
 import { EGG_TYPES } from './eggs.js';
+import { saveArmor } from './stands.js';
+import { hiveDrop } from './bees.js';
 
 const MAX_GUESTS = 7;
 const KEEP_RADIUS = 4;   // chunks the host keeps loaded (and mobs going) around each guest
@@ -426,6 +428,20 @@ export class HostSession extends Session {
     this.game.entities.spawnBoat(m.x, m.y, m.z, m.w, m.a, m.c === 1);
   }
 
+  // A guest's armor stand, put up where they pointed; and a guest using one (armour they held goes
+  // on it; what comes off goes to them).
+  placeStandFor(g, m) {
+    if (![m.x, m.y, m.z, m.a].every(num) || g.x === null || Math.hypot(m.x - g.x, m.y - g.y, m.z - g.z) > 8) return;
+    this.game.entities.spawnStand(m.x, m.y, m.z, m.a);
+  }
+  useStandFor(g, m) {
+    const E = this.game.entities, e = E.list.find((x) => x.nid === m.e && x.kind === 'stand' && !x.dead);
+    if (!e || !num(m.y) || g.x === null || Math.hypot(e.x - g.x, e.y - g.y, e.z - g.z) > 8) return;
+    const held = m.st ? cleanStack({ id: m.st.id, count: 1, dmg: m.st.d, ...cleanExtras(m.st.ex) }) : null;
+    const res = E.useStand(e, held, clamp(m.y, 0, 2));
+    if (res?.back) this.giveStack(g.addr, res.back);
+  }
+
   remove(g, why) {
     if (!this.guests.delete(g.addr)) return;
     if (g.ref) g.ref.dead = true;
@@ -476,6 +492,8 @@ export class HostSession extends Session {
         break;
       case 'ride': if (int(msg.e)) this.rideRequest(g, msg); break;
       case 'boat': this.placeBoatFor(g, msg); break;
+      case 'pst': this.placeStandFor(g, msg); break;
+      case 'sus': this.useStandFor(g, msg); break;
       case 'egg': this.hatchFor(g, msg); break;
       case 'cart':
         // A guest's minecart, on the rail they pointed at.
@@ -511,6 +529,9 @@ export class HostSession extends Session {
         break;
       case 'arw': this.arrow(g, msg); break;
       case 'sign': this.sign(msg); break;
+      case 'bnr': this.bannerFrom(g, msg); break;
+      case 'thv': this.takeHiveFor(g, msg); break;
+      case 'shv': this.settleHiveFor(g, msg); break;
       case 'pvp': this.pvpHit(g, msg); break;
       case 'tnt': if ([msg.x, msg.y, msg.z].every(int) && int(msg.f)) this.game.entities.primeTNT(msg.x, msg.y, msg.z, clamp(msg.f, 1, 200)); break;
       case 'chat': {
@@ -567,6 +588,7 @@ export class HostSession extends Session {
       keys: [...w.store.keys],
       ents: game.entities.list.filter((e) => !e.dead).map((e) => { if (!e.nid) e.nid = this.nextNid++; return entityState(e); }),
       signs: game.signs.serialize(),
+      banners: game.banners.serialize(),
     });
     this.link.flush();
   }
@@ -643,8 +665,9 @@ export class HostSession extends Session {
   }
 
   hit(g, m) {
-    const E = this.game.entities, e = E.list.find((x) => x.nid === m.e && (x.kind === 'mob' || x.kind === 'boat' || x.kind === 'cart' || isHanging(x)) && !x.dead);
+    const E = this.game.entities, e = E.list.find((x) => x.nid === m.e && (x.kind === 'mob' || x.kind === 'boat' || x.kind === 'cart' || x.kind === 'stand' || isHanging(x)) && !x.dead);
     if (e && isHanging(e)) { E.hitHanging(e, g.creative); return; }
+    if (e?.kind === 'stand') { E.hitStand(e, g.creative); return; }
     if (e?.kind === 'cart') { E.hitCart(e, g.creative); return; }
     if (!e || e.dying || !num(m.a) || !num(m.x) || !num(m.z)) return;
     if (e.kind === 'boat') { E.hitBoat(e, g.creative); return; }
@@ -663,6 +686,28 @@ export class HostSession extends Session {
     this.game.writeSign(x, y, z, m.l.slice(0, 4).map((l) => String(l ?? '')), m.g === 1 ? true : undefined);
   }
   writeSign(x, y, z, lines, glow = false) { this.link.broadcast({ t: 'sign', k: `${x},${y},${z}`, l: lines, g: glow ? 1 : 0 }); }
+
+  // A guest put up a banner (or the host did): everyone sees its colours.
+  bannerFrom(g, m) {
+    if (typeof m.k !== 'string' || !/^-?\d+,-?\d+,-?\d+$/.test(m.k)) return;
+    const [x, y, z] = m.k.split(',').map(Number);
+    if (g.x === null || Math.hypot(x + 0.5 - g.x, y - g.y, z + 0.5 - g.z) > 10) return;
+    this.game.banners.set(x, y, z, { c: m.c, p: m.p });
+  }
+  banner(x, y, z, d) { this.link.broadcast({ t: 'bnr', k: `${x},${y},${z}`, c: d.c, p: d.p }); }
+  // A guest takes a bees' home whole (with Silk Touch): it drops with its bees and honey in it (the
+  // block itself goes with their edit, which follows). One put up with bees in it gets them.
+  takeHiveFor(g, m) {
+    const h = HIVE[this.game.world?.getBlock(m.x, m.y, m.z)];
+    if (!h || ![m.x, m.y, m.z].every(int) || g.x === null || Math.hypot(m.x + 0.5 - g.x, m.y - g.y, m.z + 0.5 - g.z) > 8) return;
+    const d = hiveDrop(h, this.game.hives.take(m.x, m.y, m.z));
+    this.game.entities.spawnItem(m.x + 0.5, m.y + 0.3, m.z + 0.5, d.id, 1, 0, 0.6, null, d.extra);
+  }
+  settleHiveFor(g, m) {
+    const w = this.game.world, H = this.game.hives;
+    if (![m.x, m.y, m.z, m.n].every(int) || !HIVE[w?.getBlock(m.x, m.y, m.z)] || g.x === null || Math.hypot(m.x + 0.5 - g.x, m.y - g.y, m.z + 0.5 - g.z) > 8) return;
+    if (!H.homes.get(`${m.x},${m.y},${m.z}`)?.length) H.settle(m.x, m.y, m.z, clamp(m.n, 0, 3));
+  }
 
   // A guest's arrow: shot from where they stand.
   arrow(g, m) {
@@ -780,8 +825,9 @@ export class HostSession extends Session {
       seen.add(e.nid);
       const x = r2(e.x), y = r2(e.y), z = r2(e.z);
       const arrow = e.kind === 'arrow';
-      const a = e.kind === 'mob' || e.kind === 'boat' || e.kind === 'cart' ? r2(e.yaw) : arrow ? r2(e.ayaw ?? 0) : 0;
-      const f = e.kind === 'mob' ? mobFlags(e) : arrow ? Math.round((e.apitch ?? 0) * 100) : e.kind === 'boat' || e.kind === 'cart' ? boatFlags(e) : 0;
+      const a = e.kind === 'mob' || e.kind === 'boat' || e.kind === 'cart' || e.kind === 'stand' ? r2(e.yaw) : arrow ? r2(e.ayaw ?? 0) : 0;
+      const f = e.kind === 'mob' ? mobFlags(e) : arrow ? Math.round((e.apitch ?? 0) * 100) : e.kind === 'boat' || e.kind === 'cart' ? boatFlags(e)
+        : e.kind === 'stand' ? (e.age - e.hitAt < 0.25 ? 1 : 0) : 0;
       // (For a minecart, how it's tipped on a slope; for a guardian, how far its beam has charged.)
       const n = e.kind === 'item' ? e.count : e.kind === 'cart' ? Math.round((e.pitch ?? 0) * 100) : e.kind === 'mob' ? beamOf(e) : 0;
       const prev = this.sentEnts.get(e.nid);
@@ -903,6 +949,7 @@ function entityState(e) {
   if (e.kind === 'cart') return Object.assign(s, { k: 'c', a: r2(e.yaw), p: r2(e.pitch ?? 0), f: boatFlags(e) });
   if (e.kind === 'xp') return Object.assign(s, { k: 'x', v: e.value });
   if (e.kind === 'firework') return Object.assign(s, { k: 'w' });
+  if (e.kind === 'stand') return Object.assign(s, { k: 's', a: r2(e.yaw), ar: saveArmor(e.armor) });
   if (isHanging(e)) {
     return Object.assign(s, { k: 'h', t: e.kind, b: [e.bx, e.by, e.bz], f: e.face, a: e.art ?? undefined, r: e.rot || undefined, g: e.glow ? 1 : undefined,
       it: e.item ? { id: e.item.id, d: e.item.dmg ?? 0, ex: extras(e.item) ?? undefined } : undefined });
@@ -1096,6 +1143,12 @@ export class GuestSession extends Session {
           game.signs.set(x, y, z, msg.l.slice(0, 4).map((l) => String(l ?? '')), msg.g === 1);
         }
         break;
+      case 'bnr':
+        if (typeof msg.k === 'string' && /^-?\d+,-?\d+,-?\d+$/.test(msg.k)) {
+          const [x, y, z] = msg.k.split(',').map(Number);
+          game.banners.set(x, y, z, { c: msg.c, p: msg.p }, false);
+        }
+        break;
       case 'bye': game.disconnected('The host closed the game.'); break;
       default: break;
     }
@@ -1241,6 +1294,8 @@ export class GuestSession extends Session {
 
   primeTNT(x, y, z, fuse) { this.toHost({ t: 'tnt', x, y, z, f: fuse }); }
   placeBoat(x, y, z, wood, yaw, chest) { this.toHost({ t: 'boat', x: r2(x), y: r2(y), z: r2(z), w: wood, a: r2(yaw), c: chest ? 1 : undefined }); }
+  placeStand(x, y, z, yaw) { this.toHost({ t: 'pst', x: r2(x), y: r2(y), z: r2(z), a: r2(yaw) }); }
+  useStand(e, held, hy) { this.toHost({ t: 'sus', e: e.nid, y: r2(hy), st: held ? { id: held.id, d: held.dmg ?? 0, ex: extras(held) ?? undefined } : undefined }); }
   hatch(type, x, y, z, from = null) { this.toHost({ t: 'egg', m: type, x: r2(x), y: r2(y), z: r2(z), b: from ?? undefined }); }
   placeCart(x, y, z, yaw) { this.toHost({ t: 'cart', x: r2(x), y: r2(y), z: r2(z), a: r2(yaw) }); }
   dropXp(x, y, z, n) { this.toHost({ t: 'orb', x: r2(x), y: r2(y), z: r2(z), n }); }
@@ -1250,6 +1305,10 @@ export class GuestSession extends Session {
   hang(kind, x, y, z, face, glow = false) { this.toHost({ t: 'hang', k: kind, x, y, z, f: face, g: glow ? 1 : undefined }); }
   useHanging(e, held) { this.toHost({ t: 'hu', e: e.nid, st: held ? { id: held.id, d: held.dmg ?? 0, ex: extras(held) ?? undefined } : undefined }); }
   writeSign(x, y, z, lines, glow = false) { this.toHost({ t: 'sign', k: `${x},${y},${z}`, l: lines, g: glow ? 1 : 0 }); }
+  banner(x, y, z, d) { this.toHost({ t: 'bnr', k: `${x},${y},${z}`, c: d.c, p: d.p }); }
+  // A bees' home taken whole (the host hands it over, bees and all), or put up with bees in it.
+  takeHive(x, y, z) { this.toHost({ t: 'thv', x, y, z }); }
+  settleHive(x, y, z, n) { this.toHost({ t: 'shv', x, y, z, n }); }
   shootArrow(x, y, z, vx, vy, vz, damage, pickup, fx) {
     this.toHost({ t: 'arw', x: r2(x), y: r2(y), z: r2(z), vx: r2(vx), vy: r2(vy), vz: r2(vz), d: damage, p: pickup ? 1 : 0,
       pu: fx?.punch || undefined, fl: fx?.flame ? 1 : undefined, po: fx?.potion || undefined, sb: fx?.snowball ? 1 : undefined, pc: fx?.pierce || undefined,

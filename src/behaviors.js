@@ -3,12 +3,14 @@
 // water and lava, and workstations do their jobs. Each returns true when it handled the click
 // (see Game.useItem).
 import { B, CROP, SAPLING, FACE_DIRS, WATERLIKE, REPLACEABLE, waterLevel, lavaLevel, DOUBLE, COMPOSTER, POTTED, POT_FOR,
-  WOOD_NAMES, liquidHeight, SOLID, CAVE_VINES, caveVineId, WET, CORALS } from './blocks.js';
+  WOOD_NAMES, liquidHeight, SOLID, CAVE_VINES, caveVineId, WET, CORALS, BERRY_BUSH, COCOA, cocoaId, oppositeFace, WOOD, LOG_AXES, HIVE, HONEY_FULL,
+  hiveId } from './blocks.js';
 import { BIOME } from './biomes.js';
 import { I, itemDef } from './items.js';
 import { TEX } from './textures.js';
-import { growCrop, growSapling } from './growth.js';
+import { growCrop, growSapling, growCocoa } from './growth.js';
 import { HEIGHT } from './config.js';
+import { SOIL } from './world.js';
 
 const TILLABLE = new Set([B.grass_block, B.dirt, B.dirt_path, B.coarse_dirt, B.snowy_grass]);
 const SEA_BED = new Set([B.sand, B.red_sand, B.gravel, B.dirt, B.clay]);
@@ -90,8 +92,35 @@ function boneMeal(game, t) {
       }
     }
   }
+  // (Update 27's: a sweet berry bush or a cocoa pod a stage on.)
+  else if (BERRY_BUSH[t.id] !== undefined && BERRY_BUSH[t.id] < 3) did = w.setBlock(t.x, t.y, t.z, t.id + 1);
+  else if (COCOA[t.id]) did = growCocoa(w, t.x, t.y, t.z, t.id);
   if (!did) return false;
   game.particles.icons(TEX.happy, t.x + 0.5, t.y + 0.4, t.z + 0.5, 10, 0.45);
+  return consumed(game);
+}
+
+// Sweet berries planted in the ground (grass, dirt and the like) grow into a bush.
+export function plantBerries(game, t) {
+  const w = game.world, into = REPLACEABLE[t.id] && !WATERLIKE[t.id] && !DOUBLE[t.id];
+  const x = t.x, y = into ? t.y : t.y + 1, z = t.z;
+  if ((!into && t.face !== 2) || !SOIL.has(w.getBlock(x, y - 1, z))) return false;
+  const cur = w.getBlock(x, y, z);
+  if (cur && !(REPLACEABLE[cur] && !WATERLIKE[cur] && !DOUBLE[cur])) return false;
+  w.setBlock(x, y, z, B.sweet_berry_bush);
+  game.audio.place('grass', { x: x + 0.5, y: y + 0.5, z: z + 0.5 });
+  return consumed(game);
+}
+
+// Cocoa beans set on the side of a jungle log grow into a pod there.
+const JUNGLE_LOG = new Set([WOOD.jungle.log, ...LOG_AXES[WOOD.jungle.log]]);
+export function plantCocoa(game, t) {
+  const w = game.world, d = FACE_DIRS[t.face];
+  if (!JUNGLE_LOG.has(t.id) || !d || d[1] !== 0) return false;
+  const x = t.x + d[0], y = t.y, z = t.z + d[2], cur = w.getBlock(x, y, z);
+  if (cur && !(REPLACEABLE[cur] && !WATERLIKE[cur])) return false;
+  w.setBlock(x, y, z, cocoaId(0, oppositeFace(t.face)));
+  game.audio.place('wood', { x: x + 0.5, y: y + 0.5, z: z + 0.5 });
   return consumed(game);
 }
 
@@ -110,14 +139,15 @@ export function plantGlowBerries(game, t) {
 // Plant matter a composter takes, and the chance each item adds a layer (Minecraft's numbers).
 const COMPOST = new Map();
 const compost = (names, chance) => { for (const n of names) { const id = I[n] ?? B[n]; if (id !== undefined) COMPOST.set(id, chance); } };
-compost(['wheat_seeds', 'beetroot_seeds', 'tall_grass', 'glow_berries', 'hanging_roots', 'moss_carpet', ...WOOD_NAMES.flatMap((w) => [`${w}_leaves`, `${w}_sapling`])], 0.3);
+compost(['wheat_seeds', 'beetroot_seeds', 'tall_grass', 'glow_berries', 'hanging_roots', 'moss_carpet', 'sweet_berries',
+  ...WOOD_NAMES.flatMap((w) => [`${w}_leaves`, `${w}_sapling`])], 0.3);
 compost(['azalea_leaves', 'big_dripleaf', 'glow_lichen'], 0.5);
 compost(['azalea', 'moss_block', 'spore_blossom'], 0.65);
 compost(['flowering_azalea', 'flowering_azalea_leaves'], 0.85);
 compost(['melon_slice', 'cactus', 'sugar_cane', 'vine', 'tall_grass_double', 'dead_bush'], 0.5);
 compost(['apple', 'beetroot', 'carrot', 'potato', 'wheat', 'fern', 'large_fern', 'lily_pad', 'pumpkin', 'melon', 'red_mushroom',
   'brown_mushroom', 'dandelion', 'poppy', 'cornflower', 'allium', 'azure_bluet', 'blue_orchid', 'oxeye_daisy', 'red_tulip', 'orange_tulip',
-  'white_tulip', 'pink_tulip', 'lily_of_the_valley', 'sunflower', 'lilac', 'rose_bush', 'peony'], 0.65);
+  'white_tulip', 'pink_tulip', 'lily_of_the_valley', 'sunflower', 'lilac', 'rose_bush', 'peony', 'cocoa_beans'], 0.65);
 compost(['baked_potato', 'bread', 'cookie', 'hay_block'], 0.85);
 compost(['pumpkin_pie'], 1);
 export const compostChance = (id) => COMPOST.get(id);
@@ -170,6 +200,25 @@ export function useWorkstation(game, held, t) {
   if (CAVE_VINES[id]?.lit) {
     w.setBlock(t.x, t.y, t.z, caveVineId(CAVE_VINES[id].tip, false));
     game.entities.spawnItem(t.x + 0.5, t.y + 0.3, t.z + 0.5, I.glow_berries, 1);
+    game.audio.place('grass', at);
+    game.swingArm();
+    return true;
+  }
+  // A full bees' home: a glass bottle takes a bottle of its honey, shears three pieces of comb (and
+  // the bees mind, unless smoke calms them: see bees.js).
+  const hive = HIVE[id];
+  if (hive?.level === HONEY_FULL && (held?.id === I.glass_bottle || itemDef(held?.id)?.shears)) {
+    w.setBlock(t.x, t.y, t.z, hiveId(hive.first, 0, hive.front));
+    if (held.id === I.glass_bottle) { game.audio.bucket('fill', at); return swapHeld(game, I.honey_bottle); }
+    game.entities.spawnItem(t.x + 0.5, t.y + 0.5, t.z + 0.5, I.honeycomb, 3);
+    game.audio.shear?.(at);
+    return used(game, 1);
+  }
+  // Sweet berries are picked off a bush that has them (bone meal still makes one grow, though).
+  if (BERRY_BUSH[id] > 1 && !(held?.id === I.bone_meal && BERRY_BUSH[id] < 3)) {
+    const n = (BERRY_BUSH[id] === 3 ? 2 : 1) + Math.floor(Math.random() * 2);
+    w.setBlock(t.x, t.y, t.z, B.sweet_berry_bush_1);
+    game.entities.spawnItem(t.x + 0.5, t.y + 0.5, t.z + 0.5, I.sweet_berries, n);
     game.audio.place('grass', at);
     game.swingArm();
     return true;

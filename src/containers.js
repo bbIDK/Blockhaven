@@ -6,6 +6,8 @@ import { maxStack, itemDef, I } from './items.js';
 import { sameItem, extras } from './inventory.js';
 import { matchGrid, specialCraft, planRecipe, countItems, recipeFits, smeltsIn, fuelTime } from './crafting.js';
 import { tableOffers, enchantable, anvil, grind } from './enchanting.js';
+import { PATTERNS, PATTERN_INDEX, MAX_PATTERNS } from './banners.js';
+import { DYES } from './colors.js';
 
 class Slot {
   constructor(menu, arr, i, group, o = {}) {
@@ -659,6 +661,64 @@ export class GrindstoneMenu extends WorkMenu {
 
   targets(slot) {
     if (slot.group === 'storage' || slot.group === 'hotbar') return [[[this.topSlot, this.bottomSlot], false]];
+    return [[this.playerSlots, false]];
+  }
+}
+
+// The loom: a banner, a dye and (for the patterns that need one) a pattern item. Pick one of the
+// patterns on offer and the banner comes out with it laid over in that dye (up to six patterns);
+// the banner and a dye are used up, the pattern item stays.
+const DYE_OF = new Map(DYES.map((d, i) => [I[`${d.name}_dye`], i]));
+export class LoomMenu extends WorkMenu {
+  constructor(game, at) {
+    super(game, 'loom');
+    this.at = at;
+    this.items = [null, null, null];
+    this.result = [null];
+    this.held = [this.items];
+    this.bannerSlot = this.add(this.items, 0, 'banner', { filter: (s) => itemDef(s.id)?.banner !== undefined });
+    this.dyeSlot = this.add(this.items, 1, 'dye', { filter: (s) => DYE_OF.has(s.id) });
+    this.patternSlot = this.add(this.items, 2, 'pattern', { limit: 1, filter: (s) => !!itemDef(s.id)?.pattern });
+    this.resultSlot = this.add(this.result, 0, 'result', { output: 'craft' });
+    this.addPlayer();
+    this.pick = null;
+  }
+
+  // The patterns on offer (indexes into PATTERNS): the plain shapes, or the one the pattern item in
+  // the loom is for. None until there's a banner with room for another, and a dye.
+  get choices() {
+    const b = this.items[0], item = this.items[2] && itemDef(this.items[2].id)?.pattern;
+    if (!b || !this.items[1] || (b.bp?.length ?? 0) >= MAX_PATTERNS) return [];
+    return item ? [PATTERN_INDEX[item]] : PATTERNS.filter((p) => !p.item).map((p) => p.i);
+  }
+  get dye() { return this.items[1] ? DYE_OF.get(this.items[1].id) : null; }
+  choose(i) { if (this.choices.includes(i)) { this.pick = i; this.changed(); } }
+
+  changed() {
+    const choices = this.choices;
+    if (!choices.includes(this.pick)) this.pick = choices.length === 1 ? choices[0] : null;
+    const b = this.items[0];
+    this.result[0] = this.pick === null ? null : { ...b, count: 1, bp: [...(b.bp ?? []), [this.pick, this.dye]] };
+  }
+
+  take() {
+    const out = this.result[0];
+    if (!out) return null;
+    const [b, d] = this.items;
+    this.items[0] = b.count > 1 ? { ...b, count: b.count - 1 } : null;
+    this.items[1] = d.count > 1 ? { ...d, count: d.count - 1 } : null;
+    this.changed();
+    this.game.menuEvent?.('loom', out);
+    return { ...out };
+  }
+
+  targets(slot, s) {
+    if (slot.group === 'storage' || slot.group === 'hotbar') {
+      if (itemDef(s.id)?.banner !== undefined) return [[[this.bannerSlot], false]];
+      if (DYE_OF.has(s.id)) return [[[this.dyeSlot], false]];
+      if (itemDef(s.id)?.pattern && !this.items[2]) return [[[this.patternSlot], false]];
+      return super.targets(slot, s);
+    }
     return [[this.playerSlots, false]];
   }
 }

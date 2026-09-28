@@ -1,6 +1,6 @@
 // Item registry: every placeable block is also an item (same id); tools and materials use ids 256+.
 // Recipes live in crafting.js.
-import { BLOCKS, B, BASE, CROP, LEAVES_WOOD, DOUBLE, POTTED, CAVE_VINES } from './blocks.js';
+import { BLOCKS, B, BASE, CROP, LEAVES_WOOD, DOUBLE, POTTED, CAVE_VINES, BERRY_BUSH, COCOA } from './blocks.js';
 import { TEX } from './textures.js';
 import { DYES, rgb } from './colors.js';
 import { leafDrops } from './growth.js';
@@ -181,6 +181,19 @@ item(618, 'firework_rocket', { label: 'Firework Rocket' });
 item(619, 'firework_star', { label: 'Firework Star' });
 item(620, 'fire_charge', { label: 'Fire Charge' });
 item(621, 'glowstone_dust', { label: 'Glowstone Dust' });
+// Update 27's: sweet berries (eaten, or planted as a bush: see behaviors.js), cocoa beans (planted on
+// jungle logs; brown dye; cookies), honey in a bottle (a sweet drink that cures poison) and
+// honeycomb, armor stands to keep armor on (see stands.js), banners in sixteen colours (patterned
+// at a loom: banners.js) and the patterns that aren't plain shapes.
+item(629, 'sweet_berries', { label: 'Sweet Berries', food: 2, sat: 0.1 });
+item(630, 'cocoa_beans', { label: 'Cocoa Beans' });
+item(631, 'honey_bottle', { label: 'Honey Bottle', stack: 16, food: 6, sat: 0.1, sip: true, cures: 'poison', leftover: 'glass_bottle' });
+item(632, 'honeycomb');
+item(633, 'armor_stand', { label: 'Armor Stand', stack: 16, stand: true });
+DYES.forEach((d, i) => item(634 + i, `${d.name}_banner`, { stack: 16, banner: i,
+  label: `${d.name === 'light_gray' ? 'Light Gray' : d.name === 'light_blue' ? 'Light Blue' : d.name[0].toUpperCase() + d.name.slice(1)} Banner` }));
+item(650, 'flower_banner_pattern', { label: 'Flower Charge Banner Pattern', stack: 1, pattern: 'flower' });
+item(651, 'globe_banner_pattern', { label: 'Globe Banner Pattern', stack: 1, pattern: 'globe' });
 for (const [i, [type, label]] of [['cod', 'Bucket of Cod'], ['salmon', 'Bucket of Salmon'], ['tropical_fish', 'Bucket of Tropical Fish'],
   ['pufferfish', 'Bucket of Pufferfish'], ['axolotl', 'Bucket of Axolotl'], ['tadpole', 'Bucket of Tadpole']].entries()) {
   item(604 + i, `${type}_bucket`, { label, stack: 1, leftover: 'bucket', holds: type });
@@ -331,6 +344,9 @@ export function dropsFor(blockId, tool, rand = Math.random) {
     case 'lapis_ore': case 'deepslate_lapis_ore': return one('lapis_lazuli', n(4, 9));
     case 'amethyst_cluster': return one('amethyst_shard', 4);
     case 'cave_vines': return CAVE_VINES[blockId]?.lit ? one('glow_berries') : [];
+    // (Update 27's: berries off a bush that has them, beans out of a pod, ripe or not.)
+    case 'sweet_berry_bush': return BERRY_BUSH[blockId] === 3 ? one('sweet_berries', n(2, 3)) : BERRY_BUSH[blockId] === 2 ? one('sweet_berries', n(1, 2)) : [];
+    case 'cocoa': return one('cocoa_beans', COCOA[blockId]?.age === 2 ? n(2, 3) : 1);
     // (Swords cut the string out of a cobweb; shears, above, take it whole.)
     case 'cobweb': return ITEMS.get(tool)?.weapon ? one('string') : [];
     // Azalea leaves now and then drop a bush to plant, or a stick.

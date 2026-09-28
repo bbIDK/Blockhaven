@@ -7,7 +7,8 @@
 // strongholds of structures.js.)
 import { CHUNK, HEIGHT, SEA_LEVEL, CHUNK_VOLUME, LATEST_GEN } from './config.js';
 import { Noise } from './noise.js';
-import { B, R, RENDER, BASE, WOOD, REPLACEABLE, FACING_VARIANTS, SOLID, WATERLIKE, NATURAL_LEAVES, DOUBLE, LOOT_CHEST } from './blocks.js';
+import { B, R, RENDER, BASE, WOOD, REPLACEABLE, FACING_VARIANTS, SOLID, WATERLIKE, NATURAL_LEAVES, DOUBLE, LOOT_CHEST, FACE_DIRS, cocoaId, hiveId,
+  oppositeFace } from './blocks.js';
 import { BIOME, OCEANS, toByte } from './biomes.js';
 import { hash2, hash3, hashString, mulberry32, smoothstep, lerp, clamp } from './math.js';
 import { TREES, WIDE_TREES, TREE_REACH } from './trees.js';
@@ -224,6 +225,13 @@ const TRODDEN = new Set([B.grass_block, B.snowy_grass, B.dirt, B.coarse_dirt, B.
 // Only the bare heights get cliffs and overhangs worn into them (see step 2 of generate); the
 // wooded slopes stay a plain height map so trees rooted in one chunk line up with the next.
 const CARVED = new Set([BIOME.JAGGED_PEAKS, BIOME.FROZEN_PEAKS, BIOME.STONY_PEAKS, BIOME.SNOWY_SLOPES]);
+// Generator 11's: where sweet berry bushes grow wild, and how often a tree of the flowery lands has a
+// bees' nest (Minecraft's odds, the rarer ones raised a little so they're met with).
+const BERRY_LANDS = new Set([BIOME.TAIGA, BIOME.SNOWY_TAIGA, BIOME.OLD_GROWTH_TAIGA]);
+const NEST_CHANCE = { [BIOME.PLAINS]: 0.05, [BIOME.SUNFLOWER_PLAINS]: 0.05, [BIOME.MEADOW]: 0.6, [BIOME.FLOWER_FOREST]: 0.02,
+  [BIOME.CHERRY_GROVE]: 0.03, [BIOME.FOREST]: 0.004, [BIOME.BIRCH_FOREST]: 0.004 };
+const NEST = hiveId(B.bee_nest, 0, 4); // (a nest facing south, empty of honey)
+const NESTING = new Set(['oak', 'big_oak', 'birch', 'tall_birch', 'cherry']);
 
 export class WorldGen {
   // `version`: 2 for worlds made before villages were spread further apart, 3 since, 4 for worlds
@@ -232,8 +240,10 @@ export class WorldGen {
   // update's bigger biomes (some rare) and jungle bamboo, 8 for those with the world fixes: giant
   // spruces closed over the top, ore veins sized like Minecraft's, rarer special caves and fewer
   // cave mouths, and settlements whose gates and stairs can all be walked through; 9 for those
-  // whose trees never touch one another and stand on the ground (see trees9); and 10 for those with
-  // desert pyramids, jungle temples, igloos, shipwrecks, ocean monuments, mineshafts and strongholds.
+  // whose trees never touch one another and stand on the ground (see trees9); 10 for those with
+  // desert pyramids, jungle temples, igloos, shipwrecks, ocean monuments, mineshafts and strongholds;
+  // and 11 for those with Update 27's sweet berry bushes in the taigas, cocoa pods on jungle trees and
+  // bees' nests on the trees of the flowery lands (see decorate11).
   constructor(seed, type = 'default', version = LATEST_GEN) {
     this.seed = seed >>> 0;
     this.type = type;
@@ -824,6 +834,11 @@ export class WorldGen {
                 for (let k = 0; k < tall; k++) blocks[above + k * 256] = B.sugar_cane;
               }
             }
+            // (Generator 11's: patches of sweet berry bushes in the taigas, most of them ripe.)
+            if (this.version >= 11 && blocks[above] === 0 && BERRY_LANDS.has(biome) && (ground === B.grass_block || ground === B.podzol ||
+              ground === B.snowy_grass) && this.berryPatch(wx, wz)) {
+              blocks[above] = r2 < 0.3 ? B.sweet_berry_bush_2 : B.sweet_berry_bush_3;
+            }
           } else if (blocks[above] === B.water && biome === BIOME.SWAMP && h === SEA_LEVEL - 1 && hash2(wx, wz, seed ^ 0x111) < 0.12) {
             blocks[idx(x, SEA_LEVEL + 1, z)] = B.lily_pad;
           }
@@ -910,6 +925,8 @@ export class WorldGen {
   // way go, and a two-wide trunk's lower corners reach down to their own ground.
   trees9(blocks, x0, z0, put) {
     const idx = (x, y, z) => (y << 8) | (z << 4) | x;
+    // (Generator 11's bees' nests, whose doors are cleared of leaves once all the trees are up.)
+    const nests = this.version >= 11 ? [] : null;
     for (let wz = z0 - TREE_REACH; wz < z0 + 16 + TREE_REACH; wz++) {
       for (let wx = x0 - TREE_REACH; wx < x0 + 16 + TREE_REACH; wx++) {
         const t = this.treeAt9(wx, wz);
@@ -927,7 +944,16 @@ export class WorldGen {
         }
         const rnd = mulberry32(Math.floor(hash2(wx, wz, this.seed ^ 0x1ee7) * 4294967296));
         if (!t.palm && !t.azalea) rnd(); // (the draw that picked its kind)
-        TREES[t.kind](put, wx, t.h + 1, wz, rnd, this.version);
+        // (Generator 11 notes where the tree's trunk and lowest leaves are, whichever chunk they fall
+        // in, for what grows on it: see decorate11.)
+        const shape = this.version >= 11 ? { trunk: [], leaves: Infinity } : null;
+        const grow = shape ? (px, py, pz, id, isLog, onlyAir) => {
+          if (isLog && px === wx && pz === wz) shape.trunk.push(py);
+          else if (!isLog && py < shape.leaves) shape.leaves = py;
+          return put(px, py, pz, id, isLog, onlyAir);
+        } : put;
+        TREES[t.kind](grow, wx, t.h + 1, wz, rnd, this.version);
+        if (shape) this.decorate11(t, wx, wz, shape, put, nests);
         // A two-wide trunk's corner on lower ground reaches down to it.
         if (t.wide) {
           const log = WOOD[t.kind === 'mega_spruce' ? 'spruce' : t.kind === 'mega_jungle' ? 'jungle' : 'dark_oak'].log;
@@ -943,6 +969,50 @@ export class WorldGen {
           }
         }
       }
+    }
+    const inside = (x, z) => x >= x0 && x < x0 + 16 && z >= z0 && z < z0 + 16;
+    for (const [x, y, z] of nests ?? []) {
+      if (inside(x, z) && blocks[idx(x - x0, y, z - z0)] !== NEST) continue;
+      if (inside(x, z + 1) && NATURAL_LEAVES[blocks[idx(x - x0, y, z + 1 - z0)]]) blocks[idx(x - x0, y, z + 1 - z0)] = 0;
+    }
+  }
+  // Whether a sweet berry bush grows at (wx, wz) (generator 11, in a taiga): near the middle of a
+  // patch - about one sixteen-block square in ten has one, somewhere in it - thinning out towards
+  // its edge, as Minecraft's patches do.
+  berryPatch(wx, wz) {
+    const seed = this.seed, gx = Math.floor(wx / 16), gz = Math.floor(wz / 16);
+    for (let cx = gx - 1; cx <= gx + 1; cx++) {
+      for (let cz = gz - 1; cz <= gz + 1; cz++) {
+        if (hash2(cx, cz, seed ^ 0xbe45) >= 0.1) continue;
+        const px = cx * 16 + Math.floor(hash2(cz, cx, seed ^ 0xbe46) * 16), pz = cz * 16 + Math.floor(hash2(cx, cz, seed ^ 0xbe47) * 16);
+        const d = Math.hypot(wx - px, wz - pz);
+        if (d < 6 && hash2(wx, wz, seed ^ 0xbe44) < 0.5 * (1 - d / 6)) return true;
+      }
+    }
+    return false;
+  }
+  // What grows on generator 11's trees: cocoa pods low on a jungle tree's trunk (on one tree in five,
+  // a pod on each side with a chance of one in four, at any stage), and on the oaks, birches and
+  // cherries of the flowery lands, now and then a bees' nest on the trunk just under the leaves
+  // (facing south, as Minecraft's do; its bees come with it: see bees.js).
+  decorate11(t, wx, wz, shape, put, nests) {
+    const seed = this.seed;
+    if (!shape.trunk.length) return;
+    const base = Math.min(...shape.trunk), top = Math.max(...shape.trunk);
+    if (t.kind === 'jungle' && hash2(wx, wz, seed ^ 0xc0c0a) < 0.2) {
+      for (let y = base; y <= Math.min(top, base + 2); y++) {
+        for (const f of [4, 5, 0, 1]) {
+          const r = hash3(wx, y, wz + f * 7919, seed ^ 0xc0c0b);
+          if (r < 0.25) put(wx + FACE_DIRS[f][0], y, wz + FACE_DIRS[f][2], cocoaId(Math.floor(r * 12) % 3, oppositeFace(f)), false, true);
+        }
+      }
+    }
+    const chance = NEST_CHANCE[t.biome] ?? 0;
+    if (chance && NESTING.has(t.kind) && hash2(wx, wz, seed ^ 0xbee5) < chance) {
+      const y = Math.min(top, Math.max(shape.leaves - 1, base + 1));
+      const f = [4, 0, 1][Math.floor(hash2(wz, wx, seed ^ 0xbee6) * 3)], nx = wx + FACE_DIRS[f][0], nz = wz + FACE_DIRS[f][2];
+      put(nx, y, nz, NEST, false, true);
+      nests.push([nx, y, nz]);
     }
   }
   // The tree rooted at (wx, wz), or null: { roll, h (its ground), kind, wide, palm, azalea, feet:
@@ -984,7 +1054,7 @@ export class WorldGen {
       if (corners.every(([, , g]) => Math.abs(g - h) <= 1)) feet.push(...corners);
       else kind = kind === 'dark_oak' ? 'oak' : kind === 'mega_jungle' ? 'jungle' : 'tall_spruce';
     }
-    return { roll, h, kind, wide: feet.length > 1, palm, azalea, feet };
+    return { roll, h, kind, wide: feet.length > 1, palm, azalea, feet, biome: col.biome };
   }
   // Settlements near the chunk that (x, z) is in, and a column's ground as that chunk levels it.
   plans9(x, z) {

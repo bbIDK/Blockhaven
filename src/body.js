@@ -14,9 +14,10 @@ export class Body {
     return [this.x - this.hw + dx, this.y + dy, this.z - this.hw + dz, this.x + this.hw + dx, this.y + this.h + dy, this.z + this.hw + dz];
   }
 
+  // (Scaffolding holds up a body that comes down onto it, unless it's `sinking` through it.)
   collides(world, dx, dy, dz) {
     const b = this.box(dx, dy, dz);
-    return world.collides(b[0], b[1], b[2], b[3], b[4], b[5]);
+    return world.collides(b[0], b[1], b[2], b[3], b[4], b[5], this.sinking ? null : this.y);
   }
 
   // Returns true when movement along this axis was blocked. Blocked moves stop flush against

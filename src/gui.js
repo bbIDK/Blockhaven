@@ -8,13 +8,14 @@ import { generationLabel } from './books.js';
 import { mapInfo } from './maps.js';
 import { SHAPES } from './fireworks.js';
 import { DYES } from './colors.js';
-import { iconFor, setGlint, iconOf } from './icons.js';
+import { iconFor, setGlint, iconOf, clothCanvas } from './icons.js';
 import { shiny, enchantLabel } from './enchanting.js';
 import { POTIONS, EFFECTS, potionLine } from './potions.js';
 import { ITEMS, I, itemDef, itemLabel, ARMOR_PIECES, attackDamage, attackSpeed, discTitle } from './items.js';
 import { RECIPES, recipeFits, countItems, planRecipe, layout, COOK_TIME } from './crafting.js';
 import { CREATIVE_BLOCKS, BLOCKS } from './blocks.js';
 import { PlayerPreview } from './preview.js';
+import { PATTERNS, PATTERN_INDEX } from './banners.js';
 
 // ---------------------------------------------------------------- sprites
 function pix(rows, colors) {
@@ -127,7 +128,7 @@ export function sprites() {
 // ---------------------------------------------------------------- layouts (GUI pixels)
 const SIZES = {
   inventory: [176, 166], crafting: [176, 166], furnace: [176, 166], chest: [176, 168], large_chest: [176, 222], creative: [195, 136],
-  enchanting: [176, 166], anvil: [176, 166], grindstone: [176, 166],
+  enchanting: [176, 166], anvil: [176, 166], grindstone: [176, 166], loom: [176, 166],
 };
 // The creative menu's tabs, in two rows like Minecraft's: above the window (the blocks, and
 // search at the far end) and below it (the rest, and the survival inventory at the far end).
@@ -253,6 +254,11 @@ export function tooltipLines(stack) {
     for (const st of stack.fw?.s ?? []) lines.push(...starLines(st, '&nbsp;&nbsp;'));
   }
   if (stack.id === I.firework_star && stack.star) lines.push(...starLines(stack.star, ''));
+  // (A banner's patterns, in the order they were put on; a pattern item's pattern.)
+  for (const [pt, c] of stack.bp ?? []) lines.push(`<span class="t-gray">${escape(colourName(c))} ${escape(PATTERNS[pt].label)}</span>`);
+  if (d.pattern) lines.push(`<span class="t-gray">${escape(PATTERNS[PATTERN_INDEX[d.pattern]].label)}</span>`);
+  // (A bees' home taken whole: the bees and the honey in it.)
+  if (stack.bees || stack.honey) lines.push(`<span class="t-gray">Bees: ${stack.bees ?? 0} / 3</span>`, `<span class="t-gray">Honey: ${stack.honey ?? 0} / 5</span>`);
   // (A map: its number and scale; an empty map made to draw zoomed out, its scale.)
   const scale = stack.map ? mapInfo(stack.map)?.scale : stack.scale;
   if (stack.map) lines.push(`<span class="t-gray">Map #${stack.map}</span>`);
@@ -495,6 +501,21 @@ export class ContainerGUI {
       slot(m.resultSlot, 128, 33);
       label('Inventory', win, 8, 72);
       player(83, 141);
+    } else if (this.kind === 'loom') {
+      // The loom: the banner, dye and pattern item on the left (faint where they go), the patterns
+      // to pick from in the middle, and the banner as it will come out on the right.
+      label('Loom', win, 8, 4);
+      [[m.bannerSlot, 12, 25, 'white_banner'], [m.dyeSlot, 32, 25, 'white_dye'], [m.patternSlot, 22, 44, 'flower_banner_pattern']].forEach(([s, x, y, hint]) => {
+        const el = slot(s, x, y);
+        el.classList.add('hint', 'faint');
+        el.style.setProperty('--hint', `url(${iconFor(I[hint])})`);
+      });
+      this.loomEl = div('mc-looms', win, 60, 13, 62, 58);
+      this.loomKey = null;
+      this.loomPreview = div('mc-loom-preview', win, 140, 7, 20, 40);
+      slot(m.resultSlot, 142, 52);
+      label('Inventory', win, 8, 72);
+      player(83, 141);
     } else if (this.kind === 'creative') {
       const tab = TABS.find((t) => t.id === this.tab);
       label(tab.label, win, 8, 6);
@@ -663,6 +684,7 @@ export class ContainerGUI {
     this.renderGhost();
     if (this.kind === 'enchanting') this.renderEnchanting();
     else if (this.kind === 'anvil') this.renderAnvil();
+    else if (this.kind === 'loom') this.renderLoom();
     const c = m.cursor;
     if (c) {
       if (!this.cursorEl.firstChild) this.cursorEl.innerHTML = '<div class="mc-slot bare"><img alt=""><b></b><i class="dur" hidden><i></i></i></div>';
@@ -708,6 +730,32 @@ export class ContainerGUI {
     if (el.textContent !== text) el.textContent = text;
     el.className = `mc-cost ${cls}`;
     el.hidden = !text;
+  }
+
+  // The loom's patterns (each shown in the dye chosen, on the banner's colour; the one picked
+  // lit up) and, large, the banner as it will be.
+  renderLoom() {
+    const m = this.menu, b = m.items[0], base = b ? itemDef(b.id).banner : 0, dye = m.dye ?? 15;
+    const key = `${m.choices.join(',')}|${base}|${dye}|${m.pick}`;
+    if (key !== this.loomKey) {
+      this.loomKey = key;
+      const frag = document.createDocumentFragment();
+      for (const i of m.choices) {
+        const el = document.createElement('div');
+        el.className = `mc-loom${i === m.pick ? ' on' : ''}`;
+        el.dataset.act = 'pattern';
+        el.dataset.i = i;
+        el.dataset.tip = PATTERNS[i].label;
+        el.appendChild(clothCanvas({ c: base, p: [[i, dye]] }));
+        frag.appendChild(el);
+      }
+      this.loomEl.replaceChildren(frag);
+    }
+    const show = m.result[0] ?? b, look = show ? `${itemDef(show.id).banner}:${JSON.stringify(show.bp ?? [])}` : '';
+    if (this.loomPreview.dataset.look !== look) {
+      this.loomPreview.dataset.look = look;
+      this.loomPreview.replaceChildren(...(show ? [clothCanvas({ c: itemDef(show.id).banner, p: show.bp ?? [] })] : []));
+    }
   }
 
   // What an enchanting offer says when pointed at: the first enchantment (the rest are a
@@ -971,6 +1019,8 @@ export class ContainerGUI {
     } else if (act === 'enchant') {
       this.game.menuAction('enchant', Number(el.dataset.i));
       return;
+    } else if (act === 'pattern') {
+      this.game.menuAction('pattern', Number(el.dataset.i));
     }
     this.game.audio.click();
   }

@@ -7,7 +7,7 @@ import { Input } from './input.js';
 import { UI, $ } from './ui.js';
 import { Audio } from './audio.js';
 import { Inventory, extras } from './inventory.js';
-import { InventoryMenu, CraftingTableMenu, FurnaceMenu, ChestMenu, DispenserMenu, CreativeMenu, EnchantingMenu, AnvilMenu, GrindstoneMenu } from './containers.js';
+import { InventoryMenu, CraftingTableMenu, FurnaceMenu, ChestMenu, DispenserMenu, CreativeMenu, EnchantingMenu, AnvilMenu, GrindstoneMenu, LoomMenu } from './containers.js';
 import { ContainerGUI, sprites } from './gui.js';
 import { Furnace } from './furnace.js';
 import { initIcons, warmIcons } from './icons.js';
@@ -30,10 +30,11 @@ import {
   FURNACE_IDS, furnaceVariant, isLitFurnace, FURNACE_KIND, FURNACE_FRONT, LOG_AXES, GATE, gateId, VINE, DOUBLE, LEAVES_WOOD,
   TRAPDOOR, trapdoorId, SWITCH, SIGN, WALL_SIGN, CAKE, NOTE, JUKEBOX, RAIL,
   NATURAL_LEAVES, WOOD, LOOT_KIND, LOOT_FRONT, liquidHeight, AMETHYST, GLOW_LICHEN, WET, PICKLES, DISPENSER, dispenserId, TRIPWIRE,
+  SCAFFOLD, SCAFFOLD_REACH, scaffoldId, BERRY_BUSH, COCOA, HIVE, HONEY_FULL, hiveId, BANNER, bannerId, wallBannerId,
 } from './blocks.js';
 import { dripId } from './caves.js';
 import { rollLoot } from './loot.js';
-import { useItemOnBlock, useBucket, placeLilyPad, placeBoat, useWorkstation, plantGlowBerries } from './behaviors.js';
+import { useItemOnBlock, useBucket, placeLilyPad, placeBoat, useWorkstation, plantGlowBerries, plantBerries, plantCocoa } from './behaviors.js';
 import { nearestVillage, KINDS } from './villages.js';
 import { TalkScreen } from './tradeui.js';
 import { seatY, seatXZ, startRide, driveFrom, dismountSpot } from './riding.js';
@@ -43,6 +44,10 @@ import { tableBook } from './tablebook.js';
 import { POTIONS, EFFECTS } from './potions.js';
 import { nearestStructure, STRUCTURE_NAMES } from './structures.js';
 import { Signs, SignEditor } from './signs.js';
+import { Banners, PLAIN as PLAIN_BANNER, rotFacing } from './banners.js';
+import { standYaw } from './stands.js';
+import { Hives, hiveDrop } from './bees.js';
+import { DYES } from './colors.js';
 import { BookScreen } from './books.js';
 import { cleanRocket } from './fireworks.js';
 import { AQUATIC } from './tridents.js';
@@ -151,7 +156,7 @@ function protection(armor, cause) {
 // Blocks Silk Touch takes whole (that otherwise drop something else, or nothing).
 const SILK_TOUCH = (name) => !!name && (/_ore$|glass|leaves$|^ice$|packed_ice|blue_ice/.test(name) ||
   ['stone', 'deepslate', 'grass_block', 'podzol', 'dirt_path', 'bookshelf', 'clay', 'melon', 'glowstone', 'campfire', 'gravel', 'snowy_grass', 'snow_block',
-    'snow'].includes(name));
+    'snow', 'bee_nest'].includes(name));
 
 export class Game {
   constructor() {
@@ -257,6 +262,8 @@ export class Game {
     this.gui = new ContainerGUI(this);
     this.talk = new TalkScreen(this);
     this.signs = new Signs(this);
+    this.banners = new Banners(this);
+    this.hives = new Hives(this);
     this.signEditor = new SignEditor(this);
     this.bookScreen = new BookScreen(this);
     this.maps = new Maps(this);
@@ -610,6 +617,9 @@ export class Game {
     this.containers = new Map((meta.containers ?? []).map((c) => [c.k, c.slots.map((x) => (x && itemDef(x.id) ? x : null))]));
     this.furnaces = new Map((meta.furnaces ?? []).map((f) => [f.k, new Furnace(f)]));
     this.signs.load(meta.signs);
+    this.banners.load(meta.banners);
+    // (A guest's bees are the host's to keep.)
+    this.hives.load(remote ? null : meta.hives);
     // (A guest's maps come from the host, as they're needed.)
     this.maps.reset(remote ? null : meta.maps);
     this.waypoints.load(meta.waypoints);
@@ -653,10 +663,10 @@ export class Game {
       bed: you?.bed ?? null, player: you?.player ?? null, inventory: you?.inventory ?? null, waypoints: you?.wp ?? null, remote: true,
       difficulty: [0, 1, 2, 3].includes(world.diff) ? world.diff : 2,
     };
-    const container = this.containers, furnaces = this.furnaces, signs = this.signs.serialize();
+    const container = this.containers, furnaces = this.furnaces, signs = this.signs.serialize(), banners = this.banners.serialize();
     await this.enterWorld(meta, { store: session.store });
-    if (again) { this.containers = container; this.furnaces = furnaces; this.signs.load(signs); }
-    else { this.containers = new Map(); this.furnaces = new Map(); this.signs.load(w.signs); }
+    if (again) { this.containers = container; this.furnaces = furnaces; this.signs.load(signs); this.banners.load(banners); }
+    else { this.containers = new Map(); this.furnaces = new Map(); this.signs.load(w.signs); this.banners.load(w.banners); }
   }
 
   // The player's own progress, which a guest's host keeps for them.
@@ -944,6 +954,8 @@ export class Game {
       entities: this.entities.serialize(),
       containers: [...this.containers].map(([k, slots]) => ({ k, slots: slots.map((x) => (x ? { ...x } : null)) })),
       signs: this.signs.serialize(),
+      banners: this.banners.serialize(),
+      hives: this.hives.serialize(),
       maps: this.maps.serialize(),
       waypoints: this.waypoints.serialize(),
       furnaces: [...this.furnaces].filter(([, f]) => !f.empty).map(([k, f]) => ({ k, ...f.serialize() })),
@@ -1111,6 +1123,7 @@ export class Game {
       case 'recipe': m.placeRecipe?.(target, button === 1); break;
       case 'enchant': m.enchant?.(target); break;
       case 'rename': m.rename?.(target); break;
+      case 'pattern': m.choose?.(target); break;
       case 'trash':
         if (!this.creative) break;
         if (this.inv.cursor) this.inv.cursor = null;
@@ -1145,6 +1158,7 @@ export class Game {
       this.particles.bits(at.x, at.y + 0.4, at.z, TEX.glyph, 14, 1.2, 0.9);
     } else if (type === 'anvil') this.audio.anvil(at);
     else if (type === 'grind') this.audio.place('stone', at);
+    else if (type === 'loom') this.audio.place('cloth', at);
     else if (type === 'smelted') {
       // Taking smelted things out of a furnace is worth a little experience.
       const per = SMELT_XP[itemDef(stack.id)?.name] ?? 0, total = per * stack.count;
@@ -1469,6 +1483,17 @@ export class Game {
       if (CHEST_PAIR[other] !== undefined && CHEST[other] === CHEST[old]) this.world.setBlock(ox, y, oz, chestId(CHEST[old]), { updates: false });
     }
     else if (old === B.crafting_table && id !== old && this.openBlock?.key === this.containerKey(x, y, z)) this.closeMenu();
+    // Bees' homes: one put up is empty; one taken down lets its bees out, angry; one whose honey (or
+    // comb) is taken angers them, unless there's a campfire smoking under it. (The host's to see to.)
+    if (!this.net?.guest && (HIVE[old] || HIVE[id])) {
+      if (HIVE[id] && !HIVE[old]) this.hives.placed(x, y, z);
+      else if (HIVE[old] && !HIVE[id]) this.hives.broken(x, y, z);
+      else if (HIVE[old].level === HONEY_FULL && HIVE[id].level === 0) this.hives.harvested(x, y, z);
+    }
+    // A banner taken down: its colours go with it (into what it drops). One put up with no design
+    // yet (by command, say) is plain white until it's given one.
+    if (BANNER[old] && !BANNER[id]) this.banners.remove(x, y, z);
+    else if (BANNER[id] && !BANNER[old] && !this.banners.designs.has(`${x},${y},${z}`)) this.banners.set(x, y, z, PLAIN_BANNER, false);
     // A sign taken down loses its writing (and anyone writing on it stops).
     if (SIGN[old] && !SIGN[id]) {
       this.signs.remove(x, y, z);
@@ -1891,7 +1916,9 @@ export class Game {
       const d = p.landed;
       p.landed = null;
       if (d > 3.2 && !p.inWater && !this.creative) this.audio.fall(d > 7);
-      if (d > 3.2 + this.effectLevel('jump_boost') && !p.inWater) this.damage(Math.floor(d - 3 - this.effectLevel('jump_boost')), 'You fell from a high place');
+      // (Honey breaks a fall: a fifth of the hurt.)
+      const soft = p.onHoney ? 0.2 : 1;
+      if (d > 3.2 + this.effectLevel('jump_boost') && !p.inWater) this.damage(Math.floor((d - 3 - this.effectLevel('jump_boost')) * soft), 'You fell from a high place');
       if (d > 1.2) { const g = p.groundBlock(this.world); if (g) this.audio.land(BLOCKS[g]?.sound ?? 'stone'); }
     }
     if (this.creative && p.y < -64) { p.y = 120; p.vy = 0; p.flying = true; }
@@ -1950,6 +1977,10 @@ export class Game {
   openGrindstone(x, y, z) {
     const at = { x: x + 0.5, y: y + 0.5, z: z + 0.5 };
     this.openMenu(new GrindstoneMenu(this, at), { key: this.containerKey(x, y, z), at });
+  }
+  openLoom(x, y, z) {
+    const at = { x: x + 0.5, y: y + 0.5, z: z + 0.5 };
+    this.openMenu(new LoomMenu(this, at), { key: this.containerKey(x, y, z), at });
   }
 
   // Levels spent (enchanting, the anvil). Creative players have all they need.
@@ -2055,6 +2086,7 @@ export class Game {
     this.safely('fishing', () => this.fishing.tick());
     if (!this.net?.guest) {
       this.safely('furnaces', () => this.tickFurnaces());
+      this.safely('bees', () => this.hives.tick());
       this.safely('pressure plates', () => { this.pressPlates(); this.tripwires(); });
     }
     this.safely('player', () => this.playerTick());
@@ -2102,6 +2134,10 @@ export class Game {
     }
     if (p.y < -40 && this.time % 10 === 0) this.damage(4, 'You fell out of the world', true);
     if (this.time % 10 === 0 && this.touchingCactus()) this.damage(1, 'You were pricked to death', false, null, true);
+    // A sweet berry bush (past a sprout) pricks whoever pushes through it.
+    const moved = Math.hypot(p.x - (this.bushX ?? p.x), p.z - (this.bushZ ?? p.z));
+    this.bushX = p.x; this.bushZ = p.z;
+    if (p.inBush && moved > 0.003) this.damage(1, 'You were poked to death by a sweet berry bush');
     this.hungerTick();
     this.effectsTick();
     if (this.eating) this.eatTick();
@@ -2139,7 +2175,7 @@ export class Game {
     const e = this.eating, p = this.player;
     e.left--;
     if (e.left <= 25 && e.left % 4 === 0) {
-      if (itemDef(e.id)?.potion || itemDef(e.id)?.drink) this.audio.drink(); else this.audio.eat();
+      if (itemDef(e.id)?.potion || itemDef(e.id)?.drink || itemDef(e.id)?.sip) this.audio.drink(); else this.audio.eat();
       const d = p.lookDir();
       this.particles.bits(p.x + d[0] * 0.4, p.eyeY - 0.15 + d[1] * 0.4, p.z + d[2] * 0.4, itemDef(e.id).tex, 5, 1.2, 0.5);
     }
@@ -2151,8 +2187,9 @@ export class Game {
       this.food = Math.min(20, this.food + def.food);
       this.saturation = Math.min(this.food, this.saturation + def.food * (def.sat ?? 0.3) * 2);
     }
-    // Milk washes every effect away; some food brings one; potions bring theirs.
+    // Milk washes every effect away (and honey poison); some food brings one; potions bring theirs.
     if (def.drink) this.effects.clear();
+    if (def.cures) this.effects.delete(def.cures);
     for (const [name, seconds, level, chance = 1] of def.effects ?? []) if (Math.random() < chance) this.addEffect(name, seconds, level);
     if (def.potion) this.applyPotion(def.potion);
     if (this.creative) return;
@@ -2623,7 +2660,7 @@ export class Game {
       id === B.barrel || LOOT_KIND[id] !== undefined || DISPENSER[id] !== undefined || id === B.bell || id === B.bell_z || id === B.composter_ready ||
       (!!TRAPDOOR[id] && !TRAPDOOR[id].iron) || SWITCH[id]?.kind === 'lever' || SWITCH[id]?.kind === 'button' ||
       id === B.enchanting_table || id === B.anvil || id === B.anvil_z || id === B.grindstone || id === B.grindstone_z || !!SIGN[id] || CAKE[id] !== undefined ||
-      NOTE[id] !== undefined || JUKEBOX[id] >= 0;
+      NOTE[id] !== undefined || JUKEBOX[id] >= 0 || BASE[id] === B.loom;
   }
 
   breakTarget() {
@@ -2644,6 +2681,11 @@ export class Game {
       const owner = this.entities.civilians.chestOwner([[x, y, z]]);
       if (owner) this.entities.civilians.theft(owner, x + 0.5, y + 0.5, z + 0.5, this.player);
     }
+    // A bees' home taken with Silk Touch keeps its bees in it (and its honey). (A guest asks the
+    // host, which knows the bees, to hand it over.)
+    const wholeHive = byPlayer && !this.creative && !!HIVE[id] && enchLevel(this.inv.held, 'silk_touch') > 0;
+    let bees = 0;
+    if (wholeHive) { if (this.net?.guest) this.net.takeHive(x, y, z); else bees = this.hives.take(x, y, z); }
     // (A sea plant leaves the water it stood in.)
     this.world.setBlock(x, y, z, WET[id] ? B.water : 0);
     if (byPlayer) this.exhaust(0.005);
@@ -2659,7 +2701,10 @@ export class Game {
         const k = Math.max(0, Math.floor(Math.random() * (fortune + 2)) - 1) + 1;
         drops = drops.map((d) => ({ ...d, count: d.count * k }));
       }
-      for (const drop of drops) this.entities.spawnItem(x + 0.5, y + 0.3, z + 0.5, drop.id, drop.count);
+      // (A banner drops itself, patterns and all.)
+      if (BANNER[id]) drops = [this.bannerDrop(x, y, z)];
+      if (wholeHive) drops = this.net?.guest ? [] : [hiveDrop(HIVE[id], bees)];
+      for (const drop of drops) this.entities.spawnItem(x + 0.5, y + 0.3, z + 0.5, drop.id, drop.count, 0, 0.6, null, drop.extra ?? null);
       const ox = ORE_XP[name];
       if (ox && !silk) this.dropXp(x + 0.5, y + 0.5, z + 0.5, ox[0] + Math.floor(Math.random() * (ox[1] - ox[0] + 1)));
       if (def.hardness > 0 && itemDef(held)?.durability && this.inv.damageHeld(itemDef(held).weapon ? 2 : 1)) this.audio.toolBreak();
@@ -2737,8 +2782,9 @@ export class Game {
   useItem(repeat = false) {
     const held = this.inv.held, t = this.target, p = this.player, w = this.world;
     const def = held ? itemDef(held.id) : null;
-    // An item frame takes what you're holding, whatever it is (or turns what's in it).
-    if (t?.entity && isHanging(t.entity)) { if (!repeat) this.entities.interact(t.entity, held); return; }
+    // An item frame takes what you're holding, whatever it is (or turns what's in it); an armor stand
+    // takes armour, or gives back what it wears.
+    if (t?.entity && (isHanging(t.entity) || t.entity.kind === 'stand')) { if (!repeat) this.entities.interact(t.entity, held); return; }
     // Doors, chests, beds, crafting tables and furnaces are used rather than built on (sneak to
     // place blocks against them).
     if (t && !t.entity && !t.player && !p.sneaking && !repeat && useWorkstation(this, held, t)) return;
@@ -2789,6 +2835,7 @@ export class Game {
       else if (JUKEBOX[t.id] >= 0) w.setBlock(t.x, t.y, t.z, B.jukebox);
       else if (t.id === B.anvil || t.id === B.anvil_z) this.openAnvil(t.x, t.y, t.z);
       else if (t.id === B.grindstone || t.id === B.grindstone_z) this.openGrindstone(t.x, t.y, t.z);
+      else if (BASE[t.id] === B.loom) this.openLoom(t.x, t.y, t.z);
       else if (FURNACE_IDS.has(t.id)) this.openFurnaceAt(t.x, t.y, t.z);
       else if (BED[t.id]) {
         const b = BED[t.id], d = FACE_DIRS[b.dir];
@@ -2796,8 +2843,11 @@ export class Game {
       }
       return;
     }
-    // Glow berries go up under a ceiling (or onto the end of a cave vine) as a new vine.
+    // Glow berries go up under a ceiling (or onto the end of a cave vine) as a new vine; sweet berries
+    // go into the ground as a bush, cocoa beans onto a jungle log.
     if (held?.id === I.glow_berries && t && !t.entity && !t.player && !repeat && plantGlowBerries(this, t)) return;
+    if (held?.id === I.sweet_berries && t && !t.entity && !t.player && !repeat && plantBerries(this, t)) return;
+    if (held?.id === I.cocoa_beans && t && !t.entity && !t.player && !repeat && plantCocoa(this, t)) return;
     if ((def?.food || def?.drink || def?.potion) && (!this.creative || def.potion)) return; // eaten by holding right click (see handleActions)
     if (def?.splash) { if (!repeat) this.throwItem({ potion: def.splash }); return; }
     if (def?.throws === 'snowball') { if (!repeat) this.throwItem({ snowball: true }); return; }
@@ -2846,6 +2896,33 @@ export class Game {
       }
       return;
     }
+    // An armor stand goes up on the ground (with room for it to stand), turned to face you.
+    if (def?.stand) {
+      if (repeat || (t.face !== 2 && !REPLACEABLE[t.id])) return;
+      const into = REPLACEABLE[t.id] && !WATERLIKE[t.id], x = t.x, y = into ? t.y : t.y + 1, z = t.z;
+      for (const dy of [0, 1]) { const c = w.getBlock(x, y + dy, z); if (y + dy >= HEIGHT || (c && !(REPLACEABLE[c] && !WATERLIKE[c]))) return; }
+      if (this.entities.blocksPlacement(x, y, z) || this.entities.blocksPlacement(x, y + 1, z) || p.intersectsBlock(x, y, z) || p.intersectsBlock(x, y + 1, z)) return;
+      this.entities.spawnStand(x + 0.5, y, z + 0.5, standYaw(p.yaw));
+      this.audio.place('wood', { x: x + 0.5, y: y + 0.5, z: z + 0.5 });
+      this.swingArm();
+      if (!this.creative) { this.inv.consumeHeld(); this.invChanged(); }
+      return;
+    }
+    // A banner stands on the ground, turned to face you, or hangs on the side of a block (facing
+    // out), with its colours and patterns (see banners.js).
+    if (def?.banner !== undefined) {
+      if (repeat || t.face === 3 || t.face < 0) return;
+      const into = REPLACEABLE[t.id] && !WATERLIKE[t.id], d = FACE_DIRS[t.face];
+      const [x, y, z] = into ? [t.x, t.y, t.z] : [t.x + d[0], t.y + d[1], t.z + d[2]], cur = w.getBlock(x, y, z);
+      if (y < 0 || y >= HEIGHT || (cur && !(REPLACEABLE[cur] && !WATERLIKE[cur]))) return;
+      const look = p.lookDir(), id = into || t.face === 2 ? bannerId(rotFacing(look[0], look[2])) : wallBannerId(t.face);
+      if (!w.supported(x, y, z, id) || this.entities.blocksPlacement(x, y, z)) return;
+      if (w.setBlock(x, y, z, id)) {
+        this.banners.set(x, y, z, { c: def.banner, p: held.bp ?? [] });
+        this.afterPlace(id, x, y, z);
+      }
+      return;
+    }
     // A firework rocket goes up from where you point (on the ground, a wall, anything).
     if (held?.id === I.firework_rocket) {
       if (repeat) return;
@@ -2887,6 +2964,24 @@ export class Game {
     if (held && useItemOnBlock(this, held, def, t)) return;
     if (!held || def.block === null || def.block === undefined || t.face < 0) return;
     const blockId = def.block, face = t.face;
+    // Scaffolding put on scaffolding goes up its column to the top, or, put on its top, out the way
+    // you face (as far as it can reach). Sneaking, it goes against the face clicked, as blocks do.
+    if (SCAFFOLD[blockId] !== undefined && SCAFFOLD[t.id] !== undefined && !p.sneaking) {
+      const dir = face === 2 ? FACE_DIRS[this.lookFace()] : [0, 1, 0];
+      let [x, y, z] = [t.x, t.y, t.z], across = 0;
+      for (;;) {
+        x += dir[0]; y += dir[1]; z += dir[2];
+        if (y < 0 || y >= HEIGHT) return;
+        const cur = w.getBlock(x, y, z);
+        if (SCAFFOLD[cur] === undefined) {
+          if (cur && !REPLACEABLE[cur]) return;
+          const d = w.scaffoldDistance(x, y, z);
+          if (d < SCAFFOLD_REACH && w.setBlock(x, y, z, scaffoldId(d))) this.afterPlace(blockId, x, y, z);
+          return;
+        }
+        if (dir[1] === 0 && ++across >= SCAFFOLD_REACH) return;
+      }
+    }
     // Where on the clicked block the crosshair landed (for top/bottom halves).
     const hitFrac = p.eyeY + p.lookDir()[1] * t.t - t.y;
     const upperHalf = face === 3 || (face !== 2 && hitFrac > 0.5);
@@ -2972,6 +3067,11 @@ export class Game {
         const place = face === 2 ? (along ? 4 : 5) : face === 3 ? (along ? 6 : 7) : [3, 2, -1, -1, 0, 1][face];
         id = blockId + place * 2;
       }
+    } else if (SCAFFOLD[blockId] !== undefined) {
+      // (Only as far out as scaffolding reaches from what holds it up.)
+      const d = w.scaffoldDistance(x, y, z);
+      if (d >= SCAFFOLD_REACH) return;
+      id = scaffoldId(d);
     } else if (NATURAL_LEAVES[blockId]) {
       id = WOOD[LEAVES_WOOD[blockId]].placedLeaves;
     } else if (DOUBLE[blockId]) {
@@ -3010,6 +3110,8 @@ export class Game {
       this.afterPlace(id, x, y, z);
       return;
     }
+    // (A bees' home taken whole goes up with its honey, and its bees: see afterPlace.)
+    if (HIVE[id] && held.honey) id = hiveId(HIVE[id].first, held.honey, HIVE[id].front);
     if (BLOCKS[id].support && !w.supported(x, y, z, id)) return;
     // Sea plants grow only in still water.
     if (WET[id] && existing !== B.water) return;
@@ -3028,6 +3130,9 @@ export class Game {
     if (id === B.big_dripleaf && this.world.getBlock(x, y - 1, z) === B.big_dripleaf) this.world.setBlock(x, y - 1, z, B.big_dripleaf_stem);
     // A rail turns to join the track beside it (running the way it was laid, if there's none).
     if (RAIL[id]) layRail(this.world, x, y, z, Math.abs(Math.sin(this.player.yaw)) > Math.SQRT1_2 ? 'ew' : 'ns');
+    // (Bees brought in a home taken whole move in.)
+    const bees = HIVE[id] ? this.inv.held?.bees : 0;
+    if (bees) { if (this.net?.guest) this.net.settleHive(x, y, z, bees); else this.hives.settle(x, y, z, bees); }
     this.audio.place(BLOCKS[id].sound, { x: x + 0.5, y: y + 0.5, z: z + 0.5 });
     this.swingArm();
     if (!this.creative) { this.inv.consumeHeld(); this.invChanged(); }
@@ -3171,10 +3276,20 @@ export class Game {
     return true;
   }
 
+  // Something handed to this player: into their empty hand, or else their inventory (or, full, the
+  // ground).
+  giveToHand(st) {
+    if (!this.inv.held) this.inv.slots[this.inv.selected] = { ...st, count: st.count ?? 1 };
+    else if (this.inv.add(st.id, st.count ?? 1, st.dmg ?? 0, extras(st))) this.entities.dropItem(this.player, { ...st, count: st.count ?? 1 });
+    this.invChanged();
+  }
+
   pickBlock() {
     const t = this.target;
     if (!t || t.entity || t.player) return;
-    const id = BASE[t.id];
+    // (Plants that grow from an item give that item; a banner, one of its colour.)
+    const id = BERRY_BUSH[t.id] !== undefined ? I.sweet_berries : COCOA[t.id] ? I.cocoa_beans
+      : BANNER[t.id] ? I[`${DYES[this.banners.get(t.x, t.y, t.z).c].name}_banner`] : BASE[t.id];
     if (!ITEMS.has(id)) return;
     const hot = this.inv.slots.findIndex((s, i) => i < 9 && s?.id === id);
     if (hot >= 0) { this.select(hot); return; }
@@ -3226,17 +3341,27 @@ export class Game {
   blockDropped(x, y, z, id) {
     this.particles.burst(x, y, z, id);
     if (this.creative) return;
-    for (const d of dropsFor(id, 0)) this.entities.spawnItem(x + 0.5, y + 0.3, z + 0.5, d.id, d.count);
+    for (const d of BANNER[id] ? [this.bannerDrop(x, y, z)] : dropsFor(id, 0)) this.entities.spawnItem(x + 0.5, y + 0.3, z + 0.5, d.id, d.count, 0, 0.6, null, d.extra ?? null);
+  }
+
+  // What a banner that's just come down drops: a banner of its colour, with its patterns.
+  bannerDrop(x, y, z) {
+    const d = this.banners.takeGone(x, y, z);
+    return { id: I[`${DYES[d.c].name}_banner`], count: 1, extra: d.p.length ? { bp: d.p } : null };
   }
 
   chunkLoaded(chunk) {
     this.minimap.changed(chunk.cx * 16, chunk.cz * 16);
+    // (Nests the world made, with their bees; only generator 11's worlds have them.)
+    if (!this.net?.guest && (this.meta?.gen ?? 1) >= 11) this.hives.chunkLoaded(chunk);
     this.entities.chunkLoaded(chunk);
     this.net?.chunkLoaded(chunk);
   }
 
   // World listener: sand or gravel came loose.
   spawnFalling(x, y, z, id) { this.entities.spawnFalling(x, y, z, id); }
+  // World listener: a tree grew with a bees' nest on it, and bees in it.
+  nestGrown(x, y, z) { if (!this.net?.guest) this.hives.fill(x, y, z); }
   // A block did something audible on its own (a composter finishing).
   blockSound(x, y, z, kind) {
     const at = { x: x + 0.5, y: y + 0.5, z: z + 0.5 };
@@ -3662,6 +3787,10 @@ export class Game {
     this.signMats ??= [];
     let sk = 0;
     this.signs.draw(cam, 40, list, () => this.signMats[sk++] ??= mat4());
+    // Banners.
+    this.bannerMats ??= [];
+    let bk = 0;
+    this.banners.draw(cam, 64, list, () => this.bannerMats[bk++] ??= mat4(), performance.now() / 1000);
     // Fishing floats: this player's, and anyone else's.
     const floats = [];
     if (this.fishing.bobber) floats.push(this.fishing.bobber);

@@ -5,15 +5,16 @@
 // tadpole `g`, how long until it's a frog), `book` (a book's pages `p`, and once it's signed its
 // title `t`, author `a` and generation `g`: 0 the original, 1 a copy, 2 a copy of a copy), `load`
 // (what's in a loaded crossbow: 'arrow', or { fw } a firework rocket), `fw` and `star` (a firework
-// rocket's and a firework star's makings, see fireworks.js), `map` (a map's number) and `scale`
-// (an empty map made to draw zoomed out, 1 to 4).
+// rocket's and a firework star's makings, see fireworks.js), `map` (a map's number), `scale`
+// (an empty map made to draw zoomed out, 1 to 4) and `bp` (a banner's patterns, see banners.js).
 import { maxStack, itemDef } from './items.js';
 import { cleanEnch, enchLevel } from './enchanting.js';
 import { BOOK_PAGES, cleanPage, cleanTitle } from './books.js';
 import { cleanStar, cleanRocket } from './fireworks.js';
+import { cleanPatterns } from './banners.js';
 
 const TAKE_ORDER = Array.from({ length: 36 }, (_, k) => (k + 9) % 36);
-const EXTRAS = ['ench', 'name', 'work', 'mob', 'book', 'load', 'fw', 'star', 'map', 'scale'];
+const EXTRAS = ['ench', 'name', 'work', 'mob', 'book', 'load', 'fw', 'star', 'map', 'scale', 'bp', 'bees', 'honey'];
 const bare = (s) => EXTRAS.every((k) => !s[k]);
 
 // A stack's extras (or null when it has none).
@@ -55,6 +56,11 @@ export function cleanExtras(s) {
   if (star) o.star = star;
   if (Number.isInteger(s.map) && s.map > 0 && s.map < 1e6) o.map = s.map;
   if (Number.isInteger(s.scale) && s.scale >= 1 && s.scale <= 4) o.scale = s.scale;
+  const bp = cleanPatterns(s.bp);
+  if (bp.length) o.bp = bp;
+  // (A bees' home taken whole: the bees in it, and its honey.)
+  if (Number.isInteger(s.bees) && s.bees > 0) o.bees = Math.min(s.bees, 3);
+  if (Number.isInteger(s.honey) && s.honey > 0) o.honey = Math.min(s.honey, 5);
   return Object.keys(o).length ? o : null;
 }
 const sameExtras = (a, b) => (bare(a) && bare(b)) || JSON.stringify(extras(a)) === JSON.stringify(extras(b));

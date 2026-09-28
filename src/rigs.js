@@ -124,8 +124,26 @@ function unturn([rx, ry, rz], [x, y, z]) {
 }
 export const GUARDIAN_SPIKES = SPIKES.map((sp) => unturn(spikeTurn(sp), [-sp[0], -sp[1], sp[2]]));
 
+// Armor stands: Minecraft's model (so the pack's picture fits), turned into the game's terms (x =
+// -x, y = 24 - y, turns [-x, -y, z]): a stick for a neck, a board across the shoulders, two sticks
+// down the body to a bar at the hips, stick arms and legs held a little out (its resting pose), and
+// a stone plate underfoot. Its bones are where a player's are, so armour sits on it the same way
+// (see stands.js).
+const DEG = Math.PI / 180;
+const STAND = {
+  head: { pivot: [0, 23, 0], cubes: [c([-1, 23, -1], [2, 7, 2], [0, 0])] },
+  body: { pivot: [0, 24, 0], cubes: [c([-6, 21, -1.5], [12, 3, 3], [0, 26]), c([1, 14, -1], [2, 7, 2], [16, 0]), c([-3, 14, -1], [2, 7, 2], [48, 16]),
+    c([-4, 12, -1], [8, 2, 2], [0, 48])] },
+  rightArm: { pivot: [5, 22, 0], rest: [15 * DEG, 0, 10 * DEG], cubes: [c([5, 12, -1], [2, 12, 2], [24, 0])] },
+  leftArm: { pivot: [-5, 22, 0], rest: [10 * DEG, 0, -10 * DEG], cubes: [c([-7, 12, -1], [2, 12, 2], [32, 16], { mirror: true })] },
+  rightLeg: { pivot: [1.9, 12, 0], rest: [-1 * DEG, 0, 1 * DEG], cubes: [c([0.9, 1, -1], [2, 11, 2], [8, 0])] },
+  leftLeg: { pivot: [-1.9, 12, 0], rest: [1 * DEG, 0, -1 * DEG], cubes: [c([-2.9, 1, -1], [2, 11, 2], [40, 16], { mirror: true })] },
+  base: { pivot: [0, 0, 0], cubes: [c([-6, 0, -6], [12, 1, 12], [0, 32])] },
+};
+
 export const RIGS = {
   humanoid: { bones: HUMANOID, hand: { bone: 'rightArm', at: [6, 13, -1] }, height: 32 },
+  armor_stand: { bones: STAND },
   guardian: { bones: GUARDIAN },
   skeleton: {
     bones: {

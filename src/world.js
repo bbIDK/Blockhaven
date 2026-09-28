@@ -5,7 +5,7 @@ import {
   B, BLOCKS, OPAQUE, SOLID, FILTER, EMIT, RENDER, R, SELECTABLE, REPLACEABLE, TORCH_LEAN, FACE_DIRS,
   WATERLIKE, isWater, waterLevel, lavaLevel, WATER_FLOW_BASE, LAVA_FLOW_BASE, SHAPE, shapeBoxes, DOOR, doorId, LADDER_SIDE, BED,
   SPREAD, BURN, CLIMB, VINE_SIDE, DOUBLE, GATE, gateId, TICKS, LOG, NATURAL_LEAVES, SWITCH, SIGN, RAIL, CAVE_VINES, DRIPSTONE,
-  LICHEN_SIDE, WET,
+  LICHEN_SIDE, WET, COCOA, BANNER, SCAFFOLD, SCAFFOLD_REACH, scaffoldId, WOOD, LOG_AXES,
 } from './blocks.js';
 import { powerChanged, powerMatters } from './power.js';
 import { randomTick, logRemoved, leafTick } from './growth.js';
@@ -112,6 +112,8 @@ export const SOIL = new Set([B.grass_block, B.dirt, B.snowy_grass, B.coarse_dirt
 // What a big dripleaf takes root in.
 const DRIPLEAF_SOIL = new Set([...SOIL, B.clay]);
 const FARMLAND = new Set([B.farmland, B.farmland_moist]);
+// What cocoa grows on: jungle logs, whichever way they lie.
+const JUNGLE_LOG = new Set([WOOD.jungle.log, ...LOG_AXES[WOOD.jungle.log]]);
 const posKey = (x, y, z) => (x + 1048576) * 536870912 + (z + 1048576) * 256 + y;
 
 export class World {
@@ -775,6 +777,7 @@ export class World {
     if (id === B.fire) { this.scheduleTick(x, y, z, 30 + ((x * 7 + z * 13 + y) & 7)); return; }
     const def = BLOCKS[id];
     if (def.falls) { this.scheduleTick(x, y, z, 2); return; }
+    if (SCAFFOLD[id] !== undefined) { this.scheduleTick(x, y, z, 1); return; }
     if (def.support && !this.supported(x, y, z, id)) {
       this.setBlock(x, y, z, WET[id] ? B.water : 0, { remesh: true });
       this.listener?.blockDropped?.(x, y, z, id);
@@ -839,6 +842,9 @@ export class World {
         const d = FACE_DIRS[LADDER_SIDE[id]];
         return !!OPAQUE[this.getBlock(x + d[0], y, z + d[2])];
       }
+      // (A cocoa pod hangs from a jungle log; a banner on a wall, from the block behind it.)
+      case 'cocoa': { const d = FACE_DIRS[COCOA[id].face]; return JUNGLE_LOG.has(this.getBlock(x + d[0], y, z + d[2])); }
+      case 'banner_wall': { const d = FACE_DIRS[BANNER[id].face]; return !!SOLID[this.getBlock(x - d[0], y, z - d[2])]; }
       // (A wall sign hangs on the block behind its writing.)
       case 'sign_wall': {
         const d = FACE_DIRS[SIGN[id].face];
@@ -877,6 +883,7 @@ export class World {
       else if (id === B.fire) this.fireTick(t.x, t.y, t.z);
       else if (NATURAL_LEAVES[id]) leafTick(this, t.x, t.y, t.z, id);
       else if (BLOCKS[id]?.falls) this.fall(t.x, t.y, t.z, id);
+      else if (SCAFFOLD[id] !== undefined) this.scaffoldTick(t.x, t.y, t.z, id);
       else if (id === B.composter_7) { this.setBlock(t.x, t.y, t.z, B.composter_ready); this.listener?.blockSound?.(t.x, t.y, t.z, 'composter'); }
       else if (SWITCH[id]?.on && SWITCH[id].kind === 'button') { this.setBlock(t.x, t.y, t.z, SWITCH[id].other); this.listener?.blockSound?.(t.x, t.y, t.z, 'click_off'); }
       else if (SWITCH[id]?.on && SWITCH[id].kind === 'plate') {
@@ -888,6 +895,27 @@ export class World {
         else { this.setBlock(t.x, t.y, t.z, SWITCH[id].other); this.listener?.blockSound?.(t.x, t.y, t.z, 'click_off'); }
       }
     }
+  }
+
+  // How far scaffolding here would be from a column standing on something: none on anything solid,
+  // the same as scaffolding it stands on, or one more than the nearest scaffolding beside it.
+  scaffoldDistance(x, y, z) {
+    const below = this.getBlock(x, y - 1, z);
+    if (SCAFFOLD[below] !== undefined) return SCAFFOLD[below];
+    if (SOLID[below]) return 0;
+    let d = SCAFFOLD_REACH;
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const n = SCAFFOLD[this.getBlock(x + dx, y, z + dz)];
+      if (n !== undefined && n + 1 < d) d = n + 1;
+    }
+    return d;
+  }
+  // Scaffolding keeps its distance up to date as what holds it up changes, and comes down (dropped
+  // as an item) once it's too far out: a whole unsupported arm falls a block at a time.
+  scaffoldTick(x, y, z, id) {
+    const d = this.scaffoldDistance(x, y, z);
+    if (d >= SCAFFOLD_REACH) { this.setBlock(x, y, z, 0); this.listener?.blockDropped?.(x, y, z, id); }
+    else if (d !== SCAFFOLD[id]) this.setBlock(x, y, z, scaffoldId(d));
   }
 
   // Sand and gravel with nothing under them come loose and fall as a moving block (an entity
@@ -1180,12 +1208,18 @@ export class World {
 
   // Solid-block boxes overlapping an AABB (for physics).
   // Cells below are checked too because fences are 1.5 blocks tall.
-  collides(x0, y0, z0, x1, y1, z1) {
+  // (`feet`: for something moving, how high its feet were before the move, so that scaffolding it
+  // was standing on or coming down onto holds it up; null for something that goes through
+  // scaffolding - someone sneaking down it - or for a box that isn't moving.)
+  collides(x0, y0, z0, x1, y1, z1, feet = null) {
     for (let y = Math.floor(y0 - 0.5); y <= Math.floor(y1 - 1e-9); y++) {
       for (let z = Math.floor(z0); z <= Math.floor(z1 - 1e-9); z++) {
         for (let x = Math.floor(x0); x <= Math.floor(x1 - 1e-9); x++) {
           const id = this.getBlock(x, y, z);
-          if (!SOLID[id]) continue;
+          if (!SOLID[id]) {
+            if (feet !== null && SCAFFOLD[id] !== undefined && feet >= y + 1 - 1e-4 && y0 < y + 1 && y1 > y + 0.875) return true;
+            continue;
+          }
           const rt = RENDER[id];
           if (rt === R.CACTUS) {
             if (y1 > y && y0 < y + 1 && x0 < x + 15 / 16 && x1 > x + 1 / 16 && z0 < z + 15 / 16 && z1 > z + 1 / 16) return true;
@@ -1213,6 +1247,17 @@ export class World {
         for (let x = Math.floor(x0); x <= Math.floor(x1 - 1e-9); x++)
           if (this.getBlock(x, y, z) === id) return true;
     return false;
+  }
+
+  // The first block the box overlaps that's in `table` (an id -> anything map), or 0.
+  touchesAny(x0, y0, z0, x1, y1, z1, table) {
+    for (let y = Math.floor(y0); y <= Math.floor(y1 - 1e-9); y++)
+      for (let z = Math.floor(z0); z <= Math.floor(z1 - 1e-9); z++)
+        for (let x = Math.floor(x0); x <= Math.floor(x1 - 1e-9); x++) {
+          const id = this.getBlock(x, y, z);
+          if (table[id] !== undefined) return id;
+        }
+    return 0;
   }
 
   touchesClimbable(x0, y0, z0, x1, y1, z1) {

@@ -14,7 +14,7 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decodePNG, encodePNG } from './png.mjs';
 import { SOURCES } from './texture-sources.mjs';
-import { SKIN_SOURCES } from './skin-sources.mjs';
+import { SKIN_SOURCES, BANNER_SOURCES } from './skin-sources.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const [ppDir, mclDir] = process.argv.slice(2).map((p) => resolve(p));
@@ -192,10 +192,29 @@ for (const [name, fn] of Object.entries(SKIN_SOURCES)) {
   rows.push([`skins/${name}.png`, describe(used), true]);
 }
 
+// ---------------------------------------------------------------- banners
+const bannerDir = join(root, 'assets', 'banners');
+if (existsSync(bannerDir)) for (const f of readdirSync(bannerDir)) if (f.endsWith('.png')) rmSync(join(bannerDir, f));
+mkdirSync(bannerDir, { recursive: true });
+for (const [name, ref] of Object.entries(BANNER_SOURCES)) {
+  used.clear();
+  let img = load(ref);
+  if (img.w !== 64 || img.h !== 64) throw new Error(`banner ${name}: not 64x64`);
+  // (A pattern is only a mask - how much of the dye goes on where - so it's kept as white of that
+  // opacity.)
+  if (name !== 'base') {
+    const mask = blank(64, 64);
+    for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) mask.put(x, y, [255, 255, 255, img.px(x, y)[3]]);
+    img = mask;
+  }
+  writeFileSync(join(bannerDir, `${name}.png`), encodePNG(64, 64, img.d));
+  rows.push([`banners/${name}.png`, describe(used), name !== 'base']);
+}
+
 // ---------------------------------------------------------------- credits
 writeFileSync(join(root, 'assets', 'CREDITS.md'), `# Texture credits
 
-The game's block, item and creature textures (\`textures/\` and \`skins/\` here) come from two openly licensed
+The game's block, item, creature and banner textures (\`textures/\`, \`skins/\` and \`banners/\` here) come from two openly licensed
 Minecraft-style resource packs, and are shared under the same licence as them: Creative Commons
 Attribution-ShareAlike 4.0 ([CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)).
 
@@ -219,3 +238,4 @@ ${rows.map(([f, from, changed]) => `| \`${f}\` | ${from} | ${changed ? 'changed'
 `);
 console.log('assets/CREDITS.md written');
 console.log(`assets/skins: ${Object.keys(SKIN_SOURCES).length} imported; drawn in code: ${Object.keys(SKIN_INDEX).filter((n) => !(n in SKIN_SOURCES)).length}`);
+console.log(`assets/banners: ${Object.keys(BANNER_SOURCES).length} imported`);

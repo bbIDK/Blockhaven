@@ -139,7 +139,7 @@ for (const [dye, from, n] of [['yellow', 'dandelion', 1], ['red', 'poppy', 1], [
   ['light_gray', 'azure_bluet', 1], ['light_blue', 'blue_orchid', 1], ['light_gray', 'oxeye_daisy', 1], ['red', 'red_tulip', 1],
   ['orange', 'orange_tulip', 1], ['light_gray', 'white_tulip', 1], ['pink', 'pink_tulip', 1], ['white', 'lily_of_the_valley', 1],
   ['yellow', 'sunflower', 2], ['magenta', 'lilac', 2], ['red', 'rose_bush', 2], ['pink', 'peony', 2], ['white', 'bone_meal', 1],
-  ['blue', 'lapis_lazuli', 1], ['black', 'coal', 1], ['red', 'beetroot', 1]]) {
+  ['blue', 'lapis_lazuli', 1], ['black', 'coal', 1], ['red', 'beetroot', 1], ['brown', 'cocoa_beans', 1]]) {
   shapeless(`${dye}_dye`, n, [from], 'misc');
 }
 for (const [out, a, b] of [['orange', 'red', 'yellow'], ['pink', 'red', 'white'], ['light_blue', 'blue', 'white'], ['purple', 'blue', 'red'],
@@ -213,7 +213,7 @@ shaped('clock', 1, [' G ', 'GRG', ' G '], { G: 'gold_ingot', R: 'redstone' }, 'e
 shaped('fishing_rod', 1, ['  #', ' #S', '# S'], { '#': 'stick', S: 'string' }, 'equipment');
 // Food.
 shaped('bread', 1, ['WWW'], { W: 'wheat' }, 'misc');
-shaped('cookie', 8, ['WSW'], { W: 'wheat', S: 'sugar' }, 'misc');
+shaped('cookie', 8, ['WCW'], { W: 'wheat', C: 'cocoa_beans' }, 'misc');
 shapeless('pumpkin_pie', 1, ['pumpkin', 'sugar', 'egg'], 'misc');
 shaped('cake', 1, ['MMM', 'SES', 'WWW'], { M: 'milk_bucket', S: 'sugar', E: 'egg', W: 'wheat' }, 'misc');
 shaped('golden_apple', 1, ['GGG', 'GAG', 'GGG'], { G: 'gold_ingot', A: 'apple' }, 'misc');
@@ -232,6 +232,17 @@ shaped('sea_lantern', 1, ['SCS', 'CCC', 'SCS'], { S: 'prismarine_shard', C: 'pri
 shaped('dispenser', 1, ['###', '#B#', '#R#'], { '#': '#cobble', B: 'bow', R: 'redstone' }, 'misc');
 shaped('tripwire_hook', 2, ['I', 'S', '#'], { I: 'iron_ingot', S: 'stick', '#': '#planks' }, 'misc');
 shaped('stick', 1, ['#', '#'], { '#': 'bamboo' }, 'misc');
+// Update 27's: bees' things (a beehive, honey and comb as blocks, the honey back out of its block),
+// scaffolding of bamboo lashed with string, an armor stand, and banners (six wool of a colour on
+// a stick; a flower charge's pattern is a daisy on paper).
+shaped('beehive', 1, ['PPP', 'HHH', 'PPP'], { P: '#planks', H: 'honeycomb' }, 'misc');
+shaped('honey_block', 1, ['HH', 'HH'], { H: 'honey_bottle' }, 'building');
+shapeless('honey_bottle', 4, ['honey_block', 'glass_bottle', 'glass_bottle', 'glass_bottle', 'glass_bottle'], 'misc');
+shaped('honeycomb_block', 1, ['HH', 'HH'], { H: 'honeycomb' }, 'building');
+shaped('scaffolding', 6, ['B~B', 'B B', 'B B'], { B: 'bamboo', '~': 'string' }, 'misc');
+shaped('armor_stand', 1, ['SSS', ' S ', 'SXS'], { S: 'stick', X: 'smooth_stone_slab' }, 'misc');
+for (const d of DYES) shaped(`${d.name}_banner`, 1, ['WWW', 'WWW', ' S '], { W: `${d.name}_wool`, S: 'stick' }, 'misc');
+shapeless('flower_banner_pattern', 1, ['paper', 'oxeye_daisy'], 'misc');
 for (const [mat, x] of [['leather', 'leather'], ['iron', 'iron_ingot'], ['golden', 'gold_ingot'], ['diamond', 'diamond']]) {
   shaped(`${mat}_helmet`, 1, ['XXX', 'X X'], { X: x }, 'equipment');
   shaped(`${mat}_chestplate`, 1, ['X X', 'XXX', 'XXX'], { X: x }, 'equipment');
