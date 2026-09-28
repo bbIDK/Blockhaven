@@ -5,7 +5,7 @@
 // cave, or indoors) it shows what's at your level instead. Each chunk's picture is worked out once
 // (again when something in it changes, or the daylight does); they're put together on one canvas
 // round you, which is drawn turned and scaled each frame.
-import { HEIGHT, SECTIONS } from './config.js';
+import { MIN_Y, MAX_Y, CHUNK_HEIGHT, SECTIONS } from './config.js';
 import { BLOCKS, RENDER, R, TINT, TINT_RGB, TEXL, WATERLIKE, SOLID, OPAQUE } from './blocks.js';
 import { BIOME_NAMES } from './biomes.js';
 import { DYES } from './colors.js';
@@ -42,6 +42,7 @@ export function initMinimapColours(pixels) {
   }
 }
 
+// (Heights here are rows of the chunk, counted up from its bottom at MIN_Y.)
 // The top block's height in a chunk (skipping empty sections).
 function topY(c) {
   for (let sy = SECTIONS - 1; sy >= 0; sy--) if (c.sections[sy].count) return sy * 16 + 15;
@@ -55,13 +56,13 @@ function topY(c) {
 const found = { y: -1, water: -1, rock: false };
 function surface(c, col, cave) {
   const blocks = c.blocks;
-  let y = cave === null ? topY(c) : Math.min(HEIGHT - 1, cave);
+  let y = cave === null ? topY(c) : Math.min(CHUNK_HEIGHT - 1, cave - MIN_Y);
   found.water = -1; found.rock = false;
   if (cave !== null) {
     const id = blocks[(y << 8) | col];
     if (SOLID[id] && OPAQUE[id]) { found.y = y; found.rock = true; return found; }
   }
-  const floor = cave === null ? 0 : Math.max(0, cave - CAVE_DEPTH);
+  const floor = cave === null ? 0 : Math.max(0, cave - MIN_Y - CAVE_DEPTH);
   for (; y >= floor; y--) {
     const id = blocks[(y << 8) | col];
     if (SEE[id]) continue;
@@ -135,7 +136,7 @@ export class Minimap {
       }
       hs[hi] = top;
       // Lit as the world is (by day the sun, at night torches), never quite black.
-      const above = top + 1 < HEIGHT ? light[((top + 1) << 8) | col] : 0xf0;
+      const above = top + 1 < CHUNK_HEIGHT ? light[((top + 1) << 8) | col] : 0xf0;
       const lit = Math.max(above & 15, (above >> 4) * day) / 15;
       const k = cave === null ? 0.28 + 0.72 * lit : 0.55 + 0.45 * lit;
       out[o] = r * k; out[o + 1] = g * k; out[o + 2] = b * k; out[o + 3] = 255;
@@ -175,7 +176,7 @@ export class Minimap {
     if (g.settings.caveMode === 0) return null;
     const x = Math.floor(p.x), y = Math.floor(p.eyeY), z = Math.floor(p.z);
     if ((w.getLight(x, y, z) >> 4) > 4) return null;
-    for (let yy = y + 1; yy < Math.min(HEIGHT, y + 40); yy++) { const id = w.getBlock(x, yy, z); if (SOLID[id] && OPAQUE[id]) return Math.floor(p.y) + 1; }
+    for (let yy = y + 1; yy < Math.min(MAX_Y, y + 40); yy++) { const id = w.getBlock(x, yy, z); if (SOLID[id] && OPAQUE[id]) return Math.floor(p.y) + 1; }
     return null;
   }
 

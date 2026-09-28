@@ -9,7 +9,7 @@ import { villagesNear, villageResidents, villageAnimals, villageChests, villageA
 import { B, BLOCKS, BASE, SOLID, DOOR, GATE, CLIMB, WATERLIKE, SHAPE_KIND, BED, CROP, CHEST, FURNACE_IDS } from './blocks.js';
 import { I } from './items.js';
 import { randomBook, ENCHANTS } from './enchanting.js';
-import { TICKS_PER_DAY } from './config.js';
+import { TICKS_PER_DAY, MIN_Y } from './config.js';
 import { mulberry32, hashString, clamp } from './math.js';
 import { TEX } from './textures.js';
 import { CIV_LOOKS } from './tex/civskins.js';
@@ -787,7 +787,7 @@ export class Civilians {
   // A* over the cells feet can stand in, within the village. Returns waypoints or null.
   findPath(from, to, limit = 3000, near = false) {
     const ox = from[0] - 128, oz = from[2] - 128;
-    const key = (x, y, z) => ((x - ox) & 255) | ((z - oz) & 255) << 8 | (y & 255) << 16;
+    const key = (x, y, z) => ((x - ox) & 255) | ((z - oz) & 255) << 8 | ((y - MIN_Y) & 511) << 16;
     if (Math.abs(to[0] - from[0]) > 120 || Math.abs(to[2] - from[2]) > 120) return null;
     const open = new Heap(), g = new Map(), came = new Map();
     const h = (x, y, z) => Math.abs(x - to[0]) + Math.abs(z - to[2]) + Math.abs(y - to[1]) * 1.5;

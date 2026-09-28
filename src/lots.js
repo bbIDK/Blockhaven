@@ -2,7 +2,8 @@
 // blocks sorted by chunk, and lots - one building each, drawn in its own coordinates - with the
 // houses, workshops, farms and yards that stand on them. Shared by the walled villages of older
 // worlds (villages.js) and the settlements of newer ones (settlements.js).
-import { HEIGHT } from './config.js';
+// (Chunks from generators up to 11 are 256 blocks tall, from y 0: see jobs.js.)
+import { LEGACY_HEIGHT as HEIGHT } from './config.js';
 import { B, STAIRS, FACING_VARIANTS, LADDER, LOG_AXES, doorId, bedId, lootChestId, gateId, trapdoorId, WOOD, WALL_TORCH, LOOT_KIND } from './blocks.js';
 import { BIOME } from './biomes.js';
 

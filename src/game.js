@@ -65,7 +65,7 @@ import { ITEMS, I, itemDef, itemLabel, breakTime, dropsFor, attackDamage, attack
 import { BIOME_NAMES, BIOME } from './biomes.js';
 import { MOBS } from './mobs.js';
 import { EGG_TYPES, eggLabel } from './eggs.js';
-import { CHUNK_VOLUME, HEIGHT, TICKS_PER_DAY, SAVE_VERSION, DIFFICULTIES, LATEST_GEN } from './config.js';
+import { CHUNK_VOLUME, MIN_Y, MAX_Y, NO_Y, TICKS_PER_DAY, SAVE_VERSION, DIFFICULTIES, LATEST_GEN } from './config.js';
 import { seedFromText, clamp, hashString, mat4, identity, translate, rotateX, rotateZ } from './math.js';
 
 const SETTINGS_KEY = 'blockhaven.settings';
@@ -399,7 +399,7 @@ export class Game {
     if (mode === 'survival' || mode === 'adventure') p.flying = false;
     // (Coming out of Spectator inside the ground, you come up out of it.)
     if (was === 'spectator' && !p.noclip && this.world) {
-      for (let y = Math.floor(p.y); y < HEIGHT && this.world.collides(p.x - p.hw, y, p.z - p.hw, p.x + p.hw, y + p.h, p.z + p.hw); y++) p.y = y + 1;
+      for (let y = Math.floor(p.y); y < MAX_Y && this.world.collides(p.x - p.hw, y, p.z - p.hw, p.x + p.hw, y + p.h, p.z + p.hw); y++) p.y = y + 1;
     }
     if (mode === 'spectator') {
       p.flying = true;
@@ -946,22 +946,22 @@ export class Game {
   // A safe standing spot near (x, z): open ground (not a tree, not water) with headroom.
   // Returns [x, y, z] of the feet position.
   safeSpot(x, z) {
-    const w = this.world;
+    const w = this.world, floor = w.floorY;
     const ok = (cx, cz) => {
       const top = w.topAt(cx, cz);
-      if (top < 1) return -1;
+      if (top <= floor) return null;
       const id = w.getBlock(cx, top, cz), name = BLOCKS[id].name;
-      if (!SOLID[id] || name.endsWith('leaves') || name.includes('_log') || id === B.cactus) return -1;
+      if (!SOLID[id] || name.endsWith('leaves') || name.includes('_log') || id === B.cactus) return null;
       return top + 1;
     };
     for (let r = 0; r <= 8; r++) {
       for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
         if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
         const y = ok(x + dx, z + dz);
-        if (y > 0) return [x + dx + 0.5, y, z + dz + 0.5];
+        if (y !== null) return [x + dx + 0.5, y, z + dz + 0.5];
       }
     }
-    return [x + 0.5, Math.max(1, w.topAt(x, z) + 1), z + 0.5];
+    return [x + 0.5, Math.max(floor + 1, w.topAt(x, z) + 1), z + 0.5];
   }
 
   placeAt(x, z) {
@@ -2099,9 +2099,13 @@ export class Game {
       this.fallTop = null;
       if (!p.flying && this.state !== 'dead') this.advancements.event('fall', { from, to: p.y });
     }
-    if (this.creative && p.y < -64) { p.y = 120; p.vy = 0; p.flying = true; }
+    // (Creative: out of the void, back over the ground there.)
+    if (this.creative && p.y < MIN_Y - 64) {
+      const top = this.world.topAt(Math.floor(p.x), Math.floor(p.z));
+      p.y = top === NO_Y ? 120 : top + 3; p.vy = 0; p.flying = true;
+    }
     // (A spectator can look at the world from underneath, but no further down than this.)
-    if (this.spectator && p.y < -64) { p.y = -64; p.vy = Math.max(0, p.vy); }
+    if (this.spectator && p.y < MIN_Y - 64) { p.y = MIN_Y - 64; p.vy = Math.max(0, p.vy); }
   }
 
   // ---------------------------------------------------------------- experience (see enchanting.js)
@@ -2313,7 +2317,7 @@ export class Game {
       this.fire = p.inWater ? 0 : this.fire - 1;
       if (this.fire % 20 === 0 && this.fire > 0) this.damage(1, 'You burned to death', true);
     }
-    if (p.y < -40 && this.time % 10 === 0) this.damage(4, 'You fell out of the world', true);
+    if (p.y < MIN_Y - 40 && this.time % 10 === 0) this.damage(4, 'You fell out of the world', true);
     if (this.time % 10 === 0 && this.touchingCactus()) this.damage(1, 'You were pricked to death', false, null, true);
     // A sweet berry bush (past a sprout) pricks whoever pushes through it.
     const moved = Math.hypot(p.x - (this.bushX ?? p.x), p.z - (this.bushZ ?? p.z));
@@ -3110,7 +3114,7 @@ export class Game {
     if (def?.stand) {
       if (repeat || (t.face !== 2 && !REPLACEABLE[t.id])) return;
       const into = REPLACEABLE[t.id] && !WATERLIKE[t.id], x = t.x, y = into ? t.y : t.y + 1, z = t.z;
-      for (const dy of [0, 1]) { const c = w.getBlock(x, y + dy, z); if (y + dy >= HEIGHT || (c && !(REPLACEABLE[c] && !WATERLIKE[c]))) return; }
+      for (const dy of [0, 1]) { const c = w.getBlock(x, y + dy, z); if (y + dy >= MAX_Y || (c && !(REPLACEABLE[c] && !WATERLIKE[c]))) return; }
       if (this.entities.blocksPlacement(x, y, z) || this.entities.blocksPlacement(x, y + 1, z) || p.intersectsBlock(x, y, z) || p.intersectsBlock(x, y + 1, z)) return;
       this.entities.spawnStand(x + 0.5, y, z + 0.5, standYaw(p.yaw));
       this.audio.place('wood', { x: x + 0.5, y: y + 0.5, z: z + 0.5 });
@@ -3124,7 +3128,7 @@ export class Game {
       if (repeat || t.face === 3 || t.face < 0) return;
       const into = REPLACEABLE[t.id] && !WATERLIKE[t.id], d = FACE_DIRS[t.face];
       const [x, y, z] = into ? [t.x, t.y, t.z] : [t.x + d[0], t.y + d[1], t.z + d[2]], cur = w.getBlock(x, y, z);
-      if (y < 0 || y >= HEIGHT || (cur && !(REPLACEABLE[cur] && !WATERLIKE[cur]))) return;
+      if (y < MIN_Y || y >= MAX_Y || (cur && !(REPLACEABLE[cur] && !WATERLIKE[cur]))) return;
       const look = p.lookDir(), id = into || t.face === 2 ? bannerId(rotFacing(look[0], look[2])) : wallBannerId(t.face);
       if (!w.supported(x, y, z, id) || this.entities.blocksPlacement(x, y, z)) return;
       if (w.setBlock(x, y, z, id)) {
@@ -3181,7 +3185,7 @@ export class Game {
       let [x, y, z] = [t.x, t.y, t.z], across = 0;
       for (;;) {
         x += dir[0]; y += dir[1]; z += dir[2];
-        if (y < 0 || y >= HEIGHT) return;
+        if (y < MIN_Y || y >= MAX_Y) return;
         const cur = w.getBlock(x, y, z);
         if (SCAFFOLD[cur] === undefined) {
           if (cur && !REPLACEABLE[cur]) return;
@@ -3214,7 +3218,11 @@ export class Game {
       const d = FACE_DIRS[face];
       x += d[0]; y += d[1]; z += d[2];
     }
-    if (y < 0 || y >= HEIGHT) return;
+    if (y < MIN_Y || y >= MAX_Y) {
+      // (As in the original: said just over the hotbar, in red.)
+      if (y >= MAX_Y) this.ui.showItemName(`Height limit for building is ${MAX_Y}`, 2000, 'warn');
+      return;
+    }
     const existing = w.getBlock(x, y, z);
     if (slab && SLAB[existing]?.bottom === slab.bottom) {
       if (SLAB[existing].top !== upperHalf || face === 2 || face === 3) this.finishPlace(x, y, z, slab.material);
@@ -3286,7 +3294,7 @@ export class Game {
       id = WOOD[LEAVES_WOOD[blockId]].placedLeaves;
     } else if (DOUBLE[blockId]) {
       const top = DOUBLE[blockId].other, above = w.getBlock(x, y + 1, z);
-      if (y + 1 >= HEIGHT || (above && !REPLACEABLE[above]) || !SOIL.has(w.getBlock(x, y - 1, z))) return;
+      if (y + 1 >= MAX_Y || (above && !REPLACEABLE[above]) || !SOIL.has(w.getBlock(x, y - 1, z))) return;
       w.setBlock(x, y, z, blockId, { updates: false });
       w.setBlock(x, y + 1, z, top, { updates: false });
       w.neighborsChanged(x, y, z);
@@ -3309,7 +3317,7 @@ export class Game {
       return;
     } else if (DOOR[blockId]) {
       const above = w.getBlock(x, y + 1, z);
-      if (y + 1 >= HEIGHT || (above && !REPLACEABLE[above]) || !SOLID[w.getBlock(x, y - 1, z)]) return;
+      if (y + 1 >= MAX_Y || (above && !REPLACEABLE[above]) || !SOLID[w.getBlock(x, y - 1, z)]) return;
       if (p.intersectsBlock(x, y, z) || p.intersectsBlock(x, y + 1, z) || this.entities.blocksPlacement(x, y, z) ||
           this.entities.blocksPlacement(x, y + 1, z)) return;
       const facing = this.lookFace(), base = DOOR[blockId].base;

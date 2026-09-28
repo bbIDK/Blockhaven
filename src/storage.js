@@ -1,5 +1,7 @@
 // Saves worlds in IndexedDB. Only chunks the player changed are stored (run-length encoded);
 // everything else is regenerated from the seed. Falls back to memory if IndexedDB is unavailable.
+import { CHUNK_VOLUME, LEGACY_VOLUME, LEGACY_BASE } from './config.js';
+
 const DB_NAME = 'blockhaven';
 const DB_VERSION = 1;
 
@@ -119,21 +121,25 @@ export function decodeRLE16(data, size) {
   return out;
 }
 
-// A stored chunk: { v: 2, d: RLE16 bytes } now; a bare Uint8Array (8-bit RLE of a 128-high
-// chunk) from older versions, which is widened here. Block indexes are (y << 8) | (z << 4) | x,
-// so the old chunk is simply the lower half of the new one.
-export function decodeChunk(data, size) {
-  if (data instanceof Uint8Array) {
-    const old = decodeRLE(data, 32768);
+// A stored chunk: { v: 3, d: RLE16 bytes } for the whole height, y -64 to 319, as saved since
+// Update 31. Older ones are read into the world at the height they were: { v: 2 } a chunk 256
+// blocks tall from y 0, and a bare Uint8Array (8-bit RLE) one 128 tall from y 0. (Rows count up
+// from the bottom: an index is (row << 8) | (z << 4) | x.)
+export function decodeChunk(data, size = CHUNK_VOLUME) {
+  const widen = (old) => {
     const out = new Uint16Array(size);
-    out.set(old.subarray(0, Math.min(old.length, size)));
+    out.set(old.subarray(0, Math.min(old.length, size - LEGACY_BASE)), LEGACY_BASE);
     return out;
+  };
+  if (data instanceof Uint8Array) return widen(decodeRLE(data, 32768));
+  if (data && data.d instanceof Uint8Array) {
+    if (data.v === 3) return decodeRLE16(data.d, size);
+    if (data.v === 2) return widen(decodeRLE16(data.d, LEGACY_VOLUME));
   }
-  if (data && data.v === 2 && data.d instanceof Uint8Array) return decodeRLE16(data.d, size);
   return null;
 }
 
-export const encodeChunk = (blocks) => ({ v: 2, d: encodeRLE16(blocks) });
+export const encodeChunk = (blocks) => ({ v: 3, d: encodeRLE16(blocks) });
 
 // Per-world chunk store used by World.
 export class WorldStore {

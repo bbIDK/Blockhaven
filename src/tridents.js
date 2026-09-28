@@ -14,6 +14,7 @@ import { enchLevel } from './enchanting.js';
 import { extras } from './inventory.js';
 import { I } from './items.js';
 import { SOLID } from './blocks.js';
+import { MIN_Y } from './config.js';
 
 // Sea creatures (what Impaling is for).
 export const AQUATIC = new Set(['squid', 'glow_squid', 'cod', 'salmon', 'tropical_fish', 'pufferfish', 'dolphin', 'shark', 'guardian', 'elder_guardian',
@@ -76,7 +77,7 @@ export function tridentPhysics(ents, e, dt) {
     if (!e.pickup && !loyal && e.stuckFor > 60) { e.dead = true; return true; }
     if (loyal && e.stuckFor > 0.2) e.returning = true;
   }
-  if (e.returning || (loyal && (e.dealt || e.y < -20))) {
+  if (e.returning || (loyal && (e.dealt || e.y < MIN_Y - 20))) {
     const q = thrower(ents, e);
     if (!q) {
       // (Its thrower is gone: it drops where it is.)

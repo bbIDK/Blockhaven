@@ -6,6 +6,7 @@ import {
   cocoaId, hiveId, RENDER, R,
 } from './blocks.js';
 import { TREES, WIDE_TREES, saplingTree } from './trees.js';
+import { MIN_Y } from './config.js';
 
 // Light at a block, counting skylight only as far as the sun is up (the game keeps
 // `world.daylight` current).
@@ -43,7 +44,7 @@ function hatch(w, x, y, z) {
 function growKelp(w, x, y, z) {
   if (Math.random() > 0.14 || w.getBlock(x, y + 1, z) !== B.water || w.getBlock(x, y + 2, z) !== B.water) return;
   let base = y;
-  while (base > 0 && (w.getBlock(x, base - 1, z) === B.kelp_plant || w.getBlock(x, base - 1, z) === B.kelp)) base--;
+  while (base > MIN_Y && (w.getBlock(x, base - 1, z) === B.kelp_plant || w.getBlock(x, base - 1, z) === B.kelp)) base--;
   if (y - base >= 2 + Math.floor(((x * 73856093) ^ (z * 19349663)) >>> 0) % 24) return;
   w.setBlock(x, y + 1, z, B.kelp);
 }

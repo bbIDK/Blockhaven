@@ -1,5 +1,6 @@
 // The first terrain generator, kept so worlds made before the release update carry on as they began.
-import { CHUNK, HEIGHT, SEA_LEVEL, CHUNK_VOLUME } from './config.js';
+// (Chunks from generator 1 are 256 blocks tall, from y 0: see jobs.js.)
+import { CHUNK, LEGACY_HEIGHT as HEIGHT, SEA_LEVEL, LEGACY_VOLUME as CHUNK_VOLUME } from './config.js';
 import { Noise } from './noise.js';
 import { B, REPLACEABLE, FACING_VARIANTS } from './blocks.js';
 import { BIOME, toByte } from './biomes.js';

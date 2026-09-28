@@ -4,7 +4,9 @@
 // great veins of copper and iron, and caves of their own kinds: dripstone caves, lush caves and
 // amethyst geodes. Like the rest of the terrain these are pure functions of the seed and position,
 // so every chunk agrees with its neighbours (see WorldGen.generate).
-import { CHUNK_VOLUME, HEIGHT, SEA_LEVEL } from './config.js';
+// (Chunks from generators up to 11 are 256 blocks tall, from y 0: see jobs.js. Generator 12's run
+// from y -64 to 319, and its caves, lakes, lava, veins and geodes go down into the depths below 0.)
+import { LEGACY_HEIGHT as HEIGHT, MIN_Y, MAX_Y, SEA_LEVEL } from './config.js';
 import { Noise } from './noise.js';
 import { B, OPAQUE, GLOW_LICHEN, caveVineId } from './blocks.js';
 import { BIOME } from './biomes.js';
@@ -14,12 +16,17 @@ import { dripParts, dripId } from './caves.js';
 export const LAVA_LEVEL = 8;   // open caves this deep are full of lava
 export const DEEP = 20;        // deepslate below here, mixing into the stone for DEEP_MIX more
 export const DEEP_MIX = 8;
-const GY = HEIGHT / 4 + 1;     // lattice samples up a column
+// Generator 12's, as Minecraft's: lava in the caves at the bottom of the world, deepslate below y 0.
+export const LAVA_LEVEL12 = -55;
+export const DEEP12 = 0;
 // Underground lakes: the ground is split into cells, each with a water table (or none), which
 // neighbouring cells mostly share. The cells' edges run down the middle of chunks, so where two
 // tables meet, the wall between them can be built within one chunk.
 const CELL = 48, CELL_OFF = 8, LAKE_TOP = SEA_LEVEL - 11;
 const LEVELS = [12, 18, 24, 30, 36, 42];
+// (Generator 12's deeper ground has lakes at three depths, each band of it with water tables of its
+// own: [lowest y, the levels its water may stand at].)
+const BANDS12 = [[-54, [-48, -42, -36, -30, -24]], [-20, [-14, -8, -2, 4, 10]], [12, [18, 24, 30, 36, 42]]];
 const RAVINE_CHANCE = 0.012, RAVINE_REACH = 8;
 // Generator 8 makes the caves' own kinds rarer (lush and dripstone caves had come to fill two caves
 // in five), ravines rarer, and the land less riddled with holes: tunnels close up before they reach
@@ -32,13 +39,21 @@ const PLAIN = 0, DRIP = 1, LUSH = 2;
 // Surfaces with no lush caves under them (too dry or too cold).
 const NOT_LUSH = new Set([BIOME.DESERT, BIOME.BADLANDS, BIOME.SNOWY_PLAINS, BIOME.SNOWY_TAIGA, BIOME.ICE_SPIKES, BIOME.FROZEN_PEAKS,
   BIOME.JAGGED_PEAKS, BIOME.SNOWY_SLOPES, BIOME.SNOWY_BEACH, BIOME.FROZEN_OCEAN, BIOME.FROZEN_RIVER, BIOME.DEEP_FROZEN_OCEAN]);
-const idx = (x, y, z) => (y << 8) | (z << 4) | x;
+// A block's index in a chunk whose rows start at y `lo`.
+const idx = (x, y, z, lo) => ((y - lo) << 8) | (z << 4) | x;
 const SIDES = [[1, 0, 0], [-1, 1, 0], [0, 4, 1], [0, 5, -1]]; // dx, face of the lichen's wall, dz
 
 export class CaveGen {
   constructor(seed, version = 5) {
     this.seed = seed >>> 0;
     this.v8 = version >= 8;
+    // The chunk's rows, from y `lo` up to `top` (not included); lava at `lava` and below; deepslate
+    // below `deep`; caverns biggest from `cavernLo` down.
+    this.v12 = version >= 12;
+    this.lo = this.v12 ? MIN_Y : 0; this.top = this.v12 ? MAX_Y : HEIGHT;
+    this.lava = this.v12 ? LAVA_LEVEL12 : LAVA_LEVEL; this.deep = this.v12 ? DEEP12 : DEEP;
+    this.cavernLo = this.v12 ? -40 : 12;
+    this.gy = (this.top - this.lo) / 4 + 1; // lattice samples up a column
     const n = (k) => new Noise((this.seed ^ hashString(k)) >>> 0);
     this.nA = n('tunnelA'); this.nB = n('tunnelB'); this.nW = n('tunnelWidth');
     this.nNA = n('noodleA'); this.nNB = n('noodleB');
@@ -50,18 +65,19 @@ export class CaveGen {
     this.nEntr = this.v8 ? n('caveEntrances') : null;
     this.lushT = this.v8 ? V8.lush : 0.42; this.dripT = this.v8 ? V8.drip : 0.42;
     this.tables = new Map(); // lake cell -> its water table
-    this.cave = new Uint8Array(CHUNK_VOLUME); // cells carved out of the chunk being made
+    this.cave = new Uint8Array((this.top - this.lo) * 256); // cells carved out of the chunk being made
     this.maxY = new Int16Array(256);          // how high caves may reach in each column
-    this.lat = [...Array(6)].map(() => new Float32Array(25 * GY));
-    this.colv = [...Array(6)].map(() => new Float32Array(GY));
+    this.lat = [...Array(6)].map(() => new Float32Array(25 * this.gy));
+    this.colv = [...Array(6)].map(() => new Float32Array(this.gy));
     this.ravines = new Map();  // origin chunk -> its ravine (or null)
     this.touching = new Map(); // chunk -> the ravines reaching into it
   }
 
   // ---------------------------------------------------------------- rock
-  // Deepslate below y 20, giving way to stone over the next eight blocks.
+  // Deepslate below y 20 (generator 12: below y 0), giving way to stone over the next eight blocks.
   isDeep(wx, y, wz) {
-    return y < DEEP || (y < DEEP + DEEP_MIX && hash3(wx, y, wz, this.seed ^ 0xd5) < (DEEP + DEEP_MIX - y) / DEEP_MIX);
+    const deep = this.deep;
+    return y < deep || (y < deep + DEEP_MIX && hash3(wx, y, wz, this.seed ^ 0xd5) < (deep + DEEP_MIX - y) / DEEP_MIX);
   }
 
   // ---------------------------------------------------------------- carving
@@ -78,7 +94,7 @@ export class CaveGen {
   // Tunnels: where two noise fields both cross zero, their width set by a third.
   static tunnelT(w) { return 0.003 + 0.022 * smoothstep(-0.5, 0.55, w); }
   // Caverns open where the cavern noise runs high: more of them, and bigger, the deeper you go.
-  static cavernT(y) { return 0.28 + 0.25 * smoothstep(12, 64, y); }
+  cavernT(y) { return 0.28 + 0.25 * smoothstep(this.cavernLo, 64, y); }
   // How far tunnels may break out at the surface around (wx, wz), 0 (they close up a few blocks
   // under it) to 1 (they open out): here and there, a cave mouth.
   entrance(wx, wz) { return smoothstep(0.35, 0.65, this.nEntr.noise2(wx / 90, wz / 90)); }
@@ -92,11 +108,11 @@ export class CaveGen {
   // GW, TOP (surface heights), VIN (inside a settlement), maxH }.
   carve(c) {
     const { blocks, x0, z0, H, GW, TOP, VIN, maxH } = c;
-    const cave = this.cave, L = this.lat, V = this.colv;
+    const cave = this.cave, L = this.lat, V = this.colv, lo = this.lo, GY = this.gy;
     cave.fill(0);
-    const caveTop = Math.min(HEIGHT - 1, maxH + 8), NY = Math.min(GY, (caveTop >> 2) + 2);
+    const caveTop = Math.min(this.top - 1, maxH + 8), NY = Math.min(GY, ((caveTop - lo) >> 2) + 2);
     for (let iz = 0; iz < 5; iz++) for (let ix = 0; ix < 5; ix++) {
-      for (let iy = 0; iy < NY; iy++) this.sample((iz * 5 + ix) * GY + iy, x0 + ix * 4, iy * 4, z0 + iz * 4);
+      for (let iy = 0; iy < NY; iy++) this.sample((iz * 5 + ix) * GY + iy, x0 + ix * 4, lo + iy * 4, z0 + iz * 4);
     }
     for (let z = 0; z < 16; z++) {
       for (let x = 0; x < 16; x++) {
@@ -108,11 +124,11 @@ export class CaveGen {
         if (h <= SEA_LEVEL + 1 || minN < SEA_LEVEL) maxY = Math.min(h, minN) - 5;
         if (VIN[z * 16 + x]) maxY = Math.min(maxY, h - 8);
         this.maxY[z * 16 + x] = maxY;
-        if (maxY < 6) continue;
+        if (maxY < lo + 6) continue;
         const ix = x >> 2, iz = z >> 2, fx = (x & 3) / 4, fz = (z & 3) / 4;
         const k00 = (iz * 5 + ix) * GY, k10 = k00 + GY, k01 = k00 + 5 * GY, k11 = k01 + GY;
         const w00 = (1 - fx) * (1 - fz), w10 = fx * (1 - fz), w01 = (1 - fx) * fz, w11 = fx * fz;
-        const top = Math.min(GY - 1, (maxY >> 2) + 1);
+        const top = Math.min(GY - 1, ((maxY - lo) >> 2) + 1);
         for (let f = 0; f < 6; f++) {
           const F = L[f], out = V[f];
           for (let iy = 0; iy <= top; iy++) out[iy] = F[k00 + iy] * w00 + F[k10 + iy] * w10 + F[k01 + iy] * w01 + F[k11 + iy] * w11;
@@ -121,18 +137,18 @@ export class CaveGen {
         const cavernTop = Math.min(maxY, h - 10), noodleTop = Math.min(maxY, h - 8);
         // (How far tunnels may open out at the surface here: always, before generator 8.)
         const open = this.v8 ? this.entrance(wx, wz) : 1;
-        for (let y = 6; y <= maxY; y++) {
-          const iy = y >> 2, fy = (y & 3) / 4, at = (f) => V[f][iy] + (V[f][iy + 1] - V[f][iy]) * fy;
+        for (let y = lo + 6; y <= maxY; y++) {
+          const iy = (y - lo) >> 2, fy = (y & 3) / 4, at = (f) => V[f][iy] + (V[f][iy + 1] - V[f][iy]) * fy;
           const a = at(0), b = at(1);
           let t = CaveGen.tunnelT(at(2));
           if (open < 1 && y > h - 14) t *= open + (1 - open) * smoothstep(3, 14, h - y);
           let carve = a * a + b * b < t;
-          if (!carve && y >= 8 && y <= noodleTop) { const na = at(3), nb = at(4); carve = na * na + nb * nb < 0.005; }
-          if (!carve && y <= cavernTop && !pillar) carve = at(5) > CaveGen.cavernT(y);
+          if (!carve && y >= lo + 8 && y <= noodleTop) { const na = at(3), nb = at(4); carve = na * na + nb * nb < 0.005; }
+          if (!carve && y <= cavernTop && !pillar) carve = at(5) > this.cavernT(y);
           if (!carve) continue;
-          const i = idx(x, y, z);
+          const i = idx(x, y, z, lo);
           if (blocks[i] === B.bedrock || blocks[i] === 0) continue;
-          blocks[i] = y <= LAVA_LEVEL ? B.lava : 0;
+          blocks[i] = y <= this.lava ? B.lava : 0;
           cave[i] = 1;
         }
       }
@@ -150,11 +166,12 @@ export class CaveGen {
     let out = null;
     const rnd = mulberry32(Math.floor(hash2(ocx, ocz, this.seed ^ 0x7a71e) * 4294967296));
     if (rnd() < (this.v8 ? V8.ravine : RAVINE_CHANCE)) {
-      let x = ocx * 16 + rnd() * 16, z = ocz * 16 + rnd() * 16, y = 22 + rnd() * 36;
+      // (Generator 12's may start deeper: the deepest never reach the surface.)
+      let x = ocx * 16 + rnd() * 16, z = ocz * 16 + rnd() * 16, y = this.v12 ? -8 + rnd() * 66 : 22 + rnd() * 36;
       let yaw = rnd() * Math.PI * 2, pitch = (rnd() - 0.5) * 0.25, yawV = 0, pitchV = 0;
       const width = 1.4 + rnd() * 2.4, len = 70 + Math.floor(rnd() * 50);
-      const rough = new Float32Array(HEIGHT);
-      for (let yy = 0; yy < HEIGHT; yy++) rough[yy] = yy === 0 || rnd() < 1 / 3 ? 1 + rnd() * rnd() : rough[yy - 1];
+      const rough = new Float32Array(this.top - this.lo); // (by y, from lo up)
+      for (let yy = 0; yy < rough.length; yy++) rough[yy] = yy === 0 || rnd() < 1 / 3 ? 1 + rnd() * rnd() : rough[yy - 1];
       const parts = [];
       let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
       for (let i = 0; i < len; i++) {
@@ -167,7 +184,7 @@ export class CaveGen {
         parts.push([x, y, z, r, r * 3]);
         x0 = Math.min(x0, x - r); x1 = Math.max(x1, x + r); z0 = Math.min(z0, z - r); z1 = Math.max(z1, z + r);
       }
-      out = { parts, rough, box: [x0, z0, x1, z1] };
+      out = { parts, rough, box: [x0, z0, x1, z1], lo: this.lo };
     }
     if (this.ravines.size > 4000) this.ravines.clear();
     this.ravines.set(key, out);
@@ -190,24 +207,24 @@ export class CaveGen {
   // Whether the ellipsoid `p` of ravine `r` takes in the block at (x, y, z) (floors are flat).
   static inRavine(r, p, x, y, z) {
     const dx = (x + 0.5 - p[0]) / p[3], dy = (y + 0.5 - p[1]) / p[4], dz = (z + 0.5 - p[2]) / p[3];
-    return dy > -0.7 && (dx * dx + dz * dz) * r.rough[y] + (dy * dy) / 6 < 1;
+    return dy > -0.7 && (dx * dx + dz * dz) * r.rough[y - r.lo] + (dy * dy) / 6 < 1;
   }
   carveRavines(c) {
-    const { blocks, x0, z0 } = c;
+    const { blocks, x0, z0 } = c, lo = this.lo;
     for (const r of this.ravinesIn(x0 >> 4, z0 >> 4)) {
       for (const p of r.parts) {
         const [px, py, pz, pr, ph] = p;
         const xa = Math.max(0, Math.floor(px - pr) - x0), xb = Math.min(15, Math.ceil(px + pr) - x0);
         const za = Math.max(0, Math.floor(pz - pr) - z0), zb = Math.min(15, Math.ceil(pz + pr) - z0);
         if (xa > xb || za > zb) continue;
-        const ya = Math.max(5, Math.floor(py - ph * 0.7)), yb = Math.min(HEIGHT - 2, Math.ceil(py + ph * 2.45));
+        const ya = Math.max(lo + 5, Math.floor(py - ph * 0.7)), yb = Math.min(this.top - 2, Math.ceil(py + ph * 2.45));
         for (let z = za; z <= zb; z++) for (let x = xa; x <= xb; x++) {
           const top = Math.min(yb, this.maxY[z * 16 + x]);
           for (let y = ya; y <= top; y++) {
             if (!CaveGen.inRavine(r, p, x0 + x, y, z0 + z)) continue;
-            const i = idx(x, y, z);
+            const i = idx(x, y, z, lo);
             if (blocks[i] === B.bedrock || blocks[i] === 0 || blocks[i] === B.lava) continue;
-            blocks[i] = y <= LAVA_LEVEL ? B.lava : 0;
+            blocks[i] = y <= this.lava ? B.lava : 0;
             this.cave[i] = 1;
           }
         }
@@ -238,16 +255,26 @@ export class CaveGen {
 
   // ---------------------------------------------------------------- lakes
   // The water table of lake cell (gx, gz), or 0 where the ground is dry: wet and dry ground, and
-  // how high the water stands, come in broad regions.
-  table(gx, gz) {
-    const key = gx * 65536 + gz;
+  // how high the water stands, come in broad regions. (Generator 12: that of `band` of BANDS12, or
+  // one under the band where it's dry.)
+  table(gx, gz, band = -1) {
+    const key = (gx * 65536 + gz) * 4 + band + 1;
     let level = this.tables.get(key);
     if (level !== undefined) return level;
     const x = gx * CELL - CELL_OFF + CELL / 2, z = gz * CELL - CELL_OFF + CELL / 2;
-    level = 0;
-    if (this.nWet.noise2(x / 400, z / 400) > 0.25) {
-      const v = this.nLevel.noise2(x / 600 + 13, z / 600 - 7) * 0.6 + 0.5;
-      level = Math.min(LAKE_TOP, LEVELS[Math.max(0, Math.min(LEVELS.length - 1, Math.floor(v * LEVELS.length)))]);
+    if (band < 0) {
+      level = 0;
+      if (this.nWet.noise2(x / 400, z / 400) > 0.25) {
+        const v = this.nLevel.noise2(x / 600 + 13, z / 600 - 7) * 0.6 + 0.5;
+        level = Math.min(LAKE_TOP, LEVELS[Math.max(0, Math.min(LEVELS.length - 1, Math.floor(v * LEVELS.length)))]);
+      }
+    } else {
+      const [floor, levels] = BANDS12[band];
+      level = floor - 1;
+      if (this.nWet.noise2(x / 400 + band * 71.3, z / 400 - band * 29.9) > 0.25) {
+        const v = this.nLevel.noise2(x / 600 + 13 + band * 53.7, z / 600 - 7 - band * 17.1) * 0.6 + 0.5;
+        level = levels[Math.max(0, Math.min(levels.length - 1, Math.floor(v * levels.length)))];
+      }
     }
     if (this.tables.size > 4000) this.tables.clear();
     this.tables.set(key, level);
@@ -256,17 +283,18 @@ export class CaveGen {
   // The fluid a carved-out block at (x, y, z) fills with: lava in the deepest caves, and below the
   // water table, water.
   fluidAt(x, y, z) {
-    if (y <= LAVA_LEVEL) return B.lava;
-    return y <= this.table(Math.floor((x + CELL_OFF) / CELL), Math.floor((z + CELL_OFF) / CELL)) ? B.water : 0;
+    if (y <= this.lava) return B.lava;
+    const band = this.v12 ? (y < BANDS12[1][0] ? 0 : y < BANDS12[2][0] ? 1 : 2) : -1;
+    return y <= this.table(Math.floor((x + CELL_OFF) / CELL), Math.floor((z + CELL_OFF) / CELL), band) ? B.water : 0;
   }
   // Fills the carved-out caves with their lakes. Where a lake would spill into a cave beside or
   // below it that has another level (or none), it's walled in with stone.
   fill(c) {
-    const { blocks, x0, z0 } = c, cave = this.cave;
+    const { blocks, x0, z0 } = c, cave = this.cave, lo = this.lo;
     for (let z = 0; z < 16; z++) for (let x = 0; x < 16; x++) {
       const top = Math.min(LAKE_TOP, this.maxY[z * 16 + x]), wx = x0 + x, wz = z0 + z;
-      for (let y = LAVA_LEVEL + 1; y <= top; y++) {
-        const i = idx(x, y, z);
+      for (let y = this.lava + 1; y <= top; y++) {
+        const i = idx(x, y, z, lo);
         if (!cave[i]) continue;
         const f = this.fluidAt(wx, y, wz);
         if (!f) continue;
@@ -274,19 +302,19 @@ export class CaveGen {
         for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1], [0, -1, 0]]) {
           const nx = x + dx, nz = z + dz;
           if (nx < 0 || nx > 15 || nz < 0 || nz > 15) continue; // (the same cell: see CELL_OFF)
-          const j = idx(nx, y + dy, nz);
+          const j = idx(nx, y + dy, nz, lo);
           if (!cave[j] || this.fluidAt(wx + dx, y + dy, wz + dz) === f) continue;
           wall = true;
           // (A rough dam of rock rather than a flat wall: a block or two more on the dry side.)
-          const rock = y < DEEP ? B.deepslate : B.stone;
+          const rock = y < this.deep ? B.deepslate : B.stone;
           for (let k = 1; k <= 2 && dy === 0; k++) {
-            const ax = x + dx * k, az = z + dz * k, a = idx(ax, y, az);
+            const ax = x + dx * k, az = z + dz * k, a = idx(ax, y, az, lo);
             if (ax < 0 || ax > 15 || az < 0 || az > 15 || !cave[a] || blocks[a] || hash3(wx + dx * k, y, wz + dz * k, this.seed ^ 0xda3) > 0.7 / k) break;
             blocks[a] = rock; cave[a] = 0;
           }
           break;
         }
-        if (wall) { blocks[i] = y < DEEP ? B.deepslate : B.stone; cave[i] = 0; } else blocks[i] = f;
+        if (wall) { blocks[i] = y < this.deep ? B.deepslate : B.stone; cave[i] = 0; } else blocks[i] = f;
       }
     }
   }
@@ -294,31 +322,33 @@ export class CaveGen {
   // ---------------------------------------------------------------- ore veins
   // Great veins of ore snaking through the rock: copper in granite, and deeper down iron in tuff,
   // studded with raw ore. (Where two thin noise ridges cross, in regions a third picks out.)
+  // Generator 12's, as Minecraft's: copper from y 0 to 50, iron from -60 to -8.
   veins(c) {
-    const { blocks, x0, z0 } = c, seed = this.seed;
-    const T = new Float32Array(25 * 8), VA = new Float32Array(25 * 8), VB = new Float32Array(25 * 8);
+    const { blocks, x0, z0 } = c, seed = this.seed, lo = this.lo, NV = this.v12 ? 16 : 8;
+    const T = new Float32Array(25 * NV), VA = new Float32Array(25 * NV), VB = new Float32Array(25 * NV);
     let any = false;
-    for (let iz = 0; iz < 5; iz++) for (let ix = 0; ix < 5; ix++) for (let iy = 0; iy < 8; iy++) {
-      const k = (iz * 5 + ix) * 8 + iy, sx = x0 + ix * 4, sy = iy * 8, sz = z0 + iz * 4;
+    for (let iz = 0; iz < 5; iz++) for (let ix = 0; ix < 5; ix++) for (let iy = 0; iy < NV; iy++) {
+      const k = (iz * 5 + ix) * NV + iy, sx = x0 + ix * 4, sy = lo + iy * 8, sz = z0 + iz * 4;
       T[k] = this.nVT.noise3(sx / 180, sy / 100, sz / 180);
       if (Math.abs(T[k]) > 0.2) any = true;
     }
     if (!any) return;
-    for (let iz = 0; iz < 5; iz++) for (let ix = 0; ix < 5; ix++) for (let iy = 0; iy < 8; iy++) {
-      const k = (iz * 5 + ix) * 8 + iy, sx = x0 + ix * 4, sy = iy * 8, sz = z0 + iz * 4;
+    for (let iz = 0; iz < 5; iz++) for (let ix = 0; ix < 5; ix++) for (let iy = 0; iy < NV; iy++) {
+      const k = (iz * 5 + ix) * NV + iy, sx = x0 + ix * 4, sy = lo + iy * 8, sz = z0 + iz * 4;
       VA[k] = this.nVA.noise3(sx / 56, sy / 48, sz / 56);
       VB[k] = this.nVB.noise3(sx / 56, sy / 48, sz / 56 + 30);
     }
     const at = (F, x, y, z) => {
-      const ix = x >> 2, iz = z >> 2, fx = (x & 3) / 4, fz = (z & 3) / 4, iy = Math.min(6, y >> 3), fy = (y - iy * 8) / 8;
-      const k = (iz * 5 + ix) * 8 + iy, s = (o) => F[k + o] * (1 - fy) + F[k + o + 1] * fy;
-      return (s(0) * (1 - fx) + s(8) * fx) * (1 - fz) + (s(40) * (1 - fx) + s(48) * fx) * fz;
+      const ix = x >> 2, iz = z >> 2, fx = (x & 3) / 4, fz = (z & 3) / 4, iy = Math.min(NV - 2, (y - lo) >> 3), fy = (y - lo - iy * 8) / 8;
+      const k = (iz * 5 + ix) * NV + iy, s = (o) => F[k + o] * (1 - fy) + F[k + o + 1] * fy;
+      return (s(0) * (1 - fx) + s(NV) * fx) * (1 - fz) + (s(5 * NV) * (1 - fx) + s(6 * NV) * fx) * fz;
     };
-    for (let z = 0; z < 16; z++) for (let x = 0; x < 16; x++) for (let y = 1; y <= 50; y++) {
-      const t = at(T, x, y, z), copper = t > 0.28, iron = t < -0.28 && y <= 30;
+    const v12 = this.v12;
+    for (let z = 0; z < 16; z++) for (let x = 0; x < 16; x++) for (let y = v12 ? -60 : 1; y <= 50; y++) {
+      const t = at(T, x, y, z), copper = t > 0.28 && (!v12 || y >= 0), iron = t < -0.28 && y <= (v12 ? -8 : 30);
       if (!copper && !iron) continue;
       if (Math.abs(at(VA, x, y, z)) > 0.07 || Math.abs(at(VB, x, y, z)) > 0.07) continue;
-      const i = idx(x, y, z), cur = blocks[i];
+      const i = idx(x, y, z, lo), cur = blocks[i];
       if (cur !== B.stone && cur !== B.deepslate && cur !== B.tuff && cur !== B.granite) continue;
       const r = hash3(x0 + x, y, z0 + z, seed ^ 0x5e1), deep = cur === B.deepslate || cur === B.tuff;
       blocks[i] = r < 0.02 ? (copper ? B.raw_copper_block : B.raw_iron_block)
@@ -339,29 +369,29 @@ export class CaveGen {
   // azaleas, dripleaves and spore blossoms in lush caves; glow lichen on the walls and a cobweb or
   // two everywhere. `c` also needs BIO (biomes with the margin).
   decorate(c) {
-    const { blocks, x0, z0, TOP, BIO, GW } = c;
+    const { blocks, x0, z0, TOP, BIO, GW } = c, lo = this.lo;
     for (let z = 0; z < 16; z++) for (let x = 0; x < 16; x++) {
       const h = TOP[z * 16 + x], wx = x0 + x, wz = z0 + z;
-      if (h < 14) continue;
+      if (h < this.lava + 6) continue;
       const kind = this.kindAt(wx, wz, BIO[(z + 1) * GW + x + 1]);
       const last = Math.min(h - 4, 100);
-      let y = LAVA_LEVEL + 1;
+      let y = this.lava + 1;
       while (y < last) {
-        const i = idx(x, y, z);
+        const i = idx(x, y, z, lo);
         const below = blocks[i - 256];
         if (blocks[i] !== 0 || !(OPAQUE[below] || below === B.water)) { y++; continue; }
         let top = y;
         while (top + 1 < h && blocks[i + (top + 1 - y) * 256] === 0) top++;
-        this.decorateRun(c, x, z, y, top, !!OPAQUE[below], top + 1 <= h - 2 && !!OPAQUE[blocks[idx(x, top + 1, z)]], kind);
+        this.decorateRun(c, x, z, y, top, !!OPAQUE[below], top + 1 <= h - 2 && !!OPAQUE[blocks[idx(x, top + 1, z, lo)]], kind);
         y = top + 2;
       }
     }
   }
   // One run of open cave in a column, from the floor (f) to the ceiling (top).
   decorateRun(c, x, z, f, top, floored, roofed, kind) {
-    const { blocks, x0, z0 } = c, wx = x0 + x, wz = z0 + z, seed = this.seed;
+    const { blocks, x0, z0 } = c, wx = x0 + x, wz = z0 + z, seed = this.seed, lo = this.lo;
     const r = (k) => hash3(wx, f * 16 + k, wz, seed ^ 0xdec0);
-    const height = top - f + 1, fi = idx(x, f - 1, z), ci = idx(x, top + 1, z);
+    const height = top - f + 1, fi = idx(x, f - 1, z, lo), ci = idx(x, top + 1, z, lo);
     let down = 0, up = 0, merged = false, vines = 0;
     if (kind === DRIP) {
       if (floored && ROCK.has(blocks[fi]) && r(1) < 0.7) blocks[fi] = B.dripstone_block;
@@ -375,47 +405,47 @@ export class CaveGen {
         if (p < 0.035 && height >= 3) {
           // A big dripleaf on a stalk one to three blocks tall.
           const tall = 1 + Math.floor(r(8) * Math.min(3, height - 2));
-          for (let k = 0; k < tall - 1; k++) blocks[idx(x, f + k, z)] = B.big_dripleaf_stem;
-          blocks[idx(x, f + tall - 1, z)] = B.big_dripleaf;
+          for (let k = 0; k < tall - 1; k++) blocks[idx(x, f + k, z, lo)] = B.big_dripleaf_stem;
+          blocks[idx(x, f + tall - 1, z, lo)] = B.big_dripleaf;
           up = -tall;
-        } else if (p < 0.065) blocks[idx(x, f, z)] = B.azalea;
-        else if (p < 0.085) blocks[idx(x, f, z)] = B.flowering_azalea;
-        else if (p < 0.28) blocks[idx(x, f, z)] = B.moss_carpet;
-        else if (p < 0.46) blocks[idx(x, f, z)] = B.tall_grass;
+        } else if (p < 0.065) blocks[idx(x, f, z, lo)] = B.azalea;
+        else if (p < 0.085) blocks[idx(x, f, z, lo)] = B.flowering_azalea;
+        else if (p < 0.28) blocks[idx(x, f, z, lo)] = B.moss_carpet;
+        else if (p < 0.46) blocks[idx(x, f, z, lo)] = B.tall_grass;
         else if (p > 0.97 && this.pool(blocks, x, f - 1, z)) { blocks[fi] = B.water; blocks[fi - 256] = B.clay; }
       }
       if (roofed) {
         if (ROCK.has(blocks[ci])) { const cr = r(9); if (cr < 0.12) blocks[ci] = B.rooted_dirt; else if (cr < 0.55) blocks[ci] = B.moss_block; }
         const room = height - Math.abs(Math.min(0, up)) - 1;
-        if (blocks[ci] === B.rooted_dirt && r(10) < 0.6) blocks[idx(x, top, z)] = B.hanging_roots;
+        if (blocks[ci] === B.rooted_dirt && r(10) < 0.6) blocks[idx(x, top, z, lo)] = B.hanging_roots;
         else if (r(11) < 0.17 && room > 0) vines = Math.min(room, 1 + Math.floor(r(12) ** 2 * 10));
-        else if (r(13) < 0.012) blocks[idx(x, top, z)] = B.spore_blossom;
+        else if (r(13) < 0.012) blocks[idx(x, top, z, lo)] = B.spore_blossom;
       }
-    } else if (roofed && f > 12 && r(3) < 0.012) down = 1 + Math.floor(r(4) * 2);
+    } else if (roofed && f > this.lava + 4 && r(3) < 0.012) down = 1 + Math.floor(r(4) * 2);
     // Stalactites and stalagmites; where they'd meet, they join up.
     if (up > 0 || down > 0) {
       if (up > 0 && down > 0 && up + down >= height) { down = Math.max(1, Math.min(down, height - 1)); up = height - down; merged = true; }
       if (!merged) { down = Math.min(down, height - 1); up = Math.min(up, height - 1 - down); }
-      if (down > 0) dripParts(down, merged).forEach((p, k) => { blocks[idx(x, top - k, z)] = dripId(false, p); });
-      if (up > 0) dripParts(up, merged).forEach((p, k) => { blocks[idx(x, f + k, z)] = dripId(true, p); });
+      if (down > 0) dripParts(down, merged).forEach((p, k) => { blocks[idx(x, top - k, z, lo)] = dripId(false, p); });
+      if (up > 0) dripParts(up, merged).forEach((p, k) => { blocks[idx(x, f + k, z, lo)] = dripId(true, p); });
     }
     // Cave vines, a few pieces of them hung with glow berries.
     for (let k = 0; k < vines; k++) {
-      const i = idx(x, top - k, z);
+      const i = idx(x, top - k, z, lo);
       if (blocks[i] !== 0) break;
       blocks[i] = caveVineId(k === vines - 1 || blocks[i - 256] !== 0, hash3(wx, top - k, wz, seed ^ 0xbe77) < 0.3);
     }
     // Glow lichen on the walls (and now and then the floor), and cobwebs in the narrow places.
     const lichen = kind === LUSH ? 0.02 : kind === DRIP ? 0.004 : 0.008;
     for (let y = f; y <= top; y++) {
-      const i = idx(x, y, z);
+      const i = idx(x, y, z, lo);
       if (blocks[i] !== 0) continue;
       const q = hash3(wx, y, wz, seed ^ 0x11c4e);
       if (q < lichen) {
         const start = Math.floor(q * 400) & 3;
         for (let s = 0; s < 4; s++) {
           const [dx, face, dz] = SIDES[(start + s) & 3], nx = x + dx, nz = z + dz;
-          if (nx < 0 || nx > 15 || nz < 0 || nz > 15 || !OPAQUE[blocks[idx(nx, y, nz)]]) continue;
+          if (nx < 0 || nx > 15 || nz < 0 || nz > 15 || !OPAQUE[blocks[idx(nx, y, nz, lo)]]) continue;
           blocks[i] = GLOW_LICHEN[face];
           break;
         }
@@ -426,7 +456,8 @@ export class CaveGen {
   // Whether the block at (x, y, z) is walled in on four sides (so a pool of water there stays put).
   pool(blocks, x, y, z) {
     if (x < 1 || x > 14 || z < 1 || z > 14) return false;
-    return [[1, 0], [-1, 0], [0, 1], [0, -1]].every(([dx, dz]) => OPAQUE[blocks[idx(x + dx, y, z + dz)]] && blocks[idx(x + dx, y, z + dz)] !== B.water);
+    const lo = this.lo;
+    return [[1, 0], [-1, 0], [0, 1], [0, -1]].every(([dx, dz]) => OPAQUE[blocks[idx(x + dx, y, z + dz, lo)]] && blocks[idx(x + dx, y, z + dz, lo)] !== B.water);
   }
 
   // ---------------------------------------------------------------- geodes
@@ -434,12 +465,13 @@ export class CaveGen {
   // budding amethyst in it) inside shells of calcite and smooth basalt. A geode may start in a
   // neighbouring chunk and reach into this one. `c` also needs surface(x, z): the ground height.
   geodes(c) {
-    const { blocks, x0, z0 } = c, cx = x0 >> 4, cz = z0 >> 4, seed = this.seed;
+    const { blocks, x0, z0 } = c, cx = x0 >> 4, cz = z0 >> 4, seed = this.seed, lo = this.lo;
     for (let ncz = cz - 1; ncz <= cz + 1; ncz++) for (let ncx = cx - 1; ncx <= cx + 1; ncx++) {
       const rnd = mulberry32(Math.floor(hash2(ncx, ncz, seed ^ 0x9e0de) * 4294967296));
       if (rnd() >= GEODE_CHANCE) continue;
       const gx = ncx * 16 + 3 + rnd() * 10, gz = ncz * 16 + 3 + rnd() * 10, R = 4.6 + rnd() * 1.6;
-      const gy = 8 + R + rnd() * 26;
+      // (Generator 12's, as Minecraft's, from near the bottom of the world up to about y 30.)
+      const gy = this.v12 ? lo + 10 + R + rnd() * 84 : 8 + R + rnd() * 26;
       if (gy + R + 6 > c.surface(Math.floor(gx), Math.floor(gz))) continue;
       const xa = Math.max(0, Math.floor(gx - R) - x0), xb = Math.min(15, Math.ceil(gx + R) - x0);
       const za = Math.max(0, Math.floor(gz - R) - z0), zb = Math.min(15, Math.ceil(gz + R) - z0);
@@ -448,18 +480,18 @@ export class CaveGen {
         const wx = x0 + x, wz = z0 + z;
         const d = Math.hypot(wx + 0.5 - gx, y + 0.5 - gy, wz + 0.5 - gz) + (hash3(wx, y, wz, seed ^ 0x6e0) - 0.5) * 0.7;
         if (d > R) continue;
-        const i = idx(x, y, z);
+        const i = idx(x, y, z, lo);
         if (blocks[i] === B.bedrock) continue;
         blocks[i] = d > R - 0.9 ? B.smooth_basalt : d > R - 1.8 ? B.calcite
           : d > R - 2.7 ? (hash3(wz, y, wx, seed ^ 0xb0d) < 0.1 ? B.budding_amethyst : B.amethyst_block) : 0;
       }
       // Crystals: up from the budding amethyst in the floor, down from it in the roof.
       for (let z = za; z <= zb; z++) for (let x = xa; x <= xb; x++) for (let y = Math.floor(gy - R) + 1; y < Math.ceil(gy + R); y++) {
-        const i = idx(x, y, z);
+        const i = idx(x, y, z, lo);
         if (blocks[i] !== 0) continue;
         const q = hash3(x0 + x, y, z0 + z, seed ^ 0xc75), size = Math.floor(q * 16) & 3;
         if (blocks[i - 256] === B.budding_amethyst && q < 0.7) blocks[i] = B.small_amethyst_bud + size * 2;
-        else if (y + 1 < HEIGHT && blocks[i + 256] === B.budding_amethyst && q < 0.7) blocks[i] = B.small_amethyst_bud + size * 2 + 1;
+        else if (y + 1 < this.top && blocks[i + 256] === B.budding_amethyst && q < 0.7) blocks[i] = B.small_amethyst_bud + size * 2 + 1;
       }
     }
   }

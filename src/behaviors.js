@@ -9,7 +9,7 @@ import { BIOME } from './biomes.js';
 import { I, itemDef } from './items.js';
 import { TEX } from './textures.js';
 import { growCrop, growSapling, growCocoa } from './growth.js';
-import { HEIGHT } from './config.js';
+import { MIN_Y, MAX_Y } from './config.js';
 import { SOIL } from './world.js';
 import { smoked } from './bees.js';
 
@@ -132,7 +132,7 @@ export function plantGlowBerries(game, t) {
   let y = t.y - 1;
   if (CAVE_VINES[t.id]) while (CAVE_VINES[w.getBlock(t.x, y, t.z)]) y--;
   else if (t.face !== 3 || !SOLID[t.id]) return false;
-  if (y < 1 || w.getBlock(t.x, y, t.z) !== 0) return false;
+  if (y <= MIN_Y || w.getBlock(t.x, y, t.z) !== 0) return false;
   w.setBlock(t.x, y, t.z, caveVineId(true, false));
   game.audio.place('grass', { x: t.x + 0.5, y: y + 0.5, z: t.z + 0.5 });
   return consumed(game);
@@ -256,7 +256,7 @@ export function useBucket(game, held) {
   // Pour into the liquid's own cell, a replaceable block, or the cell in front of what was hit.
   let { x, y, z } = hit;
   if (!WATERLIKE[hit.id] && !REPLACEABLE[hit.id]) { const f = FACE_DIRS[hit.face]; x += f[0]; y += f[1]; z += f[2]; }
-  if (y < 0 || y >= HEIGHT) return false;
+  if (y < MIN_Y || y >= MAX_Y) return false;
   const cur = w.getBlock(x, y, z);
   if (cur && !REPLACEABLE[cur] && !WATERLIKE[cur]) return false;
   if (DOUBLE[cur]) return false;

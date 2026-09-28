@@ -5,6 +5,7 @@ import { compile } from './gl.js';
 import { shadowVS, shadowFS, fullscreenVS, downFS, blurFS, compositeFS } from './shaders.js';
 import { SECTION_OFFSET } from './mesher.js';
 import { mat4 } from './math.js';
+import { sectionY } from './config.js';
 
 // ---------------------------------------------------------------- shadow map
 // An orthographic view from the sun (or moon) centred near the player, squeezed so that detail
@@ -112,7 +113,7 @@ export class Shadows {
         // (Only sections the open sky reaches, or next to one: the rest are buried.)
         if (!lit(sec) && !lit(secs[sy + 1]) && !(sy > 0 && lit(secs[sy - 1])) && !(nb[0] && lit(nb[0].sections[sy])) && !(nb[1] && lit(nb[1].sections[sy]))
           && !(nb[2] && lit(nb[2].sections[sy])) && !(nb[3] && lit(nb[3].sections[sy]))) continue;
-        const oy = sy * 16 - cam.y, cx = ox + 8, cy = oy + 8, cz = oz + 8;
+        const oy = sectionY(sy) - cam.y, cx = ox + 8, cy = oy + 8, cz = oz + 8;
         const px = m[0] * cx + m[4] * cy + m[8] * cz + m[12], py = m[1] * cx + m[5] * cy + m[9] * cz + m[13];
         if (Math.abs(px) > 1 + rad || Math.abs(py) > 1 + rad) continue;
         gl.uniform3f(u.u_offset, ox - SECTION_OFFSET, oy - SECTION_OFFSET, oz - SECTION_OFFSET);

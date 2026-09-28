@@ -1,6 +1,6 @@
 // The live world: chunk streaming around the player, block access, light updates, block ticks
 // (flowing water, falling sand) and scheduling of section meshes.
-import { CHUNK, HEIGHT, SECTIONS, chunkKey } from './config.js';
+import { CHUNK, MIN_Y, MAX_Y, CHUNK_HEIGHT, SECTIONS, NO_Y, UNKNOWN_Y, chunkKey } from './config.js';
 import {
   B, BLOCKS, OPAQUE, SOLID, FILTER, EMIT, RENDER, R, SELECTABLE, REPLACEABLE, TORCH_LEAN, FACE_DIRS,
   WATERLIKE, isWater, waterLevel, lavaLevel, WATER_FLOW_BASE, LAVA_FLOW_BASE, SHAPE, shapeBoxes, DOOR, doorId, LADDER_SIDE, BED,
@@ -114,7 +114,8 @@ const DRIPLEAF_SOIL = new Set([...SOIL, B.clay]);
 const FARMLAND = new Set([B.farmland, B.farmland_moist]);
 // What cocoa grows on: jungle logs, whichever way they lie.
 const JUNGLE_LOG = new Set([WOOD.jungle.log, ...LOG_AXES[WOOD.jungle.log]]);
-const posKey = (x, y, z) => (x + 1048576) * 536870912 + (z + 1048576) * 256 + y;
+// (A block's place as one number: y has 512 values from MIN_Y, x and z a million either way.)
+const posKey = (x, y, z) => (x + 1048576) * 1073741824 + (z + 1048576) * 512 + (y - MIN_Y);
 
 export class World {
   // `version`: which terrain generator made the world (1 for worlds from before the release update).
@@ -122,6 +123,9 @@ export class World {
     this.seed = seed >>> 0;
     this.type = type;
     this.genVersion = version;
+    // The lowest the land goes: the bottom of the world since generator 12 (Update 31); y 0 in
+    // worlds from before it, and flat worlds, whose bedrock is there.
+    this.floorY = version >= 12 && type !== 'flat' ? MIN_Y : 0;
     this.renderer = renderer;
     this.store = store;
     this.gen = makeGenerator(this.seed, this.type, version);
@@ -171,18 +175,18 @@ export class World {
   }
 
   getBlock(x, y, z) {
-    if (y < 0 || y >= HEIGHT) return 0;
+    if (y < MIN_Y || y >= MAX_Y) return 0;
     const c = this.chunkAt(x >> 4, z >> 4);
     if (!c || c.state !== S_READY) return 0;
-    return c.blocks[(y << 8) | ((z & 15) << 4) | (x & 15)];
+    return c.blocks[((y - MIN_Y) << 8) | ((z & 15) << 4) | (x & 15)];
   }
 
   getLight(x, y, z) {
-    if (y >= HEIGHT) return 0xf0;
-    if (y < 0) return 0;
+    if (y >= MAX_Y) return 0xf0;
+    if (y < MIN_Y) return 0;
     const c = this.chunkAt(x >> 4, z >> 4);
     if (!c || c.state !== S_READY) return 0xf0;
-    return c.light[(y << 8) | ((z & 15) << 4) | (x & 15)];
+    return c.light[((y - MIN_Y) << 8) | ((z & 15) << 4) | (x & 15)];
   }
 
   isLoaded(x, z) { return !!this.readyChunk(Math.floor(x) >> 4, Math.floor(z) >> 4); }
@@ -231,29 +235,39 @@ export class World {
     return this.setBlock(x, y, z, gateId(g.base, facing, !g.open));
   }
 
-  // Highest block in a column that stops rain (solid blocks, leaves, liquids), or -1. Cached per
-  // column and forgotten when a block in that column changes.
+  // Highest block in a column that stops rain (solid blocks, leaves, liquids), or NO_Y (below the
+  // world). Cached per column and forgotten when a block in that column changes.
   rainTop(x, z) {
     const c = this.readyChunk(x >> 4, z >> 4);
-    if (!c) return HEIGHT;
-    if (!c.rainTops) c.rainTops = new Int16Array(256).fill(-2);
+    if (!c) return MAX_Y;
+    if (!c.rainTops) c.rainTops = new Int16Array(256).fill(UNKNOWN_Y);
     const col = ((z & 15) << 4) | (x & 15);
     let t = c.rainTops[col];
-    if (t === -2) {
-      t = -1;
-      for (let y = HEIGHT - 1; y >= 0; y--) {
-        const id = c.blocks[(y << 8) | col];
-        if (id && (SOLID[id] || WATERLIKE[id])) { t = y; break; }
+    if (t === UNKNOWN_Y) {
+      t = NO_Y;
+      // (Sections with nothing in them are passed over.)
+      for (let sy = SECTIONS - 1; sy >= 0 && t === NO_Y; sy--) {
+        if (!c.sections[sy].count) continue;
+        for (let r = (sy << 4) + 15; r >= sy << 4; r--) {
+          const id = c.blocks[(r << 8) | col];
+          if (id && (SOLID[id] || WATERLIKE[id])) { t = r + MIN_Y; break; }
+        }
       }
       c.rainTops[col] = t;
     }
     return t;
   }
 
-  // Highest non-air block in a column (or -1).
+  // Highest non-air block in a column (or NO_Y, below the world).
   topAt(x, z) {
-    for (let y = HEIGHT - 1; y >= 0; y--) if (this.getBlock(x, y, z)) return y;
-    return -1;
+    const c = this.readyChunk(x >> 4, z >> 4);
+    if (!c) return NO_Y;
+    const col = ((z & 15) << 4) | (x & 15);
+    for (let sy = SECTIONS - 1; sy >= 0; sy--) {
+      if (!c.sections[sy].count) continue;
+      for (let r = (sy << 4) + 15; r >= sy << 4; r--) if (c.blocks[(r << 8) | col]) return r + MIN_Y;
+    }
+    return NO_Y;
   }
 
   // ------------------------------------------------------------------ streaming
@@ -527,11 +541,13 @@ export class World {
     for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
       nb.push(dx || dz ? this.chunks.get(chunkKey(chunk.cx + dx, chunk.cz + dz)) : chunk);
     }
-    const y0 = sy * 16 - 1;
+    // (`y` here is a row of the chunk, from its bottom. Under the world's floor, where nothing's been
+    // put, it's as if there were bedrock, so the underside of the floor isn't drawn.)
+    const y0 = sy * 16 - 1, floor = this.floorY - MIN_Y;
     for (let py = 0; py < P; py++) {
       const y = y0 + py, row = py * P2;
-      if (y < 0) { outB.fill(B.bedrock, row, row + P2); outL.fill(0, row, row + P2); continue; }
-      if (y >= HEIGHT) { outB.fill(0, row, row + P2); outL.fill(0xf0, row, row + P2); continue; }
+      if (y < 0 || (y < floor && !chunk.sections[y >> 4].count)) { outB.fill(B.bedrock, row, row + P2); outL.fill(0, row, row + P2); continue; }
+      if (y >= CHUNK_HEIGHT) { outB.fill(0, row, row + P2); outL.fill(0xf0, row, row + P2); continue; }
       for (let pz = 0; pz < P; pz++) {
         const lz = pz - 1, dz = lz < 0 ? 0 : lz > 15 ? 2 : 1;
         const src = (y << 8) | ((lz & 15) << 4);
@@ -548,7 +564,7 @@ export class World {
   // Marks every section whose padded copy contains (x, y, z).
   markDirty(x, y, z) {
     const lx = x & 15, lz = z & 15, ly = y & 15;
-    const cx = x >> 4, cz = z >> 4, sy = y >> 4;
+    const cx = x >> 4, cz = z >> 4, sy = (y - MIN_Y) >> 4;
     for (let dz = lz === 0 ? -1 : 0; dz <= (lz === 15 ? 1 : 0); dz++) {
       for (let dx = lx === 0 ? -1 : 0; dx <= (lx === 15 ? 1 : 0); dx++) {
         const c = dx || dz ? this.chunks.get(chunkKey(cx + dx, cz + dz)) : this.chunkAt(cx, cz);
@@ -567,7 +583,7 @@ export class World {
 
   remeshAround(x, y, z) {
     const lx = x & 15, lz = z & 15, ly = y & 15;
-    const cx = x >> 4, cz = z >> 4, sy = y >> 4;
+    const cx = x >> 4, cz = z >> 4, sy = (y - MIN_Y) >> 4;
     for (let dz = lz === 0 ? -1 : 0; dz <= (lz === 15 ? 1 : 0); dz++) {
       for (let dx = lx === 0 ? -1 : 0; dx <= (lx === 15 ? 1 : 0); dx++) {
         const c = this.readyChunk(cx + dx, cz + dz);
@@ -592,16 +608,16 @@ export class World {
       const x = this.qx[h], y = this.qy[h], z = this.qz[h];
       const c = this.readyChunk(x >> 4, z >> 4);
       if (!c) continue;
-      const l = c.light[(y << 8) | ((z & 15) << 4) | (x & 15)];
+      const l = c.light[((y - MIN_Y) << 8) | ((z & 15) << 4) | (x & 15)];
       const sky = l >> 4, blk = l & 15;
       if (sky <= 1 && blk <= 1) continue;
       for (let d = 0; d < 6; d++) {
         const dir = FACE_DIRS[d];
         const nx = x + dir[0], ny = y + dir[1], nz = z + dir[2];
-        if (ny < 0 || ny >= HEIGHT) continue;
+        if (ny < MIN_Y || ny >= MAX_Y) continue;
         const nc = (nx >> 4) === (x >> 4) && (nz >> 4) === (z >> 4) ? c : this.readyChunk(nx >> 4, nz >> 4);
         if (!nc) continue;
-        const ni = (ny << 8) | ((nz & 15) << 4) | (nx & 15);
+        const ni = ((ny - MIN_Y) << 8) | ((nz & 15) << 4) | (nx & 15);
         const nid = nc.blocks[ni];
         if (OPAQUE[nid]) continue;
         const nl = nc.light[ni];
@@ -622,7 +638,7 @@ export class World {
   removeLight(x, y, z, shift) {
     const c0 = this.readyChunk(x >> 4, z >> 4);
     if (!c0) return;
-    const i0 = (y << 8) | ((z & 15) << 4) | (x & 15);
+    const i0 = ((y - MIN_Y) << 8) | ((z & 15) << 4) | (x & 15);
     const level0 = (c0.light[i0] >> shift) & 15;
     if (!level0) return;
     const keep = shift ? 0x0f : 0xf0;
@@ -636,10 +652,10 @@ export class World {
       for (let d = 0; d < 6; d++) {
         const dir = FACE_DIRS[d];
         const nx = cx + dir[0], ny = cy + dir[1], nz = cz + dir[2];
-        if (ny < 0 || ny >= HEIGHT) continue;
+        if (ny < MIN_Y || ny >= MAX_Y) continue;
         const nc = this.readyChunk(nx >> 4, nz >> 4);
         if (!nc) continue;
-        const ni = (ny << 8) | ((nz & 15) << 4) | (nx & 15);
+        const ni = ((ny - MIN_Y) << 8) | ((nz & 15) << 4) | (nx & 15);
         const nl = (nc.light[ni] >> shift) & 15;
         if (!nl) continue;
         if (nl < level || (shift === 4 && d === 3 && level === 15 && nl === 15)) {
@@ -659,11 +675,11 @@ export class World {
     if (FILTER[newId] > FILTER[oldId] || EMIT[oldId] > EMIT[newId]) this.removeLight(x, y, z, 0);
     const c = this.readyChunk(x >> 4, z >> 4);
     if (c && EMIT[newId]) {
-      const i = (y << 8) | ((z & 15) << 4) | (x & 15);
+      const i = ((y - MIN_Y) << 8) | ((z & 15) << 4) | (x & 15);
       if ((c.light[i] & 15) < EMIT[newId]) c.light[i] = (c.light[i] & 0xf0) | EMIT[newId];
     }
     this.push(x, y, z);
-    for (const d of FACE_DIRS) if (y + d[1] >= 0 && y + d[1] < HEIGHT) this.push(x + d[0], y + d[1], z + d[2]);
+    for (const d of FACE_DIRS) if (y + d[1] >= MIN_Y && y + d[1] < MAX_Y) this.push(x + d[0], y + d[1], z + d[2]);
     this.runIncrease();
   }
 
@@ -677,11 +693,11 @@ export class World {
       for (let t = 0; t < 16; t++) {
         const lx = dx === 1 ? 15 : dx === -1 ? 0 : t, lz = dz === 1 ? 15 : dz === -1 ? 0 : t;
         const nx = dx ? 15 - lx : lx, nz = dz ? 15 - lz : lz;
-        for (let y = 0; y < HEIGHT; y++) {
-          const a = chunk.light[(y << 8) | (lz << 4) | lx], b = n.light[(y << 8) | (nz << 4) | nx];
+        for (let r = 0; r < CHUNK_HEIGHT; r++) {
+          const a = chunk.light[(r << 8) | (lz << 4) | lx], b = n.light[(r << 8) | (nz << 4) | nx];
           if (a === b) continue;
-          if ((a >> 4) > (b >> 4) + 1 || (a & 15) > (b & 15) + 1) this.push(x0 + lx, y, z0 + lz);
-          if ((b >> 4) > (a >> 4) + 1 || (b & 15) > (a & 15) + 1) this.push(x0 + lx + dx, y, z0 + lz + dz);
+          if ((a >> 4) > (b >> 4) + 1 || (a & 15) > (b & 15) + 1) this.push(x0 + lx, r + MIN_Y, z0 + lz);
+          if ((b >> 4) > (a >> 4) + 1 || (b & 15) > (a & 15) + 1) this.push(x0 + lx + dx, r + MIN_Y, z0 + lz + dz);
         }
       }
     }
@@ -690,16 +706,16 @@ export class World {
 
   // ------------------------------------------------------------------ edits
   setBlock(x, y, z, id, { remesh = true, updates = true } = {}) {
-    if (y < 0 || y >= HEIGHT) return false;
+    if (y < MIN_Y || y >= MAX_Y) return false;
     const c = this.readyChunk(x >> 4, z >> 4);
     if (!c) return false;
-    const i = (y << 8) | ((z & 15) << 4) | (x & 15);
+    const i = ((y - MIN_Y) << 8) | ((z & 15) << 4) | (x & 15);
     const old = c.blocks[i];
     if (old === id) return false;
     c.blocks[i] = id;
     c.modified = true;
-    if (c.rainTops) c.rainTops[i & 255] = -2;
-    c.sections[y >> 4].count += (id !== 0) - (old !== 0);
+    if (c.rainTops) c.rainTops[i & 255] = UNKNOWN_Y;
+    c.sections[i >> 12].count += (id !== 0) - (old !== 0);
     this.markDirty(x, y, z);
     this.relight(x, y, z, old, id);
     if (LOG[old] && !LOG[id] && !this.remote) logRemoved(this, x, y, z);
@@ -719,16 +735,16 @@ export class World {
   setBlocksBulk(changes) {
     const applied = [];
     for (const [x, y, z, id] of changes) {
-      if (y < 0 || y >= HEIGHT) continue;
+      if (y < MIN_Y || y >= MAX_Y) continue;
       const c = this.readyChunk(x >> 4, z >> 4);
       if (!c) continue;
-      const i = (y << 8) | ((z & 15) << 4) | (x & 15);
+      const i = ((y - MIN_Y) << 8) | ((z & 15) << 4) | (x & 15);
       const old = c.blocks[i];
       if (old === id) continue;
       c.blocks[i] = id;
       c.modified = true;
-      if (c.rainTops) c.rainTops[i & 255] = -2;
-      c.sections[y >> 4].count += (id !== 0) - (old !== 0);
+      if (c.rainTops) c.rainTops[i & 255] = UNKNOWN_Y;
+      c.sections[i >> 12].count += (id !== 0) - (old !== 0);
       this.markDirty(x, y, z);
       applied.push([x, y, z, old, id]);
     }
@@ -739,11 +755,11 @@ export class World {
     for (const [x, y, z, , id] of applied) {
       const c = this.readyChunk(x >> 4, z >> 4);
       if (EMIT[id]) {
-        const i = (y << 8) | ((z & 15) << 4) | (x & 15);
+        const i = ((y - MIN_Y) << 8) | ((z & 15) << 4) | (x & 15);
         c.light[i] = (c.light[i] & 0xf0) | Math.max(c.light[i] & 15, EMIT[id]);
       }
       this.push(x, y, z);
-      for (const d of FACE_DIRS) if (y + d[1] >= 0 && y + d[1] < HEIGHT) this.push(x + d[0], y + d[1], z + d[2]);
+      for (const d of FACE_DIRS) if (y + d[1] >= MIN_Y && y + d[1] < MAX_Y) this.push(x + d[0], y + d[1], z + d[2]);
       if (this.qt - this.qh > QSIZE - 64) this.runIncrease();
     }
     this.runIncrease();
@@ -757,7 +773,7 @@ export class World {
   neighborsChanged(x, y, z) {
     if (this.remote) return;
     // Grass smothered by a solid block turns to dirt.
-    if (OPAQUE[this.getBlock(x, y, z)] && y > 0) {
+    if (OPAQUE[this.getBlock(x, y, z)] && y > MIN_Y) {
       const below = this.getBlock(x, y - 1, z);
       if (below === B.grass_block || below === B.snowy_grass) this.setBlock(x, y - 1, z, B.dirt);
     }
@@ -922,7 +938,7 @@ export class World {
   // that lands and becomes a block again). Without a listener to make one, they just drop.
   fall(x, y, z, id) {
     const below = this.getBlock(x, y - 1, z);
-    if (y > 0 && (below === 0 || (REPLACEABLE[below] && WATERLIKE[below] !== 2) || RENDER[below] === R.CROSS || below === B.fire)) {
+    if (y > MIN_Y && (below === 0 || (REPLACEABLE[below] && WATERLIKE[below] !== 2) || RENDER[below] === R.CROSS || below === B.fire)) {
       if (this.listener?.spawnFalling) {
         this.setBlock(x, y, z, 0, { remesh: true });
         this.listener.spawnFalling(x, y, z, id);
@@ -951,7 +967,7 @@ export class World {
 
   // Lights a fire at (x, y, z) if it can burn there. Returns true if it did.
   ignite(x, y, z) {
-    if (y < 1 || y >= HEIGHT - 1 || !this.canBurnAt(x, y, z)) return false;
+    if (y < MIN_Y + 1 || y >= MAX_Y - 1 || !this.canBurnAt(x, y, z)) return false;
     if (!this.setBlock(x, y, z, B.fire)) return false;
     this.fireAge.set(posKey(x, y, z), 0);
     return true;
@@ -1014,10 +1030,11 @@ export class World {
           if (!c.sections[sy].count) continue;
           for (let k = 0; k < 3; k++) {
             const r = (Math.random() * 4096) | 0;
-            const lx = r & 15, lz = (r >> 4) & 15, ly = (sy << 4) | (r >> 8);
-            const id = c.blocks[(ly << 8) | (lz << 4) | lx];
-            if (WATERLIKE[id] === 2) this.lavaSpark(cx * 16 + lx, ly, cz * 16 + lz);
-            else if (TICKS[id]) randomTick(this, cx * 16 + lx, ly, cz * 16 + lz, id);
+            // (`row` counts up from the chunk's bottom, at MIN_Y.)
+            const lx = r & 15, lz = (r >> 4) & 15, row = (sy << 4) | (r >> 8), y = row + MIN_Y;
+            const id = c.blocks[(row << 8) | (lz << 4) | lx];
+            if (WATERLIKE[id] === 2) this.lavaSpark(cx * 16 + lx, y, cz * 16 + lz);
+            else if (TICKS[id]) randomTick(this, cx * 16 + lx, y, cz * 16 + lz, id);
           }
         }
       }
@@ -1078,13 +1095,13 @@ export class World {
       }
     }
     const below = this.getBlock(x, y - 1, z);
-    if (y > 0 && WATERLIKE[below] === 1) { this.setBlock(x, y - 1, z, B.stone, { remesh: false }); this.listener?.fizz?.(x, y - 1, z); return; }
-    if (y > 0 && this.canFlowInto(below)) {
+    if (y > MIN_Y && WATERLIKE[below] === 1) { this.setBlock(x, y - 1, z, B.stone, { remesh: false }); this.listener?.fizz?.(x, y - 1, z); return; }
+    if (y > MIN_Y && this.canFlowInto(below)) {
       this.breakFor(x, y - 1, z, below);
       this.setBlock(x, y - 1, z, LAVA_FLOW_BASE + 7, { remesh: false });
       return;
     }
-    if (y > 0 && lavaLevel(below) >= 0 && level !== 0) return;
+    if (y > MIN_Y && lavaLevel(below) >= 0 && level !== 0) return;
     const spread = level === 8 ? 2 : level + 2;
     if (spread > 7) return;
     for (let d = 0; d < 6; d++) {
@@ -1137,13 +1154,13 @@ export class World {
     }
     // Spread: down first; sideways only when resting on something.
     const below = this.getBlock(x, y - 1, z);
-    if (y > 0 && WATERLIKE[below] === 2) { this.setBlock(x, y - 1, z, B.obsidian, { remesh: false }); this.listener?.fizz?.(x, y - 1, z); return; }
-    if (y > 0 && this.canFlowInto(below)) {
+    if (y > MIN_Y && WATERLIKE[below] === 2) { this.setBlock(x, y - 1, z, B.obsidian, { remesh: false }); this.listener?.fizz?.(x, y - 1, z); return; }
+    if (y > MIN_Y && this.canFlowInto(below)) {
       this.breakFor(x, y - 1, z, below);
       this.setBlock(x, y - 1, z, WATER_FLOW_BASE + 7, { remesh: false });
       return;
     }
-    if (y > 0 && waterLevel(below) >= 0 && level !== 0) return;
+    if (y > MIN_Y && waterLevel(below) >= 0 && level !== 0) return;
     const spread = level === 8 ? 1 : level + 1;
     if (spread > 7) return;
     for (let d = 0; d < 6; d++) {

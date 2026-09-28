@@ -9,6 +9,7 @@ import { B, SOLID, WATERLIKE } from './blocks.js';
 import { CIV_LOOKS } from './tex/civskins.js';
 import { hashString } from './math.js';
 import { TEX } from './textures.js';
+import { MAX_Y } from './config.js';
 
 const STAY = 48000; // (forty minutes)
 const NAMES = ['Silas', 'Marta', 'Ezra', 'Rosalind', 'Barnaby', 'Ines', 'Hollis', 'Wren', 'Tobias', 'Ottoline', 'Caspar', 'Ysolde', 'Jory',
@@ -51,7 +52,7 @@ export class Wanderers {
       const a = Math.random() * Math.PI * 2, d = 10 + Math.random() * 30;
       const x = Math.floor(p.x + Math.cos(a) * d), z = Math.floor(p.z + Math.sin(a) * d);
       if (!w.isLoaded(x, z)) continue;
-      for (let y = Math.min(Math.floor(p.y) + 12, 250); y > Math.floor(p.y) - 12 && y > 1; y--) {
+      for (let y = Math.min(Math.floor(p.y) + 12, MAX_Y - 6); y > Math.floor(p.y) - 12 && y > w.floorY + 1; y--) {
         const below = w.getBlock(x, y - 1, z);
         if (!SOLID[below] || WATERLIKE[below] || below === B.cactus) continue;
         if (SOLID[w.getBlock(x, y, z)] || SOLID[w.getBlock(x, y + 1, z)] || WATERLIKE[w.getBlock(x, y, z)]) break;

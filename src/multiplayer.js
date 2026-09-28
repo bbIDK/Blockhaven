@@ -19,7 +19,7 @@ import { MAX_SCALE } from './maps.js';
 import { cleanRocket } from './fireworks.js';
 import { extras, cleanExtras } from './inventory.js';
 import { shiny } from './enchanting.js';
-import { chunkKey, HEIGHT, CHUNK_VOLUME, DIFFICULTIES, LATEST_GEN } from './config.js';
+import { chunkKey, MIN_Y, MAX_Y, CHUNK_VOLUME, DIFFICULTIES, LATEST_GEN } from './config.js';
 import { S_READY, rayBox } from './world.js';
 import { clamp, hashString } from './math.js';
 import { startRide, seatY, seatXZ, BOAT_WOODS } from './riding.js';
@@ -135,12 +135,12 @@ export function cleanStack(s) {
 }
 
 function parseKey(k) {
-  if (typeof k !== 'string' || !/^-?\d{1,8},\d{1,3},-?\d{1,8}$/.test(k)) return null;
+  if (typeof k !== 'string' || !/^-?\d{1,8},-?\d{1,3},-?\d{1,8}$/.test(k)) return null;
   const [x, y, z] = k.split(',').map(Number);
-  return y < HEIGHT ? [x, y, z] : null;
+  return y >= MIN_Y && y < MAX_Y ? [x, y, z] : null;
 }
 
-const validChange = (c, n) => Array.isArray(c) && c.length >= n && c.slice(0, n).every(int) && c[1] >= 0 && c[1] < HEIGHT && !!BLOCKS[c[n - 1]];
+const validChange = (c, n) => Array.isArray(c) && c.length >= n && c.slice(0, n).every(int) && c[1] >= MIN_Y && c[1] < MAX_Y && !!BLOCKS[c[n - 1]];
 
 // ---------------------------------------------------------------- common to host and guests
 class Session {
@@ -394,7 +394,7 @@ export class HostSession extends Session {
     if (r.length < 5 || !r.every(num)) return;
     const e = this.game.entities.list.find((x) => x.nid === r[0] && x.rider === g.addr && !x.dead);
     if (!e || (g.x !== null && Math.hypot(r[1] - g.x, r[3] - g.z) > 4)) return;
-    e.tx = r[1]; e.ty = clamp(r[2], -64, HEIGHT + 64); e.tz = r[3]; e.tyaw = r[4];
+    e.tx = r[1]; e.ty = clamp(r[2], MIN_Y - 64, MAX_Y + 64); e.tz = r[3]; e.tyaw = r[4];
   }
 
   // A guest gets into a boat or onto a horse (`on`), or off again. Only one rider at a time: anyone
@@ -652,7 +652,7 @@ export class HostSession extends Session {
 
   drop(m) {
     const s = cleanStack({ id: m.id, count: m.n, dmg: m.d, ...cleanExtras(m.ex) });
-    if (!s || ![m.x, m.y, m.z].every(num) || m.y < -64 || m.y > HEIGHT + 64) return;
+    if (!s || ![m.x, m.y, m.z].every(num) || m.y < MIN_Y - 64 || m.y > MAX_Y + 64) return;
     const v = Array.isArray(m.v) && m.v.length === 3 && m.v.every(num) ? m.v.map((a) => clamp(a, -20, 20)) : null;
     // (`lf`: what someone had on them when they died, lying there longer: see Game.dropEverything.)
     this.game.entities.spawnItem(m.x, m.y, m.z, s.id, s.count, s.dmg, num(m.pd) ? clamp(m.pd, 0, 5) : 0.6, v, extras(s), num(m.lf) ? clamp(m.lf, 1, 600) : undefined);

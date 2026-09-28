@@ -9,6 +9,7 @@
 // land they're in loads; a bee out of everyone's sight goes back into its home rather than being
 // lost.
 import { B, HIVE, HONEY_FULL, FACE_DIRS, SOLID, hiveId } from './blocks.js';
+import { MIN_Y } from './config.js';
 
 export const HIVE_ROOM = 3;
 // What a home taken whole drops: itself, with its bees and its honey.
@@ -81,7 +82,7 @@ export class Hives {
     const b = chunk.blocks, x0 = chunk.cx * 16, z0 = chunk.cz * 16;
     for (let i = 0; i < b.length; i++) {
       if (!NEST[b[i]]) continue;
-      const x = x0 + (i & 15), z = z0 + ((i >> 4) & 15), y = i >> 8, k = Hives.key(x, y, z);
+      const x = x0 + (i & 15), z = z0 + ((i >> 4) & 15), y = (i >> 8) + MIN_Y, k = Hives.key(x, y, z);
       if (!this.homes.has(k)) this.fill(x, y, z);
     }
   }

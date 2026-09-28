@@ -10,7 +10,7 @@ import { mat4, identity, translate, rotateX, rotateY, rotateZ, scale, hash2, box
 import { B, BLOCKS, BASE, SOLID, WATERLIKE, FILTER, REPLACEABLE, RAIL, RAIL_ID } from './blocks.js';
 import { I, itemDef, DISCS } from './items.js';
 import { rayBox } from './world.js';
-import { HEIGHT, SEA_LEVEL } from './config.js';
+import { MIN_Y, MAX_Y, SEA_LEVEL } from './config.js';
 import { villageAt } from './villages.js';
 import { monumentAt, structuresIn } from './structures.js';
 import { BIOME } from './biomes.js';
@@ -647,7 +647,7 @@ export class Entities {
       const a = Math.random() * Math.PI * 2, d = 20 + Math.random() * 24;
       const x = Math.floor(p.x + Math.cos(a) * d), z = Math.floor(p.z + Math.sin(a) * d);
       if (!w.isLoaded(x, z) || villageAt(w.gen, x, z, 6)) continue;
-      for (let y = Math.min(HEIGHT - 4, Math.floor(p.y) + 14); y > Math.max(1, Math.floor(p.y) - 24); y--) {
+      for (let y = Math.min(MAX_Y - 4, Math.floor(p.y) + 14); y > Math.max(w.floorY + 1, Math.floor(p.y) - 24); y--) {
         const below = w.getBlock(x, y - 1, z);
         if (!SOLID[below] || BLOCKS[below].name.endsWith('leaves') || SOLID[w.getBlock(x, y, z)] || SOLID[w.getBlock(x, y + 1, z)]) continue;
         // (Nothing comes up out of the water: no drowned.)
@@ -728,7 +728,7 @@ export class Entities {
     // (Only a few of the big birds overhead at once.)
     if (about.filter((e) => e.type === type).length >= (soar ? 3 : 8)) return;
     const top = w.topAt(x, z);
-    if (top < 1) return;
+    if (top <= w.floorY) return;
     if (!soar && WATERLIKE[w.getBlock(x, top, z)]) return;
     const y = soar ? Math.max(top, SEA_LEVEL) + t.soarHeight * (0.6 + Math.random() * 0.4) : top + (low ? 1.2 : 1.5 + Math.random() * 3);
     for (let i = 0; i < n; i++) {
@@ -763,7 +763,7 @@ export class Entities {
     const p = this.players[Math.floor(Math.random() * this.players.length)];
     for (let attempt = 0; attempt < 4; attempt++) {
       const x = Math.floor(p.x + (Math.random() - 0.5) * 48), y = Math.floor(p.y + (Math.random() - 0.5) * 24), z = Math.floor(p.z + (Math.random() - 0.5) * 48);
-      if (y < 4 || y > 62 || !w.isLoaded(x, z) || Math.hypot(x - p.x, z - p.z) < 12) continue;
+      if (y < w.floorY + 4 || y > 62 || !w.isLoaded(x, z) || Math.hypot(x - p.x, z - p.z) < 12) continue;
       if (SOLID[w.getBlock(x, y, z)] || SOLID[w.getBlock(x, y + 1, z)] || WATERLIKE[w.getBlock(x, y, z)]) continue;
       const l = w.getLight(x, y, z);
       if ((l >> 4) > 0 || (l & 15) > 3) continue;
@@ -782,12 +782,12 @@ export class Entities {
     const near = (type) => this.list.filter((e) => e.type === type && !e.dead && Math.hypot(e.x - p.x, e.z - p.z) < 48).length;
     for (let attempt = 0; attempt < 6; attempt++) {
       const x = Math.floor(p.x + (Math.random() - 0.5) * 64), y = Math.floor(p.y + (Math.random() - 0.5) * 32), z = Math.floor(p.z + (Math.random() - 0.5) * 64);
-      if (y < 4 || y > SEA_LEVEL - 8 || !w.isLoaded(x, z) || Math.hypot(x - p.x, z - p.z) < 12) continue;
+      if (y < w.floorY + 4 || y > SEA_LEVEL - 8 || !w.isLoaded(x, z) || Math.hypot(x - p.x, z - p.z) < 12) continue;
       if (WATERLIKE[w.getBlock(x, y, z)] !== 1) continue;
       const l = w.getLight(x, y, z);
       if ((l >> 4) > 0) continue;
       let floor = y;
-      while (floor > 1 && WATERLIKE[w.getBlock(x, floor - 1, z)] === 1) floor--;
+      while (floor > w.floorY + 1 && WATERLIKE[w.getBlock(x, floor - 1, z)] === 1) floor--;
       const under = w.getBlock(x, floor - 1, z);
       if ((under === B.clay || under === B.moss_block) && w.gen?.caves?.lushAt?.(x, z)) {
         if (near('axolotl') >= 6) return;
@@ -856,7 +856,7 @@ export class Entities {
       const settled = e.def.kind === 'civilian' || e.pinned;
       // (A bee out of sight goes back into its home, if it can.)
       if (!near && e.hive && game.hives.enter(e)) return;
-      if ((!near && !kept && (!settled || !loaded)) || e.y < -40) { e.dead = true; this.civilians.gone(e); return; }
+      if ((!near && !kept && (!settled || !loaded)) || e.y < MIN_Y - 40) { e.dead = true; this.civilians.gone(e); return; }
       if (loaded) mobTick(this, e);
     }
   }
@@ -947,7 +947,7 @@ export class Entities {
     } else if (e.kind === 'falling') {
       e.vy = Math.max(-40, e.vy - 32 * dt);
       e.move(w, 0, e.vy * dt, 0);
-      if (e.onGround || e.age > 30 || e.y < 0) this.land(e);
+      if (e.onGround || e.age > 30 || e.y < MIN_Y) this.land(e);
     } else if (e.kind === 'arrow') {
       this.arrowPhysics(e, dt, fluid);
     } else if (e.kind === 'firework') {
@@ -958,16 +958,16 @@ export class Entities {
       // (A guest's boat moves where they paddle it; see remoteRide.)
       e.hurt = Math.max(0, e.hurt - dt);
       if (e.guestRider) this.glideRidden(e, dt); else boatPhysics(w, e, dt, e.drive ?? null);
-      if (e.y < -40) e.dead = true;
+      if (e.y < MIN_Y - 40) e.dead = true;
     } else if (e.kind === 'cart') {
       e.hurt = Math.max(0, e.hurt - dt);
       if (e.guestRider) { this.glideRidden(e, dt); e.rail = null; } else cartPhysics(w, e, dt, this.cartPush(e));
-      if (e.y < -40) e.dead = true;
+      if (e.y < MIN_Y - 40) e.dead = true;
     } else if (e.kind === 'stand') {
       // (A stand stays where it's put, but falls if what's under it goes.)
       e.vy = Math.max(-40, (e.vy ?? 0) - 20 * dt);
       e.move(w, 0, e.vy * dt, 0);
-      if (e.y < -40) e.dead = true;
+      if (e.y < MIN_Y - 40) e.dead = true;
     } else if (e.kind === 'mob') {
       if (e.guestRider) this.glideRidden(e, dt); else mobPhysics(this, e, dt, fluid);
     }
@@ -1040,7 +1040,7 @@ export class Entities {
       break;
     }
     // (A trident flies on until it lands, however long that takes.)
-    if (e.trident ? e.y < -64 && !e.loyalty : e.life > 30 || e.y < -20) e.dead = true;
+    if (e.trident ? e.y < MIN_Y - 64 && !e.loyalty : e.life > 30 || e.y < MIN_Y - 20) e.dead = true;
   }
 
   // What's first along an arrow's way for `len`: a block (`hit`), or a creature or player
@@ -1124,7 +1124,7 @@ export class Entities {
     const x = Math.floor(e.x), y = Math.floor(e.y + 0.3), z = Math.floor(e.z);
     const cur = w.getBlock(x, y, z);
     const def = BLOCKS[e.block];
-    if ((cur === 0 || (REPLACEABLE[cur] && WATERLIKE[cur] !== 2) || cur === B.fire) && y >= 0) {
+    if ((cur === 0 || (REPLACEABLE[cur] && WATERLIKE[cur] !== 2) || cur === B.fire) && y >= MIN_Y) {
       w.setBlock(x, y, z, e.block);
       game.audio.place(def?.sound ?? 'sand', { x: e.x, y: e.y, z: e.z });
     } else if (!game.creative) this.spawnItem(e.x, e.y + 0.3, e.z, BASE[e.block], 1);

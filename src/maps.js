@@ -66,7 +66,8 @@ export function initMapColours(pixels) {
   }
 }
 
-// What a map shows at (x, z): [colour, height, water depth], or null where the land isn't loaded.
+// What a map shows at (x, z): [colour, height (a row of the chunk, from its bottom), water depth], or
+// null where the land isn't loaded.
 function surface(w, x, z) {
   const c = w.readyChunk(x >> 4, z >> 4);
   if (!c) return null;
@@ -147,7 +148,7 @@ export class Maps {
   put(m) {
     if (!Array.isArray(m) || !Number.isInteger(m[0]) || m[0] < 1 || !Number.isFinite(m[1]) || !Number.isFinite(m[2])) return null;
     const scale = Number.isInteger(m[3]) ? Math.max(0, Math.min(MAX_SCALE, m[3])) : 0;
-    const rec = { id: m[0], x: m[1], z: m[2], scale, px: unpackMap(m[4]), h: new Uint8Array(MAP_SIZE * MAP_SIZE), ver: 1 };
+    const rec = { id: m[0], x: m[1], z: m[2], scale, px: unpackMap(m[4]), h: new Uint16Array(MAP_SIZE * MAP_SIZE), ver: 1 };
     this.list.set(rec.id, rec);
     this.next = Math.max(this.next, rec.id + 1);
     return rec;
@@ -159,7 +160,7 @@ export class Maps {
   // A new map about (x, z) at `scale`: its number. (A guest asks the host; see multiplayer.js.)
   create(x, z, scale = 0) {
     const [cx, cz] = mapCentre(x, z, scale);
-    const rec = { id: this.next++, x: cx, z: cz, scale, px: new Uint8Array(MAP_SIZE * MAP_SIZE), h: new Uint8Array(MAP_SIZE * MAP_SIZE), ver: 1 };
+    const rec = { id: this.next++, x: cx, z: cz, scale, px: new Uint8Array(MAP_SIZE * MAP_SIZE), h: new Uint16Array(MAP_SIZE * MAP_SIZE), ver: 1 };
     this.list.set(rec.id, rec);
     return rec.id;
   }

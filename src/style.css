@@ -500,6 +500,7 @@ kbd {
   transition: opacity 400ms;
 }
 #item-name.show { opacity: 1; transition: none; }
+#item-name.warn { color: #ff5555; }
 /* "Now Playing" as a disc starts: the colours run through the letters, as in the original. */
 #item-name.now-playing {
   background: linear-gradient(90deg, #ff5555, #ffaa00, #ffff55, #55ff55, #55ffff, #5555ff, #ff55ff, #ff5555) 0 0 / 200% 100%;

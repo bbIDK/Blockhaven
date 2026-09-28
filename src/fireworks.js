@@ -8,6 +8,7 @@
 // 4 burst), c: [colours], d: [fade colours] (dye numbers, see colors.js), tr: 1 trail, tw: 1
 // twinkle }. A rocket's (`fw`): { f: flight 1-3, s: [stars] }.
 import { DYES } from './colors.js';
+import { MAX_Y } from './config.js';
 
 export const SHAPES = ['Small Ball', 'Large Ball', 'Star-shaped', 'Creeper-shaped', 'Burst'];
 // The colours the sparks burst in (Minecraft's firework colours, brighter than the dyes).
@@ -57,7 +58,7 @@ export function fireworkPhysics(ents, e, dt) {
   }
   // (Sparks trailing behind.)
   if (Math.random() < dt * 30) game.particles.trail(e.x, e.y - 0.2, e.z);
-  if (e.life * 20 >= e.lifetime || e.y > 300) burst(ents, e);
+  if (e.life * 20 >= e.lifetime || e.y > MAX_Y + 64) burst(ents, e);
 }
 
 // A rocket bursts: its stars (seen by everyone), and with stars in it, it hurts what's close.

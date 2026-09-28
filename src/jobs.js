@@ -1,17 +1,26 @@
 // Work that runs off the main thread: chunk generation (+ chunk-local lighting) and section meshing.
-import { CHUNK_VOLUME } from './config.js';
+import { CHUNK_VOLUME, LEGACY_VOLUME, LEGACY_BASE } from './config.js';
 import { makeGenerator } from './worldgen.js';
 import { lightChunk } from './light.js';
 import { meshSection } from './mesher.js';
 
 let gen = null, genKey = '';
 
+// A chunk as the world keeps it (from y -64 to 319). Generators before 12 make theirs 256 blocks
+// tall from y 0, which go in at y 0 with nothing above or below.
+function worldLayout(blocks) {
+  if (blocks.length !== LEGACY_VOLUME) return blocks;
+  const out = new Uint16Array(CHUNK_VOLUME);
+  out.set(blocks, LEGACY_BASE);
+  return out;
+}
+
 export function runJob(job) {
   if (job.type === 'gen') {
     const key = `${job.seed}:${job.worldType}:${job.version}`;
     if (key !== genKey) { gen = makeGenerator(job.seed, job.worldType, job.version ?? 1); genKey = key; }
     const g = gen.generate(job.cx, job.cz);
-    const blocks = job.saved ?? g.blocks;
+    const blocks = job.saved ?? worldLayout(g.blocks);
     const light = new Uint8Array(CHUNK_VOLUME);
     lightChunk(blocks, light);
     return {

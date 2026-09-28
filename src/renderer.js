@@ -18,7 +18,7 @@ import './tex/wildskins.js';
 import './tex/critterskins.js';
 import { RENDER, R, TEXL, FFLAGS, TINT, TINT_RGB, SHAPE, ICON_SHAPE, boxFaceUV, boxLayer, spriteOf } from './blocks.js';
 import { ITEMS } from './items.js';
-import { SECTIONS } from './config.js';
+import { SECTIONS, sectionOf, sectionY } from './config.js';
 import { compile } from './gl.js';
 import { terrainVS, terrainFS, fullscreenVS, skyFS, cloudVS, cloudFS, lineVS, lineFS } from './shaders.js';
 import { Shadows, Post } from './post.js';
@@ -237,7 +237,7 @@ export class Renderer {
   }
 
   uploadSection(sec, chunk, sy, solid, trans, groups = null) {
-    sec.origin = [chunk.cx * 16, sy * 16, chunk.cz * 16];
+    sec.origin = [chunk.cx * 16, sectionY(sy), chunk.cz * 16];
     // The most sky light anywhere in the section: sections deep underground can't shadow anything
     // the sun reaches, so the shadow map leaves them out.
     const L = chunk.light;
@@ -424,7 +424,7 @@ export class Renderer {
     out.length = 0;
     if (!world) return out;
     const frame = ++this.frameId;
-    const ccx = Math.floor(cam.x) >> 4, ccz = Math.floor(cam.z) >> 4, csy = Math.floor(cam.y) >> 4;
+    const ccx = Math.floor(cam.x) >> 4, ccz = Math.floor(cam.z) >> 4, csy = sectionOf(Math.floor(cam.y));
     const maxD = (f.renderDist + 1) * 16, maxD2 = maxD * maxD;
     const start = world.chunks.get(((ccx & 0xffff) | ((ccz & 0xffff) << 16)) >>> 0);
     if (!this.occlusion || !start || start.state !== 2 || csy < 0 || csy >= SECTIONS) {
@@ -436,7 +436,7 @@ export class Renderer {
         for (let sy = 0; sy < SECTIONS; sy++) {
           const sec = chunk.sections[sy];
           if (!sec.solid && !sec.trans) continue;
-          const oy = sy * 16 - cam.y;
+          const oy = sectionY(sy) - cam.y;
           if (!boxInFrustum(this.planes, ox, oy, oz, ox + 16, oy + 16, oz + 16)) continue;
           sec._ox = ox; sec._oy = oy; sec._oz = oz;
           sec._d = (ox + 8) * (ox + 8) + (oy + 8) * (oy + 8) + (oz + 8) * (oz + 8);
@@ -455,7 +455,7 @@ export class Renderer {
       qc[head] = null;
       head++;
       const sec = chunk.sections[sy];
-      const ox = chunk.cx * 16 - cam.x, oy = sy * 16 - cam.y, oz = chunk.cz * 16 - cam.z;
+      const ox = chunk.cx * 16 - cam.x, oy = sectionY(sy) - cam.y, oz = chunk.cz * 16 - cam.z;
       if (sec.solid || sec.trans) {
         sec._ox = ox; sec._oy = oy; sec._oz = oz;
         sec._d = (ox + 8) * (ox + 8) + (oy + 8) * (oy + 8) + (oz + 8) * (oz + 8);
@@ -472,7 +472,7 @@ export class Renderer {
         if (!nc || nc.state !== 2 || ns < 0 || ns >= SECTIONS) continue;
         const nsec = nc.sections[ns];
         if (nsec._frame === frame) continue;
-        const nx = nc.cx * 16 - cam.x, ny = ns * 16 - cam.y, nz = nc.cz * 16 - cam.z;
+        const nx = nc.cx * 16 - cam.x, ny = sectionY(ns) - cam.y, nz = nc.cz * 16 - cam.z;
         const hx = Math.max(0, Math.abs(nx + 8) - 8), hz = Math.max(0, Math.abs(nz + 8) - 8);
         if (hx * hx + hz * hz > maxD2) continue;
         if (!boxInFrustum(this.planes, nx, ny, nz, nx + 16, ny + 16, nz + 16)) continue;

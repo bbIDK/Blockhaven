@@ -1,10 +1,11 @@
 // Chunk-local light propagation, run right after generation (in a worker).
 // Light is packed per cell: sky light in the high nibble, block light in the low nibble.
 // Cross-chunk propagation and incremental updates happen on the main thread (see world.js).
-import { CHUNK_VOLUME, HEIGHT } from './config.js';
+// (Here `y` is a row of the chunk, counted up from its bottom at MIN_Y.)
+import { CHUNK_VOLUME, CHUNK_HEIGHT } from './config.js';
 import { OPAQUE, FILTER, EMIT } from './blocks.js';
 
-const QSIZE = 1 << 17, QMASK = QSIZE - 1;
+const QSIZE = 1 << 18, QMASK = QSIZE - 1;
 const queue = new Int32Array(QSIZE);
 
 // Light reaching a neighbour through block `nid` from a cell at `level`.
@@ -26,7 +27,7 @@ function flood(blocks, light, shift, head, tail) {
       let ni;
       if (d === 0) { if (x === 15) continue; ni = i + 1; }
       else if (d === 1) { if (x === 0) continue; ni = i - 1; }
-      else if (d === 2) { if (y === HEIGHT - 1) continue; ni = i + 256; }
+      else if (d === 2) { if (y === CHUNK_HEIGHT - 1) continue; ni = i + 256; }
       else if (d === 3) { if (y === 0) continue; ni = i - 256; }
       else if (d === 4) { if (z === 15) continue; ni = i + 16; }
       else { if (z === 0) continue; ni = i - 16; }
@@ -45,7 +46,7 @@ export function lightChunk(blocks, light) {
   light.fill(0);
   // Cells with an unobstructed view of the sky.
   for (let c = 0; c < 256; c++) {
-    for (let y = HEIGHT - 1; y >= 0; y--) {
+    for (let y = CHUNK_HEIGHT - 1; y >= 0; y--) {
       const i = (y << 8) | c;
       if (FILTER[blocks[i]] !== 0) break;
       light[i] = 0xf0;

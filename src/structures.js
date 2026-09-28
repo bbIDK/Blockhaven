@@ -4,7 +4,8 @@
 // agrees about it, and each chunk copies its share of the structure's blueprint as it's made (the
 // last step of WorldGen.generate). Every kind has a grid of square regions of its own, at most one
 // to a region and kept inside it; strongholds lie in rings round the middle of the world instead.
-import { HEIGHT, SEA_LEVEL, chunkKey } from './config.js';
+// (Chunks from generators up to 11 are 256 blocks tall, from y 0: see jobs.js.)
+import { LEGACY_HEIGHT as HEIGHT, SEA_LEVEL, chunkKey } from './config.js';
 import { B, R, SOLID, WATERLIKE, REPLACEABLE, RENDER, STAIRS, FACING_VARIANTS, WALL_TORCH, TORCH_LEAN, LADDER, VINE, WOOD, LOG_AXES,
   RAIL_ID, doorId, bedId, trapdoorId, lootChestId, dispenserId, hookId } from './blocks.js';
 import { BIOME, OCEANS } from './biomes.js';

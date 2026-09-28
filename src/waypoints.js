@@ -5,6 +5,7 @@
 import { DYES } from './colors.js';
 import { initials, waypointColour } from './minimap.js';
 import { keyName } from './keys.js';
+import { MIN_Y, MAX_Y } from './config.js';
 
 export const MAX_WAYPOINTS = 100;
 const NAME_CHARS = 24;
@@ -14,7 +15,7 @@ const coord = (v) => Number.isInteger(v) && Math.abs(v) < 3e7;
 // A waypoint as saved or sent (anything wrong in one is put right, or it's dropped).
 export function cleanWaypoint(w) {
   if (!w || typeof w !== 'object' || ![w.x, w.y, w.z].every(coord)) return null;
-  const out = { name: cleanName(w.name) || 'Waypoint', x: w.x, y: Math.max(-64, Math.min(320, w.y)), z: w.z,
+  const out = { name: cleanName(w.name) || 'Waypoint', x: w.x, y: Math.max(MIN_Y, Math.min(MAX_Y, w.y)), z: w.z,
     c: Number.isInteger(w.c) && w.c >= 0 && w.c < 16 ? w.c : 0, on: w.on !== false };
   if (w.death) out.death = true;
   return out;

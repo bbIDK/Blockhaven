@@ -5,7 +5,7 @@
 // king and queen hold court. Each picks its own size, shape, walls, streets, roofs and stone, and
 // the bigger it is, the more people live there. (villages.js decides where they go and hands
 // them to the world generator.)
-import { SEA_LEVEL } from './config.js';
+import { SEA_LEVEL, MIN_Y } from './config.js';
 import { B, STAIRS, LADDER, LOG_AXES, SOLID, gateId, doorId, lootChestId, WOOD, WALL_TORCH } from './blocks.js';
 import { BIOME } from './biomes.js';
 import { mulberry32 } from './math.js';
@@ -422,13 +422,14 @@ export function build4(plan, bp) {
 // air under a pitched roof). Where one doesn't, a beam goes across the room over it, wall to wall
 // the shorter way; failing that, it moves up to hang from whatever is above.
 function hangLanterns(plan, bp) {
-  const at = new Map(), key = (x, y, z) => ((x - plan.x + 1024) * 2048 + z - plan.z + 1024) * 256 + y;
+  // (y has 512 values in a key, from MIN_Y.)
+  const at = new Map(), key = (x, y, z) => ((x - plan.x + 1024) * 2048 + z - plan.z + 1024) * 512 + y - MIN_Y;
   for (const a of bp.chunks.values()) for (let i = 0; i < a.length; i += 4) at.set(key(a[i], a[i + 1], a[i + 2]), a[i + 3]);
   const put = (x, y, z, id) => { bp.set(x, y, z, id); at.set(key(x, y, z), id); };
   const log = B[plan.style.log] ?? B.oak_log, axes = LOG_AXES[log];
   for (const [k, id] of [...at]) {
     if (id !== B.lantern_hanging) continue;
-    const y = k % 256, xz = (k - y) / 256, x = Math.floor(xz / 2048) - 1024 + plan.x, z = (xz % 2048) - 1024 + plan.z;
+    const r = k % 512, xz = (k - r) / 512, y = r + MIN_Y, x = Math.floor(xz / 2048) - 1024 + plan.x, z = (xz % 2048) - 1024 + plan.z;
     if (SOLID[at.get(key(x, y + 1, z))]) continue;
     // (How far along from the lantern the wall is, through nothing but air: -1 if it isn't.)
     const wall = (dx, dz) => {

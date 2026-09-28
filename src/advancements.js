@@ -8,7 +8,7 @@
 import { I, ITEMS, itemDef } from './items.js';
 import { BIOME, BIOME_NAMES } from './biomes.js';
 import { MOBS } from './mobs.js';
-import { HEIGHT } from './config.js';
+import { MAX_Y } from './config.js';
 import { iconFor } from './icons.js';
 import { addXp } from './enchanting.js';
 
@@ -58,7 +58,7 @@ export function biomesToFind(gen) {
 }
 
 // Caves & Cliffs: a fall from the top of the world (off its highest blocks) that ends this near the
-// bottom.
+// bottom (the bottom of the land: y -64, or y 0 in worlds from before Update 31).
 const BOTTOM = 10;
 
 // Whether a death (its message) came of a creature: the Adventure tab opens with killing or being
@@ -123,7 +123,7 @@ A('adventure/spyglass_at_whale', 'spyglass_at_parrot', 'task', 'spyglass', 'Thar
   { spy: (d) => WHALES.has(d.m) });
 A('adventure/fall_from_world_height', 'root', 'task', 'water_bucket', 'Caves & Cliffs',
   'Free fall from the top of the world (build limit) to the bottom of the world and survive',
-  { fall: (d) => d.from >= HEIGHT - 1 && d.to <= BOTTOM });
+  { fall: (d, g) => d.from >= MAX_Y - 1 && d.to <= (g.world?.floorY ?? 0) + BOTTOM });
 
 // ---- Husbandry
 A('husbandry/root', null, 'task', 'hay_block', 'Husbandry', 'The world is full of friends and food', { eat: () => true });

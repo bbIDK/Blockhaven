@@ -6,7 +6,7 @@ import { B, SOLID, WATERLIKE, CLIMB, LEAVES_WOOD, SHAPE_KIND, CROP, BERRY_BUSH }
 import { I, ITEMS } from './items.js';
 import { BIOME } from './biomes.js';
 import { DYES } from './colors.js';
-import { HEIGHT } from './config.js';
+import { MIN_Y, CHUNK_HEIGHT } from './config.js';
 import { identity, translate, rotateX, rotateY, rotateZ, scale, hash2, clamp } from './math.js';
 import { TEX } from './textures.js';
 import { HORSE_COATS, HORSE_MARKINGS } from './tex/mobskins.js';
@@ -1723,7 +1723,7 @@ export function teleport(ents, e, near = null) {
     const cx = near ? near.x : e.x, cz = near ? near.z : e.z, r = near ? 4 : 16;
     const x = Math.floor(cx + (Math.random() - 0.5) * 2 * r), z = Math.floor(cz + (Math.random() - 0.5) * 2 * r);
     if (!w.isLoaded(x, z)) continue;
-    for (let y = Math.floor(e.y) + 8; y > Math.floor(e.y) - 12 && y > 1; y--) {
+    for (let y = Math.floor(e.y) + 8; y > Math.floor(e.y) - 12 && y > w.floorY + 1; y--) {
       if (!SOLID[w.getBlock(x, y - 1, z)] || WATERLIKE[w.getBlock(x, y - 1, z)]) continue;
       if ([0, 1, 2].some((k2) => SOLID[w.getBlock(x, y + k2, z)] || WATERLIKE[w.getBlock(x, y + k2, z)])) break;
       game.particles.bits(e.x, e.y + 1.4, e.z, TEX.portal ?? TEX.angry, 16, 1.4, 1.2);
@@ -2655,20 +2655,21 @@ const HERD_GROUND = new Set([B.grass_block, B.snowy_grass, B.sand, B.red_sand, B
   B.rooted_dirt, B.moss_block, B.stone, B.gravel, B.clay, B.calcite, B.terracotta, B.packed_ice]);
 
 // Where in a column of a chunk a land creature `tall` blocks high can stand (the y of its feet), or
-// -1: the ground under any grass, flowers or snow, and in the woods the floor under the leaves (a
-// flier may perch on the leaves instead), with room above it.
+// null: the ground under any grass, flowers or snow, and in the woods the floor under the leaves (a
+// flier may perch on the leaves instead), with room above it. (`r`: a row of the chunk, counted up
+// from its bottom at MIN_Y.)
 function standAt(chunk, lx, lz, tall, flier) {
-  for (let y = HEIGHT - 2; y > 1; y--) {
-    const id = chunk.blocks[(y << 8) | (lz << 4) | lx];
+  for (let r = CHUNK_HEIGHT - 2; r > 1; r--) {
+    const id = chunk.blocks[(r << 8) | (lz << 4) | lx];
     if (!id) continue;
-    if (WATERLIKE[id]) return -1;
+    if (WATERLIKE[id]) return null;
     const perch = flier && LEAVES_WOOD[id] !== undefined;
     if (!perch && (!SOLID[id] || LEAVES_WOOD[id] !== undefined)) continue;
-    if (!perch && !HERD_GROUND.has(id)) return -1;
-    for (let k = 1; k <= tall && y + k < HEIGHT; k++) if (SOLID[chunk.blocks[((y + k) << 8) | (lz << 4) | lx]]) return -1;
-    return y + 1;
+    if (!perch && !HERD_GROUND.has(id)) return null;
+    for (let k = 1; k <= tall && r + k < CHUNK_HEIGHT; k++) if (SOLID[chunk.blocks[((r + k) << 8) | (lz << 4) | lx]]) return null;
+    return r + 1 + MIN_Y;
   }
-  return -1;
+  return null;
 }
 
 // A herd for a fresh chunk: [{ type, x, y, z, o }] or none.
@@ -2688,26 +2689,28 @@ export function herdFor(chunk, seed) {
   const school = def.schools ? 1 + Math.floor(Math.random() * 1e9) : 0, look = Math.floor(Math.random() * (def.skins.length));
   for (let i = 0; i < n + Math.floor(hash2(chunk.cx * 7, chunk.cz, 5) * 2); i++) {
     const lx = (lx0 + Math.floor((hash2(chunk.cx, i, chunk.cz) - 0.5) * 8)) & 15, lz = (lz0 + Math.floor((hash2(i, chunk.cz, chunk.cx) - 0.5) * 8)) & 15;
-    let yy = -1;
+    let yy = null;
     if (!water) yy = standAt(chunk, lx, lz, tall, flier);
     else {
-      for (let y = HEIGHT - 2; y > 1; y--) {
-        const id = chunk.blocks[(y << 8) | (lz << 4) | lx];
+      // (In rows of the chunk, from its bottom; `yy` is the y in the world.)
+      for (let r = CHUNK_HEIGHT - 2; r > 1; r--) {
+        const id = chunk.blocks[(r << 8) | (lz << 4) | lx];
         if (!id) continue;
         if (WATERLIKE[id] !== 1) break;
-        yy = y - 1 - Math.floor(Math.random() * 2);
-        if (WATERLIKE[chunk.blocks[(yy << 8) | (lz << 4) | lx]] !== 1) { yy = -1; break; }
+        let rr = r - 1 - Math.floor(Math.random() * 2);
+        if (WATERLIKE[chunk.blocks[(rr << 8) | (lz << 4) | lx]] !== 1) break;
         // (Whales want deep water under them, and start down in it.)
         if (def.deep) {
           let depth = 0;
-          while (yy - depth > 1 && WATERLIKE[chunk.blocks[((yy - depth) << 8) | (lz << 4) | lx]] === 1) depth++;
-          if (depth < def.deep) { yy = -1; break; }
-          yy -= Math.floor(depth / 2);
+          while (rr - depth > 1 && WATERLIKE[chunk.blocks[((rr - depth) << 8) | (lz << 4) | lx]] === 1) depth++;
+          if (depth < def.deep) break;
+          rr -= Math.floor(depth / 2);
         }
+        yy = rr + MIN_Y;
         break;
       }
     }
-    if (yy < 0) continue;
+    if (yy === null) continue;
     out.push({ type, x: chunk.cx * 16 + lx + 0.5, y: yy, z: chunk.cz * 16 + lz + 0.5,
       o: { variant: school ? (Math.random() < 0.85 ? look : Math.floor(Math.random() * def.skins.length))
         : def.variants ? Math.floor(Math.random() * (def.variantCount ?? def.skins.length))
