@@ -326,6 +326,50 @@ export class Audio {
   swim() { this.play('water.swim', { volume: 0.18 }); }
   fuse(at) { this.play('tnt.fuse', { volume: 1, vary: 0.02, at }); }
   explode(at) { this.play('tnt.explode', { volume: 4, pitch: 0.95, vary: 0.15, at }); }
+  // Thunder from a bolt at `at`: heard from far off, and a moment late the further away it is
+  // (sound takes a while to come). Made here: a roll of low rumbling that swells and dies away over
+  // several seconds, and close by first the crack of the bolt and a boom.
+  thunder(at) {
+    if (!this.ready) return;
+    const ctx = this.ctx, L = this.listener;
+    const dx = at.x - L.x, dy = at.y - L.y, dz = at.z - L.z, dist = Math.hypot(dx, dy, dz);
+    const t0 = ctx.currentTime + Math.min(1.5, dist / 300), loud = Math.max(0.18, 1 - dist / 340);
+    const pan = dist > 1 ? Math.max(-1, Math.min(1, (dx * Math.cos(L.yaw) - dz * Math.sin(L.yaw)) / dist)) * 0.5 : 0;
+    const noise = this.noiseLong ??= (() => {
+      const b = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate), d = b.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      return b;
+    })();
+    const len = 4 + Math.random() * 3;
+    const src = ctx.createBufferSource();
+    src.buffer = noise;
+    src.loop = true;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 110 + 170 * loud; lp.Q.value = 0.8;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(loud * 0.8, t0 + 0.06 + dist / 1500);
+    for (let t = t0 + 0.35; t < t0 + len - 0.3; t += 0.25 + Math.random() * 0.55) {
+      g.gain.linearRampToValueAtTime(loud * (0.3 + Math.random() * 0.55) * (1 - (t - t0) / len), t);
+    }
+    g.gain.linearRampToValueAtTime(0, t0 + len);
+    src.connect(lp);
+    this.output(lp, g, pan);
+    src.start(t0, Math.random() * 0.5);
+    src.stop(t0 + len + 0.05);
+    if (dist < 64) {
+      const k = 1 - dist / 64, crack = ctx.createBufferSource(), hp = ctx.createBiquadFilter(), cg = ctx.createGain();
+      crack.buffer = noise;
+      hp.type = 'highpass'; hp.frequency.value = 1200;
+      cg.gain.setValueAtTime(0.7 * k, t0);
+      cg.gain.exponentialRampToValueAtTime(0.0005, t0 + 0.35);
+      crack.connect(hp);
+      this.output(hp, cg, pan);
+      crack.start(t0, Math.random() * 0.5);
+      crack.stop(t0 + 0.4);
+      this.play('tnt.explode', { volume: 4 * k + 0.5, pitch: 0.55, vary: 0.1, at });
+    }
+  }
   fizz(at) { this.play('fire.fizz', { volume: 0.45, pitch: 1.2, vary: 0.2, at }); }
   ignite(at) { this.play('fire.ignite', { volume: 0.8, at }); }
   toolBreak() { this.play('item.break', { volume: 0.8, pitch: 0.9, vary: 0.2 }); }

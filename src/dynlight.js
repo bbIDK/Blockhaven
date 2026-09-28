@@ -1,6 +1,6 @@
 // Dynamic Lights, as the OptiFine and LambDynamicLights mods have them: a torch (or anything else
-// that glows) lights up what's around whoever holds it, and so does one dropped on the ground or
-// a creature on fire. Only the look changes: the world's own light, which creatures spawn by, is
+// that glows) lights up what's around whoever holds it, and so does one dropped on the ground, a
+// creature on fire, or a bolt of lightning. Only the look changes: the world's own light, which creatures spawn by, is
 // left as it is. The renderer's shaders do the lighting (see DYNAMIC in shaders.js); this finds
 // the lights each frame, the eight nearest the camera.
 import { EMIT, WATERLIKE, B } from './blocks.js';
@@ -55,6 +55,8 @@ export class DynamicLights {
       if (e.kind === 'item') glowing(e.x, e.y + 0.25, e.z, e.id);
       else if (e.kind === 'mob' && (e.burning || e.onFire > 0)) add(e.x, e.y + (e.h ?? 1) * 0.6, e.z, 15);
     }
+    // (A bolt of lightning lights up the ground where it strikes, as long as it's showing.)
+    for (const b of game.lightning?.bolts ?? []) if (b.life >= 0) add(b.x, b.y + 1.5, b.z, 15);
     found.sort((a, b) => a.d2 - b.d2);
     const n = Math.min(MAX, found.length), d = this.data;
     for (let i = 0; i < n; i++) {

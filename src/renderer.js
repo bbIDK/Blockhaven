@@ -27,6 +27,9 @@ import { linePoints } from './fishing.js';
 const OPPOSITE = [1, 0, 3, 2, 5, 4];
 const QCAP = 1 << 15;
 
+// A guardian's beam: a soft glow round a bright core ([half width at each end, alpha]).
+const GUARDIAN_BEAM = [[0.16, 0.16, 0.3], [0.06, 0.06, 0.85]];
+
 export class Renderer {
   constructor(canvas) {
     this.canvas = canvas;
@@ -592,7 +595,7 @@ export class Renderer {
       gl.uniform4f(u.u_colorMul, e.tint ? e.tint[0] : 1, e.tint ? e.tint[1] : 1, e.tint ? e.tint[2] : 1, 1);
       gl.uniform1f(u.u_hurt, e.hurt ? 0.45 : 0);
       for (const part of e.parts) {
-        if (part.glint) gl.uniform1f(u.u_glint, 1);
+        if (part.glint) gl.uniform1f(u.u_glint, part.glint);
         this.drawModel(part.mesh, part.model);
         if (part.glint) gl.uniform1f(u.u_glint, 0);
       }
@@ -739,6 +742,9 @@ export class Renderer {
 
   // Guardians' beams: a ribbon from the eye to the one held in it, turned to face the camera, a
   // soft glow round a bright core, purple turning to yellow as it charges (`k` 0..1), and pulsing.
+  // (Lightning bolts are drawn the same way, a ribbon for each step of the bolt, with their own
+  // `color` and `layers` - [half width at the start, at the end, alpha] - brighter (`boost`) when
+  // the shaders' light is on.)
   drawBeams(beams, cam, time) {
     const gl = this.gl, d = this.polyData;
     gl.useProgram(this.lines.prog);
@@ -758,15 +764,15 @@ export class Renderer {
         const sx = dy * pz - dz * py, sy = dz * px - dx * pz, sz = dx * py - dy * px, l = Math.hypot(sx, sy, sz) || 1;
         return [sx / l * w, sy / l * w, sz / l * w];
       };
-      const f = b.k * b.k, pulse = 0.85 + 0.15 * Math.sin(time * 18);
-      const col = [(64 + 191 * f) / 255, (32 + 191 * f) / 255, (128 - 64 * f) / 255];
-      for (const [w, alpha] of [[0.16, 0.3], [0.06, 0.85]]) {
-        const sa = side(ax, ay, az, w), sb = side(bx, by, bz, w);
+      const f = b.k * b.k, pulse = b.color ? 1 : 0.85 + 0.15 * Math.sin(time * 18), boost = this.mode ? b.boost ?? 1 : 1;
+      const col = b.color ?? [(64 + 191 * f) / 255, (32 + 191 * f) / 255, (128 - 64 * f) / 255];
+      for (const [w0, w1, alpha] of b.layers ?? GUARDIAN_BEAM) {
+        const sa = side(ax, ay, az, w0), sb = side(bx, by, bz, w1);
         const quad = [ax - sa[0], ay - sa[1], az - sa[2], ax + sa[0], ay + sa[1], az + sa[2], bx + sb[0], by + sb[1], bz + sb[2],
           ax - sa[0], ay - sa[1], az - sa[2], bx + sb[0], by + sb[1], bz + sb[2], bx - sb[0], by - sb[1], bz - sb[2]];
         d.set(quad, 0);
         gl.bufferSubData(gl.ARRAY_BUFFER, 0, d, 0, 18);
-        gl.uniform4f(this.lines.u.u_color, col[0], col[1], col[2], alpha * pulse);
+        gl.uniform4f(this.lines.u.u_color, col[0] * boost, col[1] * boost, col[2] * boost, alpha * pulse);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
       }
     }

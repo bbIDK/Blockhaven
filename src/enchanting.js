@@ -82,7 +82,9 @@ export const ENCHANTS = {
   // through water and rain.
   impaling: { label: 'Impaling', max: 5, weight: 2, on: 'trident', power: range(1, 8, 20) },
   loyalty: { label: 'Loyalty', max: 3, weight: 5, on: 'trident', power: range(12, 7, 50), group: 'throw' },
-  riptide: { label: 'Riptide', max: 3, weight: 2, on: 'trident', power: range(17, 7, 50), group: 'throw' },
+  riptide: { label: 'Riptide', max: 3, weight: 2, on: 'trident', power: range(17, 7, 50), group: ['throw', 'storm'] },
+  // (Thrown in a thunderstorm, it calls lightning down on what it hits: see lightning.js.)
+  channeling: { label: 'Channeling', max: 1, weight: 1, on: 'trident', power: () => [25, 50], group: 'storm' },
   luck_of_the_sea: { label: 'Luck of the Sea', max: 3, weight: 2, on: 'rod', power: range(15, 9, 50) },
   lure: { label: 'Lure', max: 3, weight: 2, on: 'rod', power: range(15, 9, 50) },
   // Only from books (fishing, trading): experience you pick up mends your gear instead.
@@ -125,7 +127,10 @@ function suits(name, def) {
     default: return false;
   }
 }
-const compatible = (a, b) => a !== b && (!ENCHANTS[a].group || ENCHANTS[a].group !== ENCHANTS[b].group);
+// (Two go together unless they share a group: Riptide is in two, going with neither Loyalty nor
+// Channeling, which go together.)
+const groups = (n) => [].concat(ENCHANTS[n].group ?? []);
+const compatible = (a, b) => a !== b && !groups(a).some((g) => groups(b).includes(g));
 export const canCombine = (a, b) => a === b || compatible(a, b);
 
 // How well an item takes enchanting (by material, as in the original).

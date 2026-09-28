@@ -140,13 +140,15 @@ in vec3 v_dynAt;
 out vec4 o_color;
 ${DYNAMIC}
 float curve(float l) { return l / (3.0 - 2.0 * l); }
-// The shimmer on enchanted things: a purple sheen with bright bands sweeping across it.
+// The shimmer on enchanted things: a purple sheen with bright bands sweeping across it. (u_glint
+// 2: a charged creeper's, sky blue.)
 vec3 glint() {
   vec2 p = gl_FragCoord.xy / 48.0;
   float s = fract(p.x * 0.7 + p.y * 0.35 - u_time * 0.45);
   float s2 = fract(-p.x * 0.3 + p.y * 0.8 - u_time * 0.3 + 0.37);
   float g = smoothstep(0.0, 0.08, s) * (1.0 - smoothstep(0.08, 0.3, s)) + 0.6 * smoothstep(0.0, 0.1, s2) * (1.0 - smoothstep(0.1, 0.25, s2));
-  return vec3(0.45, 0.22, 0.85) * (0.2 + g * 0.9) * u_glint;
+  vec3 tint = u_glint > 1.5 ? vec3(0.3, 0.6, 1.0) : vec3(0.45, 0.22, 0.85);
+  return tint * (0.2 + g * 0.9) * min(u_glint, 1.0);
 }
 // Rain and snow on the sheets around the player (weather.js), in the manner of the original's
 // rain.png and snow.png: 64 pixels to a block, a streak or a flake here and there. They're worked

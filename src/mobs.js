@@ -288,6 +288,8 @@ export function initMob(e, type, o = {}) {
     grow: o.baby ? 24000 : 0, sheared: !!o.sheared, colour: o.colour ?? 0, eggTimer: 6000 + Math.floor(Math.random() * 6000), fuse: 0,
     aim: 0, lookAt: null, lookTime: 0, squish: 0, jumpCd: 0, teleportCd: 0, graze: 0, pinned: o.pinned ?? null, penned: !!o.penned, home: o.home ?? null,
     tame: !!o.tame, saddled: !!o.saddled, temper: o.temper ?? 0, rider: null,
+    // (A creeper struck by lightning is charged: its blast twice as big.)
+    charged: !!o.charged,
     // (Pets: whose they are (a player's id), whether they've been told to sit, their collar's dye.)
     owner: o.owner ?? null, sitting: !!o.sitting, collar: o.collar ?? RED,
     // (Golems someone built stay put when they're far away, like pets.)
@@ -1227,7 +1229,7 @@ function creeperTick(ents, e, tg, dist) {
     if (e.fuse >= 30) {
       e.dead = true;
       game.net?.entityGone(e, 'x');
-      ents.explode(e.x, e.y + 0.8, e.z, e.def.explodes);
+      ents.explode(e.x, e.y + 0.8, e.z, e.def.explodes * (e.charged ? 2 : 1));
     }
   } else {
     e.fuse = Math.max(0, e.fuse - 1);
@@ -2530,7 +2532,7 @@ export function renderMob(ents, e, rx, ry, rz, light, out) {
   for (const m of meshes) {
     if ((m.bone.wool && e.sheared) || (m.bone.saddle && !e.saddled) || (m.bone.collar && !pet) || (m.bone.markings && !marks) || (m.bone.decor && !t.extraSkins?.decor) || (m.bone.croak && !(e.croak > 0 || e.croaking)) ||
       (m.bone.ridden && !(e.rider || e.ridden)) || (m.bone.adult && e.baby) || (m.bone.male && (e.baby || !isMale(e)))) continue;
-    parts.push({ mesh: m.mesh, model: boneMatrix(ents.mat(), base, m.bone, pose, m.name, t.rigDef.bones) });
+    parts.push({ mesh: m.mesh, model: boneMatrix(ents.mat(), base, m.bone, pose, m.name, t.rigDef.bones), glint: e.charged ? 2 : 0 });
   }
   // What it holds: attached to the hand of the arm bone.
   const held = e.held ?? (e.drinking ? I.potion_healing ?? null : null) ?? (t.held ? I[t.held] : null);

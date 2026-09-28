@@ -65,6 +65,7 @@ export function mobExtra(e) {
   // (A bee's home, and its nectar.)
   if (e.hive) o.hv = e.hive;
   if (e.nectar) o.nc = 1;
+  if (e.charged) o.ch = 1;
   if (e.def.kind === 'civilian') { o.r = e.rid; o.sk = e.skin; o.n = e.name; o.ro = e.role; }
   // (A wandering trader's id, how long they'll stay, and where they came.)
   if (e.def.wanderer) { o.tid = e.tid; o.lv = e.leaves; o.hm = [Math.round(e.home?.x ?? e.x), Math.round(e.home?.z ?? e.z)]; }
@@ -92,7 +93,7 @@ const extraOpts = (s) => ({ variant: Number.isInteger(s.v) ? s.v : 0, colour: Nu
   owner: typeof s.ow === 'string' && s.ow ? s.ow.slice(0, 64) : null, sitting: !!s.si, collar: Number.isInteger(s.co) && s.co >= 0 && s.co < 16 ? s.co : undefined,
   made: !!s.md, hatched: !!s.ht, named: typeof s.nm === 'string' ? cleanTagName(s.nm) : null, school: Number.isInteger(s.sc) ? s.sc : 0,
   trusting: !!s.tr, growUp: Number.isInteger(s.g) && s.g > 0 ? Math.min(s.g, 24000) : undefined, trident: s.td === 1,
-  hive: typeof s.hv === 'string' && /^-?\d+,-?\d+,-?\d+$/.test(s.hv) ? s.hv : null, nectar: s.nc === 1,
+  hive: typeof s.hv === 'string' && /^-?\d+,-?\d+,-?\d+$/.test(s.hv) ? s.hv : null, nectar: s.nc === 1, charged: s.ch === 1,
   leash: typeof s.le === 'string' && s.le ? { uid: s.le.slice(0, 64) }
     : Array.isArray(s.le) && s.le.length === 3 && s.le.every(Number.isInteger) ? { x: s.le[0], y: s.le[1], z: s.le[2] } : null });
 // A name from a name tag: printable, and no longer than the original allows.
@@ -100,12 +101,12 @@ export const cleanTagName = (text) => String(text ?? '').replace(/\p{C}/gu, '').
 // Flags sent with each creature update: 1 hurt, 2 dying, 4 swinging, 8 burning, 16 shorn, 32 angry,
 // 64 about to explode, 128 drawing a bow, 256 asleep, 512 saddled, 1024 tame, 2048 being ridden,
 // 4096 roosting (a bat hanging upside down), 8192 drinking (a witch), 16384 sitting (a pet), 32768
-// in love, 65536 playing dead (an axolotl), 131072 croaking (a frog).
+// in love, 65536 playing dead (an axolotl), 131072 croaking (a frog), 262144 charged (a creeper).
 export function mobFlags(e) {
   return (e.hurt > 0 ? 1 : 0) | (e.dying ? 2 : 0) | (e.swing > 0.3 ? 4 : 0) | (e.burning ? 8 : 0) | (e.sheared ? 16 : 0) | (e.angry > 0 ? 32 : 0) |
     (e.fuse > 0 ? 64 : 0) | (e.aim > 0 ? 128 : 0) | (e.pose === 'sleep' ? 256 : 0) | (e.saddled ? 512 : 0) | (e.tame ? 1024 : 0) | (e.rider ? 2048 : 0) |
     (e.roost ? 4096 : 0) | (e.drinking > 0 ? 8192 : 0) | (e.sitting ? 16384 : 0) | (e.love > 0 ? 32768 : 0) | (e.playDead > 0 ? 65536 : 0) |
-    (e.croak > 0 ? 131072 : 0);
+    (e.croak > 0 ? 131072 : 0) | (e.charged ? 262144 : 0);
 }
 
 export class Entities {
@@ -613,7 +614,8 @@ export class Entities {
     // (At most 6 about on Easy, 8 on Normal and 10 on Hard, and four more for each other player.)
     const hostiles = this.list.filter((e) => e.kind === 'mob' && e.def.hostile && e.def.kind !== 'water' && !e.dead).length;
     if (hostiles >= 4 + diff * 2 + (targets.length - 1) * 4) return;
-    const day = game.env.daylight;
+    // (A thunderstorm darkens the day enough for them to come out under the open sky.)
+    const day = game.env.daylight * (1 - 0.55 * game.weather.thunder);
     for (let attempt = 0; attempt < 6; attempt++) {
       const a = Math.random() * Math.PI * 2, d = 20 + Math.random() * 24;
       const x = Math.floor(p.x + Math.cos(a) * d), z = Math.floor(p.z + Math.sin(a) * d);
@@ -1417,6 +1419,7 @@ export class Entities {
     e.sitting = !!(f & 16384);
     e.shamming = !!(f & 65536);
     e.croaking = !!(f & 131072);
+    e.charged = !!(f & 262144);
     e.flags = f;
   }
 

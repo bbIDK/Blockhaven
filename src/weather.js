@@ -1,6 +1,7 @@
 // Rain and snow. Like the original game, precipitation is drawn as sheets in the columns around
 // the player, each turned to face the camera, from the highest block that stops it up past the
 // camera. It turns to snow in cold biomes and high up; deserts, savannas and badlands stay dry.
+// Now and then a rain is a thunderstorm: a darker sky, and lightning where it rains (lightning.js).
 // The streaks and flakes on the sheets are drawn by the terrain shader (precipitation() in
 // shaders.js).
 import { STRIDE } from './mesher.js';
@@ -12,6 +13,8 @@ const MAX_QUADS = (RADIUS * 2 + 1) ** 2;
 const SNOWY = new Set([BIOME.FROZEN_OCEAN, BIOME.DEEP_FROZEN_OCEAN, BIOME.SNOWY_TAIGA, BIOME.SNOWY_PEAKS, BIOME.SNOWY_PLAINS, BIOME.ICE_SPIKES,
   BIOME.JAGGED_PEAKS, BIOME.FROZEN_PEAKS, BIOME.SNOWY_SLOPES, BIOME.SNOWY_BEACH, BIOME.FROZEN_RIVER]);
 const DRY = new Set([BIOME.DESERT, BIOME.SAVANNA, BIOME.BADLANDS]);
+// How often a rain is a thunderstorm.
+const STORMY = 0.25;
 export const F_PRECIP = 128;
 // How fast rain and snow fall, in pixels a second (64 to a block), and where the shader's patterns
 // repeat (the distance fallen wraps around there, so it never loses precision).
@@ -31,6 +34,8 @@ export class Weather {
   constructor() {
     this.rain = 0;       // current strength, 0..1 (fades in and out)
     this.raining = false;
+    this.thunder = 0;    // how stormy, 0..1 (fading in and out with the rain)
+    this.thundering = false;
     this.timer = 600 + Math.random() * 900;
     this.rainSheet = new Sheet();
     this.snowSheet = new Sheet();
@@ -45,16 +50,20 @@ export class Weather {
 
   load(saved) {
     this.raining = !!saved?.raining;
+    this.thundering = this.raining && !!saved?.thunder;
     this.rain = this.raining ? 1 : 0;
+    this.thunder = this.thundering ? 1 : 0;
     this.timer = saved?.timer ?? 600 + Math.random() * 900;
     this.lastKey = '';
   }
 
-  serialize() { return { raining: this.raining, timer: Math.round(this.timer) }; }
+  serialize() { return { raining: this.raining, thunder: this.thundering ? 1 : undefined, timer: Math.round(this.timer) }; }
 
-  // Starts or stops precipitation; `seconds` is how long until it changes again.
-  set(raining, seconds = null) {
+  // Starts or stops precipitation; `seconds` is how long until it changes again. `thunder`: whether
+  // it's a thunderstorm (by chance, if not said).
+  set(raining, seconds = null, thunder = null) {
     this.raining = raining;
+    this.thundering = raining && (thunder ?? Math.random() < STORMY);
     this.timer = seconds ?? (raining ? 240 + Math.random() * 360 : 600 + Math.random() * 1200);
   }
 
@@ -62,6 +71,7 @@ export class Weather {
     this.timer -= dt;
     if (this.timer <= 0) this.set(!this.raining);
     this.rain += Math.max(-dt / 8, Math.min(dt / 8, (this.raining ? 1 : 0) - this.rain));
+    this.thunder += Math.max(-dt / 8, Math.min(dt / 8, (this.raining && this.thundering ? 1 : 0) - this.thunder));
   }
 
   // Precipitation type for a column: 0 none, 1 rain, 2 snow.

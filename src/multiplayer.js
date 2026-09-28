@@ -352,7 +352,7 @@ export class HostSession extends Session {
     const game = this.game, pres = super.myPresence();
     Object.assign(pres, {
       h: 1, hw: game.meta?.name ?? '', hm: game.meta?.mode ?? 'survival', hp: this.count,
-      tm: Math.floor(game.time / 20) * 20, wr: game.weather.raining ? 1 : 0,
+      tm: Math.floor(game.time / 20) * 20, wr: game.weather.raining ? 1 : 0, wt: game.weather.thundering ? 1 : 0,
     });
     if (this.code) pres.hc = this.code;
     return pres;
@@ -583,7 +583,7 @@ export class HostSession extends Session {
     this.send(g.addr, {
       t: 'welcome', g: this.gid, be: this.link.epoch, bs: this.link.stream('*').seq, pvp: this.pvp ? 1 : 0,
       w: { name: meta.name, seed: meta.seed, type: meta.type, gen: meta.gen ?? 1, mode: meta.mode, diff: game.difficulty, spawn: meta.spawn, time: Math.floor(game.time),
-        rain: game.weather.raining ? 1 : 0 },
+        rain: game.weather.raining ? 1 : 0, thunder: game.weather.thundering ? 1 : 0 },
       you: meta.players?.[g.uid] ?? null, mk: playerKey(g.uid),
       keys: [...w.store.keys],
       ents: game.entities.list.filter((e) => !e.dead).map((e) => { if (!e.nid) e.nid = this.nextNid++; return entityState(e); }),
@@ -869,8 +869,8 @@ export class HostSession extends Session {
     return out;
   }
 
-  hurt(addr, amount, why, knock, armored) {
-    this.send(addr, { t: 'hurt', a: r2(amount), why, k: knock ? knock.map(r2) : null, arm: armored ? 1 : 0 });
+  hurt(addr, amount, why, knock, armored, burn = 0) {
+    this.send(addr, { t: 'hurt', a: r2(amount), why, k: knock ? knock.map(r2) : null, arm: armored ? 1 : 0, fi: burn || undefined });
   }
   // What the host explored of a map, to everyone.
   hasMap(id, addr) {
@@ -1089,6 +1089,8 @@ export class GuestSession extends Session {
       if (this.gid && pres.g === this.gid && this.game.world && this.game.state !== 'loading') {
         if (int(pres.tm) && Math.abs(this.game.time - pres.tm) > 40) this.game.time = pres.tm;
         this.game.weather.raining = !!pres.wr;
+        this.game.weather.thundering = !!pres.wr && !!pres.wt;
+        this.game.weather.timer = 600; // (the host's weather, not our own)
       }
     }
     this.seePlayer(addr, pres);
@@ -1122,6 +1124,8 @@ export class GuestSession extends Session {
         if (num(msg.a) && game.world && game.state !== 'loading') {
           const k = Array.isArray(msg.k) && msg.k.length === 3 && msg.k.every(num) ? msg.k.map((v) => clamp(v, -20, 20)) : null;
           game.damage(clamp(msg.a, 0, 100), String(msg.why ?? 'You died').replace(/\p{C}/gu, '').slice(0, 80), false, k, !!msg.arm, { axe: msg.ax === 1 });
+          // (Struck by lightning: set alight as well.)
+          if (num(msg.fi) && msg.fi > 0 && !game.creative && !game.effects.has('fire_resistance')) game.fire = Math.max(game.fire, clamp(msg.fi, 0, 30) * 20);
         }
         break;
       case 'msg': if (typeof msg.s === 'string') game.ui.message(msg.s.replace(/\p{C}/gu, '').slice(0, 200), COLORS[msg.c] ?? null); break;
@@ -1269,6 +1273,7 @@ export class GuestSession extends Session {
     else if (msg.k === 'snow') game.entities.snowFx(at.x, at.y, at.z);
     else if (msg.k === 'note') game.playNote(Math.floor(at.x), Math.floor(at.y), Math.floor(at.z));
     else if (msg.k === 'hearts') game.particles.hearts(at.x, at.y, at.z, Math.max(1, Math.min(12, msg.n | 0)), 0.5);
+    else if (msg.k === 'bolt') game.lightning.show(at.x, at.y, at.z, msg.n >>> 0);
     else if (msg.k === 'firework' && msg.n && typeof msg.n === 'object') {
       const v = Array.isArray(msg.n.v) && msg.n.v.length === 3 && msg.n.v.every(num) ? msg.n.v.map((c) => clamp(c, -80, 80)) : [0, 1, 0];
       game.fireworkFx(at.x, at.y, at.z, cleanRocket(msg.n), v);

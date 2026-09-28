@@ -1,6 +1,7 @@
 // Thrown tridents, as in Minecraft. One flies like a heavy arrow (hardly slowed by water), hits
 // the first creature in its way for 8 (more with Impaling, on sea creatures) and drops away, or
-// sticks where it lands, to be picked up again by whoever gets to it. With Loyalty it comes back:
+// sticks where it lands, to be picked up again by whoever gets to it. With Channeling, in a
+// thunderstorm, lightning comes down on what it hits. With Loyalty it comes back:
 // once it has hit something or stuck fast, it flies home to whoever threw it, through anything in
 // the way, faster the higher the level. A thrown trident never vanishes of its own accord (one a
 // drowned throws does, a minute after it lands).
@@ -53,6 +54,9 @@ export function tridentHit(ents, e, victim, dx, dz) {
   game.audio.trident?.('hit', at);
   e.vx *= -0.01; e.vy *= -0.1; e.vz *= -0.01;
   e.dealt = true;
+  // Channeling, in a thunderstorm: a bolt of lightning comes down on what it hit, if that's out in
+  // the open.
+  if (enchLevel(e.trident, 'channeling') && game.lightning?.canStrike(victim)) game.lightning.strike(victim.x, victim.y, victim.z);
 }
 
 // A trident's own movement, before (or instead of) an arrow's: returns true when it's dealt with

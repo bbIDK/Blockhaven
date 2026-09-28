@@ -1346,6 +1346,7 @@ kbd {
       <p class="hint-text">Punch a tree for logs and turn them into planks in your inventory's crafting grid. Four planks make a crafting table: right-click it for the full 3×3 grid, where a wooden pickaxe gets you mining. The green book lists every recipe and lays it out for you.</p>
       <p class="hint-text">Furnaces smelt ores and cook meat: the item goes on top, fuel below. Weapons need a moment between swings (the bar under the crosshair), so time your hits. You heal while your food bar is nearly full.</p>
       <p class="hint-text">Settlements come in every size, from camps in the woods to walled towns and kingdoms with a castle and a king. Go in through a gate and right-click the people there to talk and trade: they buy and sell for gold coins. <kbd>/locate kingdom</kbd> (or camp, hamlet, village, town) points the way. Sleep in a bed to make it your spawn point.</p>
+      <p class="hint-text">Now and then a rain is a thunderstorm: lightning strikes the highest ground about you (and creatures out in the open), and monsters come out even by day. Find a roof, or sleep through it in a bed.</p>
       <p class="hint-text">Bees fill their nests and hives with honey. When one's full, a glass bottle takes the honey and shears the comb, but light a campfire under it first or the bees come after you. Dye banners at a loom, dress an armor stand in your spare armour, and climb scaffolding by jumping inside it (sneak to go down).</p>
       <p class="hint-text">Each animal lives where it belongs: deer, bears and boar in the woods, zebras, giraffes and elephants on the savanna, pandas and tigers in the jungle, polar bears and penguins in the snow. In Creative, the Spawn Eggs tab (or <kbd>/summon tiger</kbd>) brings out any creature you like.</p>
       <p class="hint-text">To play with friends, open a world, press Esc and choose Open to Friends. On claude.ai, people you've shared this page with see your world under Multiplayer; anywhere else, give them the join code.</p>
@@ -15484,13 +15485,15 @@ in vec3 v_dynAt;
 out vec4 o_color;
 ${DYNAMIC}
 float curve(float l) { return l / (3.0 - 2.0 * l); }
-// The shimmer on enchanted things: a purple sheen with bright bands sweeping across it.
+// The shimmer on enchanted things: a purple sheen with bright bands sweeping across it. (u_glint
+// 2: a charged creeper's, sky blue.)
 vec3 glint() {
   vec2 p = gl_FragCoord.xy / 48.0;
   float s = fract(p.x * 0.7 + p.y * 0.35 - u_time * 0.45);
   float s2 = fract(-p.x * 0.3 + p.y * 0.8 - u_time * 0.3 + 0.37);
   float g = smoothstep(0.0, 0.08, s) * (1.0 - smoothstep(0.08, 0.3, s)) + 0.6 * smoothstep(0.0, 0.1, s2) * (1.0 - smoothstep(0.1, 0.25, s2));
-  return vec3(0.45, 0.22, 0.85) * (0.2 + g * 0.9) * u_glint;
+  vec3 tint = u_glint > 1.5 ? vec3(0.3, 0.6, 1.0) : vec3(0.45, 0.22, 0.85);
+  return tint * (0.2 + g * 0.9) * min(u_glint, 1.0);
 }
 // Rain and snow on the sheets around the player (weather.js), in the manner of the original's
 // rain.png and snow.png: 64 pixels to a block, a streak or a flake here and there. They're worked
@@ -16492,7 +16495,9 @@ const ENCHANTS = {
   // through water and rain.
   impaling: { label: 'Impaling', max: 5, weight: 2, on: 'trident', power: range(1, 8, 20) },
   loyalty: { label: 'Loyalty', max: 3, weight: 5, on: 'trident', power: range(12, 7, 50), group: 'throw' },
-  riptide: { label: 'Riptide', max: 3, weight: 2, on: 'trident', power: range(17, 7, 50), group: 'throw' },
+  riptide: { label: 'Riptide', max: 3, weight: 2, on: 'trident', power: range(17, 7, 50), group: ['throw', 'storm'] },
+  // (Thrown in a thunderstorm, it calls lightning down on what it hits: see lightning.js.)
+  channeling: { label: 'Channeling', max: 1, weight: 1, on: 'trident', power: () => [25, 50], group: 'storm' },
   luck_of_the_sea: { label: 'Luck of the Sea', max: 3, weight: 2, on: 'rod', power: range(15, 9, 50) },
   lure: { label: 'Lure', max: 3, weight: 2, on: 'rod', power: range(15, 9, 50) },
   // Only from books (fishing, trading): experience you pick up mends your gear instead.
@@ -16535,7 +16540,10 @@ function suits(name, def) {
     default: return false;
   }
 }
-const compatible = (a, b) => a !== b && (!ENCHANTS[a].group || ENCHANTS[a].group !== ENCHANTS[b].group);
+// (Two go together unless they share a group: Riptide is in two, going with neither Loyalty nor
+// Channeling, which go together.)
+const groups = (n) => [].concat(ENCHANTS[n].group ?? []);
+const compatible = (a, b) => a !== b && !groups(a).some((g) => groups(b).includes(g));
 const canCombine = (a, b) => a === b || compatible(a, b);
 
 // How well an item takes enchanting (by material, as in the original).
@@ -16964,6 +16972,9 @@ const { linePoints } = __require("src/fishing.js");
 
 const OPPOSITE = [1, 0, 3, 2, 5, 4];
 const QCAP = 1 << 15;
+
+// A guardian's beam: a soft glow round a bright core ([half width at each end, alpha]).
+const GUARDIAN_BEAM = [[0.16, 0.16, 0.3], [0.06, 0.06, 0.85]];
 
 class Renderer {
   constructor(canvas) {
@@ -17530,7 +17541,7 @@ class Renderer {
       gl.uniform4f(u.u_colorMul, e.tint ? e.tint[0] : 1, e.tint ? e.tint[1] : 1, e.tint ? e.tint[2] : 1, 1);
       gl.uniform1f(u.u_hurt, e.hurt ? 0.45 : 0);
       for (const part of e.parts) {
-        if (part.glint) gl.uniform1f(u.u_glint, 1);
+        if (part.glint) gl.uniform1f(u.u_glint, part.glint);
         this.drawModel(part.mesh, part.model);
         if (part.glint) gl.uniform1f(u.u_glint, 0);
       }
@@ -17677,6 +17688,9 @@ class Renderer {
 
   // Guardians' beams: a ribbon from the eye to the one held in it, turned to face the camera, a
   // soft glow round a bright core, purple turning to yellow as it charges (`k` 0..1), and pulsing.
+  // (Lightning bolts are drawn the same way, a ribbon for each step of the bolt, with their own
+  // `color` and `layers` - [half width at the start, at the end, alpha] - brighter (`boost`) when
+  // the shaders' light is on.)
   drawBeams(beams, cam, time) {
     const gl = this.gl, d = this.polyData;
     gl.useProgram(this.lines.prog);
@@ -17696,15 +17710,15 @@ class Renderer {
         const sx = dy * pz - dz * py, sy = dz * px - dx * pz, sz = dx * py - dy * px, l = Math.hypot(sx, sy, sz) || 1;
         return [sx / l * w, sy / l * w, sz / l * w];
       };
-      const f = b.k * b.k, pulse = 0.85 + 0.15 * Math.sin(time * 18);
-      const col = [(64 + 191 * f) / 255, (32 + 191 * f) / 255, (128 - 64 * f) / 255];
-      for (const [w, alpha] of [[0.16, 0.3], [0.06, 0.85]]) {
-        const sa = side(ax, ay, az, w), sb = side(bx, by, bz, w);
+      const f = b.k * b.k, pulse = b.color ? 1 : 0.85 + 0.15 * Math.sin(time * 18), boost = this.mode ? b.boost ?? 1 : 1;
+      const col = b.color ?? [(64 + 191 * f) / 255, (32 + 191 * f) / 255, (128 - 64 * f) / 255];
+      for (const [w0, w1, alpha] of b.layers ?? GUARDIAN_BEAM) {
+        const sa = side(ax, ay, az, w0), sb = side(bx, by, bz, w1);
         const quad = [ax - sa[0], ay - sa[1], az - sa[2], ax + sa[0], ay + sa[1], az + sa[2], bx + sb[0], by + sb[1], bz + sb[2],
           ax - sa[0], ay - sa[1], az - sa[2], bx + sb[0], by + sb[1], bz + sb[2], bx - sb[0], by - sb[1], bz - sb[2]];
         d.set(quad, 0);
         gl.bufferSubData(gl.ARRAY_BUFFER, 0, d, 0, 18);
-        gl.uniform4f(this.lines.u.u_color, col[0], col[1], col[2], alpha * pulse);
+        gl.uniform4f(this.lines.u.u_color, col[0] * boost, col[1] * boost, col[2] * boost, alpha * pulse);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
       }
     }
@@ -27256,7 +27270,7 @@ __exports.Link = Link;
 __define("src/version.js", function (__exports) {
 // Which update of the game this is: shown on the title screen, and compared with the site's
 // version.json (which tools/build.mjs writes) to tell when this copy is out of date (see updates.js).
-const BUILD = 27;
+const BUILD = 28;
 
 __exports.BUILD = BUILD;
 });
@@ -29828,6 +29842,50 @@ class Audio {
   swim() { this.play('water.swim', { volume: 0.18 }); }
   fuse(at) { this.play('tnt.fuse', { volume: 1, vary: 0.02, at }); }
   explode(at) { this.play('tnt.explode', { volume: 4, pitch: 0.95, vary: 0.15, at }); }
+  // Thunder from a bolt at `at`: heard from far off, and a moment late the further away it is
+  // (sound takes a while to come). Made here: a roll of low rumbling that swells and dies away over
+  // several seconds, and close by first the crack of the bolt and a boom.
+  thunder(at) {
+    if (!this.ready) return;
+    const ctx = this.ctx, L = this.listener;
+    const dx = at.x - L.x, dy = at.y - L.y, dz = at.z - L.z, dist = Math.hypot(dx, dy, dz);
+    const t0 = ctx.currentTime + Math.min(1.5, dist / 300), loud = Math.max(0.18, 1 - dist / 340);
+    const pan = dist > 1 ? Math.max(-1, Math.min(1, (dx * Math.cos(L.yaw) - dz * Math.sin(L.yaw)) / dist)) * 0.5 : 0;
+    const noise = this.noiseLong ??= (() => {
+      const b = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate), d = b.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      return b;
+    })();
+    const len = 4 + Math.random() * 3;
+    const src = ctx.createBufferSource();
+    src.buffer = noise;
+    src.loop = true;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 110 + 170 * loud; lp.Q.value = 0.8;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(loud * 0.8, t0 + 0.06 + dist / 1500);
+    for (let t = t0 + 0.35; t < t0 + len - 0.3; t += 0.25 + Math.random() * 0.55) {
+      g.gain.linearRampToValueAtTime(loud * (0.3 + Math.random() * 0.55) * (1 - (t - t0) / len), t);
+    }
+    g.gain.linearRampToValueAtTime(0, t0 + len);
+    src.connect(lp);
+    this.output(lp, g, pan);
+    src.start(t0, Math.random() * 0.5);
+    src.stop(t0 + len + 0.05);
+    if (dist < 64) {
+      const k = 1 - dist / 64, crack = ctx.createBufferSource(), hp = ctx.createBiquadFilter(), cg = ctx.createGain();
+      crack.buffer = noise;
+      hp.type = 'highpass'; hp.frequency.value = 1200;
+      cg.gain.setValueAtTime(0.7 * k, t0);
+      cg.gain.exponentialRampToValueAtTime(0.0005, t0 + 0.35);
+      crack.connect(hp);
+      this.output(hp, cg, pan);
+      crack.start(t0, Math.random() * 0.5);
+      crack.stop(t0 + 0.4);
+      this.play('tnt.explode', { volume: 4 * k + 0.5, pitch: 0.55, vary: 0.1, at });
+    }
+  }
   fizz(at) { this.play('fire.fizz', { volume: 0.45, pitch: 1.2, vary: 0.2, at }); }
   ignite(at) { this.play('fire.ignite', { volume: 0.8, at }); }
   toolBreak() { this.play('item.break', { volume: 0.8, pitch: 0.9, vary: 0.2 }); }
@@ -32679,6 +32737,8 @@ function initMob(e, type, o = {}) {
     grow: o.baby ? 24000 : 0, sheared: !!o.sheared, colour: o.colour ?? 0, eggTimer: 6000 + Math.floor(Math.random() * 6000), fuse: 0,
     aim: 0, lookAt: null, lookTime: 0, squish: 0, jumpCd: 0, teleportCd: 0, graze: 0, pinned: o.pinned ?? null, penned: !!o.penned, home: o.home ?? null,
     tame: !!o.tame, saddled: !!o.saddled, temper: o.temper ?? 0, rider: null,
+    // (A creeper struck by lightning is charged: its blast twice as big.)
+    charged: !!o.charged,
     // (Pets: whose they are (a player's id), whether they've been told to sit, their collar's dye.)
     owner: o.owner ?? null, sitting: !!o.sitting, collar: o.collar ?? RED,
     // (Golems someone built stay put when they're far away, like pets.)
@@ -33618,7 +33678,7 @@ function creeperTick(ents, e, tg, dist) {
     if (e.fuse >= 30) {
       e.dead = true;
       game.net?.entityGone(e, 'x');
-      ents.explode(e.x, e.y + 0.8, e.z, e.def.explodes);
+      ents.explode(e.x, e.y + 0.8, e.z, e.def.explodes * (e.charged ? 2 : 1));
     }
   } else {
     e.fuse = Math.max(0, e.fuse - 1);
@@ -34921,7 +34981,7 @@ function renderMob(ents, e, rx, ry, rz, light, out) {
   for (const m of meshes) {
     if ((m.bone.wool && e.sheared) || (m.bone.saddle && !e.saddled) || (m.bone.collar && !pet) || (m.bone.markings && !marks) || (m.bone.decor && !t.extraSkins?.decor) || (m.bone.croak && !(e.croak > 0 || e.croaking)) ||
       (m.bone.ridden && !(e.rider || e.ridden)) || (m.bone.adult && e.baby) || (m.bone.male && (e.baby || !isMale(e)))) continue;
-    parts.push({ mesh: m.mesh, model: boneMatrix(ents.mat(), base, m.bone, pose, m.name, t.rigDef.bones) });
+    parts.push({ mesh: m.mesh, model: boneMatrix(ents.mat(), base, m.bone, pose, m.name, t.rigDef.bones), glint: e.charged ? 2 : 0 });
   }
   // What it holds: attached to the hand of the arm bone.
   const held = e.held ?? (e.drinking ? I.potion_healing ?? null : null) ?? (t.held ? I[t.held] : null);
@@ -37254,8 +37314,8 @@ __exports.Particles = Particles;
 
 __define("src/dynlight.js", function (__exports) {
 // Dynamic Lights, as the OptiFine and LambDynamicLights mods have them: a torch (or anything else
-// that glows) lights up what's around whoever holds it, and so does one dropped on the ground or
-// a creature on fire. Only the look changes: the world's own light, which creatures spawn by, is
+// that glows) lights up what's around whoever holds it, and so does one dropped on the ground, a
+// creature on fire, or a bolt of lightning. Only the look changes: the world's own light, which creatures spawn by, is
 // left as it is. The renderer's shaders do the lighting (see DYNAMIC in shaders.js); this finds
 // the lights each frame, the eight nearest the camera.
 const { EMIT, WATERLIKE, B } = __require("src/blocks.js");
@@ -37310,6 +37370,8 @@ class DynamicLights {
       if (e.kind === 'item') glowing(e.x, e.y + 0.25, e.z, e.id);
       else if (e.kind === 'mob' && (e.burning || e.onFire > 0)) add(e.x, e.y + (e.h ?? 1) * 0.6, e.z, 15);
     }
+    // (A bolt of lightning lights up the ground where it strikes, as long as it's showing.)
+    for (const b of game.lightning?.bolts ?? []) if (b.life >= 0) add(b.x, b.y + 1.5, b.z, 15);
     found.sort((a, b) => a.d2 - b.d2);
     const n = Math.min(MAX, found.length), d = this.data;
     for (let i = 0; i < n; i++) {
@@ -37337,6 +37399,7 @@ __define("src/weather.js", function (__exports) {
 // Rain and snow. Like the original game, precipitation is drawn as sheets in the columns around
 // the player, each turned to face the camera, from the highest block that stops it up past the
 // camera. It turns to snow in cold biomes and high up; deserts, savannas and badlands stay dry.
+// Now and then a rain is a thunderstorm: a darker sky, and lightning where it rains (lightning.js).
 // The streaks and flakes on the sheets are drawn by the terrain shader (precipitation() in
 // shaders.js).
 const { STRIDE } = __require("src/mesher.js");
@@ -37348,6 +37411,8 @@ const MAX_QUADS = (RADIUS * 2 + 1) ** 2;
 const SNOWY = new Set([BIOME.FROZEN_OCEAN, BIOME.DEEP_FROZEN_OCEAN, BIOME.SNOWY_TAIGA, BIOME.SNOWY_PEAKS, BIOME.SNOWY_PLAINS, BIOME.ICE_SPIKES,
   BIOME.JAGGED_PEAKS, BIOME.FROZEN_PEAKS, BIOME.SNOWY_SLOPES, BIOME.SNOWY_BEACH, BIOME.FROZEN_RIVER]);
 const DRY = new Set([BIOME.DESERT, BIOME.SAVANNA, BIOME.BADLANDS]);
+// How often a rain is a thunderstorm.
+const STORMY = 0.25;
 const F_PRECIP = 128;
 // How fast rain and snow fall, in pixels a second (64 to a block), and where the shader's patterns
 // repeat (the distance fallen wraps around there, so it never loses precision).
@@ -37367,6 +37432,8 @@ class Weather {
   constructor() {
     this.rain = 0;       // current strength, 0..1 (fades in and out)
     this.raining = false;
+    this.thunder = 0;    // how stormy, 0..1 (fading in and out with the rain)
+    this.thundering = false;
     this.timer = 600 + Math.random() * 900;
     this.rainSheet = new Sheet();
     this.snowSheet = new Sheet();
@@ -37381,16 +37448,20 @@ class Weather {
 
   load(saved) {
     this.raining = !!saved?.raining;
+    this.thundering = this.raining && !!saved?.thunder;
     this.rain = this.raining ? 1 : 0;
+    this.thunder = this.thundering ? 1 : 0;
     this.timer = saved?.timer ?? 600 + Math.random() * 900;
     this.lastKey = '';
   }
 
-  serialize() { return { raining: this.raining, timer: Math.round(this.timer) }; }
+  serialize() { return { raining: this.raining, thunder: this.thundering ? 1 : undefined, timer: Math.round(this.timer) }; }
 
-  // Starts or stops precipitation; `seconds` is how long until it changes again.
-  set(raining, seconds = null) {
+  // Starts or stops precipitation; `seconds` is how long until it changes again. `thunder`: whether
+  // it's a thunderstorm (by chance, if not said).
+  set(raining, seconds = null, thunder = null) {
     this.raining = raining;
+    this.thundering = raining && (thunder ?? Math.random() < STORMY);
     this.timer = seconds ?? (raining ? 240 + Math.random() * 360 : 600 + Math.random() * 1200);
   }
 
@@ -37398,6 +37469,7 @@ class Weather {
     this.timer -= dt;
     if (this.timer <= 0) this.set(!this.raining);
     this.rain += Math.max(-dt / 8, Math.min(dt / 8, (this.raining ? 1 : 0) - this.rain));
+    this.thunder += Math.max(-dt / 8, Math.min(dt / 8, (this.raining && this.thundering ? 1 : 0) - this.thunder));
   }
 
   // Precipitation type for a column: 0 none, 1 rain, 2 snow.
@@ -37490,6 +37562,153 @@ class Weather {
 
 __exports.F_PRECIP = F_PRECIP;
 __exports.Weather = Weather;
+});
+
+__define("src/lightning.js", function (__exports) {
+// Lightning, in a thunderstorm (see weather.js), as in Minecraft. Now and then a bolt comes down
+// somewhere in the land about each player, where it's raining (not where it snows, nor where it
+// never rains), onto the highest block there - or onto a creature standing out in the open near it.
+// A bolt hurts what it strikes and whatever is near it (and sets it alight), starts fires on Normal
+// and Hard, and turns a creeper into a charged creeper; a trident with Channeling calls one down on
+// what it hits. The host decides where bolts fall; everyone sees them, flickering two or three
+// times and lighting up the sky, and hears the thunder.
+const { mulberry32 } = __require("src/math.js");
+
+// The chance, each tick, of a bolt somewhere about a player (one every fifteen seconds or so, most
+// of them far off), and how far about them (each way, in blocks).
+const RATE = 1 / 300;
+const REACH = 128;
+// What a bolt does to what it strikes.
+const HURT = 5, BURN = 8;
+
+// Whether (x, y, z) is in reach of a bolt at (bx, by, bz): three blocks round it, from three below
+// to nine above.
+const struck = (x, y, z, bx, by, bz) => Math.abs(x - bx) <= 3 && Math.abs(z - bz) <= 3 && y >= by - 3 && y <= by + 9;
+
+class Lightning {
+  constructor(game) {
+    this.game = game;
+    this.bolts = []; // the bolts about just now: { x, y, z, seed, life, flashes, acc }
+    this.flash = 0;  // the sky lit up by a bolt, fading in a moment
+  }
+
+  // (The host, each tick.) In a thunderstorm, bolts about the players.
+  tick() {
+    const g = this.game, w = g.weather;
+    if (!w.thundering || w.thunder < 0.5 || !g.world) return;
+    for (const p of g.players()) if (!p.dead && Math.random() < RATE) this.strikeNear(p);
+  }
+
+  // A bolt somewhere in the land about `p`, if it's raining where it comes down. True if it did.
+  strikeNear(p) {
+    const g = this.game, world = g.world;
+    const x = Math.floor(p.x + (Math.random() * 2 - 1) * REACH), z = Math.floor(p.z + (Math.random() * 2 - 1) * REACH);
+    if (!world.isLoaded(x, z)) return false;
+    const y = world.rainTop(x, z) + 1;
+    if (g.weather.kind(world, x, z, y) !== 1) return false;
+    // (A creature standing out in the open near there draws it.)
+    const near = this.creaturesUnderSky(x + 0.5, y, z + 0.5);
+    const t = near.length ? near[Math.floor(Math.random() * near.length)] : null;
+    if (t) this.strike(t.x, t.y, t.z); else this.strike(x + 0.5, y, z + 0.5);
+    return true;
+  }
+
+  // Creatures and players within three blocks of (x, z), no lower than y - 3, with nothing over them.
+  creaturesUnderSky(x, y, z) {
+    const g = this.game, world = g.world, out = [];
+    const open = (e) => world.rainTop(Math.floor(e.x), Math.floor(e.z)) < e.y + 0.01;
+    for (const e of g.entities.list) {
+      if (e.kind === 'mob' && !e.dead && !e.dying && Math.abs(e.x - x) <= 3 && Math.abs(e.z - z) <= 3 && e.y >= y - 3 && open(e)) out.push(e);
+    }
+    for (const q of g.players()) if (!q.dead && !q.creative && Math.abs(q.x - x) <= 3 && Math.abs(q.z - z) <= 3 && q.y >= y - 3 && open(q)) out.push(q);
+    return out;
+  }
+
+  // Whether a bolt could come down on `e` (in a thunderstorm, out in the open): for Channeling.
+  canStrike(e) {
+    const g = this.game, w = g.weather, world = g.world, x = Math.floor(e.x), z = Math.floor(e.z);
+    return !!world && w.thundering && w.thunder > 0.5 && world.rainTop(x, z) < e.y + 0.01 && w.kind(world, x, z, Math.floor(e.y)) === 1;
+  }
+
+  // (The host.) A bolt at (x, y, z): everyone sees it, and it does what it does.
+  strike(x, y, z) {
+    const g = this.game, world = g.world, seed = Math.floor(Math.random() * 2147483647);
+    this.show(x, y, z, seed);
+    g.net?.effect?.('bolt', x, y, z, seed);
+    // Fire where it comes down and round about (not on Peaceful or Easy).
+    if (g.difficulty >= 2) {
+      const bx = Math.floor(x), by = Math.floor(y), bz = Math.floor(z), r = () => Math.floor(Math.random() * 3) - 1;
+      world.ignite(bx, by, bz);
+      for (let i = 0; i < 4; i++) world.ignite(bx + r(), by + r(), bz + r());
+    }
+    // What's near it is struck: hurt, and set alight. A creeper becomes a charged creeper.
+    for (const e of g.entities.list) {
+      if (e.kind !== 'mob' || e.dead || e.dying || !struck(e.x, e.y, e.z, x, y, z)) continue;
+      g.entities.hurtMob(e, HURT, null, 0, { fire: BURN });
+      if (e.def.explodes && !e.charged) { e.charged = true; g.net?.resend?.(e); }
+    }
+    for (const q of g.players()) {
+      if (!q.dead && !q.creative && struck(q.x, q.y, q.z, x, y, z)) g.hurtPlayer(q, HURT, 'You were struck by lightning', null, false, false, BURN);
+    }
+  }
+
+  // A bolt comes down at (x, y, z) (everyone): seen, and heard.
+  show(x, y, z, seed) {
+    this.bolts.push({ x, y, z, seed: seed >>> 0, life: 2, flashes: 1 + (seed % 3), acc: 0 });
+    if (this.bolts.length > 16) this.bolts.shift();
+    this.flash = 1;
+    this.game.audio.thunder?.({ x, y, z });
+  }
+
+  // Each frame: the bolts flicker (two or three times, in Minecraft's ticks) and go; the sky's
+  // flash fades.
+  update(dt) {
+    this.flash = Math.max(0, this.flash - dt * 7);
+    for (const b of this.bolts) {
+      b.acc += dt * 20;
+      while (b.acc >= 1 && !b.gone) {
+        b.acc -= 1;
+        b.life--;
+        if (b.life >= 0) { this.flash = Math.max(this.flash, 0.9); continue; }
+        if (b.flashes <= 0) b.gone = true;
+        else if (b.life < -Math.floor(Math.random() * 10)) { b.flashes--; b.life = 1; b.seed = (Math.imul(b.seed, 1103515245) + 12345) >>> 0; }
+      }
+    }
+    if (this.bolts.some((b) => b.gone)) this.bolts = this.bolts.filter((b) => !b.gone);
+  }
+
+  // The bolts showing just now, as the renderer's ribbons (see Renderer.drawBeams): Minecraft's
+  // shape - a jagged stroke of eight sixteen-block steps from the sky down to where it struck, and
+  // two branches off it - in four layers, each wider and fainter, pale violet-white.
+  beams(out = []) {
+    for (const b of this.bolts) {
+      if (b.life < 0) continue;
+      const rnd = mulberry32(b.seed), step = (n) => Math.floor(rnd() * n);
+      const xo = new Array(8), zo = new Array(8);
+      let fx = 0, fz = 0;
+      for (let i = 7; i >= 0; i--) { xo[i] = fx; zo[i] = fz; fx += step(11) - 5; fz += step(11) - 5; }
+      // (The main stroke takes the same steps again, so it comes down right where it struck.)
+      const again = mulberry32(b.seed), step2 = (n) => Math.floor(again() * n);
+      for (let k = 0; k < 3; k++) {
+        const top = k ? 7 - k : 7, bottom = k ? top - 2 : 0;
+        let x0 = xo[top] - fx, z0 = zo[top] - fz;
+        for (let j = top; j >= bottom; j--) {
+          const x1 = x0, z1 = z0;
+          x0 += k ? step2(31) - 15 : step2(11) - 5;
+          z0 += k ? step2(31) - 15 : step2(11) - 5;
+          const layers = [0, 1, 2, 3].map((l) => {
+            const w = 0.1 + l * 0.2;
+            return k ? [w, w, 0.3] : [w * ((j - 1) * 0.1 + 1), w * (j * 0.1 + 1), 0.3];
+          });
+          out.push({ from: [b.x + x0, b.y + j * 16, b.z + z0], to: [b.x + x1, b.y + (j + 1) * 16, b.z + z1], color: [0.45, 0.45, 0.5], layers, boost: 2.5 });
+        }
+      }
+    }
+    return out;
+  }
+}
+
+__exports.Lightning = Lightning;
 });
 
 __define("src/tex/civskins.js", function (__exports) {
@@ -39447,7 +39666,8 @@ __exports.drawHanging = drawHanging;
 __define("src/tridents.js", function (__exports) {
 // Thrown tridents, as in Minecraft. One flies like a heavy arrow (hardly slowed by water), hits
 // the first creature in its way for 8 (more with Impaling, on sea creatures) and drops away, or
-// sticks where it lands, to be picked up again by whoever gets to it. With Loyalty it comes back:
+// sticks where it lands, to be picked up again by whoever gets to it. With Channeling, in a
+// thunderstorm, lightning comes down on what it hits. With Loyalty it comes back:
 // once it has hit something or stuck fast, it flies home to whoever threw it, through anything in
 // the way, faster the higher the level. A thrown trident never vanishes of its own accord (one a
 // drowned throws does, a minute after it lands).
@@ -39500,6 +39720,9 @@ function tridentHit(ents, e, victim, dx, dz) {
   game.audio.trident?.('hit', at);
   e.vx *= -0.01; e.vy *= -0.1; e.vz *= -0.01;
   e.dealt = true;
+  // Channeling, in a thunderstorm: a bolt of lightning comes down on what it hit, if that's out in
+  // the open.
+  if (enchLevel(e.trident, 'channeling') && game.lightning?.canStrike(victim)) game.lightning.strike(victim.x, victim.y, victim.z);
 }
 
 // A trident's own movement, before (or instead of) an arrow's: returns true when it's dealt with
@@ -39723,6 +39946,7 @@ function mobExtra(e) {
   // (A bee's home, and its nectar.)
   if (e.hive) o.hv = e.hive;
   if (e.nectar) o.nc = 1;
+  if (e.charged) o.ch = 1;
   if (e.def.kind === 'civilian') { o.r = e.rid; o.sk = e.skin; o.n = e.name; o.ro = e.role; }
   // (A wandering trader's id, how long they'll stay, and where they came.)
   if (e.def.wanderer) { o.tid = e.tid; o.lv = e.leaves; o.hm = [Math.round(e.home?.x ?? e.x), Math.round(e.home?.z ?? e.z)]; }
@@ -39750,7 +39974,7 @@ const extraOpts = (s) => ({ variant: Number.isInteger(s.v) ? s.v : 0, colour: Nu
   owner: typeof s.ow === 'string' && s.ow ? s.ow.slice(0, 64) : null, sitting: !!s.si, collar: Number.isInteger(s.co) && s.co >= 0 && s.co < 16 ? s.co : undefined,
   made: !!s.md, hatched: !!s.ht, named: typeof s.nm === 'string' ? cleanTagName(s.nm) : null, school: Number.isInteger(s.sc) ? s.sc : 0,
   trusting: !!s.tr, growUp: Number.isInteger(s.g) && s.g > 0 ? Math.min(s.g, 24000) : undefined, trident: s.td === 1,
-  hive: typeof s.hv === 'string' && /^-?\d+,-?\d+,-?\d+$/.test(s.hv) ? s.hv : null, nectar: s.nc === 1,
+  hive: typeof s.hv === 'string' && /^-?\d+,-?\d+,-?\d+$/.test(s.hv) ? s.hv : null, nectar: s.nc === 1, charged: s.ch === 1,
   leash: typeof s.le === 'string' && s.le ? { uid: s.le.slice(0, 64) }
     : Array.isArray(s.le) && s.le.length === 3 && s.le.every(Number.isInteger) ? { x: s.le[0], y: s.le[1], z: s.le[2] } : null });
 // A name from a name tag: printable, and no longer than the original allows.
@@ -39758,12 +39982,12 @@ const cleanTagName = (text) => String(text ?? '').replace(/\p{C}/gu, '').trim().
 // Flags sent with each creature update: 1 hurt, 2 dying, 4 swinging, 8 burning, 16 shorn, 32 angry,
 // 64 about to explode, 128 drawing a bow, 256 asleep, 512 saddled, 1024 tame, 2048 being ridden,
 // 4096 roosting (a bat hanging upside down), 8192 drinking (a witch), 16384 sitting (a pet), 32768
-// in love, 65536 playing dead (an axolotl), 131072 croaking (a frog).
+// in love, 65536 playing dead (an axolotl), 131072 croaking (a frog), 262144 charged (a creeper).
 function mobFlags(e) {
   return (e.hurt > 0 ? 1 : 0) | (e.dying ? 2 : 0) | (e.swing > 0.3 ? 4 : 0) | (e.burning ? 8 : 0) | (e.sheared ? 16 : 0) | (e.angry > 0 ? 32 : 0) |
     (e.fuse > 0 ? 64 : 0) | (e.aim > 0 ? 128 : 0) | (e.pose === 'sleep' ? 256 : 0) | (e.saddled ? 512 : 0) | (e.tame ? 1024 : 0) | (e.rider ? 2048 : 0) |
     (e.roost ? 4096 : 0) | (e.drinking > 0 ? 8192 : 0) | (e.sitting ? 16384 : 0) | (e.love > 0 ? 32768 : 0) | (e.playDead > 0 ? 65536 : 0) |
-    (e.croak > 0 ? 131072 : 0);
+    (e.croak > 0 ? 131072 : 0) | (e.charged ? 262144 : 0);
 }
 
 class Entities {
@@ -40271,7 +40495,8 @@ class Entities {
     // (At most 6 about on Easy, 8 on Normal and 10 on Hard, and four more for each other player.)
     const hostiles = this.list.filter((e) => e.kind === 'mob' && e.def.hostile && e.def.kind !== 'water' && !e.dead).length;
     if (hostiles >= 4 + diff * 2 + (targets.length - 1) * 4) return;
-    const day = game.env.daylight;
+    // (A thunderstorm darkens the day enough for them to come out under the open sky.)
+    const day = game.env.daylight * (1 - 0.55 * game.weather.thunder);
     for (let attempt = 0; attempt < 6; attempt++) {
       const a = Math.random() * Math.PI * 2, d = 20 + Math.random() * 24;
       const x = Math.floor(p.x + Math.cos(a) * d), z = Math.floor(p.z + Math.sin(a) * d);
@@ -41075,6 +41300,7 @@ class Entities {
     e.sitting = !!(f & 16384);
     e.shamming = !!(f & 65536);
     e.croaking = !!(f & 131072);
+    e.charged = !!(f & 262144);
     e.flags = f;
   }
 
@@ -42627,7 +42853,7 @@ class HostSession extends Session {
     const game = this.game, pres = super.myPresence();
     Object.assign(pres, {
       h: 1, hw: game.meta?.name ?? '', hm: game.meta?.mode ?? 'survival', hp: this.count,
-      tm: Math.floor(game.time / 20) * 20, wr: game.weather.raining ? 1 : 0,
+      tm: Math.floor(game.time / 20) * 20, wr: game.weather.raining ? 1 : 0, wt: game.weather.thundering ? 1 : 0,
     });
     if (this.code) pres.hc = this.code;
     return pres;
@@ -42858,7 +43084,7 @@ class HostSession extends Session {
     this.send(g.addr, {
       t: 'welcome', g: this.gid, be: this.link.epoch, bs: this.link.stream('*').seq, pvp: this.pvp ? 1 : 0,
       w: { name: meta.name, seed: meta.seed, type: meta.type, gen: meta.gen ?? 1, mode: meta.mode, diff: game.difficulty, spawn: meta.spawn, time: Math.floor(game.time),
-        rain: game.weather.raining ? 1 : 0 },
+        rain: game.weather.raining ? 1 : 0, thunder: game.weather.thundering ? 1 : 0 },
       you: meta.players?.[g.uid] ?? null, mk: playerKey(g.uid),
       keys: [...w.store.keys],
       ents: game.entities.list.filter((e) => !e.dead).map((e) => { if (!e.nid) e.nid = this.nextNid++; return entityState(e); }),
@@ -43144,8 +43370,8 @@ class HostSession extends Session {
     return out;
   }
 
-  hurt(addr, amount, why, knock, armored) {
-    this.send(addr, { t: 'hurt', a: r2(amount), why, k: knock ? knock.map(r2) : null, arm: armored ? 1 : 0 });
+  hurt(addr, amount, why, knock, armored, burn = 0) {
+    this.send(addr, { t: 'hurt', a: r2(amount), why, k: knock ? knock.map(r2) : null, arm: armored ? 1 : 0, fi: burn || undefined });
   }
   // What the host explored of a map, to everyone.
   hasMap(id, addr) {
@@ -43364,6 +43590,8 @@ class GuestSession extends Session {
       if (this.gid && pres.g === this.gid && this.game.world && this.game.state !== 'loading') {
         if (int(pres.tm) && Math.abs(this.game.time - pres.tm) > 40) this.game.time = pres.tm;
         this.game.weather.raining = !!pres.wr;
+        this.game.weather.thundering = !!pres.wr && !!pres.wt;
+        this.game.weather.timer = 600; // (the host's weather, not our own)
       }
     }
     this.seePlayer(addr, pres);
@@ -43397,6 +43625,8 @@ class GuestSession extends Session {
         if (num(msg.a) && game.world && game.state !== 'loading') {
           const k = Array.isArray(msg.k) && msg.k.length === 3 && msg.k.every(num) ? msg.k.map((v) => clamp(v, -20, 20)) : null;
           game.damage(clamp(msg.a, 0, 100), String(msg.why ?? 'You died').replace(/\p{C}/gu, '').slice(0, 80), false, k, !!msg.arm, { axe: msg.ax === 1 });
+          // (Struck by lightning: set alight as well.)
+          if (num(msg.fi) && msg.fi > 0 && !game.creative && !game.effects.has('fire_resistance')) game.fire = Math.max(game.fire, clamp(msg.fi, 0, 30) * 20);
         }
         break;
       case 'msg': if (typeof msg.s === 'string') game.ui.message(msg.s.replace(/\p{C}/gu, '').slice(0, 200), COLORS[msg.c] ?? null); break;
@@ -43544,6 +43774,7 @@ class GuestSession extends Session {
     else if (msg.k === 'snow') game.entities.snowFx(at.x, at.y, at.z);
     else if (msg.k === 'note') game.playNote(Math.floor(at.x), Math.floor(at.y), Math.floor(at.z));
     else if (msg.k === 'hearts') game.particles.hearts(at.x, at.y, at.z, Math.max(1, Math.min(12, msg.n | 0)), 0.5);
+    else if (msg.k === 'bolt') game.lightning.show(at.x, at.y, at.z, msg.n >>> 0);
     else if (msg.k === 'firework' && msg.n && typeof msg.n === 'object') {
       const v = Array.isArray(msg.n.v) && msg.n.v.length === 3 && msg.n.v.every(num) ? msg.n.v.map((c) => clamp(c, -80, 80)) : [0, 1, 0];
       game.fireworkFx(at.x, at.y, at.z, cleanRocket(msg.n), v);
@@ -45066,6 +45297,7 @@ const { Particles } = __require("src/particles.js");
 const { DynamicLights } = __require("src/dynlight.js");
 const { Keys, RESERVED } = __require("src/keys.js");
 const { Weather } = __require("src/weather.js");
+const { Lightning } = __require("src/lightning.js");
 const { Entities } = __require("src/entities.js");
 const { TouchControls } = __require("src/touch.js");
 const { HostSession, GuestSession, openRoom, openGames, cleanName, COLORS, playerUid, playerKey } = __require("src/multiplayer.js");
@@ -45288,6 +45520,7 @@ class Game {
     this.openBlock = null;
     this.attackTicks = 100;
     this.weather = new Weather();
+    this.lightning = new Lightning(this);
     this.drawnInvVersion = -1;
     this.saveTimer = 0;
     this.tipIndex = Math.floor(Math.random() * TIPS.length);
@@ -45702,7 +45935,7 @@ class Game {
       type: world.type === 'flat' ? 'flat' : 'default', gen: Number.isInteger(world.gen) && world.gen >= 2 && world.gen <= LATEST_GEN ? world.gen : 1,
       mode: you?.mode === 'creative' || (!you?.mode && world.mode === 'creative') ? 'creative' : 'survival',
       spawn: world.spawn && Number.isFinite(world.spawn.x) && Number.isFinite(world.spawn.z) ? { x: world.spawn.x, y: world.spawn.y ?? null, z: world.spawn.z } : { x: 0.5, y: null, z: 0.5 },
-      time: Number.isFinite(world.time) ? world.time : 1000, weather: { raining: !!world.rain },
+      time: Number.isFinite(world.time) ? world.time : 1000, weather: { raining: !!world.rain, thunder: !!world.thunder },
       bed: you?.bed ?? null, player: you?.player ?? null, inventory: you?.inventory ?? null, waypoints: you?.wp ?? null, remote: true,
       difficulty: [0, 1, 2, 3].includes(world.diff) ? world.diff : 2,
     };
@@ -45797,11 +46030,14 @@ class Game {
   }
 
   // `scaled`: the blow is a creature's (or a blast), so the difficulty changes how much it hurts.
-  hurtPlayer(t, amount, cause, knock, armored, scaled = true) {
+  // (`burn`: seconds it sets them alight for, as lightning does.)
+  hurtPlayer(t, amount, cause, knock, armored, scaled = true, burn = 0) {
     if (scaled) amount = this.scaleHurt(amount);
     if (amount <= 0) return;
-    if (!t.addr) this.damage(amount, cause, false, knock, armored);
-    else this.net?.hurt?.(t.addr, amount, cause, knock, armored);
+    if (!t.addr) {
+      this.damage(amount, cause, false, knock, armored);
+      if (burn && !this.creative && !this.effects.has('fire_resistance')) this.fire = Math.max(this.fire, burn * 20);
+    } else this.net?.hurt?.(t.addr, amount, cause, knock, armored, burn);
   }
 
   // Sounds and bits for a block someone else broke, placed or opened nearby.
@@ -46459,7 +46695,7 @@ class Game {
 
   sleepIn(x, y, z) {
     const p = this.player;
-    if (this.env.daylight > 0.6) { this.ui.message('You can only sleep at night'); return; }
+    if (this.env.daylight > 0.6 && !(this.weather.thundering && this.weather.thunder > 0.5)) { this.ui.message('You can only sleep at night or during thunderstorms'); return; }
     const near = this.entities.list.some((e) => e.kind === 'mob' && e.def.hostile && !e.dead && Math.hypot(e.x - p.x, e.y - p.y, e.z - p.z) < 10);
     if (near) { this.ui.message('You may not rest now, there are monsters nearby', '#e88a78'); return; }
     this.meta.bed = { x, y, z };
@@ -46488,11 +46724,13 @@ class Game {
     return e.ticks > 200 ? 1 : 0.7 + 0.3 * Math.sin(e.ticks * Math.PI * 0.2);
   }
 
-  // Morning: time jumps to the next day, the rain stops, and everyone in bed wakes up.
+  // Morning: time jumps to the next day (from a thunderstorm by day too, as in Minecraft), the
+  // rain stops, and everyone in bed wakes up.
   skipNight() {
     this.time = (Math.floor(this.time / TICKS_PER_DAY) + 1) * TICKS_PER_DAY + 300;
     this.weather.set(false);
     this.weather.rain = 0;
+    this.weather.thunder = 0;
     this.wake(true);
     this.save();
   }
@@ -46863,7 +47101,7 @@ class Game {
       if (draw) this.safely('fireflies', () => this.fireflies(dt));
       this.safely('creatures', () => this.entities.update(dt));
       this.safely('fishing', () => this.fishing.update(dt));
-      this.safely('weather', () => this.weather.update(dt));
+      this.safely('weather', () => { this.weather.update(dt); this.lightning.update(dt); });
       if (this.spin) this.safely('riptide', () => this.spinTick(dt));
     }
     if (this.riding) this.sitOnMount();
@@ -47130,6 +47368,7 @@ class Game {
     if (!this.net?.guest) {
       this.safely('furnaces', () => this.tickFurnaces());
       this.safely('bees', () => this.hives.tick());
+      this.safely('lightning', () => this.lightning.tick());
       this.safely('pressure plates', () => { this.pressPlates(); this.tripwires(); });
     }
     this.safely('player', () => this.playerTick());
@@ -48581,6 +48820,15 @@ class Game {
       case 'summon': {
         // (Where you say, or just in front of you.)
         const type = (args[0] ?? '').toLowerCase().replace(/^minecraft:/, ''), d = p.lookDir();
+        // (Or a bolt of lightning, there or on the ground in front of you.)
+        if (type === 'lightning_bolt' || type === 'lightning') {
+          const x = args.length >= 4 ? num(args[1], p.x) : Math.floor(p.x + d[0] * 5) + 0.5, z = args.length >= 4 ? num(args[3], p.z) : Math.floor(p.z + d[2] * 5) + 0.5;
+          const y = args.length >= 4 ? num(args[2], p.y) : this.world.rainTop(Math.floor(x), Math.floor(z)) + 1;
+          if ([x, y, z].some(Number.isNaN)) { say('Usage: /summon lightning_bolt [x y z]', '#e88a78'); break; }
+          this.lightning.strike(x, y, z);
+          say('Summoned a lightning bolt');
+          break;
+        }
         if (!EGG_TYPES.has(type)) { say(`Unknown creature: ${args[0] ?? ''}`, '#e88a78'); break; }
         const [x, y, z] = args.length >= 4 ? [num(args[1], p.x), num(args[2], p.y), num(args[3], p.z)] : [p.x + d[0] * 3, p.y + 0.5, p.z + d[2] * 3];
         if ([x, y, z].some(Number.isNaN)) { say('Usage: /summon <creature> [x y z]', '#e88a78'); break; }
@@ -48618,9 +48866,9 @@ class Game {
       case 'fly': if (this.creative) { p.flying = !p.flying; say(p.flying ? 'Flying' : 'Not flying'); } else say('Flying needs Creative mode', '#e88a78'); break;
       case 'weather': {
         const kind = (args[0] ?? '').toLowerCase(), secs = Number(args[1]);
-        if (kind !== 'clear' && kind !== 'rain') { say('Usage: /weather clear|rain [seconds]', '#e88a78'); break; }
-        this.weather.set(kind === 'rain', Number.isFinite(secs) && secs > 0 ? secs : null);
-        say(kind === 'rain' ? 'It starts to rain' : 'The sky clears');
+        if (kind !== 'clear' && kind !== 'rain' && kind !== 'thunder') { say('Usage: /weather clear|rain|thunder [seconds]', '#e88a78'); break; }
+        this.weather.set(kind !== 'clear', Number.isFinite(secs) && secs > 0 ? secs : null, kind === 'thunder');
+        say(kind === 'thunder' ? 'A thunderstorm starts' : kind === 'rain' ? 'It starts to rain' : 'The sky clears');
         break;
       }
       case 'kill': if (this.creative) { p.y = this.meta.spawn.y ?? 100; } else this.damage(999, 'You gave up', true); break;
@@ -48656,25 +48904,39 @@ class Game {
     this.lagYaw = p.yaw - dyaw * (1 - k);
   }
 
-  // Rain greys out the sky, dims the daylight and hides the sun, moon and stars.
+  // Rain greys out the sky, dims the daylight and hides the sun, moon and stars; a thunderstorm
+  // darkens it all further, and lightning lights it up for a moment.
   applyWeather() {
-    const k = this.weather.rain, e = this.env;
-    if (k <= 0) return;
-    const grey = (c, amount, dark) => {
-      const l = (c[0] * 0.3 + c[1] * 0.59 + c[2] * 0.11) * dark;
-      for (let i = 0; i < 3; i++) c[i] += (l - c[i]) * amount;
-    };
-    grey(e.zenith, k * 0.7, 0.75);
-    grey(e.horizon, k * 0.65, 0.8);
-    grey(e.fogColor, k * 0.65, 0.8);
-    grey(e.cloudColor, k * 0.7, 0.7);
-    grey(e.skyLight, k * 0.5, 0.9);
-    grey(e.ambient, k * 0.6, 0.75);
-    grey(e.sunGlow, k * 0.8, 0.5);
-    for (let i = 0; i < 3; i++) e.lightColor[i] *= 1 - 0.85 * k;
-    e.daylight = Math.max(0.2, e.daylight * (1 - 0.25 * k));
-    e.stars *= 1 - k;
-    e.sunset *= 1 - k * 0.8;
+    const k = this.weather.rain, th = this.weather.thunder, fl = this.lightning.flash, e = this.env;
+    if (k > 0) {
+      const grey = (c, amount, dark) => {
+        const l = (c[0] * 0.3 + c[1] * 0.59 + c[2] * 0.11) * dark;
+        for (let i = 0; i < 3; i++) c[i] += (l - c[i]) * amount;
+      };
+      grey(e.zenith, k * 0.7, 0.75);
+      grey(e.horizon, k * 0.65, 0.8);
+      grey(e.fogColor, k * 0.65, 0.8);
+      grey(e.cloudColor, k * 0.7, 0.7);
+      grey(e.skyLight, k * 0.5, 0.9);
+      grey(e.ambient, k * 0.6, 0.75);
+      grey(e.sunGlow, k * 0.8, 0.5);
+      for (let i = 0; i < 3; i++) e.lightColor[i] *= 1 - 0.85 * k;
+      e.daylight = Math.max(0.2, e.daylight * (1 - 0.25 * k));
+      e.stars *= 1 - k;
+      e.sunset *= 1 - k * 0.8;
+    }
+    if (th > 0) {
+      const d = 1 - 0.45 * th;
+      for (const c of [e.zenith, e.horizon, e.fogColor, e.cloudColor]) for (let i = 0; i < 3; i++) c[i] *= d;
+      for (let i = 0; i < 3; i++) { e.skyLight[i] *= 1 - 0.35 * th; e.ambient[i] *= 1 - 0.4 * th; e.sunGlow[i] *= 1 - 0.5 * th; }
+      e.daylight = Math.max(0.2, e.daylight * (1 - 0.3 * th));
+    }
+    if (fl > 0) {
+      const f = fl * fl;
+      for (const c of [e.zenith, e.horizon, e.fogColor, e.cloudColor]) for (let i = 0; i < 3; i++) c[i] += (0.8 - c[i]) * f * 0.75;
+      for (let i = 0; i < 3; i++) { e.skyLight[i] += (1.1 - e.skyLight[i]) * f; e.ambient[i] += (0.75 - e.ambient[i]) * f * 0.7; }
+      e.daylight = Math.max(e.daylight, 0.2 + 0.75 * f);
+    }
   }
 
   updateWeatherEffects(cam, dt) {
@@ -48752,7 +49014,7 @@ class Game {
       entities: this.drawList(cam),
       dynLights: dyn,
       lines: this.fishingLines(),
-      beams: this.guardianBeams(),
+      beams: this.lightning.bolts.length ? this.lightning.beams(this.guardianBeams() ?? []) : this.guardianBeams(),
       rod: this.rodLine(),
       hand: loading || this.hideHud || this.state === 'dead' || third || scope || isMap(this.handItem) ? null : {
         item: this.lookOf(this.handItem), swing: this.swinging ? this.swing : 0,

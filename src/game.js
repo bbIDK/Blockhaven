@@ -16,6 +16,7 @@ import { Particles } from './particles.js';
 import { DynamicLights } from './dynlight.js';
 import { Keys, RESERVED } from './keys.js';
 import { Weather } from './weather.js';
+import { Lightning } from './lightning.js';
 import { Entities } from './entities.js';
 import { TouchControls } from './touch.js';
 import { HostSession, GuestSession, openRoom, openGames, cleanName, COLORS, playerUid, playerKey } from './multiplayer.js';
@@ -245,6 +246,7 @@ export class Game {
     this.openBlock = null;
     this.attackTicks = 100;
     this.weather = new Weather();
+    this.lightning = new Lightning(this);
     this.drawnInvVersion = -1;
     this.saveTimer = 0;
     this.tipIndex = Math.floor(Math.random() * TIPS.length);
@@ -659,7 +661,7 @@ export class Game {
       type: world.type === 'flat' ? 'flat' : 'default', gen: Number.isInteger(world.gen) && world.gen >= 2 && world.gen <= LATEST_GEN ? world.gen : 1,
       mode: you?.mode === 'creative' || (!you?.mode && world.mode === 'creative') ? 'creative' : 'survival',
       spawn: world.spawn && Number.isFinite(world.spawn.x) && Number.isFinite(world.spawn.z) ? { x: world.spawn.x, y: world.spawn.y ?? null, z: world.spawn.z } : { x: 0.5, y: null, z: 0.5 },
-      time: Number.isFinite(world.time) ? world.time : 1000, weather: { raining: !!world.rain },
+      time: Number.isFinite(world.time) ? world.time : 1000, weather: { raining: !!world.rain, thunder: !!world.thunder },
       bed: you?.bed ?? null, player: you?.player ?? null, inventory: you?.inventory ?? null, waypoints: you?.wp ?? null, remote: true,
       difficulty: [0, 1, 2, 3].includes(world.diff) ? world.diff : 2,
     };
@@ -754,11 +756,14 @@ export class Game {
   }
 
   // `scaled`: the blow is a creature's (or a blast), so the difficulty changes how much it hurts.
-  hurtPlayer(t, amount, cause, knock, armored, scaled = true) {
+  // (`burn`: seconds it sets them alight for, as lightning does.)
+  hurtPlayer(t, amount, cause, knock, armored, scaled = true, burn = 0) {
     if (scaled) amount = this.scaleHurt(amount);
     if (amount <= 0) return;
-    if (!t.addr) this.damage(amount, cause, false, knock, armored);
-    else this.net?.hurt?.(t.addr, amount, cause, knock, armored);
+    if (!t.addr) {
+      this.damage(amount, cause, false, knock, armored);
+      if (burn && !this.creative && !this.effects.has('fire_resistance')) this.fire = Math.max(this.fire, burn * 20);
+    } else this.net?.hurt?.(t.addr, amount, cause, knock, armored, burn);
   }
 
   // Sounds and bits for a block someone else broke, placed or opened nearby.
@@ -1416,7 +1421,7 @@ export class Game {
 
   sleepIn(x, y, z) {
     const p = this.player;
-    if (this.env.daylight > 0.6) { this.ui.message('You can only sleep at night'); return; }
+    if (this.env.daylight > 0.6 && !(this.weather.thundering && this.weather.thunder > 0.5)) { this.ui.message('You can only sleep at night or during thunderstorms'); return; }
     const near = this.entities.list.some((e) => e.kind === 'mob' && e.def.hostile && !e.dead && Math.hypot(e.x - p.x, e.y - p.y, e.z - p.z) < 10);
     if (near) { this.ui.message('You may not rest now, there are monsters nearby', '#e88a78'); return; }
     this.meta.bed = { x, y, z };
@@ -1445,11 +1450,13 @@ export class Game {
     return e.ticks > 200 ? 1 : 0.7 + 0.3 * Math.sin(e.ticks * Math.PI * 0.2);
   }
 
-  // Morning: time jumps to the next day, the rain stops, and everyone in bed wakes up.
+  // Morning: time jumps to the next day (from a thunderstorm by day too, as in Minecraft), the
+  // rain stops, and everyone in bed wakes up.
   skipNight() {
     this.time = (Math.floor(this.time / TICKS_PER_DAY) + 1) * TICKS_PER_DAY + 300;
     this.weather.set(false);
     this.weather.rain = 0;
+    this.weather.thunder = 0;
     this.wake(true);
     this.save();
   }
@@ -1820,7 +1827,7 @@ export class Game {
       if (draw) this.safely('fireflies', () => this.fireflies(dt));
       this.safely('creatures', () => this.entities.update(dt));
       this.safely('fishing', () => this.fishing.update(dt));
-      this.safely('weather', () => this.weather.update(dt));
+      this.safely('weather', () => { this.weather.update(dt); this.lightning.update(dt); });
       if (this.spin) this.safely('riptide', () => this.spinTick(dt));
     }
     if (this.riding) this.sitOnMount();
@@ -2087,6 +2094,7 @@ export class Game {
     if (!this.net?.guest) {
       this.safely('furnaces', () => this.tickFurnaces());
       this.safely('bees', () => this.hives.tick());
+      this.safely('lightning', () => this.lightning.tick());
       this.safely('pressure plates', () => { this.pressPlates(); this.tripwires(); });
     }
     this.safely('player', () => this.playerTick());
@@ -3538,6 +3546,15 @@ export class Game {
       case 'summon': {
         // (Where you say, or just in front of you.)
         const type = (args[0] ?? '').toLowerCase().replace(/^minecraft:/, ''), d = p.lookDir();
+        // (Or a bolt of lightning, there or on the ground in front of you.)
+        if (type === 'lightning_bolt' || type === 'lightning') {
+          const x = args.length >= 4 ? num(args[1], p.x) : Math.floor(p.x + d[0] * 5) + 0.5, z = args.length >= 4 ? num(args[3], p.z) : Math.floor(p.z + d[2] * 5) + 0.5;
+          const y = args.length >= 4 ? num(args[2], p.y) : this.world.rainTop(Math.floor(x), Math.floor(z)) + 1;
+          if ([x, y, z].some(Number.isNaN)) { say('Usage: /summon lightning_bolt [x y z]', '#e88a78'); break; }
+          this.lightning.strike(x, y, z);
+          say('Summoned a lightning bolt');
+          break;
+        }
         if (!EGG_TYPES.has(type)) { say(`Unknown creature: ${args[0] ?? ''}`, '#e88a78'); break; }
         const [x, y, z] = args.length >= 4 ? [num(args[1], p.x), num(args[2], p.y), num(args[3], p.z)] : [p.x + d[0] * 3, p.y + 0.5, p.z + d[2] * 3];
         if ([x, y, z].some(Number.isNaN)) { say('Usage: /summon <creature> [x y z]', '#e88a78'); break; }
@@ -3575,9 +3592,9 @@ export class Game {
       case 'fly': if (this.creative) { p.flying = !p.flying; say(p.flying ? 'Flying' : 'Not flying'); } else say('Flying needs Creative mode', '#e88a78'); break;
       case 'weather': {
         const kind = (args[0] ?? '').toLowerCase(), secs = Number(args[1]);
-        if (kind !== 'clear' && kind !== 'rain') { say('Usage: /weather clear|rain [seconds]', '#e88a78'); break; }
-        this.weather.set(kind === 'rain', Number.isFinite(secs) && secs > 0 ? secs : null);
-        say(kind === 'rain' ? 'It starts to rain' : 'The sky clears');
+        if (kind !== 'clear' && kind !== 'rain' && kind !== 'thunder') { say('Usage: /weather clear|rain|thunder [seconds]', '#e88a78'); break; }
+        this.weather.set(kind !== 'clear', Number.isFinite(secs) && secs > 0 ? secs : null, kind === 'thunder');
+        say(kind === 'thunder' ? 'A thunderstorm starts' : kind === 'rain' ? 'It starts to rain' : 'The sky clears');
         break;
       }
       case 'kill': if (this.creative) { p.y = this.meta.spawn.y ?? 100; } else this.damage(999, 'You gave up', true); break;
@@ -3613,25 +3630,39 @@ export class Game {
     this.lagYaw = p.yaw - dyaw * (1 - k);
   }
 
-  // Rain greys out the sky, dims the daylight and hides the sun, moon and stars.
+  // Rain greys out the sky, dims the daylight and hides the sun, moon and stars; a thunderstorm
+  // darkens it all further, and lightning lights it up for a moment.
   applyWeather() {
-    const k = this.weather.rain, e = this.env;
-    if (k <= 0) return;
-    const grey = (c, amount, dark) => {
-      const l = (c[0] * 0.3 + c[1] * 0.59 + c[2] * 0.11) * dark;
-      for (let i = 0; i < 3; i++) c[i] += (l - c[i]) * amount;
-    };
-    grey(e.zenith, k * 0.7, 0.75);
-    grey(e.horizon, k * 0.65, 0.8);
-    grey(e.fogColor, k * 0.65, 0.8);
-    grey(e.cloudColor, k * 0.7, 0.7);
-    grey(e.skyLight, k * 0.5, 0.9);
-    grey(e.ambient, k * 0.6, 0.75);
-    grey(e.sunGlow, k * 0.8, 0.5);
-    for (let i = 0; i < 3; i++) e.lightColor[i] *= 1 - 0.85 * k;
-    e.daylight = Math.max(0.2, e.daylight * (1 - 0.25 * k));
-    e.stars *= 1 - k;
-    e.sunset *= 1 - k * 0.8;
+    const k = this.weather.rain, th = this.weather.thunder, fl = this.lightning.flash, e = this.env;
+    if (k > 0) {
+      const grey = (c, amount, dark) => {
+        const l = (c[0] * 0.3 + c[1] * 0.59 + c[2] * 0.11) * dark;
+        for (let i = 0; i < 3; i++) c[i] += (l - c[i]) * amount;
+      };
+      grey(e.zenith, k * 0.7, 0.75);
+      grey(e.horizon, k * 0.65, 0.8);
+      grey(e.fogColor, k * 0.65, 0.8);
+      grey(e.cloudColor, k * 0.7, 0.7);
+      grey(e.skyLight, k * 0.5, 0.9);
+      grey(e.ambient, k * 0.6, 0.75);
+      grey(e.sunGlow, k * 0.8, 0.5);
+      for (let i = 0; i < 3; i++) e.lightColor[i] *= 1 - 0.85 * k;
+      e.daylight = Math.max(0.2, e.daylight * (1 - 0.25 * k));
+      e.stars *= 1 - k;
+      e.sunset *= 1 - k * 0.8;
+    }
+    if (th > 0) {
+      const d = 1 - 0.45 * th;
+      for (const c of [e.zenith, e.horizon, e.fogColor, e.cloudColor]) for (let i = 0; i < 3; i++) c[i] *= d;
+      for (let i = 0; i < 3; i++) { e.skyLight[i] *= 1 - 0.35 * th; e.ambient[i] *= 1 - 0.4 * th; e.sunGlow[i] *= 1 - 0.5 * th; }
+      e.daylight = Math.max(0.2, e.daylight * (1 - 0.3 * th));
+    }
+    if (fl > 0) {
+      const f = fl * fl;
+      for (const c of [e.zenith, e.horizon, e.fogColor, e.cloudColor]) for (let i = 0; i < 3; i++) c[i] += (0.8 - c[i]) * f * 0.75;
+      for (let i = 0; i < 3; i++) { e.skyLight[i] += (1.1 - e.skyLight[i]) * f; e.ambient[i] += (0.75 - e.ambient[i]) * f * 0.7; }
+      e.daylight = Math.max(e.daylight, 0.2 + 0.75 * f);
+    }
   }
 
   updateWeatherEffects(cam, dt) {
@@ -3709,7 +3740,7 @@ export class Game {
       entities: this.drawList(cam),
       dynLights: dyn,
       lines: this.fishingLines(),
-      beams: this.guardianBeams(),
+      beams: this.lightning.bolts.length ? this.lightning.beams(this.guardianBeams() ?? []) : this.guardianBeams(),
       rod: this.rodLine(),
       hand: loading || this.hideHud || this.state === 'dead' || third || scope || isMap(this.handItem) ? null : {
         item: this.lookOf(this.handItem), swing: this.swinging ? this.swing : 0,
