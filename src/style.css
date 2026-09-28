@@ -1012,3 +1012,93 @@ kbd {
 #place-title.show { opacity: 1; transition: opacity 0.6s ease; }
 #place-title .big { font: 400 calc(var(--u) * 27)/1.1 var(--font-ui); color: #fff; text-shadow: calc(var(--u) * 2) calc(var(--u) * 2) 0 #3f3f3f; }
 #place-title .small { font: 400 calc(var(--u) * 9)/1.3 var(--font-ui); color: #e0e0e0; text-shadow: var(--u) var(--u) 0 #3f3f3f; }
+
+/* The minimap, top right (see minimap.js), with where you are under it; the status effects move to
+   its left while it shows. */
+#minimap {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + var(--u) * 3);
+  right: calc(env(safe-area-inset-right) + var(--u) * 3);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--u);
+}
+#minimap canvas { display: block; image-rendering: pixelated; pointer-events: auto; cursor: pointer; }
+#minimap-info {
+  font: 400 calc(var(--u) * 7)/1.3 var(--font-ui);
+  color: #f0f0f0;
+  text-shadow: calc(var(--u) * 0.7) calc(var(--u) * 0.7) 0 #222;
+  text-align: center;
+  white-space: pre;
+}
+#hud.with-map #effects { right: calc(env(safe-area-inset-right) + var(--u) * 6 + var(--map, 0px)); }
+
+/* Waypoints out in the world: a square in the waypoint's colour with its initials, how far off
+   it is under it, and its name over it while you look at it. */
+#waypoints { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.wp-mark {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  translate: -50% -50%;
+  font: 400 calc(var(--u) * 7)/1.2 var(--font-ui);
+  color: #fff;
+  text-shadow: calc(var(--u) * 0.7) calc(var(--u) * 0.7) 0 #222;
+  white-space: nowrap;
+}
+.wp-mark i {
+  font-style: normal;
+  min-width: calc(var(--u) * 9);
+  height: calc(var(--u) * 9);
+  display: grid;
+  place-items: center;
+  border: var(--u) solid #000;
+  text-shadow: none;
+}
+.wp-mark b { font-weight: 400; }
+.wp-mark b:empty { display: none; }
+.wp-mark span { font-size: calc(var(--u) * 6); opacity: 0.9; }
+
+/* The waypoint screens: the list, and making or changing one. */
+.wp-screen { background: rgba(16, 16, 16, 0.6); gap: calc(var(--u) * 6); }
+.wp-list {
+  width: calc(var(--u) * 250);
+  max-width: 94vw;
+  max-height: 58vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--u);
+  padding: calc(var(--u) * 2);
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.5);
+  border: var(--u) solid #000;
+}
+.wp-row { display: flex; align-items: center; gap: calc(var(--u) * 3); padding: var(--u) calc(var(--u) * 2); }
+.wp-row.off { opacity: 0.55; }
+.wp-row i {
+  font-style: normal;
+  width: calc(var(--u) * 12);
+  height: calc(var(--u) * 12);
+  display: grid;
+  place-items: center;
+  border: var(--u) solid #000;
+  flex: none;
+}
+.wp-row .wp-text { flex: 1; min-width: 0; }
+.wp-row .wp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wp-row .wp-where { color: #b8b8b8; font-size: calc(var(--u) * 7); white-space: nowrap; }
+.wp-row .btn { width: auto; min-width: calc(var(--u) * 26); padding: 0 calc(var(--u) * 3); height: calc(var(--u) * 16); flex: none; }
+.wp-empty { color: #b8b8b8; text-align: center; padding: calc(var(--u) * 8); white-space: normal; }
+.wp-form { display: grid; grid-template-columns: auto auto; gap: calc(var(--u) * 5) calc(var(--u) * 6); align-items: center; }
+.wp-form .wp-label { color: var(--text-dim); text-align: right; }
+.wp-form input[type='text'] { width: calc(var(--u) * 130); }
+.wp-form .wp-xyz { display: flex; gap: calc(var(--u) * 3); }
+.wp-form .wp-xyz input[type='text'] { width: calc(var(--u) * 41); }
+.wp-colours { display: grid; grid-template-columns: repeat(8, auto); gap: calc(var(--u) * 2); justify-content: start; }
+.wp-colours button { width: calc(var(--u) * 13); height: calc(var(--u) * 13); border: var(--u) solid #000; padding: 0; cursor: pointer; }
+.wp-colours button.on { outline: var(--u) solid #fff; outline-offset: 0; }

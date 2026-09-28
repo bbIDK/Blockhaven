@@ -18,6 +18,7 @@
     <div id="overlay-sleep"></div>
     <div id="overlay-scope" hidden></div>
     <div id="overlay-fire" hidden><i></i><i></i></div>
+    <div id="waypoints"></div>
     <div id="nametags"></div>
     <div id="crosshair"></div>
     <div id="attack-meter" hidden><i></i></div>
@@ -28,6 +29,7 @@
     </div>
     <div id="item-name"></div>
     <div id="effects"></div>
+    <div id="minimap" hidden><canvas id="minimap-canvas" aria-label="Minimap: open the waypoints"></canvas><div id="minimap-info"></div></div>
     <div id="hud-bottom">
       <div id="stats">
         <div class="stats-left"><div id="armor"></div><div id="hearts"></div></div>
@@ -216,6 +218,8 @@
         <dt><kbd data-bind="hideHud">F1</kbd></dt><dd>Hide the HUD (for screenshots)</dd>
         <dt><kbd data-bind="debug">F3</kbd></dt><dd>Debug info</dd>
         <dt><kbd data-bind="perspective">F5</kbd></dt><dd>See yourself from behind or in front</dd>
+        <dt><kbd data-bind="mapZoomIn">=</kbd> <kbd data-bind="mapZoomOut">-</kbd></dt><dd>Zoom the minimap in and out</dd>
+        <dt><kbd data-bind="waypointAdd">B</kbd> <kbd data-bind="waypointList">U</kbd></dt><dd>Mark a waypoint where you stand; list the waypoints (or click the minimap)</dd>
       </dl>
       <p class="hint-text">Change any of these keys in Options, under Key Binds.</p>
       <p class="hint-text">Punch a tree for logs and turn them into planks in your inventory's crafting grid. Four planks make a crafting table: right-click it for the full 3×3 grid, where a wooden pickaxe gets you mining. The green book lists every recipe and lays it out for you.</p>

@@ -47,6 +47,8 @@ import { BookScreen } from './books.js';
 import { cleanRocket } from './fireworks.js';
 import { AQUATIC } from './tridents.js';
 import { Maps, HeldMap, initMapColours, isMap } from './maps.js';
+import { Minimap, initMinimapColours, MAP_ZOOMS } from './minimap.js';
+import { Waypoints, WaypointScreen } from './waypoints.js';
 import { drawLeads, isFence, LEAD_SNAP } from './leads.js';
 import { Jukeboxes, instrumentFor, noteColour, noteClear, nextNote } from './jukebox.js';
 import { isHanging } from './hangings.js';
@@ -77,10 +79,15 @@ const DEFAULT_SETTINGS = {
   // Key binds changed from the usual ones (see keys.js), how often the world saves itself
   // (seconds), and whether "Saving world" shows in the corner when it does.
   keys: {}, autosave: 30, saveIndicator: true,
+  // The minimap (see minimap.js): shown, its size (Small, Medium, Large), square or round, how far
+  // it's zoomed (MAP_ZOOMS), north kept up, creatures on it, coordinates under it, cave mode (1
+  // Auto, 0 off), and waypoints shown out in the world.
+  minimap: true, minimapSize: 1, minimapShape: 0, minimapZoom: 2, lockNorth: false, radar: true, mapCoords: true, caveMode: 1,
+  worldWaypoints: true,
 };
 const HOTBAR_KEYS = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `hotbar${n}`);
 const BOUND = ['forward', 'back', 'left', 'right', 'jump', 'sneak', 'sprint', 'inventory', 'drop', 'chat', 'command', 'perspective',
-  'hideHud', 'debug', ...HOTBAR_KEYS];
+  'hideHud', 'debug', 'mapZoomIn', 'mapZoomOut', 'waypointAdd', 'waypointList', ...HOTBAR_KEYS];
 const FACE_NAMES = ['east (+X)', 'west (-X)', 'up', 'down', 'south (+Z)', 'north (-Z)'];
 const TIPS = [
   'Punch a tree to collect logs, then turn them into planks.',
@@ -153,6 +160,7 @@ export class Game {
     this.renderer = new Renderer(this.canvas);
     initIcons(this.renderer.pixels);
     initMapColours(this.renderer.pixels);
+    initMinimapColours(this.renderer.pixels);
     warmIcons();
     (globalThis.requestIdleCallback ?? setTimeout)(() => sprites());
     this.ui.drawLogo(this.renderer.pixels, TEX);
@@ -253,6 +261,11 @@ export class Game {
     this.bookScreen = new BookScreen(this);
     this.maps = new Maps(this);
     this.heldMap = new HeldMap(this);
+    this.minimap = new Minimap(this, $('minimap-canvas'), $('minimap-info'));
+    this.waypoints = new Waypoints(this);
+    this.waypointScreen = new WaypointScreen(this);
+    // (A tap on the minimap opens the waypoints.)
+    $('minimap-canvas').addEventListener('click', () => this.openWaypoints());
     this.jukeboxes = new Jukeboxes(this);
     this.applySettings();
     this.bindUI();
@@ -599,6 +612,8 @@ export class Game {
     this.signs.load(meta.signs);
     // (A guest's maps come from the host, as they're needed.)
     this.maps.reset(remote ? null : meta.maps);
+    this.waypoints.load(meta.waypoints);
+    this.minimap.reset();
     this.attackTicks = 100;
     this.fire = 0;
     this.loadStart = performance.now();
@@ -635,7 +650,7 @@ export class Game {
       mode: you?.mode === 'creative' || (!you?.mode && world.mode === 'creative') ? 'creative' : 'survival',
       spawn: world.spawn && Number.isFinite(world.spawn.x) && Number.isFinite(world.spawn.z) ? { x: world.spawn.x, y: world.spawn.y ?? null, z: world.spawn.z } : { x: 0.5, y: null, z: 0.5 },
       time: Number.isFinite(world.time) ? world.time : 1000, weather: { raining: !!world.rain },
-      bed: you?.bed ?? null, player: you?.player ?? null, inventory: you?.inventory ?? null, remote: true,
+      bed: you?.bed ?? null, player: you?.player ?? null, inventory: you?.inventory ?? null, waypoints: you?.wp ?? null, remote: true,
       difficulty: [0, 1, 2, 3].includes(world.diff) ? world.diff : 2,
     };
     const container = this.containers, furnaces = this.furnaces, signs = this.signs.serialize();
@@ -652,6 +667,7 @@ export class Game {
         food: this.food, saturation: this.saturation, exhaustion: this.exhaustion, riding: this.riding ? 1 : 0, xp: [this.xp.level, this.xp.points], es: this.enchantSeed,
         fx: this.effectsData() },
       inventory: this.inv.serialize(), mode: this.meta?.mode ?? 'survival', bed: this.meta?.bed ?? null,
+      wp: this.waypoints.serialize(),
     };
   }
 
@@ -893,6 +909,8 @@ export class Game {
     await this.save();
     if (this.net) { const net = this.net; this.net = null; await net.leave(); }
     this.avatars.clearTags();
+    this.waypoints.clearMarks();
+    this.closeWaypoints();
     this.jukeboxes.clear();
     this.releasePointer();
     this.touch.setActive(false);
@@ -927,6 +945,7 @@ export class Game {
       containers: [...this.containers].map(([k, slots]) => ({ k, slots: slots.map((x) => (x ? { ...x } : null)) })),
       signs: this.signs.serialize(),
       maps: this.maps.serialize(),
+      waypoints: this.waypoints.serialize(),
       furnaces: [...this.furnaces].filter(([, f]) => !f.empty).map(([k, f]) => ({ k, ...f.serialize() })),
       weather: this.weather.serialize(),
     });
@@ -1431,6 +1450,7 @@ export class Game {
   // World listener: react to blocks that vanish (chests and furnaces spill their items), and pass
   // every change on in multiplayer.
   blockChanged(x, y, z, old, id) {
+    this.minimap.changed(x, z);
     if (LOOT_KIND[old] !== undefined && !this.net?.guest) {
       const key = this.containerKey(x, y, z), size = DISPENSER[old] !== undefined ? 9 : 27;
       const loot = rollLoot(LOOT_KIND[old], x, y, z, this.meta?.seed ?? 0, size);
@@ -1518,7 +1538,10 @@ export class Game {
 
   die(cause) {
     this.closeTalk();
+    this.closeWaypoints();
     this.dismount();
+    // (Where you fell is marked, as the Xaero's Minimap mod does.)
+    this.waypoints.died(this.player.x, this.player.y, this.player.z);
     this.state = 'dead';
     this.closeMenu();
     this.health = 0;
@@ -1617,7 +1640,13 @@ export class Game {
         else if (k.is(c, 'debug')) { this.showDebug = !this.showDebug; }
         else if (k.is(c, 'hideHud')) { this.hideHud = !this.hideHud; }
         else if (k.is(c, 'perspective')) { e.preventDefault(); this.view = (this.view + 1) % 3; }
+        else if (k.is(c, 'mapZoomIn')) this.zoomMap(1);
+        else if (k.is(c, 'mapZoomOut')) this.zoomMap(-1);
+        else if (k.is(c, 'waypointAdd')) { e.preventDefault(); this.openWaypoints(true); }
+        else if (k.is(c, 'waypointList')) { e.preventDefault(); this.openWaypoints(); }
         else if (c === 'Escape' && !this.input.locked) this.pause();
+      } else if (s === 'waypoints') {
+        if (c === 'Escape' || (k.is(c, 'waypointList') && !this.waypointScreen.editing)) this.waypointScreen.back();
       } else if (s === 'talk') {
         if (k.is(c, 'inventory') || c === 'Escape') this.closeTalk();
       } else if (s === 'book') {
@@ -3057,6 +3086,34 @@ export class Game {
     this.invChanged();
   }
 
+  // The waypoints (see waypoints.js): the list, or (`fresh`) a new one where you stand. The world
+  // carries on meanwhile.
+  openWaypoints(fresh = false) {
+    if (this.state !== 'play' || !this.world) return;
+    this.state = 'waypoints';
+    this.releasePointer();
+    this.mining = null;
+    this.eating = null;
+    if (fresh) this.waypointScreen.showForm('new'); else this.waypointScreen.showList();
+  }
+  closeWaypoints() {
+    if (!this.waypointScreen.open && this.state !== 'waypoints') return;
+    this.waypointScreen.hide();
+    if (this.state === 'waypoints') {
+      this.state = 'play';
+      this.input.capture = true;
+      if (!this.touch.enabled) this.input.lock();
+    }
+  }
+  // The minimap zoomed in (1) or out (-1).
+  zoomMap(d) {
+    const s = this.settings, z = Math.max(0, Math.min(MAP_ZOOMS.length - 1, (s.minimapZoom ?? 2) + d));
+    if (z === s.minimapZoom) return;
+    s.minimapZoom = z;
+    this.saveSettings();
+    this.ui.showItemName(`Minimap: ${MAP_ZOOMS[z]}x`, 1200);
+  }
+
   // Reading (or writing in) the book in hand: the world carries on meanwhile.
   openBook() {
     const held = this.inv.held;
@@ -3173,6 +3230,7 @@ export class Game {
   }
 
   chunkLoaded(chunk) {
+    this.minimap.changed(chunk.cx * 16, chunk.cz * 16);
     this.entities.chunkLoaded(chunk);
     this.net?.chunkLoaded(chunk);
   }
@@ -3729,10 +3787,25 @@ export class Game {
       'overlay-scope': !!this.drawing?.scope && this.view === 0 && this.state === 'play',
     });
     if (this.lastCam) this.renderTags();
+    this.minimap.update();
+    if (this.lastCam) this.waypoints.render(this.lastCam, (x, y, z) => this.project(x, y, z), this.player.lookDir());
     $('leave-bed').hidden = !(this.net && this.state === 'sleeping');
     if (this.showDebug) ui.setDebug(this.debugLines());
     else if (this.settings.showFps) ui.setDebug([`${Math.round(this.fps)} fps`]);
     else ui.setDebug(null);
+  }
+
+  // Where a point of the world is on the screen (CSS pixels), or null when it's behind the camera or
+  // off the screen.
+  project(x, y, z) {
+    const cam = this.lastCam, m = this.renderer.viewProj, w = this.canvas.clientWidth, h = this.canvas.clientHeight;
+    if (!cam || !m) return null;
+    const dx = x - cam.x, dy = y - cam.y, dz = z - cam.z;
+    const cw = m[3] * dx + m[7] * dy + m[11] * dz + m[15];
+    if (cw < 0.1) return null;
+    const cx = (m[0] * dx + m[4] * dy + m[8] * dz + m[12]) / cw, cy = (m[1] * dx + m[5] * dy + m[9] * dz + m[13]) / cw;
+    if (cx < -1.05 || cx > 1.05 || cy < -1.05 || cy > 1.05) return null;
+    return [(cx * 0.5 + 0.5) * w, (0.5 - cy * 0.5) * h];
   }
 
   // Name tags: over other players (not while they're invisible), and over creatures that were
