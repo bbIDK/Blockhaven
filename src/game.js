@@ -19,6 +19,8 @@ import { DynamicLights } from './dynlight.js';
 import { Keys, RESERVED } from './keys.js';
 import { Weather } from './weather.js';
 import { Lightning } from './lightning.js';
+import { Powers } from './powers.js';
+import { Feel } from './feel.js';
 import { Entities } from './entities.js';
 import { TouchControls } from './touch.js';
 import { HostSession, GuestSession, openRoom, openGames, cleanName, COLORS, playerUid, playerKey } from './multiplayer.js';
@@ -70,7 +72,7 @@ import { BIOME_NAMES, BIOME } from './biomes.js';
 import { MOBS } from './mobs.js';
 import { EGG_TYPES, eggLabel } from './eggs.js';
 import { CHUNK_VOLUME, MIN_Y, MAX_Y, NO_Y, TICKS_PER_DAY, SAVE_VERSION, DIFFICULTIES, LATEST_GEN } from './config.js';
-import { seedFromText, clamp, hashString, mat4, identity, translate, rotateX, rotateZ } from './math.js';
+import { seedFromText, clamp, hashString, mat4, identity, translate, rotateX, rotateY, rotateZ } from './math.js';
 
 const SETTINGS_KEY = 'blockhaven.settings';
 // Where fireflies come out on fine nights.
@@ -81,7 +83,7 @@ const COARSE = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)
 const REDUCED_MOTION = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const DEFAULT_SETTINGS = {
   renderDistance: COARSE ? 5 : 8, resolution: 0, fov: 75, sensitivity: 100, brightness: 50, volume: 60, music: 40,
-  viewBobbing: !REDUCED_MOTION, clouds: true, invertMouse: false, showFps: false, recipeBook: true, guiScale: 0, mix: 3,
+  viewBobbing: !REDUCED_MOTION, screenShake: REDUCED_MOTION ? 30 : 80, clouds: true, invertMouse: false, showFps: false, recipeBook: true, guiScale: 0, mix: 3,
   name: '', look: -1, blood: true, shaders: null, // (null: chosen for the device on first run)
   // Graphics (1 Fancy, 0 Fast: solid leaves), frames a second at most (0: as many as the screen
   // shows), how many particles (0 all, 1 fewer, 2 hardly any), and how far off creatures are drawn.
@@ -256,6 +258,9 @@ export class Game {
     this.attackTicks = 100;
     this.weather = new Weather();
     this.lightning = new Lightning(this);
+    // Devil Fruit powers (the One Piece mod) and the shake and hit-stop of big moments.
+    this.powers = new Powers(this);
+    this.feel = new Feel();
     this.drawnInvVersion = -1;
     this.saveTimer = 0;
     this.tipIndex = Math.floor(Math.random() * TIPS.length);
@@ -646,6 +651,7 @@ export class Game {
     this.remount = !!meta.player?.riding;
     const xp = meta.player?.xp;
     this.xp = { level: Number.isInteger(xp?.[0]) ? Math.max(0, xp[0]) : 0, points: Number.isFinite(xp?.[1]) ? Math.max(0, xp[1]) : 0 };
+    this.powers.load(meta.player?.pw);
     this.enchantSeed = Number.isInteger(meta.player?.es) ? meta.player.es >>> 0 : (Math.random() * 2 ** 32) >>> 0;
     if (meta.player && (meta.player.health ?? 20) > 0) {
       Object.assign(p, { x: meta.player.x, y: meta.player.y, z: meta.player.z, yaw: meta.player.yaw, pitch: meta.player.pitch, flying: !!meta.player.flying });
@@ -746,7 +752,7 @@ export class Game {
     return {
       player: { x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, flying: p.flying, health: this.health, air: this.air,
         food: this.food, saturation: this.saturation, exhaustion: this.exhaustion, riding: this.riding ? 1 : 0, xp: [this.xp.level, this.xp.points], es: this.enchantSeed,
-        fx: this.effectsData() },
+        fx: this.effectsData(), pw: this.powers.serialize() ?? undefined },
       inventory: this.inv.serialize(), mode: this.meta?.mode ?? 'survival', bed: this.meta?.bed ?? null,
       wp: this.waypoints.serialize(),
       adv: this.advancements.serialize(),
@@ -1071,7 +1077,7 @@ export class Game {
       time: Math.floor(this.time),
       player: { x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, flying: p.flying, health: this.health, air: this.air,
         food: this.food, saturation: this.saturation, exhaustion: this.exhaustion, riding: this.riding ? 1 : 0, xp: [this.xp.level, this.xp.points], es: this.enchantSeed,
-        fx: this.effectsData() },
+        fx: this.effectsData(), pw: this.powers.serialize() ?? undefined },
       inventory: this.inv.serialize(),
       entities: this.entities.serialize(),
       containers: [...this.containers].map(([k, slots]) => ({ k, slots: slots.map((x) => (x ? { ...x } : null)) })),
@@ -1596,6 +1602,8 @@ export class Game {
     if (LOOT_KIND[old] !== undefined && !this.net?.guest) {
       const key = this.containerKey(x, y, z), size = DISPENSER[old] !== undefined ? 9 : 27;
       const loot = rollLoot(LOOT_KIND[old], x, y, z, this.meta?.seed ?? 0, size);
+      // (In a One Piece world a chest may hold a Devil Fruit no one has eaten.)
+      if (this.world.gen?.op && size === 27) this.powers.chestFruit(loot);
       if (CHEST[id] !== undefined || (DISPENSER[id] !== undefined && size === 9)) { if (!this.containers.has(key)) this.containers.set(key, loot); }
       else for (const st of loot) if (st) this.entities.spawnItem(x + 0.5, y + 0.5, z + 0.5, st.id, st.count, 0);
     }
@@ -1701,6 +1709,7 @@ export class Game {
     this.dismount();
     // (Where you fell is marked, as the Xaero's Minimap mod does.)
     this.waypoints.died(this.player.x, this.player.y, this.player.z);
+    this.powers.died();
     this.state = 'dead';
     // (What was in a crafting grid or on the cursor goes back into the inventory first.)
     this.closeMenu();
@@ -1977,6 +1986,7 @@ export class Game {
         p.speedMul = (1 + 0.2 * this.effectLevel('speed')) * Math.max(0.1, 1 - 0.15 * this.effectLevel('slowness')) * (this.eating || this.drawing || this.guarding ? 0.35 : 1);
         this.shieldDown = Math.max(0, (this.shieldDown ?? 0) - dt);
         p.jumpBoost = this.effectLevel('jump_boost');
+        p.cursed = this.powers.on;
         const prevInWater = p.inWater;
         p.update(dt, move, w);
         if (p.inWater && !prevInWater) this.splashInto(p.x, p.y, p.z, p.entrySpeed ?? 0);
@@ -1990,9 +2000,13 @@ export class Game {
       while (this.tickAcc >= 1 && n++ < most) { this.tickAcc -= 1; this.gameTick(); }
       if (this.tickAcc > most) this.tickAcc = 0;
       // (Each on its own, like the parts of a tick: see gameTick.)
-      this.safely('particles', () => this.particles.update(dt, w));
+      // (A hit-stop all but stops the world for a moment: see feel.js.)
+      this.feel.update(dt);
+      const wdt = dt * this.feel.timeScale;
+      this.safely('particles', () => this.particles.update(wdt, w));
       if (draw) this.safely('fireflies', () => this.fireflies(dt));
-      this.safely('creatures', () => this.entities.update(dt));
+      this.safely('creatures', () => this.entities.update(wdt));
+      this.safely('powers', () => this.powers.update(dt, active));
       this.safely('fishing', () => this.fishing.update(dt));
       this.safely('weather', () => { this.weather.update(dt); this.lightning.update(dt); });
       this.safely('advancements', () => { this.advancements.update(dt); this.spyglassLook(dt); });
@@ -2093,7 +2107,7 @@ export class Game {
       if (d > 3.2 && !p.inWater && !this.invulnerable) this.audio.fall(d > 7);
       // (Honey breaks a fall: a fifth of the hurt.)
       const soft = p.onHoney ? 0.2 : 1;
-      if (d > 3.2 + this.effectLevel('jump_boost') && !p.inWater) this.damage(Math.floor((d - 3 - this.effectLevel('jump_boost')) * soft), 'You fell from a high place');
+      if (d > 3.2 + this.effectLevel('jump_boost') && !p.inWater && !this.powers.noFall) this.damage(Math.floor((d - 3 - this.effectLevel('jump_boost')) * soft), 'You fell from a high place');
       if (p.onHoney && d > 3.2 && this.state !== 'dead') this.advancements.event('honey_land');
       // (Coming down on farmland may trample it: see trample.)
       if (!this.spectator && !p.inWater) trample(this.world, p.x, p.y, p.z, d);
@@ -2388,6 +2402,7 @@ export class Game {
     if (def.cures) this.effects.delete(def.cures);
     for (const [name, seconds, level, chance = 1] of def.effects ?? []) if (Math.random() < chance) this.addEffect(name, seconds, level);
     if (def.potion) this.applyPotion(def.potion);
+    if (def.devilFruit) this.powers.eat(def.devilFruit);
     this.advancements.event('eat', { id: e.id });
     if (this.creative) return;
     this.inv.consumeHeld();
@@ -2472,6 +2487,10 @@ export class Game {
       return false;
     }
     if (this.effects.has('fire_resistance') && /flames|lava|burned/.test(cause)) return false;
+    // (A Devil Fruit's rules: a Logia's body, fire and lightning that can't harm their own...)
+    const after = this.powers.passive(cause, amount);
+    if (after === null) return false;
+    amount = after;
     if (this.invuln > 0 && !ignoreInvuln) return false;
     const points = armored ? this.inv.armorPoints : 0;
     if (points > 0) {
@@ -3993,6 +4012,9 @@ export class Game {
       rotateZ(pre, pre, Math.sin(walk * Math.PI) * bob * 3 * DEG);
       rotateX(pre, pre, Math.abs(Math.cos(walk * Math.PI - 0.2) * bob) * 5 * DEG);
     }
+    // (Screen shake turns the view, never the player: see feel.js. The Screen Shake option scales it.)
+    const shake = this.feel.shake((s.screenShake ?? 80) / 100);
+    if (shake) { rotateY(pre, pre, shake[0]); rotateX(pre, pre, shake[1]); rotateZ(pre, pre, shake[2]); }
     const cam = { x: p.x, y: p.eyeY, z: p.z, yaw: p.yaw, pitch: p.pitch, pre };
     if (third) this.pullBack(cam);
     this.lastCam = cam;

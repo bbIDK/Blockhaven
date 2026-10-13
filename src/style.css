@@ -1202,3 +1202,21 @@ kbd {
   background: rgba(0, 0, 0, .45); border: calc(var(--u) / 2) solid #000; }
 .mods-list .btn { margin: 0; }
 .mods-list .mod-desc { margin: 0 0 var(--u); font-size: .85em; color: #c8c8c8; }
+
+/* Devil Fruit move bar (the One Piece mod): bottom right, clear of the hotbar; sized in GUI pixels. */
+#powers { position: absolute; right: calc(var(--u) * 4); bottom: calc(var(--u) * 46 + env(safe-area-inset-bottom)); width: calc(var(--u) * 140);
+  font-size: calc(var(--u) * 7); color: #fff; text-shadow: calc(var(--u) * 0.6) calc(var(--u) * 0.6) 0 #222; pointer-events: auto; }
+#powers .pw-name { font-size: calc(var(--u) * 6.5); margin-bottom: calc(var(--u) * 1.5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#powers .pw-name span { color: #ffd36a; }
+#powers .pw-energy { height: calc(var(--u) * 3); background: rgba(0, 0, 0, 0.55); border: calc(var(--u) * 0.6) solid #111; margin-bottom: calc(var(--u) * 2); }
+#powers .pw-energy i { display: block; height: 100%; background: linear-gradient(#7fe0ff, #2f8fd8); }
+#powers .pw-energy.wet i { background: linear-gradient(#6a7a8a, #3a4a5a); }
+#powers .pw-moves { display: flex; gap: calc(var(--u) * 1.5); }
+#powers .pw-move { position: relative; flex: 1; height: calc(var(--u) * 26); padding: calc(var(--u) * 1.5); background: rgba(16, 16, 22, 0.72);
+  border: calc(var(--u) * 0.8) solid var(--el); color: #fff; font: inherit; text-align: left; overflow: hidden; cursor: pointer; touch-action: none; }
+#powers .pw-move b { display: block; font-size: calc(var(--u) * 8); color: var(--el); }
+#powers .pw-move small { display: block; font-size: calc(var(--u) * 4.6); line-height: 1.15; opacity: 0.9; }
+/* The cooldown sweeps down over the slot. */
+#powers .pw-move::after { content: ''; position: absolute; left: 0; right: 0; top: 0; height: calc(var(--cd) * 100%); background: rgba(0, 0, 0, 0.62); }
+#powers .pw-move.low b { opacity: 0.5; }
+#powers .pw-move.locked { border-color: #555; filter: grayscale(1); opacity: 0.6; }

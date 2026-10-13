@@ -28,6 +28,7 @@ import { POTIONS, EFFECTS } from './potions.js';
 import { EGG_TYPES } from './eggs.js';
 import { saveArmor } from './stands.js';
 import { hiveDrop } from './bees.js';
+import { FRUITS, MOVE_KEYS } from './fruits.js';
 import { BY_ID as ADVANCEMENT } from './advancements.js';
 
 const MAX_GUESTS = 7;
@@ -501,6 +502,14 @@ export class HostSession extends Session {
       case 'drop': this.drop(msg); break;
       case 'take': this.take(g, msg); break;
       case 'hit': this.hit(g, msg); break;
+      // Devil Fruits: a guest's move (carried out here), and a fruit eaten or a power lost.
+      case 'pw': this.powerFromGuest(g, msg); break;
+      case 'pwe':
+        if (FRUITS[msg.f] && this.game.meta) {
+          this.game.meta.devilFruits ??= {};
+          if (msg.e) this.game.meta.devilFruits[msg.f] = g.uid ?? g.addr; else delete this.game.meta.devilFruits[msg.f];
+        }
+        break;
       case 'fwk':
         // A guest's firework rocket, going up where they stand (or shot from their crossbow).
         if ([msg.x, msg.y, msg.z].every(num) && g.x !== null && Math.hypot(msg.x - g.x, msg.y - g.y, msg.z - g.z) < 8) {
@@ -704,6 +713,24 @@ export class HostSession extends Session {
     if (!e.count) { e.dead = true; this.gone.set(e.nid, 'p'); }
     this.send(g.addr, { t: 'give', id: e.id, n, d: e.dmg ?? 0, ex: e.extra ?? undefined });
   }
+
+  // A guest's Devil Fruit move: carried out here, as the host's own are (see Powers.cast).
+  powerFromGuest(g, m) {
+    if (!FRUITS[m.f] || !MOVE_KEYS.includes(m.k) || ![m.x, m.y, m.z].every(num) || !Array.isArray(m.d) || m.d.length !== 3 || !m.d.every(num)) return;
+    if (g.x === null || Math.hypot(m.x - g.x, m.y - g.y, m.z - g.z) > 6) return;
+    const l = Math.hypot(...m.d) || 1, d = m.d.map((v) => v / l);
+    const caster = this.others().find((o) => o.addr === g.addr);
+    if (caster) this.game.powers.cast(caster, m.f, clamp(m.m | 0, 1, 100), m.k, [m.x, m.y, m.z], d);
+  }
+  // A move's look and sound for everyone (but the one who made it, who has shown it already).
+  powerFx(f, k, o, d, except) {
+    const msg = { t: 'pwfx', f, k, x: r2(o[0]), y: r2(o[1]), z: r2(o[2]), d: d.map(r2) };
+    for (const g of this.guests.values()) if (g.addr !== except && g.x !== null) this.send(g.addr, msg);
+  }
+  // The damage a guest's move did (their mastery grows by it); a guest moved by Shambles; a word.
+  powerXp(addr, n) { this.send(addr, { t: 'pwx', n: r2(n) }); }
+  powerMove(addr, x, y, z) { this.send(addr, { t: 'pwmv', x: r2(x), y: r2(y), z: r2(z) }); }
+  tell(addr, text) { this.send(addr, { t: 'msg', s: text, c: 'g' }); }
 
   hit(g, m) {
     const E = this.game.entities, e = E.list.find((x) => x.nid === m.e && (x.kind === 'mob' || x.kind === 'boat' || x.kind === 'cart' || x.kind === 'stand' || isHanging(x)) && !x.dead);
@@ -1176,6 +1203,13 @@ export class GuestSession extends Session {
         if (left) game.entities.dropItem(game.player, { ...s, count: left });
         break;
       }
+      case 'pwfx':
+        if (FRUITS[msg.f] && MOVE_KEYS.includes(msg.k) && [msg.x, msg.y, msg.z].every(num) && Array.isArray(msg.d) && msg.d.every(num) && game.world) {
+          game.powers.fx(msg.f, msg.k, [msg.x, msg.y, msg.z], msg.d, false);
+        }
+        break;
+      case 'pwx': if (num(msg.n) && msg.n > 0) game.powers.credit(Math.min(msg.n, 500)); break;
+      case 'pwmv': if ([msg.x, msg.y, msg.z].every(num) && game.world) Object.assign(game.player, { x: msg.x, y: msg.y, z: msg.z, vx: 0, vy: 0, vz: 0 }); break;
       case 'hurt':
         if (num(msg.a) && game.world && game.state !== 'loading') {
           const k = Array.isArray(msg.k) && msg.k.length === 3 && msg.k.every(num) ? msg.k.map((v) => clamp(v, -20, 20)) : null;
@@ -1379,6 +1413,10 @@ export class GuestSession extends Session {
       cb: fx?.crossbow ? 1 : undefined,
       tr: fx?.trident ? { id: fx.trident.id, d: fx.trident.dmg ?? 0, ex: extras(fx.trident) ?? undefined } : undefined });
   }
+
+  // Devil Fruits: a move made here, for the host to carry out; a fruit eaten or a power lost.
+  power(f, m, k, o, d) { this.toHost({ t: 'pw', f, m, k, x: r2(o[0]), y: r2(o[1]), z: r2(o[2]), d: d.map(r2) }); }
+  fruitTaken(f, eaten) { this.toHost({ t: 'pwe', f, e: eaten ? 1 : 0 }); }
 
   hitMob(e, amount, bonus, opts = null) {
     const p = this.game.player;

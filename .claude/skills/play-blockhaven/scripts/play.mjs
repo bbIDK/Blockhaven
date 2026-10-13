@@ -14,7 +14,8 @@
 //   wait <seconds>           let the world run (hold, mine, use and wait count game time, not real time)
 //   shot [name]              screenshot (the reply says where it was saved)
 //   state                    where you are, what you're looking at, health, hunger, held item, creatures near
-//   eval <js>                run JavaScript in the page (window.blockhaven is the game)
+//   eval <js>                run JavaScript in the page (window.blockhaven is the game; no semicolons)
+//   evalfile <path>          run a JavaScript file in the page (an async function body: `return` the answer)
 //   quit                     close the browser and stop the server
 import http from 'node:http';
 import { spawn } from 'node:child_process';
@@ -134,6 +135,13 @@ async function serve() {
           time: g.time, raining: g.weather?.raining, near };
       }), null, 0);
       case 'eval': return JSON.stringify(await page.evaluate((src) => { const v = (0, eval)(src); return v; }, rest)) ?? 'undefined';
+      case 'evalfile': {
+        // (A script file: any length, with semicolons; its last expression, or what it returns if
+        // it's the body of an async function, is the answer.)
+        const { readFileSync } = await import('node:fs');
+        const src = readFileSync(rest, 'utf8');
+        return JSON.stringify(await page.evaluate((src) => (0, eval)(`(async () => { ${src} })()`), src)) ?? 'undefined';
+      }
       case 'quit': setTimeout(() => { browser.close().catch(() => {}); setTimeout(() => process.exit(0), 1500); }, 100); return 'bye';
       default: return `unknown action "${act}"`;
     }

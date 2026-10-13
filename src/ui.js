@@ -280,6 +280,7 @@ export const OPTIONS = [
   { key: 'entityDistance', label: 'Entity Distance', min: 50, max: 500, step: 25, fmt: (v) => `${v}%` },
   { key: 'clouds', label: 'Clouds', toggle: true },
   { key: 'viewBobbing', label: 'View Bobbing', toggle: true },
+  { key: 'screenShake', label: 'Screen Shake', min: 0, max: 100, step: 10, fmt: (v) => (v <= 0 ? 'OFF' : `${v}%`) },
   { key: 'blood', label: 'Blood Effects', toggle: true },
   { section: 'Interface' },
   { key: 'guiScale', label: 'GUI Scale', scale: true },

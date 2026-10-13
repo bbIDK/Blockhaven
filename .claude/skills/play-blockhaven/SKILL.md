@@ -34,6 +34,7 @@ screenshot with the Read tool: that is how you see the game.
 | `shot [name]` | screenshot to `/tmp/blockhaven-play/<name>.png` |
 | `state` | position, facing, on ground / in water, health, food, held item, the block or creature under the crosshair (and how far), time, rain, creatures within 24 blocks |
 | `eval <js>` | JavaScript in the page; `window.blockhaven` is the game (`.player`, `.world`, `.entities`, `.inv`, `.meta`) |
+| `evalfile <path>` | a JavaScript file run in the page as the body of an async function (`return` the answer): for anything longer, or with `;` in it |
 
 ## Things to know
 

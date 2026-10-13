@@ -8,6 +8,7 @@ import { PACK } from './tex/packdata.js';
 import './tex/terrain.js';
 import './tex/village.js';
 import './tex/items.js';
+import './tex/fruits.js';
 import './tex/tools.js';
 import './tex/food.js';
 import './tex/materials.js';

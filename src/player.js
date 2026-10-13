@@ -91,7 +91,8 @@ export class Player extends Body {
     if (!(input.forward > 0) || this.sneaking || this.inLava) this.sprinting = false;
     else if (this.inWater && !this.flying) this.sprinting = this.swimming || (!!input.sprint && this.headInWater);
     else if (input.sprint) this.sprinting = true;
-    this.swimming = this.sprinting && this.inWater && !this.flying;
+    // (A Devil Fruit's user can't swim: the sea takes their strength and they sink. See powers.js.)
+    this.swimming = this.sprinting && this.inWater && !this.flying && !this.cursed;
     // Swimming lays the player out 0.6 tall; afterwards they get up once there's room to stand.
     const low = this.swimming || (this.h < HEIGHT && world.collides(this.x - this.hw, this.y, this.z - this.hw, this.x + this.hw, this.y + HEIGHT, this.z + this.hw));
     this.h = low ? LOW_HEIGHT : HEIGHT;
@@ -132,9 +133,11 @@ export class Player extends Body {
     } else if (fluid) {
       this.vy -= (this.inLava ? 4 : 7) * dt;
       this.vy *= Math.exp(-2.4 * dt);
-      if (input.jump) this.vy = Math.min(this.vy + 22 * dt, this.inLava ? 1.6 : 3.2);
+      const sea = this.cursed && !this.inLava;
+      if (input.jump && !sea) this.vy = Math.min(this.vy + 22 * dt, this.inLava ? 1.6 : 3.2);
       if (input.jump && this.hitWall) this.vy = Math.max(this.vy, 5.2);
-      this.vy = Math.max(this.vy, -3.5);
+      if (sea) this.vy -= 4 * dt;
+      this.vy = Math.max(this.vy, sea ? -2.5 : -3.5);
     } else {
       if (input.jump && this.onGround) {
         this.vy = (JUMP_V + 1.7 * (this.jumpBoost ?? 0)) * (this.onHoney ? 0.5 : 1);

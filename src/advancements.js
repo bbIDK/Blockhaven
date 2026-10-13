@@ -40,7 +40,8 @@ const HUNTED = ['zombie', 'husk', 'skeleton', 'stray', 'creeper', 'spider', 'cav
 const BRED = ['pig', 'cow', 'sheep', 'chicken', 'rabbit', 'goat', 'wolf', 'cat', 'ocelot', 'horse', 'donkey', 'mule', 'llama', 'camel',
   'panda', 'bee', 'axolotl', 'frog', 'zebra', 'elephant', 'hippo', 'giraffe', 'deer', 'boar', 'penguin'];
 // A Balanced Diet: everything there is to eat or drink that fills you up.
-const FOODS = [...ITEMS.values()].filter((d) => d.food && !d.hidden).map((d) => d.name);
+// (Minecraft's foods: not a Devil Fruit, which is eaten for its power, not as food.)
+const FOODS = [...ITEMS.values()].filter((d) => d.food && !d.hidden && !d.devilFruit).map((d) => d.name);
 const TIERS = ['camp', 'hamlet', 'village', 'town', 'kingdom'];
 const CATS = MOBS.cat.skins, FROGS = MOBS.frog.skins;
 const mobLabel = (p) => MOBS[p]?.label ?? cap(p);

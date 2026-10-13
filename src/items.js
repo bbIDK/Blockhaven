@@ -1,5 +1,6 @@
 // Item registry: every placeable block is also an item (same id); tools and materials use ids 256+.
 // Recipes live in crafting.js.
+import { FRUITS, FRUIT_IDS } from './fruits.js';
 import { BLOCKS, B, BASE, CROP, STEM, LEAVES_WOOD, DOUBLE, POTTED, CAVE_VINES, BERRY_BUSH, COCOA } from './blocks.js';
 import { TEX } from './textures.js';
 import { DYES, rgb } from './colors.js';
@@ -198,6 +199,10 @@ item(651, 'globe_banner_pattern', { label: 'Globe Banner Pattern', stack: 1, pat
 // other, planted on farmland as a stem (see STEM in blocks.js).
 item(652, 'melon_seeds', { label: 'Melon Seeds', plant: 'melon_stem' });
 item(653, 'pumpkin_seeds', { label: 'Pumpkin Seeds', plant: 'pumpkin_stem' });
+
+// ---------------------------------------------------------------- Devil Fruits (the One Piece mod)
+// Eaten (whenever, hungry or not), each gives its power (see fruits.js and powers.js).
+FRUIT_IDS.forEach((id, i) => item(660 + i, `devil_fruit_${id}`, { label: FRUITS[id].name, food: 1, sat: 0.1, always: true, stack: 1, devilFruit: id }));
 for (const [i, [type, label]] of [['cod', 'Bucket of Cod'], ['salmon', 'Bucket of Salmon'], ['tropical_fish', 'Bucket of Tropical Fish'],
   ['pufferfish', 'Bucket of Pufferfish'], ['axolotl', 'Bucket of Axolotl'], ['tadpole', 'Bucket of Tadpole']].entries()) {
   item(604 + i, `${type}_bucket`, { label, stack: 1, leftover: 'bucket', holds: type });
