@@ -1,0 +1,13 @@
+{
+  "browser": {
+    "browserName": "chromium",
+    "isolated": true,
+    "launchOptions": {
+      "headless": true,
+      "executablePath": "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+      "args": ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"]
+    },
+    "contextOptions": { "viewport": { "width": 1280, "height": 720 } }
+  },
+  "outputDir": "/tmp/playwright-mcp"
+}

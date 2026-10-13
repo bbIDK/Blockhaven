@@ -1,0 +1,34 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@0.0.83",
+        "--config",
+        ".claude/mcp/playwright.json"
+      ]
+    },
+    "chrome-devtools": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "chrome-devtools-mcp@1.10.1",
+        "--headless",
+        "--no-usage-statistics",
+        "--viewport",
+        "1280x720",
+        "--isolated",
+        "--executablePath",
+        "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+        "--chromeArg=--use-angle=swiftshader",
+        "--chromeArg=--enable-unsafe-swiftshader",
+        "--chromeArg=--ignore-gpu-blocklist",
+        "--chromeArg=--no-sandbox"
+      ],
+      "env": {
+        "CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS": "1"
+      }
+    }
+  }
+}
