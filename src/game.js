@@ -47,6 +47,7 @@ import { Fishing, bobberMesh, bobberModel, linePoints } from './fishing.js';
 import { tableBook } from './tablebook.js';
 import { POTIONS, EFFECTS } from './potions.js';
 import { nearestStructure, STRUCTURE_NAMES } from './structures.js';
+import { locateOnePiece, opLocateKind, OP_LOCATE } from './opstructures.js';
 import { Signs, SignEditor } from './signs.js';
 import { Banners, PLAIN as PLAIN_BANNER, rotFacing } from './banners.js';
 import { standYaw } from './stands.js';
@@ -3740,7 +3741,7 @@ export class Game {
       case 'help':
         say('/time set day|noon|night|midnight|<ticks>, /time add <n>');
         say('/gamemode survival|creative|adventure|spectator, /tp <x> <y> <z>, /give <item> [count], /summon <creature> [x y z], /weather clear|rain');
-        say('/spawn, /setspawn, /seed, /locate village|camp|hamlet|town|kingdom|pyramid|temple|igloo|shipwreck|monument|mineshaft|stronghold, /fly, /kill, /clear, /difficulty peaceful|easy|normal|hard');
+        say(`/spawn, /setspawn, /seed, /locate ${this.world.gen?.op ? 'town|marine|baratie|lighthouse|wreck|island|<kind of island>' : 'village|camp|hamlet|town|kingdom|pyramid|temple|igloo|shipwreck|monument|mineshaft|stronghold'}, /fly, /kill, /clear, /difficulty peaceful|easy|normal|hard`);
         say('/advancement grant|revoke everything|<name>, /gamerule keepInventory true|false');
         if (this.net) say(`/list${this.net.host ? ', /pvp on|off' : ''}`);
         break;
@@ -3850,6 +3851,16 @@ export class Game {
       case 'locate': {
         // (In newer worlds: a kind of settlement, or `village` for the nearest of any but camps; a
         // kingdom is looked for further afield, as there are fewer of them.)
+        // (A One Piece world: its islands, towns and landmarks instead.)
+        if (this.world.gen?.op) {
+          const want = (args[0] ?? 'town').toLowerCase(), k = opLocateKind(want) ?? opLocateKind(want.replace(/s$/, ''));
+          if (!k) { say(`Usage: /locate ${Object.keys(OP_LOCATE).join('|')}`, '#e88a78'); break; }
+          const s = locateOnePiece(this.world.gen, k, p.x, p.z);
+          if (!s) { say(`There's no ${OP_LOCATE[k]} on this planet`, '#e88a78'); break; }
+          const W = this.world.wrap;
+          say(`The nearest ${s.name} is at ${canon(s.x, W)}, ${s.y}, ${canon(s.z, W)} (${Math.round(Math.hypot(s.x - p.x, s.z - p.z))} blocks away)`);
+          break;
+        }
         let kind = (args[0] ?? 'village').toLowerCase().replace(/s$/, '');
         if (kind === 'castle' || kind === 'city') kind = 'kingdom';
         // (Or one of the structures of newer worlds.)

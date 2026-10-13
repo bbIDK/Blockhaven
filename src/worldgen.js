@@ -20,6 +20,7 @@ import { CaveGen } from './cavegen.js';
 import { SeaGen } from './oceangen.js';
 import { drawStructures, landStructureAt } from './structures.js';
 import { Archipelago } from './opgen.js';
+import { drawOnePiece, onePieceAt } from './opstructures.js';
 
 const PAD = 1; // neighbour columns kept for slopes
 const GW = CHUNK + PAD * 2;
@@ -971,6 +972,8 @@ export class WorldGen {
     for (const p of villagePieces(this, cx, cz, vplans)) p(set);
     // 11. (Generator 10's) structures.
     if (this.version >= 10) drawStructures(this, cx, cz, fromZero);
+    // (One Piece's towns and landmarks: see opstructures.js.)
+    if (this.op) drawOnePiece(this, cx, cz, fromZero);
     return { blocks, climate, biomes };
   }
 
@@ -1090,6 +1093,7 @@ export class WorldGen {
     if (!azalea && !palm && (!table || roll >= table[0])) return null;
     // (Generator 10's temples, igloos and shipwrecks keep a clearing round them.)
     if (this.version >= 10 && landStructureAt(this, wx, wz, 3)) return null;
+    if (this.op && onePieceAt(this, wx, wz, 3)) return null;
     // Settlements' grounds and the roads out of their gates, as the root's own chunk has them.
     const h = this.ground9(wx, wz, col.h);
     const plans = this.plans9(wx, wz);

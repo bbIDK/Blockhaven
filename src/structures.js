@@ -1209,3 +1209,6 @@ const PLAN = { pyramid: planPyramid, jungle_temple: planTemple, igloo: planIgloo
   mineshaft: planMineshaft };
 const BUILD = { pyramid: buildPyramid, jungle_temple: buildTemple, igloo: buildIgloo, shipwreck: buildShipwreck, monument: buildMonument,
   mineshaft: buildMineshaft, stronghold: buildStronghold };
+
+// (For One Piece's towns and landmarks, which are built the same way: see opstructures.js.)
+export { Plot, Frame, frameAt, FILL, DRY, SOFT, HUNG, SOFT_IDS, hangs, planShipwreck, buildShipwreck };
