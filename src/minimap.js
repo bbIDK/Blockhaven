@@ -5,6 +5,7 @@
 // cave, or indoors) it shows what's at your level instead. Each chunk's picture is worked out once
 // (again when something in it changes, or the daylight does); they're put together on one canvas
 // round you, which is drawn turned and scaled each frame.
+import { canon, planet } from './mods.js';
 import { MIN_Y, MAX_Y, CHUNK_HEIGHT, SECTIONS } from './config.js';
 import { BLOCKS, RENDER, R, TINT, TINT_RGB, TEXL, WATERLIKE, SOLID, OPAQUE } from './blocks.js';
 import { BIOME_NAMES } from './biomes.js';
@@ -349,7 +350,7 @@ export class Minimap {
     let text = '';
     if (g.settings.mapCoords !== false) {
       const b = g.world.biomeAt(Math.floor(p.x), Math.floor(p.z));
-      text = `${Math.floor(p.x)}, ${Math.floor(p.y)}, ${Math.floor(p.z)}\n${cave !== null ? 'Underground' : BIOME_NAMES[b] ?? ''}`;
+      text = `${Math.floor(canon(p.x, planet.size))}, ${Math.floor(p.y)}, ${Math.floor(canon(p.z, planet.size))}\n${cave !== null ? 'Underground' : BIOME_NAMES[b] ?? ''}`;
     }
     if (text !== this.lastInfo) { this.lastInfo = text; this.info.textContent = text; this.info.hidden = !text; }
   }

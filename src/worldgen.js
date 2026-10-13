@@ -19,6 +19,7 @@ import { villagePieces, villagesNear, groundLevel, insideVillage, villageAt, app
 import { CaveGen } from './cavegen.js';
 import { SeaGen } from './oceangen.js';
 import { drawStructures, landStructureAt } from './structures.js';
+import { Archipelago } from './opgen.js';
 
 const PAD = 1; // neighbour columns kept for slopes
 const GW = CHUNK + PAD * 2;
@@ -290,7 +291,9 @@ export class WorldGen {
     // y 0-255.)
     this.v12 = version >= 12 && type !== 'flat';
     this.lo = this.v12 ? MIN_Y : 0; this.top = this.v12 ? MAX_Y : HEIGHT;
-    this.villages = type !== 'flat'; // (worlds from the first generator have none)
+    // (One Piece's planet is its own: see opgen.js. It has towns of its own, not these villages.)
+    this.op = type === 'onepiece' ? new Archipelago(this.seed) : null;
+    this.villages = type !== 'flat' && !this.op; // (worlds from the first generator have none)
     const n = (k) => new Noise((this.seed ^ hashString(k)) >>> 0);
     this.nCont = n('continent2'); this.nEros = n('erosion2'); this.nPeaks = n('peaks2'); this.nHills = n('hills2');
     this.nWarp = n('warp2'); this.nTemp = n('temperature2'); this.nHum = n('humidity2'); this.nRiver = n('river2');
@@ -308,6 +311,7 @@ export class WorldGen {
   // Terrain shape and climate of one column. Returns the (fractional) surface height and fills
   // this.col with everything the biome choice needs.
   column(x, z) {
+    if (this.op) return this.op.column(this, x, z);
     const col = this.col;
     const wx = x + this.nWarp.noise2(x / 260, z / 260) * 36 + this.nWarp.noise2(x / 70, z / 70) * 6;
     const wz = z + this.nWarp.noise2(z / 260 + 31.7, x / 260 - 17.3) * 36 + this.nWarp.noise2(z / 70 + 9.1, x / 70 - 3.3) * 6;
@@ -369,6 +373,7 @@ export class WorldGen {
   }
 
   biome(col) {
+    if (this.op) return this.op.biome(col);
     const { h, temp: t, hum, c, river, mount, pv, v } = col;
     if (h < SEA_LEVEL - 0.5) {
       if (river > 0.5 && h > SEA_LEVEL - 9) return t < -0.45 ? BIOME.FROZEN_RIVER : BIOME.RIVER;
@@ -429,6 +434,7 @@ export class WorldGen {
   // A pleasant starting point: dry, fairly flat ground in a green biome near the origin.
   findSpawn() {
     if (this.type === 'flat') return { x: 0.5, z: 0.5 };
+    if (this.op) return this.op.spawn(this);
     const green = new Set([BIOME.PLAINS, BIOME.FOREST, BIOME.BIRCH_FOREST, BIOME.FLOWER_FOREST, BIOME.SUNFLOWER_PLAINS, BIOME.MEADOW,
       BIOME.CHERRY_GROVE, BIOME.TAIGA, BIOME.SAVANNA]);
     const dry = (b) => !OCEANS.has(b) && ![BIOME.RIVER, BIOME.FROZEN_RIVER, BIOME.SWAMP].includes(b);

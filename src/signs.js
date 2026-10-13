@@ -2,6 +2,7 @@
 // window for writing it. Writing touched with glow ink glows: lit in the dark, each letter ringed
 // in a pale glow. The text of each sign in sight is lettered into one of a few spare layers
 // of the creature-skin texture (see Renderer.signLayer) and shown on a quad over the board.
+import { blockKey, keyPos } from './mods.js';
 import { SIGN } from './blocks.js';
 import { boxMesh, MODEL_OFFSET } from './models.js';
 import { identity, translate } from './math.js';
@@ -81,7 +82,7 @@ export class Signs {
     this.slots = new Array(SIGN_SLOTS).fill(null);
   }
 
-  static key(x, y, z) { return `${x},${y},${z}`; }
+  static key(x, y, z) { return blockKey(x, y, z); }
   get(x, y, z) { return this.text.get(Signs.key(x, y, z)) ?? ['', '', '', '']; }
 
   glowing(x, y, z) { return this.glow.has(Signs.key(x, y, z)); }
@@ -119,7 +120,7 @@ export class Signs {
     if (!w || !r) return;
     const near = [];
     for (const [key, lines] of this.text) {
-      const [x, y, z] = key.split(',').map(Number);
+      const [x, y, z] = keyPos(key);
       const d = Math.hypot(x + 0.5 - cam.x, y + 0.5 - cam.y, z + 0.5 - cam.z);
       if (d > range) continue;
       const id = w.getBlock(x, y, z);
@@ -137,7 +138,7 @@ export class Signs {
           // Take the slot of the farthest sign drawn.
           let far = null, fd = -1;
           for (const k of this.shown.keys()) {
-            const [x, y, z] = k.split(',').map(Number), d = Math.hypot(x - cam.x, y - cam.y, z - cam.z);
+            const [x, y, z] = keyPos(k), d = Math.hypot(x - cam.x, y - cam.y, z - cam.z);
             if (d > fd) { fd = d; far = k; }
           }
           slot = this.shown.get(far).slot;

@@ -69,6 +69,12 @@ export class RemotePlayer {
 
   // Presence: { n: name, p: [x, y, z, yaw, pitch], f: flags, i: held item, a: armour, k: look,
   // s: swings, u: hurts }.
+  // Moved by (sx, sz) (on a planet, to another lap of it: see World.wrap), and where it was with it.
+  shift(sx, sz) {
+    this.x += sx; this.z += sz; this.lastX += sx; this.lastZ += sz;
+    for (const s of this.samples) { s.x += sx; s.z += sz; }
+  }
+
   update(pres, name, now) {
     this.name = name;
     const p = pres.p;

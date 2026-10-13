@@ -19,7 +19,9 @@ export function runJob(job) {
   if (job.type === 'gen') {
     const key = `${job.seed}:${job.worldType}:${job.version}`;
     if (key !== genKey) { gen = makeGenerator(job.seed, job.worldType, job.version ?? 1); genKey = key; }
-    const g = gen.generate(job.cx, job.cz);
+    // (On a planet a chunk is the one where it falls on it: see World.wrap.)
+    const n = job.wrap;
+    const g = n ? gen.generate(job.cx - Math.floor(job.cx / n) * n, job.cz - Math.floor(job.cz / n) * n) : gen.generate(job.cx, job.cz);
     const blocks = job.saved ?? worldLayout(g.blocks);
     const light = new Uint8Array(CHUNK_VOLUME);
     lightChunk(blocks, light);

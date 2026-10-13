@@ -908,11 +908,30 @@ export class Entities {
     const w = this.world;
     if (!w) return;
     if (this.guest) { this.remoteUpdate(dt); return; }
+    // (On a planet, each creature, item and boat is kept as the copy of itself nearest a player: sail
+    // round the world and what's there is beside you again. See World.wrap.)
+    const players = w.wrap ? this.game.players() : null;
     for (const e of this.list) {
       if (e.dead) continue;
+      if (players) this.keepNear(e, players);
       try { this.updateOne(e, dt); } catch (err) { this.fault(e, err); }
     }
     this.list = this.list.filter((e) => !e.dead);
+  }
+
+  // On a planet: moves `e` to its copy nearest whichever of `players` is nearest it.
+  keepNear(e, players) {
+    const w = this.world;
+    let best = null, bd = Infinity;
+    for (const q of players) {
+      const dx = w.near(e.x, q.x) - q.x, dz = w.near(e.z, q.z) - q.z, d = dx * dx + dz * dz;
+      if (d < bd) { bd = d; best = q; }
+    }
+    if (!best) return;
+    const sx = w.near(e.x, best.x) - e.x, sz = w.near(e.z, best.z) - e.z;
+    if (!sx && !sz) return;
+    e.x += sx; e.z += sz;
+    if (e.tx !== undefined) { e.tx += sx; e.tz += sz; }
   }
 
   // One entity's movement this frame (on the host).
@@ -1497,6 +1516,11 @@ export class Entities {
     const k = 1 - Math.exp(-dt * 14);
     for (const e of this.list) {
       if (e.dead) continue;
+      // (On a planet the host may count the laps differently: each is kept as its copy nearest us.)
+      if (this.world.wrap && e.tx !== undefined) {
+        const sx = this.world.near(e.tx, p.x) - e.tx, sz = this.world.near(e.tz, p.z) - e.tz;
+        if (sx || sz) { e.tx += sx; e.tz += sz; e.x += sx; e.z += sz; }
+      }
       try {
         e.age += dt;
         // What this player rides, they move themselves (and tell the host where it is).

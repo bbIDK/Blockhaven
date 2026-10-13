@@ -7,6 +7,7 @@
 // chests is sent to the host, which applies it and passes the results on to everyone.
 // Where each player stands and looks and what they hold travels in their presence (net.js),
 // which is also how open games are listed in the claude.ai room.
+import { blockKey, keyPos, nearest } from './mods.js';
 import { Link, RoomTransport, PeerTransport, PROTOCOL, cleanCode, randomCode, NO_GAME } from './net.js';
 import { RelayTransport } from './relay.js';
 import { RemotePlayer } from './avatars.js';
@@ -134,9 +135,28 @@ export function cleanStack(s) {
   return { id: s.id, count: Math.min(s.count, maxStack(s.id)), dmg: int(s.dmg) && s.dmg > 0 ? s.dmg : 0, ...cleanExtras(s) };
 }
 
+// On a planet (see World.wrap) players may count the laps they've sailed differently: whatever
+// position arrives is taken as its copy nearest (rx, rz), the receiver's own place in it.
+function relap(msg, rx, rz, W) {
+  const walk = (o, depth) => {
+    if (depth > 4) return;
+    for (const k in o) {
+      const v = o[k];
+      if (typeof v === 'number') {
+        if (k === 'x' || k === 'tx') o[k] = nearest(v, rx, W);
+        else if (k === 'z' || k === 'tz') o[k] = nearest(v, rz, W);
+      } else if (v && typeof v === 'object' && !['c', 'p', 'r', 'fb'].includes(k)) walk(v, depth + 1);
+    }
+  };
+  walk(msg, 0);
+  const pt = (a, i) => { if (Array.isArray(a) && num(a[i]) && num(a[i + 2])) { a[i] = nearest(a[i], rx, W); a[i + 2] = nearest(a[i + 2], rz, W); } };
+  if ((msg.t === 'e' || msg.t === 'b') && Array.isArray(msg.c)) for (const c of msg.c) pt(c, 0);
+  pt(msg.p, 0); pt(msg.fb, 0); pt(msg.r, 1);
+}
+
 function parseKey(k) {
   if (typeof k !== 'string' || !/^-?\d{1,8},-?\d{1,3},-?\d{1,8}$/.test(k)) return null;
-  const [x, y, z] = k.split(',').map(Number);
+  const [x, y, z] = keyPos(k);
   return y >= MIN_Y && y < MAX_Y ? [x, y, z] : null;
 }
 
@@ -342,8 +362,21 @@ export class HostSession extends Session {
     if (this.entTimer >= 0.1) { this.entTimer = 0; this.syncEntities(); }
     this.furnaceTimer += dt;
     if (this.furnaceTimer >= 0.25) { this.furnaceTimer = 0; this.syncFurnaces(); }
-    const keep = [];
-    for (const g of this.guests.values()) if (g.x !== null) keep.push([Math.floor(g.x) >> 4, Math.floor(g.z) >> 4, KEEP_RADIUS]);
+    const keep = [], w = this.game.world, me = this.game.player;
+    for (const g of this.guests.values()) {
+      if (g.x === null) continue;
+      // (On a planet each guest is kept on our own lap, or the same land would be loaded twice over,
+      // a lap apart, and the copies drift apart: see World.wrap.)
+      if (w?.wrap && me) {
+        const sx = w.near(g.x, me.x) - g.x, sz = w.near(g.z, me.z) - g.z;
+        if (sx || sz) {
+          g.x += sx; g.z += sz;
+          const rp = this.players.get(g.addr);
+          if (rp) rp.shift?.(sx, sz);
+        }
+      }
+      keep.push([Math.floor(g.x) >> 4, Math.floor(g.z) >> 4, KEEP_RADIUS]);
+    }
     this.game.world?.setKeep(keep);
     this.checkSleep(dt);
     this.link.flush();
@@ -368,6 +401,7 @@ export class HostSession extends Session {
     const g = this.guests.get(addr);
     if (!pres) { if (g) this.remove(g, 'left the game'); this.players.delete(addr); return; }
     if (!g || pres.g !== this.gid) return;
+    if (this.game.world?.wrap) relap(pres, this.game.player.x, this.game.player.z, this.game.world.wrap);
     g.name = cleanName(pres.n);
     if (Array.isArray(pres.p) && pres.p.length >= 3 && pres.p.slice(0, 3).every(num)) [g.x, g.y, g.z] = pres.p;
     // Where they look and what they hold (animals follow food; endermen mind being stared at).
@@ -460,6 +494,7 @@ export class HostSession extends Session {
     if (msg.t === 'hi') { this.hello(from, msg); return; }
     const g = this.guests.get(from);
     if (!g) return;
+    if (this.game.world?.wrap && g.x !== null) relap(msg, g.x, g.z, this.game.world.wrap);
     switch (msg.t) {
       case 'need': if (int(msg.k)) this.sendChunk(g, msg.k >>> 0); break;
       case 'e': if (Array.isArray(msg.c)) this.applyEdits(g, msg.c.slice(0, 4096)); break;
@@ -586,7 +621,7 @@ export class HostSession extends Session {
     this.send(g.addr, {
       t: 'welcome', g: this.gid, be: this.link.epoch, bs: this.link.stream('*').seq, pvp: this.pvp ? 1 : 0,
       w: { name: meta.name, seed: meta.seed, type: meta.type, gen: meta.gen ?? 1, mode: meta.mode, diff: game.difficulty, spawn: meta.spawn, time: Math.floor(game.time),
-        rain: game.weather.raining ? 1 : 0, thunder: game.weather.thundering ? 1 : 0, hard: game.hardcore ? 1 : 0, keep: game.keepInventory ? 1 : 0 },
+        rain: game.weather.raining ? 1 : 0, thunder: game.weather.thundering ? 1 : 0, hard: game.hardcore ? 1 : 0, keep: game.keepInventory ? 1 : 0, mods: meta.mods ?? [] },
       you: meta.players?.[g.uid] ?? null, mk: playerKey(g.uid),
       keys: [...w.store.keys],
       ents: game.entities.list.filter((e) => !e.dead).map((e) => { if (!e.nid) e.nid = this.nextNid++; return entityState(e); }),
@@ -600,7 +635,8 @@ export class HostSession extends Session {
     const w = this.game.world;
     if (!w) return;
     let blocks = null;
-    const c = w.chunks.get(key);
+    // (On a planet the key is where the chunk falls on it, whatever lap it's loaded on here.)
+    const c = w.wrap ? [...w.chunks.values()].find((ch) => ch.storeKey === key) : w.chunks.get(key);
     if (c && c.state === S_READY) blocks = c.blocks.slice();
     else if (w.store?.has(key)) blocks = await w.store.loadChunk(key);
     if (this.closed || !this.guests.has(g.addr)) return;
@@ -686,20 +722,20 @@ export class HostSession extends Session {
   // A guest wrote on a sign: if it's still there, everyone sees it.
   sign(m) {
     if (typeof m.k !== 'string' || !/^-?\d+,-?\d+,-?\d+$/.test(m.k) || !Array.isArray(m.l)) return;
-    const [x, y, z] = m.k.split(',').map(Number);
+    const [x, y, z] = keyPos(m.k);
     if (!SIGN[this.game.world.getBlock(x, y, z)]) return;
     this.game.writeSign(x, y, z, m.l.slice(0, 4).map((l) => String(l ?? '')), m.g === 1 ? true : undefined);
   }
-  writeSign(x, y, z, lines, glow = false) { this.link.broadcast({ t: 'sign', k: `${x},${y},${z}`, l: lines, g: glow ? 1 : 0 }); }
+  writeSign(x, y, z, lines, glow = false) { this.link.broadcast({ t: 'sign', k: blockKey(x, y, z), l: lines, g: glow ? 1 : 0 }); }
 
   // A guest put up a banner (or the host did): everyone sees its colours.
   bannerFrom(g, m) {
     if (typeof m.k !== 'string' || !/^-?\d+,-?\d+,-?\d+$/.test(m.k)) return;
-    const [x, y, z] = m.k.split(',').map(Number);
+    const [x, y, z] = keyPos(m.k);
     if (g.x === null || Math.hypot(x + 0.5 - g.x, y - g.y, z + 0.5 - g.z) > 10) return;
     this.game.banners.set(x, y, z, { c: m.c, p: m.p });
   }
-  banner(x, y, z, d) { this.link.broadcast({ t: 'bnr', k: `${x},${y},${z}`, c: d.c, p: d.p }); }
+  banner(x, y, z, d) { this.link.broadcast({ t: 'bnr', k: blockKey(x, y, z), c: d.c, p: d.p }); }
   // A guest takes a bees' home whole (with Silk Touch): it drops with its bees and honey in it (the
   // block itself goes with their edit, which follows). One put up with bees in it gets them.
   takeHiveFor(g, m) {
@@ -792,7 +828,7 @@ export class HostSession extends Session {
     // A guest taking from one of a settlement's chests is stealing, if they're seen.
     const g = from && this.guests.get(from);
     if (g?.ref && arr.reduce((n, s) => n + (s?.count ?? 0), 0) < before) {
-      const at = String(m.k).split(',').map(Number);
+      const at = keyPos(String(m.k));
       const plan = at.length === 3 && at.every(Number.isInteger) ? this.game.entities.civilians.chestOwner([at]) : null;
       if (plan) this.game.entities.civilians.theft(plan, at[0] + 0.5, at[1] + 0.5, at[2] + 0.5, g.ref);
     }
@@ -1101,6 +1137,7 @@ export class GuestSession extends Session {
   }
 
   presence(addr, pres) {
+    if (pres && this.game.world?.wrap && this.game.player) relap(pres, this.game.player.x, this.game.player.z, this.game.world.wrap);
     if (addr === this.hostAddr) {
       if (!pres) { if (this.gid) this.game.disconnected('The host left the game.'); return; }
       this.hostSeen = performance.now();
@@ -1118,6 +1155,7 @@ export class GuestSession extends Session {
     if (from !== this.hostAddr) return;
     this.hostSeen = performance.now();
     const game = this.game;
+    if (game.world?.wrap && game.player && msg.t !== 'welcome') relap(msg, game.player.x, game.player.z, game.world.wrap);
     switch (msg.t) {
       case 'welcome': this.welcome(msg); break;
       case 'deny':
@@ -1164,13 +1202,13 @@ export class GuestSession extends Session {
       case 'fx': this.effect(msg); break;
       case 'sign':
         if (typeof msg.k === 'string' && /^-?\d+,-?\d+,-?\d+$/.test(msg.k) && Array.isArray(msg.l)) {
-          const [x, y, z] = msg.k.split(',').map(Number);
+          const [x, y, z] = keyPos(msg.k);
           game.signs.set(x, y, z, msg.l.slice(0, 4).map((l) => String(l ?? '')), msg.g === 1);
         }
         break;
       case 'bnr':
         if (typeof msg.k === 'string' && /^-?\d+,-?\d+,-?\d+$/.test(msg.k)) {
-          const [x, y, z] = msg.k.split(',').map(Number);
+          const [x, y, z] = keyPos(msg.k);
           game.banners.set(x, y, z, { c: msg.c, p: msg.p }, false);
         }
         break;
@@ -1211,7 +1249,7 @@ export class GuestSession extends Session {
     for (const c of list) {
       if (!validChange(c, 4)) continue;
       const cx = c[0] >> 4, cz = c[2] >> 4, key = chunkKey(cx, cz);
-      this.store?.keys.add(key);
+      this.store?.keys.add(w ? w.storeKey(cx, cz) : key);
       const chunk = w?.chunkAt(cx, cz);
       // Not loaded: the host will send the whole chunk when it's needed.
       if (!chunk) { this.buffered.delete(key); continue; }
@@ -1330,8 +1368,8 @@ export class GuestSession extends Session {
   useFence(x, y, z) { this.toHost({ t: 'lead', x, y, z }); }
   hang(kind, x, y, z, face, glow = false) { this.toHost({ t: 'hang', k: kind, x, y, z, f: face, g: glow ? 1 : undefined }); }
   useHanging(e, held) { this.toHost({ t: 'hu', e: e.nid, st: held ? { id: held.id, d: held.dmg ?? 0, ex: extras(held) ?? undefined } : undefined }); }
-  writeSign(x, y, z, lines, glow = false) { this.toHost({ t: 'sign', k: `${x},${y},${z}`, l: lines, g: glow ? 1 : 0 }); }
-  banner(x, y, z, d) { this.toHost({ t: 'bnr', k: `${x},${y},${z}`, c: d.c, p: d.p }); }
+  writeSign(x, y, z, lines, glow = false) { this.toHost({ t: 'sign', k: blockKey(x, y, z), l: lines, g: glow ? 1 : 0 }); }
+  banner(x, y, z, d) { this.toHost({ t: 'bnr', k: blockKey(x, y, z), c: d.c, p: d.p }); }
   // A bees' home taken whole (the host hands it over, bees and all), or put up with bees in it.
   takeHive(x, y, z) { this.toHost({ t: 'thv', x, y, z }); }
   settleHive(x, y, z, n) { this.toHost({ t: 'shv', x, y, z, n }); }

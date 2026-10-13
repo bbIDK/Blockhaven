@@ -4,6 +4,7 @@
 // spare layer of the creature-skin texture (see Renderer.bannerLayer), laid out as Minecraft lays out
 // its banner model (so Pixel Perfection's banner pictures fit it), and drawn on that model, the cloth
 // stirring a little in the breeze. A banner item carries its patterns in `bp` (see inventory.js).
+import { blockKey, keyPos } from './mods.js';
 import { DYES } from './colors.js';
 import { BANNER } from './blocks.js';
 import { BANNER_PACK } from './tex/packdata.js';
@@ -172,7 +173,7 @@ export class Banners {
     this.frame = 0;
   }
 
-  static key(x, y, z) { return `${x},${y},${z}`; }
+  static key(x, y, z) { return blockKey(x, y, z); }
   get(x, y, z) { return this.designs.get(Banners.key(x, y, z)) ?? PLAIN; }
   // (`send`: tell the other players; not for what they told us.)
   set(x, y, z, design, send = true) {
@@ -235,7 +236,7 @@ export class Banners {
     this.frame++;
     const near = [];
     for (const [key, d] of this.designs) {
-      const [x, y, z] = key.split(',').map(Number), dist = Math.hypot(x + 0.5 - cam.x, y + 1 - cam.y, z + 0.5 - cam.z);
+      const [x, y, z] = keyPos(key), dist = Math.hypot(x + 0.5 - cam.x, y + 1 - cam.y, z + 0.5 - cam.z);
       if (dist > range) continue;
       const b = BANNER[w.getBlock(x, y, z)];
       if (b) near.push({ x, y, z, d, b, dist });

@@ -1,5 +1,7 @@
 // Game state and the main loop: menus, loading, playing (movement, mining, building, survival),
 // saving, and the rotating title-screen panorama.
+import { blockKey, keyPos, planet, canon } from './mods.js';
+import { knownMods } from './mods.js';
 import { Renderer } from './renderer.js';
 import { World, SOIL } from './world.js';
 import { Player } from './player.js';
@@ -384,6 +386,8 @@ export class Game {
   get mayBuild() { return !this.adventure && !this.spectator; }
   get hardcore() { return !!this.meta?.hardcore; }
   get keepInventory() { return !!this.meta?.keepInventory; }
+  // Whether this world was made with a mod (see mods.js).
+  hasMod(name) { return !!this.meta?.mods?.includes(name); }
   // This player's lasting id (their pets know them by it).
   get uid() { return playerUid(); }
   get mode() { return this.creative ? 'creative' : 'survival'; }
@@ -579,13 +583,13 @@ export class Game {
     const name = $('cw-name').value.trim() || 'New World';
     const seedText = $('cw-seed').value.trim();
     const seed = seedFromText(seedText);
-    const { mode, type, difficulty, keepInventory } = this.ui.createState;
+    const { mode, type, difficulty, keepInventory, mods } = this.ui.createState;
     // (Hardcore is Survival on Hard, with one life.)
     const hardcore = mode === 'hardcore';
     const meta = {
       id: `w${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`,
       name, seed, seedText, mode: hardcore ? 'survival' : mode, hardcore, keepInventory: !!keepInventory, type, difficulty: hardcore ? 3 : difficulty,
-      gen: LATEST_GEN, created: Date.now(), lastPlayed: Date.now(), time: 1000, spawn: null, player: null, inventory: null, version: SAVE_VERSION,
+      mods: knownMods(mods), gen: LATEST_GEN, created: Date.now(), lastPlayed: Date.now(), time: 1000, spawn: null, player: null, inventory: null, version: SAVE_VERSION,
     };
     await storage.saveWorld(meta);
     this.enterWorld(meta);
@@ -614,7 +618,8 @@ export class Game {
     if (this.world) { this.world.dispose(); this.world = null; }
     const store = remote ? remote.store : await new storage.WorldStore(meta.id, CHUNK_VOLUME).init();
     this.meta = meta;
-    this.world = new World({ seed: meta.seed, type: meta.type, version: meta.gen ?? 1, renderer: this.renderer, store });
+    this.world = new World({ seed: meta.seed, type: meta.type, version: meta.gen ?? 1, mods: meta.mods, renderer: this.renderer, store });
+    planet.size = this.world.wrap;
     this.world.setFastLeaves(this.settings.graphics === 0);
     this.world.remote = !!remote;
     this.world.listener = this;
@@ -634,6 +639,7 @@ export class Game {
       meta.spawn = { x: s.x, y: null, z: s.z };
     }
     const p = this.player = new Player();
+    planet.ref = p;
     this.riding = null;
     this.fishing.retract();
     this.remount = !!meta.player?.riding;
@@ -721,7 +727,7 @@ export class Game {
       type: world.type === 'flat' ? 'flat' : 'default', gen: Number.isInteger(world.gen) && world.gen >= 2 && world.gen <= LATEST_GEN ? world.gen : 1,
       // (Someone new plays as the host does, but for Spectator: they start in Survival.)
       mode: MODE_NAMES[you?.mode] ? you.mode : world.mode === 'creative' || world.mode === 'adventure' ? world.mode : 'survival',
-      hardcore: !!world.hard, keepInventory: !!world.keep,
+      hardcore: !!world.hard, keepInventory: !!world.keep, mods: knownMods(world.mods),
       spawn: world.spawn && Number.isFinite(world.spawn.x) && Number.isFinite(world.spawn.z) ? { x: world.spawn.x, y: world.spawn.y ?? null, z: world.spawn.z } : { x: 0.5, y: null, z: 0.5 },
       time: Number.isFinite(world.time) ? world.time : 1000, weather: { raining: !!world.rain, thunder: !!world.thunder },
       bed: you?.bed ?? null, player: you?.player ?? null, inventory: you?.inventory ?? null, waypoints: you?.wp ?? null, advancements: you?.adv ?? null, remote: true,
@@ -1324,7 +1330,7 @@ export class Game {
   }
 
   // ---------------------------------------------------------------- chests, furnaces, tables and beds
-  containerKey(x, y, z) { return `${x},${y},${z}`; }
+  containerKey(x, y, z) { return blockKey(x, y, z); }
 
   // A chest, or both halves of a double chest (the left half, seen from the front, first).
   openChestAt(x, y, z) {
@@ -1501,7 +1507,7 @@ export class Game {
   tickFurnaces() {
     const w = this.world;
     for (const [key, f] of this.furnaces) {
-      const [x, y, z] = key.split(',').map(Number);
+      const [x, y, z] = keyPos(key);
       if (!w.isLoaded(x, z)) continue;
       const id = w.getBlock(x, y, z);
       if (!FURNACE_IDS.has(id)) { if (f.empty) this.furnaces.delete(key); continue; }
@@ -4280,7 +4286,7 @@ export class Game {
     const r = this.renderer.stats;
     return [
       `Blockhaven · ${Math.round(this.fps)} fps (${this.frameMs.toFixed(1)} ms)${this.world.pool.threaded ? '' : ' · single-threaded'}`,
-      `XYZ: ${p.x.toFixed(3)} / ${p.y.toFixed(3)} / ${p.z.toFixed(3)}`,
+      `XYZ: ${canon(p.x, this.world.wrap).toFixed(3)} / ${p.y.toFixed(3)} / ${canon(p.z, this.world.wrap).toFixed(3)}`,
       `Block: ${bx} ${by} ${bz} · Chunk: ${bx >> 4} ${bz >> 4}`,
       `Facing: ${facing} (${deg.toFixed(1)}° / ${((p.pitch * 180) / Math.PI).toFixed(1)}°)`,
       `Biome: ${BIOME_NAMES[biome] ?? '?'} · Light: ${light >> 4} sky, ${light & 15} block`,

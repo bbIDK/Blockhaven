@@ -8,6 +8,7 @@
 // out knows its home (`hive`: "x,y,z"). Homes the world made come with their bees, found as the
 // land they're in loads; a bee out of everyone's sight goes back into its home rather than being
 // lost.
+import { blockKey, keyPos } from './mods.js';
 import { B, HIVE, HONEY_FULL, FACE_DIRS, SOLID, hiveId } from './blocks.js';
 import { MIN_Y } from './config.js';
 
@@ -41,8 +42,8 @@ export class Hives {
     this.timer = 0;
   }
 
-  static key(x, y, z) { return `${x},${y},${z}`; }
-  static at(key) { return key.split(',').map(Number); }
+  static key(x, y, z) { return blockKey(x, y, z); }
+  static at(key) { return keyPos(key); }
 
   clear() { this.homes.clear(); }
   serialize() { return [...this.homes].map(([k, bees]) => [k, bees.map((b) => ({ ...b }))]); }

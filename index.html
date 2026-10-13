@@ -132,6 +132,9 @@
       <p class="desc" id="cw-keep-desc"></p>
       <button type="button" class="btn wide" id="cw-type" data-action="cycle-type">World Type: Default</button>
       <p class="desc" id="cw-type-desc"></p>
+      <button type="button" class="btn wide" id="cw-mods" data-action="toggle-mods" aria-expanded="false" aria-controls="cw-mods-list">Mods: None</button>
+      <div class="mods-list" id="cw-mods-list" hidden></div>
+      <p class="desc" id="cw-mods-desc"></p>
       <label class="field">Seed for the World Generator
         <input id="cw-seed" type="text" maxlength="40" autocomplete="off" spellcheck="false" placeholder="Leave blank for a random seed">
       </label>
@@ -234,6 +237,7 @@
       <p class="hint-text">Advancements (<kbd data-bind="advancements">L</kbd>) are goals to reach, from your first crafting table to seeing every biome, breeding every animal and eating everything there is to eat. The trees open up as you go; point at one to see what it asks and how far along you are. Challenges give experience too.</p>
       <p class="hint-text">Dying drops everything you have where you fell, for ten minutes of play, unless Keep Inventory is on (Create World, or <kbd>/gamerule keepInventory true</kbd>). Hardcore gives you one life on Hard, and after it you can only watch. <kbd>/gamemode adventure</kbd> lets you use things but not break or build; <kbd>/gamemode spectator</kbd> flies through everything, touching nothing (the mouse wheel sets the speed).</p>
       <p class="hint-text">New worlds are as tall as Minecraft's: from bedrock at y -64 up to y 319. Below y 0 the rock turns to deepslate, the caves go on down to lakes of lava at the bottom, and diamonds are commonest near there; the mountains climb higher than before. Worlds you already have keep their land (bedrock at y 0), but can be built on up to y 319 too.</p>
+      <p class="hint-text">Mods (Create New World): One Piece makes the world a planet of ocean and islands from the story. Sail on and you come round to where you started; the Red Line is the wall all round it, Reverse Mountain's canal the way through, and the Grand Line, between its Calm Belts, has the wildest islands.</p>
       <p class="hint-text">Farming: till soil with a hoe, then right-click it with seeds, a carrot or a potato (hold and sweep to sow a row). A melon slice makes melon seeds, a pumpkin four pumpkin seeds; their stems bear fruit on the soil beside them. Crops grow faster by water and in rows. Don't jump on your farmland: it gets trampled.</p>
       <p class="hint-text">Now and then a rain is a thunderstorm: lightning strikes the highest ground about you (and creatures out in the open), and monsters come out even by day. Find a roof, or sleep through it in a bed.</p>
       <p class="hint-text">Bees fill their nests and hives with honey. When one's full, a glass bottle takes the honey and shears the comb, but light a campfire under it first or the bees come after you. Dye banners at a loom, dress an armor stand in your spare armour, and climb scaffolding by jumping inside it (sneak to go down).</p>

@@ -1196,3 +1196,9 @@ kbd {
 .toast b { margin-top: calc(var(--u) * 7); }
 .toast span { margin-top: calc(var(--u) * 3); color: #fff; }
 @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+
+/* Create New World > Mods: the list that drops down under the button, a switch for each mod. */
+.mods-list { display: flex; flex-direction: column; gap: var(--u); margin: calc(var(--u) * -1) 0 var(--u); padding: var(--u);
+  background: rgba(0, 0, 0, .45); border: calc(var(--u) / 2) solid #000; }
+.mods-list .btn { margin: 0; }
+.mods-list .mod-desc { margin: 0 0 var(--u); font-size: .85em; color: #c8c8c8; }

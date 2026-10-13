@@ -1,5 +1,6 @@
 // The live world: chunk streaming around the player, block access, light updates, block ticks
 // (flowing water, falling sand) and scheduling of section meshes.
+import { knownMods, generatorType, PLANET, canon, nearest } from './mods.js';
 import { CHUNK, MIN_Y, MAX_Y, CHUNK_HEIGHT, SECTIONS, NO_Y, UNKNOWN_Y, chunkKey } from './config.js';
 import {
   B, BLOCKS, OPAQUE, SOLID, FILTER, EMIT, RENDER, R, SELECTABLE, REPLACEABLE, TORCH_LEAN, FACE_DIRS,
@@ -41,6 +42,7 @@ export class Chunk {
     this.cx = cx;
     this.cz = cz;
     this.key = chunkKey(cx, cz);
+    this.storeKey = this.key; // (on a planet, where it falls on it: see World.requestChunk)
     this.state = S_REQUESTED;
     this.blocks = null;
     this.light = null;
@@ -119,9 +121,15 @@ const posKey = (x, y, z) => (x + 1048576) * 1073741824 + (z + 1048576) * 512 + (
 
 export class World {
   // `version`: which terrain generator made the world (1 for worlds from before the release update).
-  constructor({ seed, type = 'default', renderer, store = null, version = 2 }) {
+  constructor({ seed, type = 'default', renderer, store = null, version = 2, mods = [] }) {
     this.seed = seed >>> 0;
-    this.type = type;
+    // (A mod may bring its own generator: One Piece's ocean planet. See mods.js.)
+    this.mods = knownMods(mods);
+    this.type = generatorType(type, this.mods);
+    // One Piece's world goes round like a planet: its land (and what's changed on it) repeats every
+    // `wrap` blocks each way. Coordinates go on as they are (sail round once and x is PLANET more);
+    // the chunks are made, and kept in the store, by where they fall on the planet (`storeKey`).
+    this.wrap = this.type === 'onepiece' ? PLANET : 0;
     this.genVersion = version;
     // The lowest the land goes: the bottom of the world since generator 12 (Update 31); y 0 in
     // worlds from before it, and flat worlds, whose bedrock is there.
@@ -161,6 +169,17 @@ export class World {
   }
 
   // ------------------------------------------------------------------ access
+  // The store's key for chunk (cx, cz): on a planet, the chunk where it falls on it.
+  storeKey(cx, cz) {
+    const n = this.wrap >> 4;
+    return n ? chunkKey(canon(cx, n), canon(cz, n)) : chunkKey(cx, cz);
+  }
+  // A block position as kept by things that remember blocks (chests, signs...): on a planet, where it
+  // falls on it, so it's the same however many times you've been round.
+  posKey(x, y, z) { return `${canon(x, this.wrap)},${y},${canon(z, this.wrap)}`; }
+  // The copy of world x (or z) `v` nearest `ref` (on a planet; elsewhere `v`).
+  near(v, ref) { return nearest(v, ref, this.wrap); }
+
   chunkAt(cx, cz) {
     const c = this._cache;
     if (c && c.cx === cx && c.cz === cz) return c;
@@ -375,11 +394,22 @@ export class World {
 
   requestChunk(cx, cz) {
     const chunk = new Chunk(cx, cz);
+    if (this.wrap) chunk.storeKey = this.storeKey(cx, cz);
     this.chunks.set(chunk.key, chunk);
     this.link(chunk);
-    const job = { type: 'gen', seed: this.seed, worldType: this.type, version: this.genVersion, cx, cz, saved: null };
-    if (this.store?.has(chunk.key)) {
-      this.store.loadChunk(chunk.key).then((saved) => {
+    // (On a planet the same chunk may be loaded already a lap away: a guest there, say. Then it's that
+    // one's blocks, as they are now, not what's saved.)
+    if (this.wrap) {
+      for (const twin of this.chunks.values()) {
+        if (twin === chunk || twin.storeKey !== chunk.storeKey || twin.state !== S_READY) continue;
+        this.onGen({ cx, cz, blocks: twin.blocks.slice(), light: twin.light.slice(), climate: twin.climate, biomes: twin.biomes });
+        chunk.modified = twin.modified;
+        return;
+      }
+    }
+    const job = { type: 'gen', seed: this.seed, worldType: this.type, version: this.genVersion, cx, cz, saved: null, wrap: this.wrap >> 4 };
+    if (this.store?.has(chunk.storeKey)) {
+      this.store.loadChunk(chunk.storeKey).then((saved) => {
         if (this.chunks.get(chunk.key) !== chunk) return;
         job.saved = saved;
         this.pool.submit(job, saved ? [saved.buffer] : []);
@@ -396,7 +426,7 @@ export class World {
       const dx = c.cx - pcx, dz = c.cz - pcz;
       if (dx * dx + dz * dz <= lim) continue;
       if (this.keep.some(([kx, kz, r]) => (c.cx - kx) ** 2 + (c.cz - kz) ** 2 <= (r + 2) ** 2)) continue;
-      if (c.state === S_READY && c.modified) this.store?.saveChunk(key, c.blocks);
+      if (c.state === S_READY && c.modified) this.store?.saveChunk(c.storeKey, c.blocks);
       this.freeChunkMeshes(c);
       this.unlink(c);
       this.chunks.delete(key);
@@ -411,9 +441,9 @@ export class World {
   // Persist all modified chunks (autosave / quit).
   saveAll() {
     if (!this.store) return;
-    for (const [key, c] of this.chunks) {
+    for (const c of this.chunks.values()) {
       if (c.state === S_READY && c.modified) {
-        this.store.saveChunk(key, c.blocks);
+        this.store.saveChunk(c.storeKey, c.blocks);
         c.modified = false;
       }
     }

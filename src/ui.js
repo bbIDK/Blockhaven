@@ -1,5 +1,6 @@
 // DOM side of the game: screens, HUD and options. Game logic lives in game.js; this module renders
 // state and reports user actions through on()/emit(). Sizes are in GUI pixels (--u, see applyScale).
+import { MODS, knownMods } from './mods.js';
 import { iconFor, setGlint, iconOf } from './icons.js';
 import { shiny } from './enchanting.js';
 import { itemDef } from './items.js';
@@ -347,7 +348,7 @@ export class UI {
     this.u = 3;
     this.selectedWorld = null;
     this.selectedGame = null;
-    this.createState = { mode: 'survival', type: 'default', difficulty: 2, keepInventory: false };
+    this.createState = { mode: 'survival', type: 'default', difficulty: 2, keepInventory: false, mods: [] };
 
     document.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-action]');
@@ -384,6 +385,23 @@ export class UI {
     this.on('cycle-type', () => this.setCreate('type', this.createState.type === 'default' ? 'flat' : 'default'));
     this.on('cycle-create-difficulty', () => this.setCreate('difficulty', (this.createState.difficulty + 1) % 4));
     this.on('cycle-keep', () => this.setCreate('keepInventory', !this.createState.keepInventory));
+    // Mods: the button drops a list down under it, a switch for each.
+    this.on('toggle-mods', () => {
+      const list = $('cw-mods-list'), open = list.hidden;
+      list.hidden = !open;
+      $('cw-mods').setAttribute('aria-expanded', open);
+    });
+    $('cw-mods-list').replaceChildren(...Object.entries(MODS).flatMap(([id, m]) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'btn wide'; b.dataset.mod = id;
+      b.addEventListener('click', () => {
+        const on = this.createState.mods.includes(id);
+        this.setCreate('mods', on ? this.createState.mods.filter((x) => x !== id) : knownMods([...this.createState.mods, id]));
+      });
+      const d = document.createElement('p');
+      d.className = 'mod-desc'; d.textContent = m.desc;
+      return [b, d];
+    }));
     this.resetCreate();
     $('chat-input').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); this.emit('chat-send', $('chat-input').value); }
@@ -711,7 +729,8 @@ export class UI {
       const how = document.createElement('em');
       how.textContent = w.hardcore ? 'Hardcore Mode!' : `${MODE_LABELS[w.mode] ?? 'Survival'} Mode`;
       how.classList.toggle('hardcore', !!w.hardcore);
-      mode.append(how, `, ${w.type === 'flat' ? 'Flat' : 'Default'} world, seed ${w.seed}`);
+      const mods = knownMods(w.mods).map((m) => MODS[m].name);
+      mode.append(how, `, ${w.type === 'flat' ? 'Flat' : 'Default'} world${mods.length ? ` (${mods.join(', ')})` : ''}, seed ${w.seed}`);
       li.append(icon, name, played, mode);
       return li;
     }));
@@ -735,6 +754,9 @@ export class UI {
     this.setCreate('type', 'default');
     this.setCreate('difficulty', this.createState.difficulty ?? 2);
     this.setCreate('keepInventory', false);
+    this.setCreate('mods', []);
+    $('cw-mods-list').hidden = true;
+    $('cw-mods').setAttribute('aria-expanded', false);
   }
 
   setCreate(kind, value) {
@@ -747,6 +769,13 @@ export class UI {
       $('cw-diff').disabled = hardcore;
       $('cw-diff-desc').textContent = hardcore ? 'A hardcore world is always played on Hard.' : DIFFICULTY_NOTES[d];
       if (kind === 'difficulty') return;
+    }
+    if (kind === 'mods') {
+      const names = value.map((m) => MODS[m].name);
+      $('cw-mods').textContent = `Mods: ${names.length ? names.join(', ') : 'None'}`;
+      $('cw-mods-desc').textContent = names.length ? 'A world keeps the mods it was made with.' : 'Click to pick mods for this world.';
+      for (const b of $('cw-mods-list').querySelectorAll('[data-mod]')) b.textContent = `${MODS[b.dataset.mod].name}: ${value.includes(b.dataset.mod) ? 'ON' : 'OFF'}`;
+      return;
     }
     if (kind === 'keepInventory') {
       $('cw-keep').textContent = `Keep Inventory: ${value ? 'ON' : 'OFF'}`;
