@@ -168,7 +168,8 @@ function cached(key, make) {
   return p;
 }
 const worldKey = (gen) => `${gen.seed}:${gen.type}:${gen.version}`;
-const has = (gen) => gen.version >= 10 && gen.type !== 'flat';
+// (One Piece's planet has structures of its own instead.)
+const has = (gen) => gen.version >= 10 && gen.type !== 'flat' && gen.type !== 'onepiece';
 
 // The structure of `kind` in region (rx, rz), or null.
 function regionPlan(gen, kind, rx, rz) {
