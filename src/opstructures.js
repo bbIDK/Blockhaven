@@ -13,7 +13,7 @@
 // Built as the other structures are (structures.js): planned from the seed and the lie of the land
 // alone, so every chunk agrees, and copied into each chunk as it's made.
 import { SEA_LEVEL, chunkKey } from './config.js';
-import { WATERLIKE, WOOD, doorId } from './blocks.js';
+import { B, WATERLIKE, WOOD, doorId } from './blocks.js';
 import { hash2, mulberry32 } from './math.js';
 import { Plot, Frame, FILL, SOFT, SOFT_IDS, hangs, planShipwreck, buildShipwreck } from './structures.js';
 import { RED_LINE, GRAND_LINE, START_CELL, KINDS } from './opgen.js';
@@ -27,9 +27,10 @@ const faceTo = (x, z, tx, tz) => (Math.abs(tx - x) > Math.abs(tz - z) ? (tx > x 
 // Local coordinates as the other structures have them: x across the front from the left, z back
 // from the front, y up; the front faces the frame's `face`.
 class Build {
-  constructor(plot, x, y, z, face, w, d) {
+  // (`ground`: the land's height at a world (x, z), for paths down to it.)
+  constructor(plot, x, y, z, face, w, d, ground = null) {
     this.f = new Frame(plot, x, y, z, face, -(w >> 1), -(d >> 1));
-    this.w = w; this.d = d;
+    this.w = w; this.d = d; this.ground = ground;
   }
   set(x, y, z, id, how = 0) { this.f.put(x, y, z, id, how); }
   fill(x0, y0, z0, x1, y1, z1, id, how = 0) { this.f.fill(x0, y0, z0, x1, y1, z1, id, how); }
@@ -49,17 +50,19 @@ class Build {
       if (x === x0 || x === x1 || z === z0 || z === z1) this.set(x, y, z, id);
     }
   }
-  // A pitched roof over [0..w-1] x [0..d-1], eaves at y, ridge front to back, gables of `gable`.
+  // A pitched roof over [0..w-1] x [0..d-1], eaves at y (overhanging a block each side), ridge front
+  // to back, gables of `gable`. The two slopes step in a block a level until they meet: a slab caps
+  // the ridge of an odd width, an even one closes with its last two stairs back to back.
   roof(y, kind, gable) {
-    const { w, d } = this, half = w >> 1;
-    for (let i = 0; i <= half; i++) {
+    const { w, d } = this;
+    for (let i = 0, l = -1, r = w; l <= r; i++, l++, r--) {
       for (let z = -1; z <= d; z++) {
-        if (i < half || w % 2 === 0) { this.stairs(i - 1, y + i, z, kind, 0); this.stairs(w - i, y + i, z, kind, 1); }
-        else this.set(i, y + i, z, `${kind}_slab`);
+        if (l === r) this.set(l, y + i, z, `${kind}_slab`);
+        else { this.stairs(l, y + i, z, kind, 0); this.stairs(r, y + i, z, kind, 1); }
       }
-      if (i > 0) for (let x = i; x <= w - 1 - i; x++) { this.set(x, y + i - 1, 0, gable); this.set(x, y + i - 1, d - 1, gable); }
+      // (The gables close the ends under this level's stairs.)
+      for (let x = Math.max(0, l + 1); x <= Math.min(w - 1, r - 1); x++) { this.set(x, y + i, 0, gable); this.set(x, y + i, d - 1, gable); }
     }
-    if (w % 2 === 0) for (let z = -1; z <= d; z++) { this.set(half - 1, y + half, z, `${kind}_slab`); this.set(half, y + half, z, `${kind}_slab`); }
   }
   // A roof rising in steps to a point over [x0..x1] x [z0..z1] from y.
   spire(x0, z0, x1, z1, y, kind) {
@@ -71,12 +74,27 @@ class Build {
       for (let z = b0 + 1; z < b1; z++) { this.stairs(a0, yy, z, kind, 0); this.stairs(a1, yy, z, kind, 1); }
     }
   }
-  // A door in the front (of `wood`, or iron), and the way to it cleared, a path before it.
+  // The ground's height at local (x, z), as a local y (the building's floor is at 0); null when the
+  // building wasn't given the land (see blueprint).
+  groundAt(x, z) {
+    if (!this.ground) return null;
+    const [wx, wz] = this.f.at(x, z);
+    return this.ground(wx, wz) - this.f.y;
+  }
+  // A door in the front (of `wood`, or iron), the way to it cleared, and a path out from it that steps
+  // down (or up) a block at a time to the ground, so the door can be walked up to.
   door(x, y, z, wood = 'oak') {
     const base = wood === 'iron' ? 2228 : WOOD[wood].door, f = this.f.f(5);
     this.f.put(x, y, z, doorId(f, false, false, base)); this.f.put(x, y + 1, z, doorId(f, false, true, base));
-    this.set(x, y - 1, z - 1, 'dirt_path');
-    this.set(x, y, z - 1, 0); this.set(x, y + 1, z - 1, 0);
+    let level = y - 1;
+    for (let k = 1; k <= 8; k++) {
+      const g = this.groundAt(x, z - k), top = g === null ? level : Math.max(level - 1, Math.min(g, level + 1));
+      this.set(x, top, z - k, 'dirt_path');
+      for (let yy = top - 1; yy >= Math.min(top - 1, (g ?? top) ); yy--) this.set(x, yy, z - k, 'dirt', FILL);
+      for (let yy = top + 1; yy <= top + 3; yy++) this.set(x, yy, z - k, 0);
+      level = top;
+      if (g === null || top === g) break;
+    }
   }
   window(x, y, z) { this.set(x, y, z, 'glass_pane'); }
   chest(x, y, z, kind = 'house', front = 5) { this.f.chest(x, y, z, kind, front); }
@@ -465,7 +483,7 @@ function townPlan(gen, isle) {
       y = hs.sort((a, b) => a - b)[2] + 1;
     }
     boxes.push([x0, z0, x1, z1]);
-    pieces.push({ type, x: Math.round(x), z: Math.round(z), y, face, w, d, box: [x0 - 2, z0 - 2, x1 + 2, z1 + 2] });
+    pieces.push({ type, x: Math.round(x), z: Math.round(z), y, face, w, d, box: [x0 - 2, z0 - 2, x1 + 2, z1 + 2], reach: [x0 - 10, z0 - 10, x1 + 10, z1 + 10] });
     return true;
   };
   const { x: ix, z: iz, r } = isle;
@@ -504,6 +522,38 @@ function townPlan(gen, isle) {
       const x0 = Math.min(sx, sx + dir[0] * len) - 2, x1 = Math.max(sx, sx + dir[0] * len) + 2, z0 = Math.min(sz, sz + dir[1] * len) - 2, z1 = Math.max(sz, sz + dir[1] * len) + 2;
       pieces.push({ type: 'pier', x: Math.round(sx), z: Math.round(sz), y: SEA_LEVEL + 1, face, w: 3, d: len, len, box: [Math.floor(x0), Math.floor(z0), Math.ceil(x1), Math.ceil(z1)], fromFront: true });
       break;
+    }
+  }
+  // Paths: from the door of every building to the landmark's (or the middle of the island), two
+  // blocks wide, round the buildings and never into the sea.
+  const doorOf = (p) => new Frame(null, p.x, p.y, p.z, p.face, -(p.w >> 1), -(p.d >> 1)).at(p.w >> 1, -3);
+  const houses = pieces.filter((p) => p.type !== 'pier' && p.type !== 'grave' && p.type !== 'bones');
+  if (houses.length > 1) {
+    const hub = T.landmark && houses[0].type === T.landmark[0] ? houses[0] : null, [hx, hz] = hub ? doorOf(hub) : [ix, iz];
+    const inside = (x, z) => boxes.some((b) => x >= b[0] && x <= b[2] && z >= b[1] && z <= b[3]);
+    const cols = new Map();
+    for (const h of houses) {
+      if (h === hub) continue;
+      const [sx, sz] = doorOf(h);
+      // Along x then along z (an L), so the lanes run square to the houses.
+      const corner = rnd() < 0.5 ? [hx, sz] : [sx, hz];
+      for (const [[ax, az], [bx, bz]] of [[[sx, sz], corner], [corner, [hx, hz]]]) {
+        const n = Math.max(Math.abs(bx - ax), Math.abs(bz - az));
+        for (let k = 0; k <= n; k++) {
+          const x = Math.round(ax + (bx - ax) * k / (n || 1)), z = Math.round(az + (bz - az) * k / (n || 1));
+          for (const [dx, dz] of [[0, 0], [1, 0], [0, 1]]) {
+            const cx = x + dx, cz = z + dz;
+            if (inside(cx, cz) || ground(cx, cz).height <= SEA_LEVEL) continue;
+            cols.set(`${cx},${cz}`, [cx, cz]);
+          }
+        }
+      }
+    }
+    if (cols.size) {
+      const list = [...cols.values()], xs = list.map((c) => c[0]), zs = list.map((c) => c[1]);
+      const box = [Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs)];
+      // (Drawn first, so the buildings stand on top of their own ends of it.)
+      pieces.unshift({ type: 'path', cols: list, box, x: Math.round(hx), z: Math.round(hz) });
     }
   }
   return { pieces, seed: isle.seed, box: pieces.reduce((u, p) => [Math.min(u[0], p.box[0]), Math.min(u[1], p.box[1]), Math.max(u[2], p.box[2]), Math.max(u[3], p.box[3])], [Infinity, Infinity, -Infinity, -Infinity]) };
@@ -553,13 +603,14 @@ function cellPlans(gen, i, j) {
 function blueprint(gen, p) {
   if (p.plot) return p.plot;
   const plot = new Plot(), rnd = mulberry32((gen.seed ^ hash2(p.x ?? 0, p.z ?? 0, 0xb1d) * 4294967296) >>> 0);
+  const ground = (x, z) => gen.sample(Math.floor(x), Math.floor(z)).height;
   if (p.type === 'wreck') buildShipwreck(gen, p.wreck, plot, mulberry32(p.wreck.seed));
   else if (p.type === 'pier') pier(new Build(plot, p.x, p.y - 1, p.z, p.face, 3, 0), p.len);
   else if (p.type === 'baratie') baratie(new Build(plot, p.x, p.y, p.z, p.face, 13, 31));
-  else if (p.type === 'lighthouse') lighthouse(new Build(plot, p.x, p.y, p.z, p.face, 5, 5));
+  else if (p.type === 'lighthouse') lighthouse(new Build(plot, p.x, p.y, p.z, p.face, 5, 5, ground));
   else {
     const T = Object.values(TOWNS).find((t) => t.landmark?.[0] === p.type || t.houses.some((h) => h[0] === p.type));
-    BUILDERS[p.type](new Build(plot, p.x, p.y, p.z, p.face, p.w, p.d), rnd, townStyle(gen, p) ?? T?.style);
+    BUILDERS[p.type](new Build(plot, p.x, p.y, p.z, p.face, p.w, p.d, ground), rnd, townStyle(gen, p) ?? T?.style);
   }
   p.plot = plot.seal();
   return p.plot;
@@ -574,13 +625,14 @@ function townStyle(gen, p) {
 function piecesIn(gen, cx, cz) {
   const x0 = cx * 16, z0 = cz * 16, x1 = x0 + 15, z1 = z0 + 15;
   const list = cellPlans(gen, Math.floor(x0 / CELL), Math.floor(z0 / CELL));
-  return list.filter((p) => p.box[0] <= x1 && p.box[2] >= x0 && p.box[1] <= z1 && p.box[3] >= z0);
+  return list.filter((p) => { const b = p.reach ?? p.box; return b[0] <= x1 && b[2] >= x0 && b[1] <= z1 && b[3] >= z0; });
 }
 
 // Copies the pieces' share of chunk (cx, cz) into `blocks` (from y 0 up), as drawStructures does.
 export function drawOnePiece(gen, cx, cz, blocks) {
   const key = chunkKey(cx, cz);
   for (const p of piecesIn(gen, cx, cz)) {
+    if (p.type === 'path') { drawPath(gen, p, cx, cz, blocks); continue; }
     const list = blueprint(gen, p).chunks.get(key);
     if (!list) continue;
     for (let i = 0; i < list.length; i++) {
@@ -595,10 +647,31 @@ export function drawOnePiece(gen, cx, cz, blocks) {
   }
 }
 
+// A town's paths through chunk (cx, cz): the top of the land (under any plants) turned to path where
+// it's grass or dirt, and the plants on it cleared.
+const PATHABLE = new Set([B.grass_block, B.dirt, B.coarse_dirt, B.podzol, B.snowy_grass]);
+function drawPath(gen, p, cx, cz, blocks) {
+  const x0 = cx * 16, z0 = cz * 16;
+  for (const [x, z] of p.cols) {
+    const lx = x - x0, lz = z - z0;
+    if (lx < 0 || lx > 15 || lz < 0 || lz > 15) continue;
+    const h = gen.sample(x, z).height;
+    for (let y = Math.min(255, h + 4); y > Math.max(1, h - 6); y--) {
+      const at = (y << 8) | (lz << 4) | lx, id = blocks[at];
+      if (id === 0 || SOFT_IDS[id]) continue;
+      if (PATHABLE.has(id)) {
+        blocks[at] = B.dirt_path;
+        for (let k = 1; k <= 2; k++) { const up = at + (k << 8); if (SOFT_IDS[blocks[up]]) blocks[up] = 0; }
+      }
+      break;
+    }
+  }
+}
+
 // The building at (x, z) (with `margin` round it), or null: trees keep off them.
 export function onePieceAt(gen, x, z, margin = 0) {
   for (const p of cellPlans(gen, Math.floor(x / CELL), Math.floor(z / CELL))) {
-    if (p.type === 'wreck') continue;
+    if (p.type === 'wreck' || p.type === 'path') continue;
     const b = p.box;
     if (x >= b[0] - margin && x <= b[2] + margin && z >= b[1] - margin && z <= b[3] + margin) return p;
   }
